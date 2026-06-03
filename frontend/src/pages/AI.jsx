@@ -1,4 +1,4 @@
-
+﻿
 
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -584,7 +584,7 @@ export default function IntelligenceArtificielle() {
               </div>
 
               {/* Charts + reco */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
                 <div className="ia-card fu">
                   <div className="ia-card-hdr">
                     <div><h3>{I.trend} Activité IA — 7 derniers jours</h3><p>Volume d'analyses et alertes générées</p></div>
@@ -622,7 +622,7 @@ export default function IntelligenceArtificielle() {
               </div>
 
               {/* Scores risque patients + recommandations */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 <div className="ia-card fu">
                   <div className="ia-card-hdr"><div><h3>👤 Scores de risque patients</h3><p>Calculés par l'IA aujourd'hui</p></div></div>
                   <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
@@ -695,7 +695,7 @@ export default function IntelligenceArtificielle() {
 
                 {/* ─ ASSISTANT MÉDICAL ─ */}
                 {section === "assistant" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     <div className="ia-card fu">
                       <div className="ia-card-hdr"><h3>🩺 Analyse clinique IA</h3><p>Saisie des données patient</p></div>
                       <div style={{ padding:20, display:"flex", flexDirection:"column", gap:14 }}>
@@ -792,7 +792,7 @@ export default function IntelligenceArtificielle() {
 
                 {/* ─ ANALYSE PATIENT ─ */}
                 {section === "patient" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     <div className="ia-card fu">
                       <div className="ia-card-hdr"><h3>👤 Sélectionner un patient</h3></div>
                       <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
@@ -846,7 +846,7 @@ export default function IntelligenceArtificielle() {
 
                 {/* ─ ORDONNANCE IA ─ */}
                 {section === "ordonnance" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     <div className="ia-card fu">
                       <div className="ia-card-hdr"><h3>💊 Assistant Ordonnance IA</h3></div>
                       <div style={{ padding:20, display:"flex", flexDirection:"column", gap:14 }}>
@@ -918,7 +918,7 @@ export default function IntelligenceArtificielle() {
                 {/* ─ LABORATOIRE IA ─ */}
                 {section === "laboratoire" && (
                   <div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
                       <div className="ia-card fu">
                         <div className="ia-card-hdr"><h3>🔬 Interprétation automatique</h3></div>
                         <div style={{ padding:20 }}>
@@ -954,7 +954,7 @@ export default function IntelligenceArtificielle() {
 
                 {/* ─ IMAGERIE IA ─ */}
                 {section === "imagerie" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     {[
                       { type:"Échographie abdominale", date:"28/05/2025", anomalie:true,  resume:"Appendice mesurant 9mm non compressible — Appendicite aiguë confirmée. Épanchement péri-appendiculaire localisé.", comparaison:"Examen initial — pas de référence antérieure." },
                       { type:"Radiographie thorax",    date:"14/02/2025", anomalie:false, resume:"Pas d'opacité parenchymateuse. Sinus costophréniques libres. Silhouette cardiaque normale.", comparaison:"Stable par rapport à l'examen de 2023." },
@@ -982,7 +982,7 @@ export default function IntelligenceArtificielle() {
 
                 {/* ─ RENDEZ-VOUS IA ─ */}
                 {section === "rdv" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     <div className="ia-card fu">
                       <div className="ia-card-hdr"><h3>📅 Optimisation des RDV</h3></div>
                       <div style={{ padding:20 }}>
@@ -1048,12 +1048,12 @@ export default function IntelligenceArtificielle() {
 
                 {/* ─ FINANCE IA ─ */}
                 {section === "finance" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     <div className="ia-card fu">
                       <div className="ia-card-hdr"><h3>💰 Prévisions financières</h3><p>Modèle IA — 30 jours</p></div>
                       <div style={{ padding:20 }}>
                         <LineChart labels={["S1","S2","S3","S4","S5","S6","S7","S8"]} data={[820,950,880,1100,970,1050,1200,1150]} color="#059669" />
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginTop:16 }}>
+                        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:10, marginTop:16 }}>
                           {[["CA prévu","4 850 000","green"],["Dépenses","2 340 000","orange"],["Solde prévu","2 510 000","blue"]].map(([lbl,val,col]) => (
                             <div key={lbl} style={{ background:"#F8FAFD", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
                               <div style={{ fontSize:11, color:"var(--cm)", fontWeight:600 }}>{lbl}</div>
@@ -1368,7 +1368,7 @@ export default function IntelligenceArtificielle() {
               {/* Config */}
               <div className="ia-card fu" style={{ marginBottom:20 }}>
                 <div className="ia-card-hdr"><h3>⚙️ Configuration</h3></div>
-                <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
                   <div>
                     <label className="ilbl">Langue de l'IA</label>
                     <select className="iinp" value={settings.langue} onChange={e => setSettings(s=>({...s,langue:e.target.value}))}>

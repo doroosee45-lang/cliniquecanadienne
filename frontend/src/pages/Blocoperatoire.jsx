@@ -1,4 +1,4 @@
-
+﻿
 
 
 
@@ -674,7 +674,7 @@ export default function BlocOperatoire() {
               </div>
 
               {/* Charts + Status */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="bo-card bofu">
                   <div className="bo-card-hdr">
                     <div><h3>{I.trend} Volume opératoire — 12 mois</h3><p>Nombre d'interventions par mois</p></div>
@@ -1045,7 +1045,7 @@ export default function BlocOperatoire() {
 
               {/* ── GÉNÉRAL ── */}
               {section === "general" && (
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginTop:20 }}>
+                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginTop:20 }}>
                   <div className="bo-card">
                     <div className="bo-card-hdr"><h3>📋 Informations générales</h3></div>
                     <div style={{ padding:20, display:"flex", flexDirection:"column", gap:14 }}>
@@ -1076,7 +1076,7 @@ export default function BlocOperatoire() {
                         <label className="blbl">Service demandeur</label>
                         <input className="binp" value={currentInterv.service_demandeur || ""} onChange={e => setCurrentInterv(d => ({ ...d, service_demandeur:e.target.value }))} placeholder="Ex: Urgences, Chirurgie générale..." />
                       </div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                         <div>
                           <label className="blbl">Heure d'entrée en salle</label>
                           <input type="time" className="binp" value={currentInterv.heure_debut ? new Date(currentInterv.heure_debut).toTimeString().substring(0,5) : ""} onChange={e => setCurrentInterv(d => ({ ...d, heure_debut: e.target.value }))} />
@@ -1097,7 +1097,7 @@ export default function BlocOperatoire() {
                     <div className="bo-card-hdr"><h3>🔗 Intégrations modules</h3></div>
                     <div style={{ padding:20 }}>
                       <div style={{ fontSize:12, color:"var(--cm)", marginBottom:14 }}>Le dossier du bloc est connecté aux modules suivants :</div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                         {[
                           ["🩺","Consultation","Dossier chirurgical source"],
                           ["🛏","Hospitalisation","Liaison lit préop/postop"],
@@ -1129,7 +1129,7 @@ export default function BlocOperatoire() {
                 <div style={{ marginTop:20 }}>
                   <div className="bo-card">
                     <div className="bo-card-hdr"><h3>👤 Patient & Diagnostic préopératoire</h3></div>
-                    <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                       <div style={{ gridColumn:"1/-1", display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12 }}>
                         {[
                           ["Nom complet", currentInterv.patient_nom],
@@ -1189,7 +1189,7 @@ export default function BlocOperatoire() {
 
               {/* ── ÉQUIPE ── */}
               {section === "equipe" && (
-                <div style={{ marginTop:20, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:20 }}>
+                <div style={{ marginTop:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:20 }}>
                   {/* Chirurgie */}
                   <div className="bo-card">
                     <div className="bo-card-hdr" style={{ background:"linear-gradient(to right,#EBF5FB,transparent)" }}>
@@ -1249,7 +1249,7 @@ export default function BlocOperatoire() {
               {/* ── ÉVALUATION PRÉOP ── */}
               {section === "preop" && (
                 <div style={{ marginTop:20 }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
                     <div className="bo-card">
                       <div className="bo-card-hdr"><h3>🔬 Examens obligatoires</h3></div>
                       <div style={{ padding:16, display:"flex", flexDirection:"column", gap:10 }}>
@@ -1366,7 +1366,7 @@ export default function BlocOperatoire() {
                 <div style={{ marginTop:20 }}>
                   <div className="bo-card">
                     <div className="bo-card-hdr"><h3>🔪 Déroulement opératoire</h3></div>
-                    <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                       <div>
                         <label className="blbl">Heure de début réelle</label>
                         <input type="datetime-local" className="binp" value={fmtDateTimeInput(currentInterv.heure_debut)} onChange={e => setCurrentInterv(d => ({ ...d, heure_debut:e.target.value }))} />
@@ -1503,7 +1503,7 @@ export default function BlocOperatoire() {
                             </div>
                           ))}
                         </div>
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                           <div style={{ background:"#F4F9FD", borderRadius:10, padding:"10px 12px" }}>
                             <div style={{ fontSize:11, color:"var(--cm)", fontWeight:600 }}>HEURE D'ARRIVÉE</div>
                             <div style={{ fontSize:14, fontWeight:700, color:"var(--bn)", marginTop:2 }}>{currentInterv.reveil.heure_arrivee || "—"}</div>
@@ -1613,7 +1613,7 @@ export default function BlocOperatoire() {
                               <tbody>{actes.map(([lbl,val]) => <tr key={lbl}><td>{lbl}</td><td style={{textAlign:"right",fontWeight:600}}>{val.toLocaleString("fr-FR")}</td></tr>)}</tbody>
                             </table>
                             <div style={{ background:"#F4F9FD", borderRadius:14, padding:16 }}>
-                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+                              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:12 }}>
                                 <div style={{ background:"#EBF5FB", borderRadius:10, padding:14, textAlign:"center" }}>
                                   <div style={{ fontSize:18, fontWeight:800, color:"var(--bb)" }}>{total.toLocaleString("fr-FR")}</div>
                                   <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>TOTAL (CFA)</div>
@@ -1713,7 +1713,7 @@ export default function BlocOperatoire() {
                 </div>
               </div>
 
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 <div className="bo-card">
                   <div className="bo-card-hdr"><h3>📊 Taux occupation des salles</h3></div>
                   <div style={{ padding:16 }}>
@@ -1766,7 +1766,7 @@ export default function BlocOperatoire() {
         {/* ═══ MODAL : NOUVELLE INTERVENTION ═══ */}
         <Modal open={modalNouv} onClose={() => setModalNouv(false)} title={<>{I.plus} Nouvelle intervention chirurgicale</>} maxWidth={720}>
           <form onSubmit={createInterv}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="blbl">Patient *</label>
                 <select className="binp" required value={formInterv.patient_id} onChange={e => setFormInterv(f=>({...f,patient_id:e.target.value}))}>
@@ -1872,7 +1872,7 @@ export default function BlocOperatoire() {
                 <label className="blbl">Matériel implanté</label>
                 <input className="binp" value={formCR.materiel_implante} onChange={e => setFormCR(f=>({...f,materiel_implante:e.target.value}))} placeholder="Prothèse, filet, drain, sonde..." />
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div>
                   <label className="blbl">Saignement (ml)</label>
                   <input type="number" className="binp" min={0} value={formCR.saignement_ml} onChange={e => setFormCR(f=>({...f,saignement_ml:e.target.value}))} placeholder="0" />
@@ -1903,7 +1903,7 @@ export default function BlocOperatoire() {
         {/* ═══ MODAL : RÉVEIL ═══ */}
         <Modal open={modalReveil} onClose={() => setModalReveil(false)} title="💊 Salle de réveil — Surveillance postanesthésique" maxWidth={540}>
           <form onSubmit={saveReveil}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div>
                 <label className="blbl">Heure d'arrivée en réveil</label>
                 <input type="time" className="binp" value={formReveil.heure_arrivee} onChange={e => setFormReveil(f=>({...f,heure_arrivee:e.target.value}))} />
@@ -1942,7 +1942,7 @@ export default function BlocOperatoire() {
               </div>
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="blbl">Complications éventuelles</label>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:8 }}>
                   {["Infection","Hémorragie","Réaction anesthésique","Nausées/vomissements","Autre"].map(c => (
                     <label key={c} style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer", fontSize:12.5 }}>
                       <input type="checkbox"

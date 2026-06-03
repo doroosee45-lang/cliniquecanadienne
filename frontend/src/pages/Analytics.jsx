@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchAnalyticsReport, fetchFinancialReport, fetchPatientStats,
@@ -507,7 +507,7 @@ export default function Analytics() {
                     <div className="akpi-sub" style={{ marginTop:6 }}>{kpi.patients_actifs} actifs ce mois</div>
                   </KpiCard>
                   <div className="anl-kpi blue fu d1">
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                       {[["Nouveaux",kpi.patients_nouveaux,"var(--ab)"],["Actifs",kpi.patients_actifs,"var(--ag)"],["Hospitalisés",kpi.patients_hospitalises,"var(--ao)"],["Sortis",44,"var(--at)"]].map(([lbl,val,col])=>(
                         <div key={lbl} className="mini-kpi">
                           <div className="mini-kpi-val" style={{ color:col }}>{val}</div>
@@ -538,7 +538,7 @@ export default function Analytics() {
                 {/* Laboratoire */}
                 <div className="anl-card fu">
                   <div className="anl-card-hdr"><h3>{I.lab} Laboratoire</h3></div>
-                  <div style={{ padding:16, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+                  <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:10 }}>
                     {[["Demandés",kpi.labo_demandes,"var(--ab)"],["Réalisés",kpi.labo_realises,"var(--ag)"],["En attente",kpi.labo_attente,"var(--ao)"]].map(([lbl,val,col])=>(
                       <div key={lbl} className="mini-kpi" style={{ textAlign:"center" }}>
                         <div className="mini-kpi-val" style={{ color:col, fontSize:22 }}>{val}</div>
@@ -555,7 +555,7 @@ export default function Analytics() {
                 {/* Imagerie */}
                 <div className="anl-card fu d1">
                   <div className="anl-card-hdr"><h3>{I.scan} Imagerie</h3></div>
-                  <div style={{ padding:16, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+                  <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:10 }}>
                     {[["Demandés",kpi.imagerie_demandes,"var(--ap)"],["Réalisés",kpi.imagerie_realises,"var(--ag)"],["En attente",kpi.imagerie_attente,"var(--ao)"]].map(([lbl,val,col])=>(
                       <div key={lbl} className="mini-kpi" style={{ textAlign:"center" }}>
                         <div className="mini-kpi-val" style={{ color:col, fontSize:22 }}>{val}</div>
@@ -573,7 +573,7 @@ export default function Analytics() {
                 <div className="anl-card fu d2">
                   <div className="anl-card-hdr"><h3>{I.bed} Hospitalisation</h3></div>
                   <div style={{ padding:16 }}>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10, marginBottom:12 }}>
                       {[["Admissions",kpi.hospit_admissions,"var(--ao)"],["Sorties",kpi.hospit_sorties,"var(--ag)"]].map(([lbl,val,col])=>(
                         <div key={lbl} className="mini-kpi" style={{ textAlign:"center" }}>
                           <div className="mini-kpi-val" style={{ color:col, fontSize:22 }}>{val}</div>
@@ -594,7 +594,7 @@ export default function Analytics() {
                 {/* Chirurgie */}
                 <div className="anl-card fu d3">
                   <div className="anl-card-hdr"><h3>{I.surgery} Chirurgie</h3></div>
-                  <div style={{ padding:16, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+                  <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:10 }}>
                     {[["Programmées",kpi.chirurgie_programmees,"var(--ab)"],["Réalisées",kpi.chirurgie_realisees,"var(--ag)"],["Annulées",kpi.chirurgie_annulees,"var(--ar)"]].map(([lbl,val,col])=>(
                       <div key={lbl} className="mini-kpi" style={{ textAlign:"center" }}>
                         <div className="mini-kpi-val" style={{ color:col, fontSize:22 }}>{val}</div>
@@ -622,7 +622,7 @@ export default function Analytics() {
               </div>
 
               {/* ── GRAPHIQUES LIGNE ── */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
                 <div className="anl-card fu">
                   <div className="anl-card-hdr">
                     <div><h3>{I.trend} Évolution des consultations</h3><p>Comparaison avec la période précédente</p></div>
@@ -642,7 +642,7 @@ export default function Analytics() {
               </div>
 
               {/* ── PATHOLOGIES + MÉDECINS ── */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
                 {/* Top 10 pathologies */}
                 <div className="anl-card fu">
                   <div className="anl-card-hdr">
@@ -700,7 +700,7 @@ export default function Analytics() {
               </div>
 
               {/* ── Alertes résumé ── */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 <div className="anl-card fu">
                   <div className="anl-card-hdr">
                     <h3>🏥 Alertes médicales</h3>
@@ -762,7 +762,7 @@ export default function Analytics() {
                 </div>
               </div>
 
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
                 {/* Évolution mensuelle */}
                 <div className="anl-card fu">
                   <div className="anl-card-hdr"><div><h3>{I.trend} Évolution mensuelle</h3><p>Consultations sur 12 mois</p></div></div>
@@ -858,7 +858,7 @@ export default function Analytics() {
               </div>
 
               {/* Graphes finance */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
                 <div className="anl-card fu">
                   <div className="anl-card-hdr">
                     <div><h3>{I.trend} Évolution financière mensuelle</h3><p>CA vs Dépenses vs Bénéfice</p></div>
@@ -978,7 +978,7 @@ export default function Analytics() {
               </div>
 
               {/* Satisfaction détaillée */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
                 <div className="anl-card fu">
                   <div className="anl-card-hdr"><div><h3>😊 Satisfaction patient détaillée</h3><p>Score global : 87/100</p></div></div>
                   <div style={{ padding:20 }}>
@@ -1013,7 +1013,7 @@ export default function Analytics() {
                       ]}
                       height={200}
                     />
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginTop:16 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:10, marginTop:16 }}>
                       {[["Attente moy.","22 min","var(--ao)"],["Consultation moy.","24 min","var(--ab)"],["Prise charge totale","46 min","var(--at)"]].map(([lbl,val,col])=>(
                         <div key={lbl} className="mini-kpi" style={{ textAlign:"center" }}>
                           <div className="mini-kpi-val" style={{ color:`${col}`, fontSize:16 }}>{val}</div>
@@ -1028,7 +1028,7 @@ export default function Analytics() {
               {/* IA Recommandations performance */}
               <div className="anl-card fu">
                 <div className="anl-card-hdr"><h3>{I.ia} Recommandations IA — Amélioration de la performance</h3></div>
-                <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                   {[
                     { col:"#DC2626", ico:"🔴", titre:"Priorité haute", desc:"Réduire le temps d'attente urgences > 30 min — Impact : 23% des patients insatisfaits" },
                     { col:"#D97706", ico:"🟠", titre:"Suivi recommandé", desc:"Taux de retour patients 68% — Mettre en place système de rappel automatique" },
@@ -1069,7 +1069,7 @@ export default function Analytics() {
                 ))}
               </div>
 
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 {/* Alertes médicales */}
                 <div className="anl-card fu">
                   <div className="anl-card-hdr">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import api from "../api";
 import toast from "react-hot-toast";
 
@@ -259,6 +259,8 @@ export default function Settings() {
   const [active, setActive]       = useState("clinique");
   const [settings, setSettings]   = useState([]);    // données brutes API
   const [values, setValues]       = useState({});    // { cle: valeur }
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
+  useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
   const [savingKey, setSavingKey] = useState(null);  // quelle clé est en cours de sauvegarde
@@ -460,7 +462,7 @@ export default function Settings() {
         <div className="set-card">
           <div className="set-card-hdr"><h3>📋 Profil de la clinique</h3></div>
           <div className="set-card-body">
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
               {[
                 ["clinique_nom",         "Nom de la clinique *",         "1/-1"],
                 ["clinique_slogan",      "Slogan",                       "1/-1"],
@@ -526,7 +528,7 @@ export default function Settings() {
         <div className="set-card">
           <div className="set-card-hdr"><h3>{I.globe} Configuration régionale</h3></div>
           <div className="set-card-body">
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
               {[
                 { cle:"general_langue", label:"Langue du système", opts:[["fr","🇫🇷 Français"],["en","🇬🇧 English"],["pt","🇵🇹 Português"]] },
                 { cle:"general_timezone", label:"Fuseau horaire", opts:[["Africa/Brazzaville","Africa/Brazzaville (UTC+1)"],["Africa/Lagos","Africa/Lagos (UTC+1)"],["Africa/Kinshasa","Africa/Kinshasa (UTC+1)"],["Europe/Paris","Europe/Paris (UTC+2)"]] },
@@ -563,7 +565,7 @@ export default function Settings() {
             {I.save} {saving?"...":"Enregistrer"}
           </button>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
           <div className="set-card">
             <div className="set-card-hdr"><h3>{I.palette} Thème et couleurs</h3></div>
             <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:18 }}>
@@ -719,7 +721,7 @@ export default function Settings() {
             {I.save} {saving?"...":"Tout enregistrer"}
           </button>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
           <div className="set-card">
             <div className="set-card-hdr"><h3>📱 Configuration SMS</h3></div>
             <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
@@ -749,7 +751,7 @@ export default function Settings() {
                 <ParamRow cle="notif_email_actif" label="Activer les e-mails" type="boolean">
                   <Toggle checked={val("notif_email_actif", false)} onChange={v => set("notif_email_actif", v)} />
                 </ParamRow>
-                <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:10 }}>
+                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:10 }}>
                   <div>
                     <label className="slbl">Serveur SMTP</label>
                     <div style={{ display:"flex", gap:8 }}>
@@ -818,7 +820,7 @@ export default function Settings() {
             {I.save} {saving?"...":"Tout enregistrer"}
           </button>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
           <div className="set-card">
             <div className="set-card-hdr"><h3>💾 Sauvegarde automatique</h3></div>
             <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:16 }}>
@@ -919,7 +921,7 @@ export default function Settings() {
             {I.save} {saving?"...":"Enregistrer"}
           </button>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
           <div className="set-card">
             <div className="set-card-hdr"><h3>📂 Catégories de médicaments</h3></div>
             <div style={{ overflowX:"auto" }}>
@@ -976,7 +978,7 @@ export default function Settings() {
             {I.save} {saving?"...":"Tout enregistrer"}
           </button>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
           <div className="set-card">
             <div className="set-card-hdr"><h3>🧾 Configuration facturation</h3></div>
             <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:16 }}>

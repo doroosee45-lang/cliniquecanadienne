@@ -1,4 +1,4 @@
-
+﻿
 
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -1085,7 +1085,7 @@ export default function Hospitalisation() {
                     <div className="ho-card-hdr"><h3>🔗 Modules connectés</h3></div>
                     <div style={{ padding:20 }}>
                       <div style={{ fontSize:12, color:"var(--cm)", marginBottom:14 }}>Ce dossier est connecté automatiquement aux modules :</div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                         {[
                           ["🩺","Consultation","Dossier source d'admission"],
                           ["🔬","Laboratoire","Résultats des analyses"],
@@ -1116,7 +1116,7 @@ export default function Hospitalisation() {
                 <div style={{ marginTop:20 }}>
                   <div className="ho-card">
                     <div className="ho-card-hdr"><h3>👤 Informations du patient</h3></div>
-                    <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                       <div className="ho-g4" style={{ gridColumn:"1/-1", gap:12 }}>
                         {[
                           ["Nom complet", currentHosp.patient_nom],
@@ -1549,7 +1549,7 @@ export default function Hospitalisation() {
                           <h3>🚪 Détails de sortie</h3>
                           <button className="hbtn hbtn-ghost hbtn-sm" onClick={() => { setFormSortie({ date_sortie:fmtDateInput(currentHosp.date_sortie), etat_patient:currentHosp.etat_patient || "gueri", diagnostic_sortie:currentHosp.diagnostic_sortie || "", recommandations:currentHosp.recommandations || "", rdv_controle:currentHosp.rdv_controle || "" }); setModalSortie(true); }}>Modifier</button>
                         </div>
-                        <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                        <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
                           {[
                             ["Date de sortie", fmtDate(currentHosp.date_sortie)],
                             ["État du patient", (ETAT_SORTIE[currentHosp.etat_patient]||{}).label || "—"],

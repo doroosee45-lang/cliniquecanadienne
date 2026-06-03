@@ -1,4 +1,4 @@
-
+﻿
 
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -666,7 +666,7 @@ export default function RendezVous() {
               </div>
 
               {/* Main grid */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 {/* Calendrier aperçu */}
                 <div className="rdv-card fu">
                   <div className="rdv-card-hdr">
@@ -1358,7 +1358,7 @@ export default function RendezVous() {
                 </div>
 
                 {/* Infos */}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                   {[
                     ["👨‍⚕️ Médecin",   selectedRdv.medecin_nom],
                     ["🏥 Service",     selectedRdv.service],

@@ -1,4 +1,4 @@
-
+﻿
 
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -1111,12 +1111,12 @@ export default function Messagerie() {
         {/* ══ HISTORIQUE ══ */}
         {tab === "historique" && (
           <div style={{ padding:24 }}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
               {/* Statistiques */}
               <div className="adm-card fu">
                 <div className="adm-card-hdr"><h3>📊 Statistiques de communication</h3></div>
                 <div style={{ padding:20 }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12, marginBottom:16 }}>
                     {[
                       { lbl:"Messages envoyés", val:"1 284", col:"#1B4F9E" },
                       { lbl:"Messages reçus",   val:"1 102", col:"#0EA5A0" },

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchSurgeries, createSurgery, updateSurgery,
@@ -628,7 +628,7 @@ export default function Chirurgie() {
               </div>
 
               {/* Charts */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="chir-card fu">
                   <div className="chir-card-hdr">
                     <div>
@@ -898,11 +898,11 @@ export default function Chirurgie() {
 
               {/* ── GÉNÉRAL ── */}
               {section === "general" && (
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginTop:20 }}>
+                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginTop:20 }}>
                   <div className="chir-card">
                     <div className="chir-card-hdr"><h3>👤 Informations du patient</h3></div>
                     <div style={{ padding:20 }}>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                         <div style={{ gridColumn:"1/-1", background:"#F8FAFD", borderRadius:10, padding:"10px 12px" }}>
                           <div style={{ fontSize:10, fontWeight:600, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.4 }}>Nom complet</div>
                           <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginTop:2 }}>{currentDossier.patient_nom}</div>
@@ -981,7 +981,7 @@ export default function Chirurgie() {
                 <div style={{ marginTop:20 }}>
                   <div className="chir-card">
                     <div className="chir-card-hdr"><h3>🩺 Consultation chirurgicale</h3></div>
-                    <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                       <div style={{ gridColumn:"1/-1" }}>
                         <label className="clbl">Motif de consultation *</label>
                         <input className="cinp" value={currentDossier.motif_consultation || ""} onChange={e => setCurrentDossier(d => ({ ...d, motif_consultation:e.target.value }))} placeholder="Ex: Hernie inguinale douloureuse" />
@@ -1098,7 +1098,7 @@ export default function Chirurgie() {
                 <div style={{ marginTop:20 }}>
                   <div className="chir-card">
                     <div className="chir-card-hdr"><h3>📅 Programmation opératoire</h3></div>
-                    <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                       <div>
                         <label className="clbl">Type d'intervention</label>
                         <input className="cinp" value={currentDossier.type_intervention || ""} onChange={e => setCurrentDossier(d => ({ ...d, type_intervention:e.target.value }))} placeholder="Ex: Cholécystectomie laparoscopique" />
@@ -1150,7 +1150,7 @@ export default function Chirurgie() {
                           Intervention : <strong>{currentDossier.type_intervention || "—"}</strong> · Salle : <strong>{currentDossier.salle_prevue || "Non attribuée"}</strong>
                         </div>
                       </div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                         <div>
                           <label className="clbl">Date réelle de l'intervention</label>
                           <input type="date" className="cinp" value={fmtDateInput(currentDossier.date_intervention_reelle)} onChange={e => setCurrentDossier(d => ({ ...d, date_intervention_reelle:e.target.value }))} />
@@ -1301,7 +1301,7 @@ export default function Chirurgie() {
                 <div style={{ marginTop:20 }}>
                   <div className="chir-card">
                     <div className="chir-card-hdr"><h3>🚪 Sortie chirurgicale</h3></div>
-                    <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                       <div>
                         <label className="clbl">Date de sortie</label>
                         <input type="date" className="cinp" value={fmtDateInput(currentDossier.date_sortie)} onChange={e => setCurrentDossier(d => ({ ...d, date_sortie:e.target.value }))} />
@@ -1414,13 +1414,13 @@ export default function Chirurgie() {
           {/* ══ IA & ANALYTICS ══ */}
           {tab === "ia" && (
             <div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
                 <div className="chir-card">
                   <div className="chir-card-hdr">
                     <div><h3>{I.ia} Analyse IA — Risques opératoires</h3><p>Modèle prédictif sur données cliniques</p></div>
                   </div>
                   <div style={{ padding:20 }}>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12, marginBottom:16 }}>
                       {[
                         { lbl:"Score moyen",    val:`${Math.round(kpis.score_moyen)}/100` },
                         { lbl:"Risques élevés", val:nbRisques },
@@ -1491,7 +1491,7 @@ export default function Chirurgie() {
         {/* ═══ MODAL : NOUVEAU DOSSIER ═══ */}
         <Modal open={modalNouv} onClose={() => setModalNouv(false)} title={<>{I.plus} Nouveau dossier chirurgical</>} maxWidth={680}>
           <form onSubmit={createDossier}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="clbl">Patient *</label>
                 <select className="cinp" required value={formDossier.patient_id} onChange={e => setFormDossier(f=>({...f,patient_id:e.target.value}))}>
@@ -1573,7 +1573,7 @@ export default function Chirurgie() {
                 <label className="clbl">Examen *</label>
                 <input className="cinp" required placeholder="Ex: NFS, Glycémie, Scanner thorax..." value={formBilan.examen} onChange={e => setFormBilan(f=>({...f,examen:e.target.value}))} />
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div>
                   <label className="clbl">Valeur / Résultat</label>
                   <input className="cinp" placeholder="Ex: 12.5 g/dL" value={formBilan.valeur} onChange={e => setFormBilan(f=>({...f,valeur:e.target.value}))} />
@@ -1612,7 +1612,7 @@ export default function Chirurgie() {
         {/* ═══ MODAL : SUIVI ═══ */}
         <Modal open={modalSuivi} onClose={() => setModalSuivi(false)} title="💉 Fiche de surveillance postopératoire" maxWidth={540}>
           <form onSubmit={addSuivi}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div>
                 <label className="clbl">Température (°C)</label>
                 <input type="number" className="cinp" step="0.1" min="34" max="42" placeholder="37.0" value={formSuivi.temperature} onChange={e => setFormSuivi(f=>({...f,temperature:e.target.value}))} />
@@ -1687,7 +1687,7 @@ export default function Chirurgie() {
                   <option value="autre">⚠️ Autre complication</option>
                 </select>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div>
                   <label className="clbl">Date de survenue</label>
                   <input type="date" className="cinp" value={formComplic.date_survenue} onChange={e => setFormComplic(f=>({...f,date_survenue:e.target.value}))} />

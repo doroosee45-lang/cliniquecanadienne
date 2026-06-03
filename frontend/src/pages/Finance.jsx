@@ -1,4 +1,4 @@
-
+﻿
 
 
 
@@ -694,7 +694,7 @@ export default function Finance() {
               </div>
 
               {/* Charts */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr">
                     <div><h3>{I.trend} Revenus & Dépenses — 12 mois</h3><p>Évolution mensuelle</p></div>
@@ -727,7 +727,7 @@ export default function Finance() {
               </div>
 
               {/* Récent revenus + dépenses */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr">
                     <div><h3>{I.trend} Derniers revenus</h3></div>
@@ -868,7 +868,7 @@ export default function Finance() {
               </div>
 
               {/* Répartition catégories */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr"><h3>Dépenses par catégorie</h3></div>
                   <div style={{ padding:20 }}>
@@ -948,14 +948,14 @@ export default function Finance() {
           {/* ══ CAISSE ══ */}
           {tab === "caisse" && (
             <div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="caisse-card ffu" style={{ gridColumn:"1 / span 2" }}>
                   <div style={{ position:"relative", zIndex:1 }}>
                     <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", fontWeight:600, textTransform:"uppercase", letterSpacing:.6, marginBottom:4 }}>
                       💰 Solde de caisse actuel
                     </div>
                     <div className="caisse-val">{fmtMontant(soldeCaisse)}</div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginTop:20 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:12, marginTop:20 }}>
                       <div className="caisse-item">
                         <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginBottom:4 }}>Solde ouverture</div>
                         <div style={{ fontSize:16, fontWeight:700, color:"#A7F3D0" }}>{fmtMontant(450000)}</div>
@@ -1291,7 +1291,7 @@ export default function Finance() {
           {tab === "comptabilite" && (
             <div>
               <div style={{ fontSize:16, fontWeight:700, color:"var(--fn)", marginBottom:20 }}>Plan comptable & Écritures</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:20, marginBottom:24 }}>
                 {[
                   { titre:"Actifs", couleur:"var(--fg)", items:[["Trésorerie caisse", 485000], ["Créances clients", montantImpaye], ["Créances assurances", creanceAssur], ["Stocks pharmacie", 1200000]] },
                   { titre:"Passifs", couleur:"var(--fr)", items:[["Fournisseurs", 320000], ["Salaires à payer", salaires.filter(s=>s.statut!=="paye").reduce((s,x)=>s+Number(x.net),0)], ["Charges sociales", 185000], ["Impôts à payer", 95000]] },
@@ -1316,7 +1316,7 @@ export default function Finance() {
               </div>
 
               {/* Journaux */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr"><h3>📒 Journaux comptables</h3></div>
                   <div style={{ padding:16, display:"flex", flexDirection:"column", gap:8 }}>
@@ -1395,7 +1395,7 @@ export default function Finance() {
                 </div>
               </div>
 
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr"><h3>📈 Budget global</h3></div>
                   <div style={{ padding:16 }}>
@@ -1451,7 +1451,7 @@ export default function Finance() {
                 <KpiCard color="orange" icon={I.budget} value={`${Math.round(totalRevenus/(totalDepenses||1)*100)}%`} label="Marge bénéficiaire" sub="ratio rev./dép." />
               </div>
 
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr"><h3>{I.trend} Bénéfice net mensuel</h3></div>
                   <div style={{ padding:20 }}>
@@ -1505,7 +1505,7 @@ export default function Finance() {
         {/* ═══ MODAL : REVENU ═══ */}
         <Modal open={modalRevenu} onClose={() => setModalRevenu(false)} title="📥 Enregistrer un revenu">
           <form onSubmit={addRevenu}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div>
                 <label className="flbl">Date *</label>
                 <input type="date" className="finp" required value={formRevenu.date} onChange={e => setFormRevenu(f=>({...f,date:e.target.value}))} />
@@ -1553,7 +1553,7 @@ export default function Finance() {
         {/* ═══ MODAL : DÉPENSE ═══ */}
         <Modal open={modalDepense} onClose={() => setModalDepense(false)} title="📤 Enregistrer une dépense">
           <form onSubmit={addDepense}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div>
                 <label className="flbl">Date *</label>
                 <input type="date" className="finp" required value={formDepense.date} onChange={e => setFormDepense(f=>({...f,date:e.target.value}))} />
@@ -1603,7 +1603,7 @@ export default function Finance() {
                 <label className="flbl">Service / Prestations *</label>
                 <input className="finp" required value={formFacture.service} onChange={e => setFormFacture(f=>({...f,service:e.target.value}))} placeholder="Ex: Consultation + Labo, Chirurgie complète..." />
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div>
                   <label className="flbl">Montant (CFA) *</label>
                   <input type="number" className="finp" required min={0} value={formFacture.montant} onChange={e => setFormFacture(f=>({...f,montant:e.target.value}))} placeholder="Ex: 85000" />
@@ -1685,7 +1685,7 @@ export default function Finance() {
                   {selectedFacture.service} · {fmtDate(selectedFacture.date)}
                 </div>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10, marginBottom:16 }}>
                 {[["Patient", selectedFacture.patient], ["Service", selectedFacture.service], ["Date facture", fmtDate(selectedFacture.date)], ["Échéance", fmtDate(selectedFacture.echeance)]].map(([lbl,val]) => (
                   <div key={lbl} className="info-box"><div className="info-box-lbl">{lbl}</div><div className="info-box-val">{val}</div></div>
                 ))}
@@ -1737,7 +1737,7 @@ export default function Finance() {
                 ))}
               </div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
               <div>
                 <label className="flbl">Période début</label>
                 <input type="date" className="finp" defaultValue="2026-06-01" />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchStaff, fetchLeaves, fetchSchedules,
@@ -654,7 +654,7 @@ export default function RessourcesHumaines() {
                 <KpiCard color="teal"   icon={I.book}     value={formations.filter(f=>f.statut==="planifie").length} label="Formations" sub="planifiées ce trimestre" onClick={() => setTab("formations")} />
               </div>
 
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="rh-card fu">
                   <div className="rh-card-hdr">
                     <div><h3>{I.trend} Effectif & Absences — 12 mois</h3><p>Évolution mensuelle</p></div>
@@ -883,10 +883,10 @@ export default function RessourcesHumaines() {
 
                 {/* ── INFOS PERSONNELLES ── */}
                 {section === "infos" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginTop:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginTop:20 }}>
                     <div className="rh-card">
                       <div className="rh-card-hdr"><h3>👤 Informations personnelles</h3></div>
-                      <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                      <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                         {[
                           ["Prénom", currentEmp.prenom], ["Nom", currentEmp.nom],
                           ["Sexe", currentEmp.sexe === "femme" ? "Féminin" : "Masculin"], ["Date naissance", fmtDate(currentEmp.date_naissance)],
@@ -946,7 +946,7 @@ export default function RessourcesHumaines() {
                   <div style={{ marginTop:20 }}>
                     <div className="rh-card">
                       <div className="rh-card-hdr"><h3>💼 Informations du contrat</h3></div>
-                      <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                      <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                         {[
                           ["Poste", (POSTE_COLORS[currentEmp.poste]||{}).label || currentEmp.poste],
                           ["Département", currentEmp.departement || "—"],
@@ -1030,7 +1030,7 @@ export default function RessourcesHumaines() {
                           const net = brut - retenues;
                           return (
                             <>
-                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
+                              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12, marginBottom:20 }}>
                                 {[
                                   ["Salaire de base", base.toLocaleString("fr-FR")+" FCFA", "var(--rn)"],
                                   ["Prime de rendement", prime.toLocaleString("fr-FR")+" FCFA", "var(--rg)"],
@@ -1663,7 +1663,7 @@ export default function RessourcesHumaines() {
           {tab === "sante" && (
             <div>
               <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Santé au travail</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
                 <div className="rh-card">
                   <div className="rh-card-hdr"><h3>🏥 Visites médicales</h3></div>
                   <div style={{ overflowX:"auto" }}>
@@ -1752,7 +1752,7 @@ export default function RessourcesHumaines() {
                   </div>
                 ))}
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20 }}>
                 <div className="rh-card fu">
                   <div className="rh-card-hdr"><div><h3>{I.trend} Évolution des absences — 12 mois</h3></div></div>
                   <div style={{ padding:20 }}><BarChart labels={MOIS_LABELS} data={DEMO_ABSENCE_MOIS} color="#DC2626" /></div>
@@ -1782,7 +1782,7 @@ export default function RessourcesHumaines() {
         {/* ═══ MODAL : NOUVEL EMPLOYÉ ═══ */}
         <Modal open={modalEmp} onClose={() => setModalEmp(false)} title={<>{I.plus} Nouvel employé</>} maxWidth={720}>
           <form onSubmit={createEmp}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div><label className="rlbl">Prénom *</label><input className="rinp" required value={formEmp.prenom} onChange={e=>setFormEmp(f=>({...f,prenom:e.target.value}))} /></div>
               <div><label className="rlbl">Nom *</label><input className="rinp" required value={formEmp.nom} onChange={e=>setFormEmp(f=>({...f,nom:e.target.value}))} /></div>
               <div><label className="rlbl">Sexe</label>
@@ -1832,7 +1832,7 @@ export default function RessourcesHumaines() {
                   {Object.entries(CONGE_CFG).map(([k,v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
                 </select>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div><label className="rlbl">Date début *</label><input type="date" className="rinp" required value={formConge.date_debut} onChange={e=>setFormConge(f=>({...f,date_debut:e.target.value}))} /></div>
                 <div><label className="rlbl">Date fin *</label><input type="date" className="rinp" required value={formConge.date_fin} onChange={e=>setFormConge(f=>({...f,date_fin:e.target.value}))} /></div>
               </div>
@@ -1848,7 +1848,7 @@ export default function RessourcesHumaines() {
         {/* ═══ MODAL : CANDIDATURE ═══ */}
         <Modal open={modalCandidat} onClose={() => setModalCandidat(false)} title="👤 Nouvelle candidature" maxWidth={520}>
           <form onSubmit={addCandidat}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div style={{ gridColumn:"1/-1" }}><label className="rlbl">Nom complet *</label><input className="rinp" required value={formCandidat.nom} onChange={e=>setFormCandidat(f=>({...f,nom:e.target.value}))} /></div>
               <div><label className="rlbl">Poste demandé</label>
                 <select className="rinp" value={formCandidat.poste} onChange={e=>setFormCandidat(f=>({...f,poste:e.target.value}))}>
@@ -1911,7 +1911,7 @@ export default function RessourcesHumaines() {
           <form onSubmit={addFormation}>
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
               <div><label className="rlbl">Titre de la formation *</label><input className="rinp" required value={formFormation.titre} onChange={e=>setFormFormation(f=>({...f,titre:e.target.value}))} /></div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div><label className="rlbl">Type</label>
                   <select className="rinp" value={formFormation.type} onChange={e=>setFormFormation(f=>({...f,type:e.target.value}))}>
                     <option value="interne">🏥 Interne</option><option value="externe">🌍 Externe</option>
@@ -1967,7 +1967,7 @@ export default function RessourcesHumaines() {
                 {employes.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
               </select>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
               <div><label className="rlbl">Heure d'entrée</label><input type="time" className="rinp" defaultValue="08:00" /></div>
               <div><label className="rlbl">Heure de sortie</label><input type="time" className="rinp" defaultValue="16:00" /></div>
             </div>

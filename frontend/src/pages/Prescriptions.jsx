@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchPrescriptions,
@@ -933,7 +933,7 @@ export default function Ordonnances() {
                   <div className="ord-g11">
                     <div className="ord-card">
                       <div className="ord-card-hdr"><h3>👤 Informations du patient</h3></div>
-                      <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                         {[["Nom complet",currentOrd.patient_nom,true],["Sexe",currentOrd.sexe?"Masculin":"Féminin",false],["Âge",ageCalc(currentOrd.patient_dob),false],["Poids",`${currentOrd.poids} kg`,false],["Téléphone",currentOrd.telephone||"—",false]].map(([lbl,val,wide])=>(
                           <div key={lbl} style={{ background:"#F8FAFD", borderRadius:10, padding:"10px 12px", gridColumn:wide?"1/-1":"" }}>
                             <div style={{ fontSize:10, fontWeight:600, color:"var(--om)", textTransform:"uppercase", letterSpacing:.4 }}>{lbl}</div>

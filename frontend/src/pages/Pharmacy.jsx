@@ -1,4 +1,4 @@
-// import { useState, useEffect, useCallback, useRef } from 'react';
+﻿// import { useState, useEffect, useCallback, useRef } from 'react';
 // import api from '../api';
 // import toast from 'react-hot-toast';
 // import Modal from '../components/UI/Modal';
@@ -2028,7 +2028,7 @@ export default function Pharmacie() {
               </div>
 
               {/* Ventes KPIs */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14, marginBottom:24 }}>
                 <div style={{ background:"linear-gradient(135deg,var(--pg),#047857)", borderRadius:18, padding:"18px 22px", color:"#fff" }}>
                   <div style={{ fontSize:11, fontWeight:600, opacity:.7, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Ventes aujourd'hui</div>
                   <div style={{ fontSize:26, fontWeight:800, letterSpacing:-1 }}>{fmtCFA(kpis.ventes_jour)}</div>
@@ -2705,7 +2705,7 @@ export default function Pharmacie() {
         {/* ═══ MODAL : AJOUTER MÉDICAMENT ═══ */}
         <Modal open={modalAdd} onClose={() => setModalAdd(false)} title={<>{I.plus} Ajouter un médicament au catalogue</>} wide>
           <form onSubmit={createMed}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div>
                 <label className="plbl">Code médicament</label>
                 <input className="pinp" value={formMed.code} onChange={e=>setFormMed(f=>({...f,code:e.target.value}))} placeholder="MED-XXX" />
@@ -2793,7 +2793,7 @@ export default function Pharmacie() {
         {/* ═══ MODAL : MODIFIER MÉDICAMENT ═══ */}
         <Modal open={modalEdit} onClose={() => setModalEdit(false)} title={<>{I.edit} Modifier — {currentMed?.nom_commercial}</>} wide>
           <form onSubmit={updateMed}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="plbl">Nom commercial *</label>
                 <input className="pinp" required value={formMed.nom_commercial} onChange={e=>setFormMed(f=>({...f,nom_commercial:e.target.value}))} />
@@ -2998,7 +2998,7 @@ export default function Pharmacie() {
         {/* ═══ MODAL : BON DE COMMANDE ═══ */}
         <Modal open={modalCmd} onClose={() => setModalCmd(false)} title="📦 Nouveau bon de commande" wide>
           <form onSubmit={createCommande}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14, marginBottom:16 }}>
               <div>
                 <label className="plbl">Fournisseur *</label>
                 <select className="pinp" required value={formCmd.fournisseur} onChange={e=>setFormCmd(f=>({...f,fournisseur:e.target.value}))}>

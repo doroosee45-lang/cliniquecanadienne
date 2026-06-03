@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchLabResults, fetchCriticalResults,
@@ -820,7 +820,7 @@ export default function Laboratoire() {
               </div>
 
               {/* Recent + Répartition */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="lab-card fu">
                   <div className="lab-card-hdr">
                     <div><h3>{I.list} Analyses récentes</h3><p>Dernières demandes</p></div>
@@ -1090,11 +1090,11 @@ export default function Laboratoire() {
 
                 {/* ── PATIENT INFO ── */}
                 {section === "patient" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginTop:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginTop:20 }}>
                     <div className="lab-card">
                       <div className="lab-card-hdr"><h3>👤 Patient</h3></div>
                       <div style={{ padding:20 }}>
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                           {[
                             ["N° Dossier",   currentAnalyse.patient_dossier || "—"],
                             ["Sexe",         currentAnalyse.sexe ? currentAnalyse.sexe.charAt(0).toUpperCase()+currentAnalyse.sexe.slice(1) : "—"],
@@ -1196,7 +1196,7 @@ export default function Laboratoire() {
                       <div style={{ padding:20 }}>
                         {currentAnalyse.date_prelevement ? (
                           <div>
-                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:16 }}>
+                            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:12, marginBottom:16 }}>
                               {[
                                 ["Type d'échantillon", currentAnalyse.type_echantillon || "—"],
                                 ["Date & heure",        fmtDateTime(currentAnalyse.date_prelevement)],
@@ -1318,7 +1318,7 @@ export default function Laboratoire() {
                                 </div>
                               </div>
                             </div>
-                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                               {[
                                 ["Technicien de laboratoire", currentAnalyse.technicien || "—"],
                                 ["Biologiste responsable",    currentAnalyse.biologiste || "—"],
@@ -1338,7 +1338,7 @@ export default function Laboratoire() {
                               <span style={{ fontSize:13, color:"#92400E" }}>Résultats saisis — En attente de validation biologiste</span>
                             </div>
                             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                                 <div>
                                   <label className="llbl">Technicien de laboratoire</label>
                                   <input className="linp" value={formValid.technicien} onChange={e => setFormValid(f=>({...f,technicien:e.target.value}))} placeholder="Nom du technicien" />
@@ -1456,7 +1456,7 @@ export default function Laboratoire() {
           {/* ══ STATISTIQUES ══ */}
           {tab === "stats" && (
             <div>
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="lab-card fu">
                   <div className="lab-card-hdr">
                     <div><h3>{I.trend} Volume d'analyses — 12 mois</h3><p>Nombre d'analyses biologiques mensuelles</p></div>
@@ -1491,7 +1491,7 @@ export default function Laboratoire() {
                 </div>
               </div>
 
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 <div className="lab-card fu">
                   <div className="lab-card-hdr"><h3>📊 Taux d'anomalies par catégorie</h3></div>
                   <div style={{ padding:20 }}>
@@ -1542,7 +1542,7 @@ export default function Laboratoire() {
         {/* ═══ MODAL : NOUVELLE DEMANDE ═══ */}
         <Modal open={modalNouv} onClose={() => setModalNouv(false)} title={<>{I.plus} Nouvelle demande d'analyse</>} maxWidth={760}>
           <form onSubmit={createAnalyse}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14, marginBottom:20 }}>
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="llbl">Patient *</label>
                 <select className="linp" required value={formNouv.patient_id} onChange={e => {
@@ -1578,7 +1578,7 @@ export default function Laboratoire() {
               <label className="llbl" style={{ fontSize:13, fontWeight:700, color:"var(--ln)", marginBottom:12, display:"block" }}>
                 Examens à prescrire * ({formNouv.examens_demandes.length} sélectionné(s))
               </label>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                 {Object.entries(EXAM_CATALOGUE).map(([catKey, cat]) => (
                   <div key={catKey} style={{ background:"#F8FAFD", borderRadius:12, padding:"12px 14px", border:"1.5px solid var(--lbr)" }}>
                     <div style={{ fontSize:12, fontWeight:700, color:"var(--ln)", marginBottom:8 }}>{cat.icon} {cat.label}</div>

@@ -1,4 +1,4 @@
-
+﻿
 
 
 
@@ -421,6 +421,8 @@ export default function Archivage() {
   const [active, setActive]       = useState("dashboard");
   const [archives, setArchives]   = useState([]);
   const [total, setTotal]         = useState(0);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
+  useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
   const [loading, setLoading]     = useState(true);
   const [page, setPage]           = useState(1);
   const [search, setSearch]       = useState("");
@@ -590,7 +592,7 @@ export default function Archivage() {
         </div>
 
         {/* Storage + Info */}
-        <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
           <div className="arc-card">
             <div className="arc-card-hdr">
               <h3>📊 Répartition par catégorie</h3>
@@ -930,7 +932,7 @@ export default function Archivage() {
           <strong>⚠️ Attention :</strong> Les règles d'archivage automatique s'appliquent à l'ensemble des modules. Une fois archivés, les dossiers ne sont plus visibles dans les vues actives.
         </div>
 
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
           {/* Auto config */}
           <div className="arc-card">
             <div className="arc-card-hdr"><h3>⚙️ Archivage automatique</h3></div>
@@ -1104,7 +1106,7 @@ export default function Archivage() {
         <Modal open={modalView} onClose={() => setModalView(false)} title={`📦 ${currentArc?.reference || "Archive"}`}>
           {currentArc && (
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 {[
                   ["Référence",     currentArc.reference],
                   ["Patient",       currentArc.patient_nom],
@@ -1126,7 +1128,7 @@ export default function Archivage() {
 
               <div>
                 <div style={{ fontSize:12, fontWeight:700, color:"var(--am)", textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>📄 Documents disponibles</div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:8 }}>
                   {[
                     ["📋","Dossier médical complet","PDF · 1.2 Mo"],
                     ["💊","Ordonnances","PDF · 0.3 Mo"],

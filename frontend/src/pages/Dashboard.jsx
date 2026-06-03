@@ -1,4 +1,4 @@
-
+﻿
 
 
 // import { useState, useEffect, useCallback, useRef } from "react";
@@ -354,7 +354,7 @@
 //       </div>
 
 //       {/* Charts */}
-//       <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:20 }}>
+//       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
 //         <div className="db-card">
 //           <div className="db-card-hdr">
 //             <div><h3>📈 Évolution financière — 12 mois</h3><p>CA vs Dépenses vs Bénéfice</p></div>
@@ -386,7 +386,7 @@
 //       </div>
 
 //       {/* Système + Alertes */}
-//       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+//       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
 //         <div className="db-card">
 //           <div className="db-card-hdr"><h3>🖥️ Surveillance système</h3></div>
 //           <div style={{ padding:20 }}>
@@ -485,7 +485,7 @@
 //       )}
 
 //       {/* Charts */}
-//       <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:20 }}>
+//       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
 //         <div className="db-card">
 //           <div className="db-card-hdr">
 //             <div><h3>📈 Activité clinique — 7 jours</h3><p>Consultations & Revenus</p></div>
@@ -525,12 +525,12 @@
 //       </div>
 
 //       {/* Revenus + RDV liste */}
-//       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+//       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
 //         <div className="db-card">
 //           <div className="db-card-hdr"><div><h3>💰 Revenus — 7 jours</h3><p>Encaissements quotidiens</p></div></div>
 //           <div style={{ padding:20 }}>
 //             <BarChart labels={chart.labels} data={chart.revenus} height={160} />
-//             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginTop:14 }}>
+//             <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:10, marginTop:14 }}>
 //               {[["Aujourd'hui",kpis.revenus_auj,"var(--dg)"],["Dépenses",kpis.depenses_auj,"var(--dr)"],["Impayées",kpis.factures_imp,"var(--dr)"]].map(([l,v,c])=>(
 //                 <div key={l} style={{ background:"var(--ds)", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
 //                   <div style={{ fontWeight:800, fontSize:14, color:c }}>{fmtNum(v)}</div>
@@ -561,7 +561,7 @@
 //       </div>
 
 //       {/* Pharmacie + Personnel */}
-//       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:20 }}>
+//       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:20 }}>
 //         <div className="db-card">
 //           <div className="db-card-hdr"><h3>💊 Pharmacie</h3></div>
 //           <div style={{ padding:20 }}>
@@ -634,7 +634,7 @@
 //         <KpiCard color="red"    icon="🔪" value={kpis.mes_chirurgies}     label="Chirurgies"         sub="ce mois" />
 //       </div>
 
-//       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+//       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
 //         <div className="db-card">
 //           <div className="db-card-hdr">
 //             <div><h3>📅 Mes consultations du jour</h3><p>{consults.length} patients programmés</p></div>
@@ -715,7 +715,7 @@
 //         <KpiCard color="purple" icon="🩹" value={kpis.pansements}             label="Pansements"           sub="à effectuer" />
 //         <KpiCard color="red"    icon="📋" value={kpis.constantes_a_noter}     label="Constantes"           sub="à noter" />
 //       </div>
-//       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+//       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
 //         <div className="db-card">
 //           <div className="db-card-hdr"><h3>📋 Planning du jour</h3></div>
 //           <div style={{ padding:"8px 0" }}>
@@ -808,7 +808,7 @@
 //         <KpiCard color="teal"   icon="💉" value={kpis.dispensations_auj}  label="Dispensations auj."    sub="ordonnances traitées" />
 //         <KpiCard color="green"  icon="💰" value={fmtNum(kpis.ventes_auj)+" CFA"} label="Ventes du jour" sub="encaissé" trend={12} trendUp />
 //       </div>
-//       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+//       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
 //         <div className="db-card">
 //           <div className="db-card-hdr"><h3>🔔 Alertes pharmacie</h3></div>
 //           <div style={{ padding:14 }}>
@@ -1430,14 +1430,14 @@ function PatientDashboard({ data, user }) {
       </div>
 
       {/* ── Constantes vitales + Médecin référent ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
 
         {/* Constantes vitales */}
         <div className="db-card">
           <div className="db-card-hdr"><h3>❤️ Mes constantes vitales</h3><p>Dernière mesure enregistrée</p></div>
           <div style={{ padding:20 }}>
             {constantes.poids || constantes.tension || constantes.glycemie ? (
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 {[
                   { label:"Poids",        val:constantes.poids     ? constantes.poids+"  kg"   : "—", icon:"⚖️",  color:"#EFF6FF", c:"var(--db)" },
                   { label:"Tension",      val:constantes.tension   ? constantes.tension+" mmHg": "—", icon:"💓",  color:"#FEF2F2", c:"var(--dr)" },
@@ -1513,7 +1513,7 @@ function PatientDashboard({ data, user }) {
       </div>
 
       {/* ── Résultats d'analyses + Historique RDV ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
 
         {/* Résultats récents */}
         <div className="db-card">
@@ -1643,7 +1643,7 @@ function RadiologueDashboard({ data }) {
         </div>
       ))}
 
-      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
         {/* Liste examens */}
         <div className="db-card">
           <div className="db-card-hdr"><div><h3>🩻 Examens du jour</h3><p>{examens.length} à traiter</p></div></div>
@@ -1727,7 +1727,7 @@ function SuperAdminDashboard({ data }) {
           </div>
         ))}
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
         <div className="db-card">
           <div className="db-card-hdr"><div><h3>📈 Évolution financière — 12 mois</h3><p>CA vs Dépenses</p></div></div>
           <div style={{ padding:20 }}>
@@ -1751,7 +1751,7 @@ function SuperAdminDashboard({ data }) {
           </div>
         </div>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
         <div className="db-card">
           <div className="db-card-hdr"><h3>🖥️ Surveillance système</h3></div>
           <div style={{ padding:20 }}>
@@ -1813,7 +1813,7 @@ function AdminDashboard({ data }) {
           ))}
         </div>
       )}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
         <div className="db-card">
           <div className="db-card-hdr"><div><h3>📈 Activité clinique — 7 jours</h3></div></div>
           <div style={{ padding:20 }}><LineChart height={180} labels={chart.labels} datasets={[{ label:"Consultations", data:chart.consults, borderColor:"#0EA5A0", backgroundColor:"rgba(14,165,160,.1)", tension:.4, fill:true, pointRadius:4, pointBackgroundColor:"#0EA5A0" }]}/></div>
@@ -1835,7 +1835,7 @@ function AdminDashboard({ data }) {
           </div>
         </div>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:20 }}>
         <div className="db-card">
           <div className="db-card-hdr"><h3>💊 Pharmacie</h3></div>
           <div style={{ padding:20 }}>
@@ -1890,7 +1890,7 @@ function MedecinDashboard({ data, user }) {
         <KpiCard color="purple" icon="🛏️" value={kpis.mes_hospit}          label="Hospitalisés"      sub="sous ma charge" />
         <KpiCard color="red"    icon="🔪" value={kpis.mes_chirurgies}      label="Chirurgies"        sub="ce mois" />
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
         <div className="db-card">
           <div className="db-card-hdr"><div><h3>📅 Mes consultations du jour</h3><p>{consults.length} patients</p></div></div>
           <div style={{ padding:"8px 0" }}>
@@ -1943,7 +1943,7 @@ function InfirmierDashboard({ data }) {
         <KpiCard color="purple" icon="🩹" value={kpis.pansements}              label="Pansements"           sub="à effectuer" />
         <KpiCard color="red"    icon="📋" value={kpis.constantes_a_noter}      label="Constantes"           sub="à noter" />
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
         <div className="db-card">
           <div className="db-card-hdr"><h3>📋 Planning du jour</h3></div>
           <div style={{ padding:"8px 0" }}>
@@ -2010,7 +2010,7 @@ function PharmacienDashboard({ data }) {
         <KpiCard color="teal"   icon="💉" value={kpis.dispensations_auj}  label="Dispensations auj." sub="ordonnances" />
         <KpiCard color="green"  icon="💰" value={fmtNum(kpis.ventes_auj)+" CFA"} label="Ventes du jour" trend={12} trendUp />
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
         <div className="db-card"><div className="db-card-hdr"><h3>🔔 Alertes pharmacie</h3></div><div style={{ padding:14 }}>{alertes.map((al,i)=>(<div key={i} className={`al-${al.type==="error"?"danger":al.type==="warn"?"warn":"info"}`} style={{ marginBottom:10, display:"flex", gap:10 }}><span>{al.type==="error"?"🚨":al.type==="warn"?"⚠️":"ℹ️"}</span><div><div style={{ fontSize:12, fontWeight:700, color:"var(--dn)" }}>{al.msg}</div><div style={{ fontSize:10, color:"var(--dm)" }}>{al.heure}</div></div></div>))}</div></div>
         <div className="db-card"><div className="db-card-hdr"><h3>💊 Top médicaments</h3></div><div style={{ padding:20 }}>{topMeds.map(([med,nb],i)=>(<div key={med} style={{ marginBottom:12 }}><div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}><span style={{ color:"var(--dm)", fontWeight:600 }}>{med}</span><span style={{ fontWeight:700 }}>{nb} u.</span></div><Prog pct={Math.round(nb/(topMeds[0]?.[1]||1)*100)} color={["var(--db)","var(--dt)","var(--dg)","var(--dp)"][i]||"var(--dm)"} /></div>))}</div></div>
       </div>
@@ -2077,6 +2077,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [stats, setStats]           = useState(null);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
+  useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());

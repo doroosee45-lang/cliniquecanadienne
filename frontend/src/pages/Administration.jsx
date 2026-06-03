@@ -1,4 +1,4 @@
-
+﻿
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
@@ -658,7 +658,7 @@ export default function Administration() {
               </div>
 
               {/* Charts + Activity */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="adm-card fu">
                   <div className="adm-card-hdr">
                     <div><h3>{I.trend} Revenus mensuels — 2025</h3><p>Évolution des recettes de la clinique</p></div>
@@ -708,7 +708,7 @@ export default function Administration() {
               </div>
 
               {/* Quick access panels */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 {/* Recent users */}
                 <div className="adm-card fu">
                   <div className="adm-card-hdr">
@@ -1182,7 +1182,7 @@ export default function Administration() {
                 <KpiCard color={impayesCount > 10 ? "red" : "orange"} icon={I.alert} value={impayesCount} label="Factures impayées" sub="à recouvrer" urgent={impayesCount > 10} />
               </div>
 
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="adm-card fu">
                   <div className="adm-card-hdr"><div><h3>{I.trend} Revenus mensuels</h3><p>Exercice 2025</p></div></div>
                   <div style={{ padding:20 }}><BarChart labels={MONTHS} data={revenus} color="#1B4F9E" /></div>
@@ -1328,7 +1328,7 @@ export default function Administration() {
 
           {/* ══ PARAMÈTRES ══ */}
           {tab === "parametres" && (
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
               {/* Config générale */}
               <div className="adm-card fu">
                 <div className="adm-card-hdr"><h3>⚙️ Informations générales</h3></div>
@@ -1337,7 +1337,7 @@ export default function Administration() {
                     <label className="clbl">Nom de la clinique *</label>
                     <input className="cinp" value={settings.nom_clinique} onChange={e => setSettings(s => ({ ...s, nom_clinique:e.target.value }))} />
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                     <div>
                       <label className="clbl">Téléphone</label>
                       <input className="cinp" value={settings.telephone} onChange={e => setSettings(s => ({ ...s, telephone:e.target.value }))} />
@@ -1351,7 +1351,7 @@ export default function Administration() {
                     <label className="clbl">Adresse</label>
                     <input className="cinp" value={settings.adresse} onChange={e => setSettings(s => ({ ...s, adresse:e.target.value }))} />
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                     <div>
                       <label className="clbl">Devise</label>
                       <select className="cinp" value={settings.devise} onChange={e => setSettings(s => ({ ...s, devise:e.target.value }))}>
@@ -1368,7 +1368,7 @@ export default function Administration() {
                       </select>
                     </div>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                     <div>
                       <label className="clbl">Heure ouverture</label>
                       <input type="time" className="cinp" value={settings.horaire_debut} onChange={e => setSettings(s => ({ ...s, horaire_debut:e.target.value }))} />
@@ -1452,7 +1452,7 @@ export default function Administration() {
         {/* ═══ MODAL : UTILISATEUR ═══ */}
         <Modal open={modalUser} onClose={() => { setModalUser(false); setEditUser(null); setFormUser(EMPTY_USER); }} title={editUser ? `✏️ Modifier — ${editUser.prenom} ${editUser.nom}` : `${I.plus} Nouvel utilisateur`} maxWidth={600}>
           <form onSubmit={saveUser}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div>
                 <label className="clbl">Prénom *</label>
                 <input className="cinp" required value={formUser.prenom} onChange={e => setFormUser(f=>({...f,prenom:e.target.value}))} placeholder="Prénom" />
@@ -1516,7 +1516,7 @@ export default function Administration() {
                 <label className="clbl">Titre de la tâche *</label>
                 <input className="cinp" required value={formTask.titre} onChange={e => setFormTask(f=>({...f,titre:e.target.value}))} placeholder="Ex: Renouveler l'agrément clinique" />
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div>
                   <label className="clbl">Assigné à</label>
                   <select className="cinp" value={formTask.assignee} onChange={e => setFormTask(f=>({...f,assignee:e.target.value}))}>
@@ -1536,7 +1536,7 @@ export default function Administration() {
                   </select>
                 </div>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div>
                   <label className="clbl">Priorité</label>
                   <select className="cinp" value={formTask.priorite} onChange={e => setFormTask(f=>({...f,priorite:e.target.value}))}>
@@ -1572,7 +1572,7 @@ export default function Administration() {
                 <label className="clbl">Nom du fournisseur *</label>
                 <input className="cinp" required value={formSupplier.nom} onChange={e => setFormSupplier(f=>({...f,nom:e.target.value}))} placeholder="Ex: MedPharma Congo" />
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div>
                   <label className="clbl">Nom du contact</label>
                   <input className="cinp" value={formSupplier.contact} onChange={e => setFormSupplier(f=>({...f,contact:e.target.value}))} placeholder="Responsable commercial" />

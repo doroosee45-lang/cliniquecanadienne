@@ -1,4 +1,4 @@
-
+﻿
 
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -605,7 +605,7 @@ export default function Imagerie() {
               </div>
 
               {/* Charts + répartition */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
                 <div className="img-card fu">
                   <div className="img-card-hdr">
                     <div><h3>{I.trend} Volume d'examens — 12 mois</h3><p>Activité du service d'imagerie</p></div>
@@ -887,7 +887,7 @@ export default function Imagerie() {
                 <div style={{ marginTop:20 }}>
                   <div className="img-card">
                     <div className="img-card-hdr"><h3>📋 Informations de la demande</h3></div>
-                    <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                       <div>
                         <label className="ilbl">Numéro d'examen</label>
                         <div style={{ background:"#F8FAFD", border:"1.5px solid var(--cbr)", borderRadius:10, padding:"9px 13px", fontFamily:"monospace", fontWeight:700, color:"var(--cb)", fontSize:14 }}>{currentExamen.numero}</div>
@@ -1000,7 +1000,7 @@ export default function Imagerie() {
                 <div style={{ marginTop:20 }}>
                   <div className="img-card">
                     <div className="img-card-hdr"><h3>📅 Planification du rendez-vous</h3></div>
-                    <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                       <div>
                         <label className="ilbl">Type d'examen</label>
                         <div style={{ background:"#F8FAFD", border:"1.5px solid var(--cbr)", borderRadius:10, padding:"9px 13px", fontSize:13, fontWeight:600, color:"var(--cn)" }}>
@@ -1045,7 +1045,7 @@ export default function Imagerie() {
                 <div style={{ marginTop:20 }}>
                   <div className="img-card">
                     <div className="img-card-hdr"><h3>🔬 Réalisation de l'examen</h3></div>
-                    <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                       <div>
                         <label className="ilbl">Date réelle de réalisation</label>
                         <input type="date" className="iinp" value={fmtDateInput(currentExamen.date_realisation)} onChange={e => setCurrent(d=>({...d,date_realisation:e.target.value}))} />
@@ -1092,7 +1092,7 @@ export default function Imagerie() {
                     </div>
                   </div>
 
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                     <div className="img-card" style={{ gridColumn:"1/-1" }}>
                       <div className="img-card-hdr"><h3>🔭 Observations</h3></div>
                       <div style={{ padding:20 }}>
@@ -1221,7 +1221,7 @@ export default function Imagerie() {
                             <div style={{ fontSize:13, color:"#92400E", fontWeight:600 }}>⏳ En attente de validation par le radiologue</div>
                             <div style={{ fontSize:12, color:"#B45309", marginTop:4 }}>Le compte rendu doit être rédigé avant d'être validé.</div>
                           </div>
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                          <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
                             <div>
                               <label className="ilbl">Nom du radiologue *</label>
                               <input className="iinp" value={formValid.radiologue} onChange={e => setFormValid(f=>({...f,radiologue:e.target.value}))} placeholder="Dr. Nom Prénom" />
@@ -1355,7 +1355,7 @@ export default function Imagerie() {
         {/* ═══ MODAL : NOUVELLE DEMANDE ═══ */}
         <Modal open={modalNouv} onClose={() => setModalNouv(false)} title={<>{I.plus} Nouvelle demande d'imagerie</>} maxWidth={700}>
           <form onSubmit={createExamen}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="ilbl">Patient *</label>
                 <select className="iinp" required value={formExamen.patient_id} onChange={e => setFormExamen(f=>({...f,patient_id:e.target.value}))}>
@@ -1442,7 +1442,7 @@ export default function Imagerie() {
         <Modal open={modalCR} onClose={() => setModalCR(false)} title="📝 Rédiger le compte rendu" maxWidth={660}>
           <form onSubmit={saveCR}>
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div>
                   <label className="ilbl">Date de réalisation</label>
                   <input type="date" className="iinp" value={formCR.date_realisation} onChange={e => setFormCR(f=>({...f,date_realisation:e.target.value}))} />

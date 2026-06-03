@@ -1,4 +1,4 @@
-
+﻿
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import api from '../api';
@@ -351,6 +351,8 @@ export default function Patient() {
   const reduxPatients = useSelector(selectPatients);
   const reduxLoading = useSelector(selectPatientsLoading);
 
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
+  useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
   const [tab, setTab] = useState("liste");
   const [section, setSection] = useState("overview");
   const [currentPatient, setCurrentPatient] = useState(null);
@@ -683,7 +685,7 @@ export default function Patient() {
 
                 {/* ── VUE D'ENSEMBLE ── */}
                 {section === "overview" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     {/* Résumé général */}
                     <div className="pat-card fu">
                       <div className="pat-card-hdr"><h3>📊 Résumé du dossier</h3></div>
@@ -785,10 +787,10 @@ export default function Patient() {
 
                 {/* ── INFORMATIONS PERSONNELLES ── */}
                 {section === "infos" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     <div className="pat-card fu">
                       <div className="pat-card-hdr"><h3>👤 Identité</h3></div>
-                      <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                      <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                         <InfoCell label="Numéro dossier" value={currentPatient.numero} />
                         <InfoCell label="Nom" value={currentPatient.nom} />
                         <InfoCell label="Prénom" value={currentPatient.prenom} />
@@ -830,10 +832,10 @@ export default function Patient() {
 
                 {/* ── DOSSIER MÉDICAL ── */}
                 {section === "medical" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     <div className="pat-card fu">
                       <div className="pat-card-hdr"><h3>📋 Données médicales</h3></div>
-                      <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                      <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                         <InfoCell label="Groupe sanguin" value={currentPatient.groupe_sanguin || "—"} />
                         <InfoCell label="Taille" value="175 cm" />
                         <InfoCell label="Poids" value="78 kg" />
@@ -910,7 +912,7 @@ export default function Patient() {
                       <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Rendez-vous</div>
                       <button className="pbtn pbtn-primary" onClick={() => setModalRdv(true)}>{I.plus} Planifier RDV</button>
                     </div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                       <div className="pat-card fu">
                         <div className="pat-card-hdr"><h3>📅 Prochains rendez-vous</h3></div>
                         <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
@@ -1129,7 +1131,7 @@ export default function Patient() {
 
                 {/* ── FINANCE ── */}
                 {section === "finance" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20 }}>
                     <div>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
                         <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Factures</div>
@@ -1253,7 +1255,7 @@ export default function Patient() {
               <span style={{ width:24, height:24, background:"var(--cb)", borderRadius:6, display:"inline-flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:11 }}>1</span>
               Identité du patient
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
               {[["Nom *","nom","text","Ex: Dupont"],["Prénom *","prenom","text","Ex: Jean"],["Date de naissance *","date_naissance","date",""],["Téléphone","telephone","tel","+242 06 xxx"],["E-mail (activation compte)","email","email","patient@email.com"],["Nationalité","nationalite","text","Ex: Congolaise"]].map(([lbl,key,type,ph]) => (
                 <div key={key}>
                   <label className="plbl">{lbl}</label>
