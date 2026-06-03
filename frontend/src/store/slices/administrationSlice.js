@@ -113,8 +113,8 @@ const administrationSlice = createSlice({
       .addCase(fetchUsers.pending, (state) => { state.loading = true; state.error = null; })
       .addCase(fetchUsers.fulfilled, (state, action) => {
         state.loading = false;
-        state.users = action.payload.users;
-        state.total = action.payload.total;
+        state.users = Array.isArray(action.payload.users) ? action.payload.users : [];
+        state.total = action.payload.total || 0;
         state.page = action.payload.page;
       })
       .addCase(fetchUsers.rejected, (state, action) => {

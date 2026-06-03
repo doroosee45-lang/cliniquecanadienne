@@ -451,13 +451,14 @@ export default function Administration() {
         api.get("/admin/tasks"),
         api.get("/admin/audit?limit=20"),
       ]);
-      if (kRes.status === "fulfilled") setKpis(kRes.value.data);
-      setUsers(uRes.status === "fulfilled" ? (uRes.value.data.users || uRes.value.data) : DEMO_USERS);
-      setDepts(dRes.status === "fulfilled" ? (dRes.value.data.departments || dRes.value.data) : DEMO_DEPTS);
-      setRooms(rRes.status === "fulfilled" ? (rRes.value.data.rooms || rRes.value.data) : DEMO_ROOMS);
-      setSuppliers(sRes.status === "fulfilled" ? (sRes.value.data.suppliers || sRes.value.data) : DEMO_SUPPLIERS);
-      setTasks(tRes.status === "fulfilled" ? (tRes.value.data.tasks || tRes.value.data) : DEMO_TASKS);
-      setAudit(aRes.status === "fulfilled" ? (aRes.value.data.logs || aRes.value.data) : DEMO_AUDIT);
+      const toArr = (v, fallback) => Array.isArray(v) ? v : fallback;
+      if (kRes.status === "fulfilled" && kRes.value.data) setKpis(kRes.value.data);
+      setUsers(uRes.status === "fulfilled"  ? toArr(uRes.value.data.users  || uRes.value.data, DEMO_USERS)     : DEMO_USERS);
+      setDepts(dRes.status === "fulfilled"  ? toArr(dRes.value.data.departments || dRes.value.data, DEMO_DEPTS): DEMO_DEPTS);
+      setRooms(rRes.status === "fulfilled"  ? toArr(rRes.value.data.rooms  || rRes.value.data, DEMO_ROOMS)     : DEMO_ROOMS);
+      setSuppliers(sRes.status === "fulfilled" ? toArr(sRes.value.data.suppliers || sRes.value.data, DEMO_SUPPLIERS) : DEMO_SUPPLIERS);
+      setTasks(tRes.status === "fulfilled"  ? toArr(tRes.value.data.tasks  || tRes.value.data, DEMO_TASKS)     : DEMO_TASKS);
+      setAudit(aRes.status === "fulfilled"  ? toArr(aRes.value.data.logs   || aRes.value.data, DEMO_AUDIT)     : DEMO_AUDIT);
     } catch {
       setUsers(DEMO_USERS); setDepts(DEMO_DEPTS); setRooms(DEMO_ROOMS);
       setSuppliers(DEMO_SUPPLIERS); setTasks(DEMO_TASKS); setAudit(DEMO_AUDIT);
