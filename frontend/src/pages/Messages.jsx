@@ -208,7 +208,18 @@ const CSS = `
   .mov { padding:0; align-items:flex-end; } .mov-box { border-radius:20px 20px 0 0; max-width:100%; max-height:93vh; }
   .mov-hdr { padding:13px 16px; } .mov-body { padding:14px; }
 }
+@media (max-width:599px) {
+  .msg-layout { grid-template-columns:1fr !important; height:calc(100vh - 155px); }
+  .msg-chat-hdr { padding:10px 12px; }
+  .msg-chat-actions .cbtn { padding:5px 8px; font-size:11px; }
+  .msg-input-area { padding:10px 12px; }
+  .msg-hint { display:none !important; }
+  .msg-bubble { max-width:78vw; }
+  .msg-area { padding:12px 10px; }
+  .msg-back-btn { display:inline-flex !important; }
+}
 @media (max-width:479px) { .msg-top { padding:10px 12px 0; } }
+.msg-back-btn { display:none; align-items:center; gap:5px; padding:6px 10px; border-radius:8px; border:1.5px solid var(--cbr); background:#EEF4FF; color:var(--cn); font-size:12px; font-weight:600; cursor:pointer; font-family:'Poppins',sans-serif; flex-shrink:0; }
 `;
 
 // ─── Icons ────────────────────────────────────────────────────
@@ -609,8 +620,8 @@ export default function Messagerie() {
         {/* ══ INBOX / CHAT ══ */}
         {tab === "inbox" && (
           <div className="msg-layout">
-            {/* ── SIDEBAR ── */}
-            <div className="msg-sidebar">
+            {/* ── SIDEBAR — masquée sur mobile quand une conv est ouverte ── */}
+            <div className="msg-sidebar" style={isMobile && selected ? {display:'none'} : {}}>
               <div className="msg-sidebar-hdr">
                 <div className="msg-search">
                   <span className="msg-search-ic">{I.search}</span>
@@ -688,8 +699,8 @@ export default function Messagerie() {
               </div>
             </div>
 
-            {/* ── CHAT AREA ── */}
-            <div className="msg-chat">
+            {/* ── CHAT AREA — masquée sur mobile quand aucune conv n'est sélectionnée ── */}
+            <div className="msg-chat" style={isMobile && !selected ? {display:'none'} : {}}>
               {!selected ? (
                 <div className="msg-empty">
                   <div style={{ width:72, height:72, borderRadius:20, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:32 }}>💬</div>
@@ -703,6 +714,11 @@ export default function Messagerie() {
                 <>
                   {/* Chat header */}
                   <div className="msg-chat-hdr">
+                    {isMobile && (
+                      <button className="msg-back-btn" onClick={() => setSelected(null)}>
+                        ← Retour
+                      </button>
+                    )}
                     <div className="msg-chat-hdr-info">
                       {selected.type === "group" ? (
                         <div style={{ width:42, height:42, borderRadius:12, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{selGroup?.icon || "👥"}</div>
@@ -898,7 +914,7 @@ export default function Messagerie() {
                           <button className="msg-tool-btn" title="Document médical" onClick={() => toast.success("📄 Partager un document médical...")}>{I.file}</button>
                           <button className="msg-tool-btn" title="Emoji">{I.emoji}</button>
                           <div style={{ flex:1 }} />
-                          <div style={{ fontSize:10, color:"var(--cm)" }}>Entrée pour envoyer · Maj+Entrée pour nouvelle ligne</div>
+                          <div className="msg-hint" style={{ fontSize:10, color:"var(--cm)" }}>Entrée pour envoyer · Maj+Entrée pour nouvelle ligne</div>
                         </div>
                       </div>
                       <button className="msg-send-btn" onClick={sendMsg} disabled={!input.trim() || sending}>
