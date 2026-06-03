@@ -1,4 +1,4 @@
-
+﻿
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
@@ -460,7 +460,7 @@ export default function Consultation() {
 
           {/* Tabs */}
           <div style={isMobile ? {
-            display:'grid', gridTemplateColumns:'repeat(3,1fr)',
+            display:'grid', gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',
             gap:'4px', padding:'8px 10px', marginTop:'8px',
             background:'rgba(255,255,255,.07)', borderRadius:'10px 10px 0 0',
           } : {

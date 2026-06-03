@@ -1,4 +1,4 @@
-
+﻿
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
@@ -549,7 +549,7 @@ export default function JournalAudit() {
               { key:"stats",      icon:I.trend, label:"Statistiques",          labelM:"Stats" },
             ];
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div style={isMobile?{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
                 {TABS.map(t=>(
                   <button key={t.key} className={`aud-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
@@ -595,7 +595,7 @@ export default function JournalAudit() {
               </div>
 
               {/* Charts row */}
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20, marginBottom: 24 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile?"1fr":"2fr 1fr", gap: 20, marginBottom: 24 }}>
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr"><div><h3>{I.trend} Activité — 7 derniers jours</h3><p>Volume d'événements journaliers</p></div></div>
                   <div style={{ padding: 20 }}>
@@ -626,7 +626,7 @@ export default function JournalAudit() {
               </div>
 
               {/* Last events */}
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile?"1fr":"2fr 1fr", gap: 20 }}>
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr">
                     <div><h3>{I.clock} Derniers événements</h3><p>Activité en temps réel</p></div>
@@ -934,7 +934,7 @@ export default function JournalAudit() {
               </div>
 
               {/* Login stats */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap: 20 }}>
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr"><h3>📊 Connexions par heure</h3></div>
                   <div style={{ padding: 20 }}>
@@ -1116,7 +1116,7 @@ export default function JournalAudit() {
                 ))}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap: 20, marginBottom: 20 }}>
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr"><h3>{I.trend} Activité sur 30 jours</h3></div>
                   <div style={{ padding: 20 }}>
@@ -1148,7 +1148,7 @@ export default function JournalAudit() {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap: 20 }}>
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr"><h3>👤 Top utilisateurs actifs</h3></div>
                   <div style={{ padding: 16 }}>
@@ -1234,7 +1234,7 @@ export default function JournalAudit() {
                 </div>
 
                 {/* Infos générales */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap: 10, marginBottom: 16 }}>
                   {[
                     ["ID Événement", `EVT-${selectedEvent._id}`],
                     ["Date & Heure", fmtDT(selectedEvent.date)],
@@ -1256,7 +1256,7 @@ export default function JournalAudit() {
                 {(selectedEvent.ancienne_val || selectedEvent.nouvelle_val) && (
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "var(--cm)", textTransform: "uppercase", letterSpacing: .5, marginBottom: 8 }}>🔄 Données modifiées</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap: 10 }}>
                       {selectedEvent.ancienne_val && (
                         <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "10px 12px" }}>
                           <div style={{ fontSize: 10, fontWeight: 600, color: "#DC2626", marginBottom: 4 }}>ANCIENNE VALEUR</div>
@@ -1334,7 +1334,7 @@ export default function JournalAudit() {
               </select>
             </div>
             {exportForm.periode === "custom" && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap: 12 }}>
                 <div>
                   <label className="albl">Date début</label>
                   <input type="date" className="ainp" value={filterDateDeb} onChange={e => setFilterDateDeb(e.target.value)} />

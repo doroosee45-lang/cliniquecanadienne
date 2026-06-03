@@ -1,4 +1,4 @@
-
+﻿
 
 
 
@@ -264,7 +264,7 @@
 //               Gestion complète de votre établissement avec l'intelligence artificielle au service de vos patients.
 //             </p>
 
-//             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+//             <div style={{ display: 'grid', gridTemplateColumns: isMobile?'1fr':'1fr 1fr', gap: 10 }}>
 //               {FEATURES.map(f => (
 //                 <div key={f.label} style={{ background: 'rgba(255,255,255,.05)', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(255,255,255,.08)', backdropFilter: 'blur(4px)' }}>
 //                   <div style={{ fontSize: 20, marginBottom: 6 }}>{f.icon}</div>
@@ -327,7 +327,7 @@
 //                 </p>
 //               </div>
 
-//               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+//               <div style={{ display: 'grid', gridTemplateColumns: isMobile?'1fr':'1fr 1fr', gap: 8, marginBottom: 16 }}>
 //                 {FEATURES.map(f => (
 //                   <div key={f.label} style={{ background: 'rgba(255,255,255,.06)', borderRadius: 12, padding: '12px 14px', border: '1px solid rgba(255,255,255,.09)' }}>
 //                     <div style={{ fontSize: 18, marginBottom: 5 }}>{f.icon}</div>
@@ -878,7 +878,7 @@ export default function Login() {
             </p>
 
             {/* Features */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 28 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile?'1fr':'1fr 1fr', gap: 10, marginBottom: 28 }}>
               {FEATURES.map(f => (
                 <div key={f.label} style={{ background: 'rgba(255,255,255,.05)', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(255,255,255,.08)', backdropFilter: 'blur(4px)' }}>
                   <div style={{ fontSize: 20, marginBottom: 6 }}>{f.icon}</div>
@@ -960,7 +960,7 @@ export default function Login() {
               </div>
 
               {/* Features mobile */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile?'1fr':'1fr 1fr', gap: 8, marginBottom: 20 }}>
                 {FEATURES.map(f => (
                   <div key={f.label} style={{ background: 'rgba(255,255,255,.06)', borderRadius: 12, padding: '12px 14px', border: '1px solid rgba(255,255,255,.09)' }}>
                     <div style={{ fontSize: 18, marginBottom: 5 }}>{f.icon}</div>

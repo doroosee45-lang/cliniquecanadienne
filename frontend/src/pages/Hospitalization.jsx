@@ -1502,7 +1502,7 @@ export default function Hospitalisation() {
                               <tbody>{actes.map(([lbl,val]) => val > 0 && <tr key={lbl}><td style={{fontSize:12}}>{lbl}</td><td style={{textAlign:"right",fontWeight:600}}>{val.toLocaleString("fr-FR")}</td></tr>)}</tbody>
                             </table>
                             <div style={{ background:"#F4F9FD", borderRadius:14, padding:16, marginBottom:16 }}>
-                              <div className="ho-g11s" style={{ gridTemplateColumns:"repeat(3,1fr)" }}>
+                              <div className="ho-g11s" style={{ gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)" }}>
                                 <div style={{ background:"#EBF5FB", borderRadius:10, padding:14, textAlign:"center" }}>
                                   <div style={{ fontSize:18, fontWeight:800, color:"var(--hb)" }}>{total.toLocaleString("fr-FR")}</div>
                                   <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>TOTAL (CFA)</div>

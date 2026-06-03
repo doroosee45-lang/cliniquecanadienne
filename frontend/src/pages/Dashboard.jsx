@@ -343,7 +343,7 @@
 //       </div>
 
 //       {/* Finance row */}
-//       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:24 }}>
+//       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)", gap:14, marginBottom:24 }}>
 //         {[["CA global",kpis.ca_global,"var(--dg)"],["Dépenses",kpis.depenses,"var(--dr)"],["Bénéfice net",kpis.benefice,"var(--db)"]].map(([l,v,c])=>(
 //           <div key={l} style={{ background:`linear-gradient(135deg,${c}18,${c}08)`, border:`1.5px solid ${c}44`, borderRadius:18, padding:"18px 22px" }}>
 //             <div style={{ fontSize:11, fontWeight:700, color:"var(--dm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>{l}</div>
@@ -1719,7 +1719,7 @@ function SuperAdminDashboard({ data, isMobile }) {
         <KpiCard color="purple" icon="🔪" value={kpis.interventions}              label="Interventions chir."  sub="réalisées" />
         <KpiCard color="red"    icon="💸" value={fmtNum(kpis.factures_impayees)+" CFA"} label="Factures impayées" urgent />
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:24 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)", gap:14, marginBottom:24 }}>
         {[["CA global",kpis.ca_global,"var(--dg)"],["Dépenses",kpis.depenses,"var(--dr)"],["Bénéfice net",kpis.benefice,"var(--db)"]].map(([l,v,c])=>(
           <div key={l} style={{ background:`linear-gradient(135deg,${c}18,${c}08)`, border:`1.5px solid ${c}44`, borderRadius:18, padding:"18px 22px" }}>
             <div style={{ fontSize:11, fontWeight:700, color:"var(--dm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>{l}</div>
