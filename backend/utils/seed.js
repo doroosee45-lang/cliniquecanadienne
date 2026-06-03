@@ -49,7 +49,7 @@ const seed = async () => {
   // User.create() déclenche bien pre('save') → bcrypt hash automatique.
   const MOT_DE_PASSE = 'medisync123';
   const users = await Promise.all([
-    User.create({ email:'superadmin@medisync.clinic',    password:MOT_DE_PASSE, nom:'Martin',  prenom:'Sophie',     role:'superadmin' }),
+    User.create({ email:'oseedoro@gmail.com',    password:MOT_DE_PASSE, nom:'meya',  prenom:'osee',     role:'superadmin' }),
     User.create({ email:'admin@medisync.clinic',         password:MOT_DE_PASSE, nom:'Nguema',  prenom:'Paul',       role:'adminclinique' }),
     User.create({ email:'medecin@medisync.clinic',       password:MOT_DE_PASSE, nom:'Obiang',  prenom:'Jean-Marie', role:'medecin',     specialite:'Médecine Générale' }),
     User.create({ email:'infirmier@medisync.clinic',     password:MOT_DE_PASSE, nom:'Mbemba',  prenom:'Marie',      role:'infirmier' }),
