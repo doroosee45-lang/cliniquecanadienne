@@ -3,9 +3,9 @@
 
 const router = require('express').Router();
 
-router.use('/auth',             require('./auth.routes'));
+router.use('/auth',             require('./uth.routes'));
 router.use('/dashboard',        require('./dashboard.routes'));
-router.use('/patients',         require('./Patients.routes'));
+router.use('/patients',         require('./patients.routes'));
 router.use('/appointments',     require('./appointments.routes'));
 router.use('/consultations',    require('./consultations.routes'));
 router.use('/hospitalization',  require('./hospitalization.routes'));
@@ -22,7 +22,7 @@ router.use('/analytics',        require('./analytics.routes'));
 router.use('/prescriptions',    require('./prescriptions.routes'));
 router.use('/settings',         require('./settings.routes'));
 router.use('/chirurgie',        require('./chirurgieRoutes'));
-router.use('/blocoperatoire',   require('./Blocoperatoire.routes')); // Bloc opératoire
+router.use('/blocoperatoire',   require('./blocoperatoire.routes')); // Bloc opératoire
 router.use('/portal',           require('./portal.routes'));         // Portail patient
 // Alias admin/* → settings/*
 router.use('/admin',            require('./settings.routes'));
