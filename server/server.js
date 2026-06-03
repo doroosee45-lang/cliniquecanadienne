@@ -22,8 +22,12 @@ const app = express();
 app.use(helmet());
 
 // CORS
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map(o => o.trim());
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -85,13 +89,11 @@ app.get('/api/health', (req, res) => {
 // API routes
 app.use('/api', routes);
 
-// Serve React in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/dist')));
-  app.get('*', (req, res) =>
-    res.sendFile(path.resolve(__dirname, '../client/dist/index.html'))
-  );
-}
+// Serve React in production// Correct
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
+app.get('*', (req, res) =>
+  res.sendFile(path.resolve(__dirname, '../frontend/dist/index.html'))
+);
 
 // Error handler (must be last)
 app.use(errorHandler);

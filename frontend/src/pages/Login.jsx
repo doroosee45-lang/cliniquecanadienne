@@ -520,7 +520,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGoogleLogin } from '@react-oauth/google';
-import axios from 'axios';
+import api from '../api';
 import toast from 'react-hot-toast';
 
 // ─── Hook responsive ─────────────────────────────────────────
@@ -738,7 +738,7 @@ export default function Login() {
     onSuccess: async (tokenResponse) => {
       setGoogleLoading(true);
       try {
-        const res = await axios.post('/api/auth/google', {
+        const res = await api.post('/auth/google', {
           access_token: tokenResponse.access_token,
         });
         const { token } = res.data;
