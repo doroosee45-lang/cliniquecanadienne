@@ -323,7 +323,7 @@
 // };
 
 // // ─── SUPERADMIN DASHBOARD ─────────────────────────────────────
-// function SuperAdminDashboard({ data }) {
+// function SuperAdminDashboard({ data, isMobile }) {
 //   const kpis    = data?.kpis          || {};
 //   const sys     = data?.sys_status     || { db:"", backup:"", disk:0, server_cpu:0, server_ram:0, services_actifs:0 };
 //   const uroles  = data?.users_par_role  || {};
@@ -442,7 +442,7 @@
 // }
 
 // // ─── ADMINCLINIQUE DASHBOARD ──────────────────────────────────
-// function AdminDashboard({ data }) {
+// function AdminDashboard({ data, isMobile }) {
 //   const kpis     = data?.kpis          || {};
 //   const consults  = data?.consults      || { en_attente:0, en_cours:0, terminees:0 };
 //   const hospit    = data?.hospit        || { admissions_auj:0, occupation_lits:0, sorties_prev:0 };
@@ -615,7 +615,7 @@
 // }
 
 // // ─── MEDECIN DASHBOARD ────────────────────────────────────────
-// function MedecinDashboard({ data, user }) {
+// function MedecinDashboard({ data, user, isMobile }) {
 //   const kpis     = data?.kpis            || {};
 //   const consults  = data?.consults_auj    || [];
 //   const hospit    = data?.hospit_patients || [];
@@ -701,7 +701,7 @@
 // }
 
 // // ─── INFIRMIER DASHBOARD ──────────────────────────────────────
-// function InfirmierDashboard({ data }) {
+// function InfirmierDashboard({ data, isMobile }) {
 //   const kpis    = data?.kpis    || {};
 //   const alertes  = data?.alertes || [];
 //   const planning = data?.planning || [];
@@ -751,7 +751,7 @@
 // }
 
 // // ─── LABORANTIN DASHBOARD ─────────────────────────────────────
-// function LaborantinDashboard({ data }) {
+// function LaborantinDashboard({ data, isMobile }) {
 //   const kpis     = data?.kpis               || {};
 //   const urgentes  = data?.analyses_urgentes || [];
 //   const alertes   = data?.alertes           || [];
@@ -794,7 +794,7 @@
 // }
 
 // // ─── PHARMACIEN DASHBOARD ─────────────────────────────────────
-// function PharmacienDashboard({ data }) {
+// function PharmacienDashboard({ data, isMobile }) {
 //   const kpis    = data?.kpis    || {};
 //   const alertes  = data?.alertes || [];
 //   const topMeds  = data?.top_meds || [];
@@ -840,7 +840,7 @@
 // }
 
 // // ─── RECEPTIONNISTE DASHBOARD ─────────────────────────────────
-// function ReceptionDashboard({ data }) {
+// function ReceptionDashboard({ data, isMobile }) {
 //   const kpis     = data?.kpis          || {};
 //   const rdvListe  = data?.rdv_prochains || [];
 //   const stR = (s) => ({ en_attente:"orange", confirme:"green", annule:"red" }[s]||"gray");
@@ -884,7 +884,7 @@
 // }
 
 // // ─── COMPTABLE DASHBOARD ──────────────────────────────────────
-// function ComptableDashboard({ data }) {
+// function ComptableDashboard({ data, isMobile }) {
 //   const kpis    = data?.kpis    || {};
 //   const alertes  = data?.alertes || [];
 //   const chart    = data?.chart   || { labels:[], revenus:[] };
@@ -1084,14 +1084,14 @@
 
 //         {/* ── ROLE-BASED CONTENT ── */}
 //         <div className="fu d2">
-//           {role === "superadmin"     && <SuperAdminDashboard data={stats} />}
-//           {role === "adminclinique"  && <AdminDashboard data={stats} user={user} />}
-//           {role === "medecin"        && <MedecinDashboard data={stats} user={user} />}
-//           {role === "infirmier"      && <InfirmierDashboard data={stats} />}
-//           {role === "laborantin"     && <LaborantinDashboard data={stats} />}
-//           {role === "pharmacien"     && <PharmacienDashboard data={stats} />}
-//           {role === "receptionniste" && <ReceptionDashboard data={stats} />}
-//           {role === "comptable"      && <ComptableDashboard data={stats} />}
+//           {role === "superadmin"     && <SuperAdminDashboard data={stats} isMobile={isMobile} />}
+//           {role === "adminclinique"  && <AdminDashboard data={stats} user={user} isMobile={isMobile} />}
+//           {role === "medecin"        && <MedecinDashboard data={stats} user={user} isMobile={isMobile} />}
+//           {role === "infirmier"      && <InfirmierDashboard data={stats} isMobile={isMobile} />}
+//           {role === "laborantin"     && <LaborantinDashboard data={stats} isMobile={isMobile} />}
+//           {role === "pharmacien"     && <PharmacienDashboard data={stats} isMobile={isMobile} />}
+//           {role === "receptionniste" && <ReceptionDashboard data={stats} isMobile={isMobile} />}
+//           {role === "comptable"      && <ComptableDashboard data={stats} isMobile={isMobile} />}
 //           {/* Rôles spéciaux : radiologue → affiche dashboard médecin adapté */}
 //           {role === "radiologue" && (
 //             <div>
@@ -1363,7 +1363,7 @@ const QUICK_ACTIONS = {
 // ════════════════════════════════════════════════════════════════
 // ─── PATIENT DASHBOARD ──────────────────────────────────────────
 // ════════════════════════════════════════════════════════════════
-function PatientDashboard({ data, user }) {
+function PatientDashboard({ data, user, isMobile }) {
   const navigate = useNavigate();
   const kpis         = data?.kpis           || {};
   const prochainRdv  = data?.prochain_rdv   || null;
@@ -1610,7 +1610,7 @@ function PatientDashboard({ data, user }) {
 // ════════════════════════════════════════════════════════════════
 // ─── RADIOLOGUE DASHBOARD (complet) ────────────────────────────
 // ════════════════════════════════════════════════════════════════
-function RadiologueDashboard({ data }) {
+function RadiologueDashboard({ data, isMobile }) {
   const navigate = useNavigate();
   const kpis     = data?.kpis       || {};
   const examens  = data?.examens    || [];
@@ -1703,7 +1703,7 @@ function RadiologueDashboard({ data }) {
 // ════════════════════════════════════════════════════════════════
 // ─── AUTRES DASHBOARDS (inchangés) ─────────────────────────────
 // ════════════════════════════════════════════════════════════════
-function SuperAdminDashboard({ data }) {
+function SuperAdminDashboard({ data, isMobile }) {
   const kpis    = data?.kpis          || {};
   const sys     = data?.sys_status     || { db:"", backup:"", disk:0, server_cpu:0, server_ram:0, services_actifs:0 };
   const uroles  = data?.users_par_role  || {};
@@ -1785,7 +1785,7 @@ function SuperAdminDashboard({ data }) {
   );
 }
 
-function AdminDashboard({ data }) {
+function AdminDashboard({ data, isMobile }) {
   const navigate = useNavigate();
   const kpis = data?.kpis || {}; const consults = data?.consults || {}; const hospit = data?.hospit || {};
   const chirurgie = data?.chirurgie || {}; const rdv = data?.rdv || {}; const pharma = data?.pharmacie || {};
@@ -1875,7 +1875,7 @@ function AdminDashboard({ data }) {
   );
 }
 
-function MedecinDashboard({ data, user }) {
+function MedecinDashboard({ data, user, isMobile }) {
   const kpis = data?.kpis || {}; const consults = data?.consults_auj || []; const hospit = data?.hospit_patients || [];
   const alertes = data?.alertes || []; const ia = data?.ia_stats || {};
   const stC = (s) => ({ termine:"green", en_cours:"teal", en_attente:"orange", programme:"blue" }[s]||"gray");
@@ -1931,7 +1931,7 @@ function MedecinDashboard({ data, user }) {
   );
 }
 
-function InfirmierDashboard({ data }) {
+function InfirmierDashboard({ data, isMobile }) {
   const kpis = data?.kpis || {}; const alertes = data?.alertes || []; const planning = data?.planning || [];
   return (
     <div>
@@ -1973,7 +1973,7 @@ function InfirmierDashboard({ data }) {
   );
 }
 
-function LaborantinDashboard({ data }) {
+function LaborantinDashboard({ data, isMobile }) {
   const kpis = data?.kpis || {}; const urgentes = data?.analyses_urgentes || []; const alertes = data?.alertes || [];
   return (
     <div>
@@ -1998,7 +1998,7 @@ function LaborantinDashboard({ data }) {
   );
 }
 
-function PharmacienDashboard({ data }) {
+function PharmacienDashboard({ data, isMobile }) {
   const kpis = data?.kpis || {}; const alertes = data?.alertes || []; const topMeds = data?.top_meds || [];
   return (
     <div>
@@ -2018,7 +2018,7 @@ function PharmacienDashboard({ data }) {
   );
 }
 
-function ReceptionDashboard({ data }) {
+function ReceptionDashboard({ data, isMobile }) {
   const navigate = useNavigate();
   const kpis = data?.kpis || {}; const rdvListe = data?.rdv_prochains || [];
   const stR = (s) => ({ en_attente:"orange", confirme:"green", annule:"red" }[s]||"gray");
@@ -2045,7 +2045,7 @@ function ReceptionDashboard({ data }) {
   );
 }
 
-function ComptableDashboard({ data }) {
+function ComptableDashboard({ data, isMobile }) {
   const kpis = data?.kpis || {}; const alertes = data?.alertes || []; const chart = data?.chart || { labels:[], revenus:[] };
   return (
     <div>
@@ -2228,17 +2228,17 @@ export default function Dashboard() {
 
         {/* ── ROLE-BASED CONTENT ── */}
         <div className="fu d2">
-          {role === "superadmin"     && <SuperAdminDashboard data={stats} />}
-          {role === "adminclinique"  && <AdminDashboard data={stats} user={user} />}
-          {role === "medecin"        && <MedecinDashboard data={stats} user={user} />}
-          {role === "infirmier"      && <InfirmierDashboard data={stats} />}
-          {role === "laborantin"     && <LaborantinDashboard data={stats} />}
-          {role === "pharmacien"     && <PharmacienDashboard data={stats} />}
-          {role === "receptionniste" && <ReceptionDashboard data={stats} />}
-          {role === "comptable"      && <ComptableDashboard data={stats} />}
-          {role === "radiologue"     && <RadiologueDashboard data={stats} />}
+          {role === "superadmin"     && <SuperAdminDashboard data={stats} isMobile={isMobile} />}
+          {role === "adminclinique"  && <AdminDashboard data={stats} user={user} isMobile={isMobile} />}
+          {role === "medecin"        && <MedecinDashboard data={stats} user={user} isMobile={isMobile} />}
+          {role === "infirmier"      && <InfirmierDashboard data={stats} isMobile={isMobile} />}
+          {role === "laborantin"     && <LaborantinDashboard data={stats} isMobile={isMobile} />}
+          {role === "pharmacien"     && <PharmacienDashboard data={stats} isMobile={isMobile} />}
+          {role === "receptionniste" && <ReceptionDashboard data={stats} isMobile={isMobile} />}
+          {role === "comptable"      && <ComptableDashboard data={stats} isMobile={isMobile} />}
+          {role === "radiologue"     && <RadiologueDashboard data={stats} isMobile={isMobile} />}
           {/* ✅ Patient — dashboard dédié, données personnelles uniquement */}
-          {role === "patient"        && <PatientDashboard data={stats} user={user} />}
+          {role === "patient"        && <PatientDashboard data={stats} user={user} isMobile={isMobile} />}
         </div>
 
         {/* ── IA BANNER — uniquement staff médical, PAS le patient ── */}
