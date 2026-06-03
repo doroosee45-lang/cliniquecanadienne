@@ -1,0 +1,45 @@
+# ===== DEPENDENCIES =====
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# ===== ENVIRONMENT VARIABLES =====
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# ===== BUILD / DIST =====
+dist/
+build/
+client/dist/
+client/build/
+server/dist/
+
+# ===== LOGS =====
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== OS FILES =====
+.DS_Store
+Thumbs.db
+
+# ===== EDITOR =====
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== CACHE =====
+.npm/
+.cache/
+.parcel-cache/
+.eslintcache
+
+# ===== UPLOADS (fichiers uploadés par les users) =====
+uploads/
+public/uploads/
