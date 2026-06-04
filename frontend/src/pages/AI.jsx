@@ -522,7 +522,7 @@ export default function IntelligenceArtificielle() {
               { key:"settings",  icon:I.settings,label:"Paramètres",             labelM:"Paramètres" },
             ];
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
                 {TABS.map(t=>(
                   <button key={t.key} className={`ia-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
