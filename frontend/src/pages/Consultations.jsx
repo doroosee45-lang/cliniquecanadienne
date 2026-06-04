@@ -584,9 +584,19 @@ export default function Consultation() {
                   <div style={{ fontSize: 12, color: "var(--cm)", marginTop: 2 }}>Identité, contact et historique médical</div>
                 </div>
                 <button className="cbtn cbtn-primary" onClick={() => { setModalPatient(true); setPatientSearch(''); loadPatients(); }}>
-                  {I.user} Sélectionner un patient existant
+                  {I.user} {form.patient_id ? '🔄 Changer de patient' : 'Sélectionner un patient'}
                 </button>
               </div>
+
+              {form.patient_id && (
+                <div style={{ background:'#ECFDF5', border:'1.5px solid #A7F3D0', borderRadius:12, padding:'12px 16px', display:'flex', alignItems:'center', gap:12, marginBottom:8 }}>
+                  <span style={{ fontSize:20 }}>✅</span>
+                  <div>
+                    <div style={{ fontWeight:700, color:'#065F46', fontSize:13 }}>Patient sélectionné : {form.patient_prenom} {form.patient_nom}</div>
+                    <div style={{ fontSize:11, color:'#059669' }}>Le formulaire est lié à ce patient de la base de données</div>
+                  </div>
+                </div>
+              )}
 
               <div className="cons-g2">
                 {/* Identité */}
@@ -1221,7 +1231,7 @@ export default function Consultation() {
                   const a = ageCalc(p.date_naissance);
                   const allergies = Array.isArray(p.allergies) ? p.allergies.join(', ') : p.allergies;
                   return (
-                    <div key={p._id} onClick={() => selectPatient(p)}
+                    <div key={p._id}
                       style={{ border: "1.5px solid var(--cbr)", borderRadius: 14, padding: "14px 16px", cursor: "pointer", transition: "all .2s", display: "flex", alignItems: "center", gap: 14 }}
                       onMouseOver={e => e.currentTarget.style.borderColor = "var(--ct)"}
                       onMouseOut={e => e.currentTarget.style.borderColor = "var(--cbr)"}>
@@ -1235,7 +1245,13 @@ export default function Consultation() {
                         </div>
                         {allergies && <div style={{ fontSize: 11, color: "var(--cr)", marginTop: 2 }}>⚠ {allergies}</div>}
                       </div>
-                      <button className="cbtn cbtn-teal cbtn-sm">Sélectionner →</button>
+                      <button
+                        type="button"
+                        className="cbtn cbtn-teal cbtn-sm"
+                        onClick={() => selectPatient(p)}
+                      >
+                        Sélectionner →
+                      </button>
                     </div>
                   );
                 })}
