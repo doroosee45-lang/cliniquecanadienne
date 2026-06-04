@@ -102,11 +102,13 @@ app.get('/api/health', (req, res) => {
 // API routes
 app.use('/api', routes);
 
-// Serve React in production// Correct
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
-app.get('*', (req, res) =>
-  res.sendFile(path.resolve(__dirname, '../frontend/dist/index.html'))
-);
+// Serve React — production only (Render single-service)
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/dist')));
+  app.get('*', (req, res) =>
+    res.sendFile(path.resolve(__dirname, '../frontend/dist/index.html'))
+  );
+}
 
 // Error handler (must be last)
 app.use(errorHandler);
