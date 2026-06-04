@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
+import api from '../api';
+import toast from 'react-hot-toast';
 import {
   fetchConsultations, createConsultation,
   selectConsultations, selectConsultationsLoading,
@@ -337,6 +339,18 @@ export default function Consultation() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [modalPatient, setModalPatient] = useState(false);
+  const [patients, setPatients] = useState([]);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [patientLoading, setPatientLoading] = useState(false);
+
+  const loadPatients = useCallback(async () => {
+    setPatientLoading(true);
+    try {
+      const { data } = await api.get('/patients?limit=200');
+      setPatients(data.patients || data || []);
+    } catch { setPatients([]); }
+    finally { setPatientLoading(false); }
+  }, []);
   const [modalRx, setModalRx] = useState(false);
   const [modalExam, setModalExam] = useState(false);
   const [modalOrd, setModalOrd] = useState(false);
@@ -351,12 +365,14 @@ export default function Consultation() {
   const selectPatient = (p) => {
     setForm(f => ({
       ...f,
+      patient_id: p._id,
       patient_nom: p.nom, patient_prenom: p.prenom,
-      patient_sexe: p.sexe, patient_ddn: p.ddn,
-      patient_tel: p.tel, patient_adresse: p.adresse,
+      patient_sexe: p.sexe || p.genre, patient_ddn: p.date_naissance || p.ddn,
+      patient_tel: p.telephone || p.tel,
+      patient_adresse: p.adresse?.rue || p.adresse || '',
       patient_groupe_sanguin: p.groupe_sanguin,
-      patient_antecedents: p.antecedents,
-      patient_allergies: p.allergies,
+      patient_antecedents: Array.isArray(p.antecedents_medicaux) ? p.antecedents_medicaux.join(', ') : (p.antecedents_medicaux || p.antecedents || ''),
+      patient_allergies: Array.isArray(p.allergies) ? p.allergies.join(', ') : (p.allergies || ''),
     }));
     setModalPatient(false);
   };
@@ -381,9 +397,50 @@ export default function Consultation() {
 
   const removeExam = (id) => setForm(f => ({ ...f, examens: f.examens.filter(x => x.id !== id) }));
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!form.patient_id) {
+      toast.error('Veuillez sélectionner un patient dans la base de données.');
+      setSection('patient');
+      return;
+    }
     setSaving(true);
-    setTimeout(() => { setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 3000); }, 1200);
+    try {
+      const payload = {
+        patient: form.patient_id,
+        date_consultation: form.date_heure || new Date().toISOString(),
+        signes_vitaux: {
+          tension_systolique:  form.ta_sys   ? Number(form.ta_sys)   : undefined,
+          tension_diastolique: form.ta_dia   ? Number(form.ta_dia)   : undefined,
+          pouls:       form.fc     ? Number(form.fc)     : undefined,
+          temperature: form.temp   ? Number(form.temp)   : undefined,
+          spo2:        form.spo2   ? Number(form.spo2)   : undefined,
+          poids:       form.poids  ? Number(form.poids)  : undefined,
+          taille:      form.taille ? Number(form.taille) : undefined,
+        },
+        anamnese:          form.motif || '',
+        examen_clinique:   form.examen_clinique || '',
+        diagnostic:        form.diagnostic_principal || '',
+        diagnostic_code:   form.diagnostic_secondaire || '',
+        recommandations:   form.notes_generales || '',
+        prescriptions:     form.prescriptions.map(r => ({
+          medicament_nom: r.medicament,
+          posologie:      r.posologie,
+          duree:          r.duree,
+          notes:          r.conseils,
+        })),
+        statut: 'terminee',
+      };
+      await dispatch(createConsultation(payload)).unwrap();
+      toast.success('✅ Consultation enregistrée avec succès');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      setForm(EMPTY_CONS);
+      setSection('patient');
+    } catch (err) {
+      toast.error(err || 'Erreur lors de la sauvegarde.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const totalFacture = form.frais_consultation
@@ -526,7 +583,7 @@ export default function Consultation() {
                   <div style={{ fontSize: 16, fontWeight: 700, color: "var(--cn)" }}>Informations du patient</div>
                   <div style={{ fontSize: 12, color: "var(--cm)", marginTop: 2 }}>Identité, contact et historique médical</div>
                 </div>
-                <button className="cbtn cbtn-primary" onClick={() => setModalPatient(true)}>
+                <button className="cbtn cbtn-primary" onClick={() => { setModalPatient(true); setPatientSearch(''); loadPatients(); }}>
                   {I.user} Sélectionner un patient existant
                 </button>
               </div>
@@ -1143,35 +1200,53 @@ export default function Consultation() {
         {/* ═══ MODAL : SÉLECTIONNER PATIENT ═══ */}
         <Modal open={modalPatient} onClose={() => setModalPatient(false)} title="👤 Sélectionner un patient" maxWidth={560}>
           <div style={{ marginBottom: 14 }}>
-            <div style={{ position: "relative" }}>
-              <input className="cinp" placeholder="🔍 Rechercher par nom, prénom..." />
-            </div>
+            <input
+              className="cinp"
+              placeholder="🔍 Rechercher par nom, prénom, numéro dossier..."
+              value={patientSearch}
+              onChange={e => setPatientSearch(e.target.value)}
+              autoFocus
+            />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {DEMO_PATIENTS.map(p => {
-              const a = ageCalc(p.ddn);
-              return (
-                <div key={p.id} onClick={() => selectPatient(p)} style={{ border: "1.5px solid var(--cbr)", borderRadius: 14, padding: "14px 16px", cursor: "pointer", transition: "all .2s", display: "flex", alignItems: "center", gap: 14 }}
-                  onMouseOver={e => e.currentTarget.style.borderColor = "var(--ct)"}
-                  onMouseOut={e => e.currentTarget.style.borderColor = "var(--cbr)"}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: p.sexe === "femme" ? "#FDF2F8" : "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
-                    {p.sexe === "femme" ? "👩" : "👨"}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, color: "var(--cn)", fontSize: 14 }}>{p.prenom} {p.nom}</div>
-                    <div style={{ fontSize: 12, color: "var(--cm)", marginTop: 2 }}>
-                      {a ? `${a} ans` : "—"} · {p.groupe_sanguin || "Gr. ?"} · 📞 {p.tel}
+          {patientLoading ? (
+            <div style={{ textAlign: "center", color: "var(--cm)", padding: 24 }}>Chargement…</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 380, overflowY: "auto" }}>
+              {patients
+                .filter(p => {
+                  const q = patientSearch.toLowerCase();
+                  return !q || `${p.prenom} ${p.nom} ${p.numero_dossier}`.toLowerCase().includes(q);
+                })
+                .map(p => {
+                  const a = ageCalc(p.date_naissance);
+                  const allergies = Array.isArray(p.allergies) ? p.allergies.join(', ') : p.allergies;
+                  return (
+                    <div key={p._id} onClick={() => selectPatient(p)}
+                      style={{ border: "1.5px solid var(--cbr)", borderRadius: 14, padding: "14px 16px", cursor: "pointer", transition: "all .2s", display: "flex", alignItems: "center", gap: 14 }}
+                      onMouseOver={e => e.currentTarget.style.borderColor = "var(--ct)"}
+                      onMouseOut={e => e.currentTarget.style.borderColor = "var(--cbr)"}>
+                      <div style={{ width: 44, height: 44, borderRadius: 12, background: p.sexe === "F" ? "#FDF2F8" : "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
+                        {p.sexe === "F" ? "👩" : "👨"}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, color: "var(--cn)", fontSize: 14 }}>{p.prenom} {p.nom}</div>
+                        <div style={{ fontSize: 12, color: "var(--cm)", marginTop: 2 }}>
+                          {a ? `${a} ans` : "—"} · {p.groupe_sanguin || "Gr. ?"} · {p.numero_dossier}
+                        </div>
+                        {allergies && <div style={{ fontSize: 11, color: "var(--cr)", marginTop: 2 }}>⚠ {allergies}</div>}
+                      </div>
+                      <button className="cbtn cbtn-teal cbtn-sm">Sélectionner →</button>
                     </div>
-                    {p.allergies && <div style={{ fontSize: 11, color: "var(--cr)", marginTop: 2 }}>⚠ {p.allergies}</div>}
-                  </div>
-                  <button className="cbtn cbtn-teal cbtn-sm">Sélectionner →</button>
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--cbr)", display: "flex", justifyContent: "center" }}>
-            <button className="cbtn cbtn-ghost cbtn-sm">+ Créer un nouveau patient</button>
-          </div>
+                  );
+                })}
+              {patients.filter(p => {
+                const q = patientSearch.toLowerCase();
+                return !q || `${p.prenom} ${p.nom} ${p.numero_dossier}`.toLowerCase().includes(q);
+              }).length === 0 && (
+                <div style={{ textAlign: "center", color: "var(--cm)", padding: 24 }}>Aucun patient trouvé</div>
+              )}
+            </div>
+          )}
         </Modal>
 
         {/* ═══ MODAL : PRESCRIPTION ═══ */}
