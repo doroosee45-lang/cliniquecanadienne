@@ -1,6 +1,6 @@
 ﻿
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import api from '../api';
 import toast from 'react-hot-toast';
@@ -343,14 +343,20 @@ export default function Consultation() {
   const [patientSearch, setPatientSearch] = useState("");
   const [patientLoading, setPatientLoading] = useState(false);
 
-  const loadPatients = useCallback(async () => {
+  // Chargement des patients quand la modale s'ouvre
+  useEffect(() => {
+    if (!modalPatient) return;
     setPatientLoading(true);
-    try {
-      const { data } = await api.get('/patients?limit=200');
-      setPatients(data.patients || data || []);
-    } catch { setPatients([]); }
-    finally { setPatientLoading(false); }
-  }, []);
+    api.get('/patients?limit=500')
+      .then(({ data }) => {
+        const list = Array.isArray(data.patients) ? data.patients
+                   : Array.isArray(data)           ? data
+                   : [];
+        setPatients(list);
+      })
+      .catch(() => setPatients([]))
+      .finally(() => setPatientLoading(false));
+  }, [modalPatient]);
   const [modalRx, setModalRx] = useState(false);
   const [modalExam, setModalExam] = useState(false);
   const [modalOrd, setModalOrd] = useState(false);
@@ -363,18 +369,23 @@ export default function Consultation() {
   const imc = calcIMC(form.poids, form.taille);
 
   const selectPatient = (p) => {
+    const pid = String(p._id || p.id || '');
+    if (!pid) { toast.error("Impossible d'identifier ce patient."); return; }
     setForm(f => ({
       ...f,
-      patient_id: p._id,
-      patient_nom: p.nom, patient_prenom: p.prenom,
-      patient_sexe: p.sexe || p.genre, patient_ddn: p.date_naissance || p.ddn,
-      patient_tel: p.telephone || p.tel,
-      patient_adresse: p.adresse?.rue || p.adresse || '',
-      patient_groupe_sanguin: p.groupe_sanguin,
-      patient_antecedents: Array.isArray(p.antecedents_medicaux) ? p.antecedents_medicaux.join(', ') : (p.antecedents_medicaux || p.antecedents || ''),
-      patient_allergies: Array.isArray(p.allergies) ? p.allergies.join(', ') : (p.allergies || ''),
+      patient_id: pid,
+      patient_nom:          p.nom       || '',
+      patient_prenom:       p.prenom    || '',
+      patient_sexe:         p.sexe      || 'M',
+      patient_ddn:          p.date_naissance || '',
+      patient_tel:          p.telephone || '',
+      patient_adresse:      p.adresse?.rue || '',
+      patient_groupe_sanguin: p.groupe_sanguin || '',
+      patient_antecedents:  Array.isArray(p.antecedents_medicaux) ? p.antecedents_medicaux.join(', ') : (p.antecedents_medicaux || ''),
+      patient_allergies:    Array.isArray(p.allergies) ? p.allergies.join(', ') : (p.allergies || ''),
     }));
     setModalPatient(false);
+    toast.success(`✅ Patient sélectionné : ${p.prenom} ${p.nom}`);
   };
 
   const addRx = (e) => {
@@ -583,7 +594,7 @@ export default function Consultation() {
                   <div style={{ fontSize: 16, fontWeight: 700, color: "var(--cn)" }}>Informations du patient</div>
                   <div style={{ fontSize: 12, color: "var(--cm)", marginTop: 2 }}>Identité, contact et historique médical</div>
                 </div>
-                <button className="cbtn cbtn-primary" onClick={() => { setModalPatient(true); setPatientSearch(''); loadPatients(); }}>
+                <button className="cbtn cbtn-primary" onClick={() => { setModalPatient(true); setPatientSearch(''); }}>
                   {I.user} {form.patient_id ? '🔄 Changer de patient' : 'Sélectionner un patient'}
                 </button>
               </div>
