@@ -334,6 +334,7 @@ export default function Consultation() {
     return () => window.removeEventListener('resize', fn);
   }, []);
 
+  const [mainView, setMainView] = useState("list"); // 'list' | 'new'
   const [section, setSection] = useState("patient");
   const [form, setForm] = useState(EMPTY_CONS);
   const [saving, setSaving] = useState(false);
@@ -447,6 +448,7 @@ export default function Consultation() {
       setTimeout(() => setSaved(false), 3000);
       setForm(EMPTY_CONS);
       setSection('patient');
+      setMainView('list'); // retour automatique à la liste
     } catch (err) {
       toast.error(err || 'Erreur lors de la sauvegarde.');
     } finally {
@@ -497,38 +499,44 @@ export default function Consultation() {
                 {I.steth}
               </div>
               <div>
-                <div style={{ fontSize: 21, fontWeight: 700, color: "#fff", letterSpacing: -.3 }}>Nouvelle Consultation</div>
+                <div style={{ fontSize: 21, fontWeight: 700, color: "#fff", letterSpacing: -.3 }}>Consultations</div>
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
-                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: "rgba(255,255,255,.8)" }}>{form.numero}</span>
-                  {" · "}{form.medecin}{" · "}{new Date().toLocaleDateString("fr-FR")}
+                  {reduxConsultations.length} consultation(s) enregistrée(s)
                 </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }} className="no-print">
-              {saved && (
+              {mainView === 'new' && saved && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(5,150,105,.2)", border: "1px solid rgba(5,150,105,.4)", borderRadius: 10, padding: "8px 14px", color: "#6EE7B7", fontSize: 12, fontWeight: 600 }}>
                   {I.check} Consultation enregistrée
                 </div>
               )}
-              <button className="cbtn cbtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => setModalOrd(true)}>
-                {I.print} Ordonnance
-              </button>
-              <button className="cbtn cbtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => window.print()}>
-                {I.print} Imprimer fiche
-              </button>
-              <button className="cbtn cbtn-teal" disabled={saving} onClick={handleSave}>
-                {I.save} {saving ? "Enregistrement..." : "Enregistrer"}
-              </button>
+              {mainView === 'list' ? (
+                <button className="cbtn cbtn-teal" onClick={() => { setMainView('new'); setForm(EMPTY_CONS); setSection('patient'); }}>
+                  {I.plus} Nouvelle consultation
+                </button>
+              ) : (
+                <>
+                  <button className="cbtn cbtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => setMainView('list')}>
+                    📋 Voir la liste
+                  </button>
+                  <button className="cbtn cbtn-teal" disabled={saving} onClick={handleSave}>
+                    {I.save} {saving ? "Enregistrement..." : "Enregistrer"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs — masqués en vue liste */}
           <div style={isMobile ? {
-            display:'grid', gridTemplateColumns:'repeat(3,1fr)',
+            display: mainView === 'new' ? 'grid' : 'none',
+            gridTemplateColumns:'repeat(3,1fr)',
             gap:'4px', padding:'8px 10px', marginTop:'8px',
             background:'rgba(255,255,255,.07)', borderRadius:'10px 10px 0 0',
           } : {
-            display:'flex', gap:'2px', padding:'0', marginTop:'16px',
+            display: mainView === 'new' ? 'flex' : 'none',
+            gap:'2px', padding:'0', marginTop:'16px',
             overflowX:'auto', scrollbarWidth:'none',
           }}>
             {STEPS.map((s) => {
@@ -565,8 +573,64 @@ export default function Consultation() {
           </div>
         </div>
 
-        {/* ── CONTENT ── */}
-        <div style={{ padding: isMobile ? 14 : 24 }}>
+        {/* ══ VUE LISTE ══ */}
+        {mainView === 'list' && (
+          <div style={{ padding: isMobile ? 14 : 24 }}>
+            {reduxConsultations.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'60px 20px', color:'var(--cm)' }}>
+                <div style={{ fontSize:48, marginBottom:12 }}>🩺</div>
+                <div style={{ fontWeight:700, fontSize:16, color:'var(--cn)', marginBottom:8 }}>Aucune consultation</div>
+                <div style={{ fontSize:13, marginBottom:20 }}>Créez votre première consultation.</div>
+                <button className="cbtn cbtn-teal" onClick={() => { setMainView('new'); setForm(EMPTY_CONS); setSection('patient'); }}>
+                  {I.plus} Nouvelle consultation
+                </button>
+              </div>
+            ) : (
+              <div className="cons-card" style={{ overflow:'hidden' }}>
+                <div className="cons-card-hdr">
+                  <h3>📋 Historique des consultations ({reduxConsultations.length})</h3>
+                </div>
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                    <thead>
+                      <tr style={{ background:'#F8FAFD' }}>
+                        {['Date','Patient','Diagnostic','Médecin','Statut'].map(h => (
+                          <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:700, color:'var(--cm)', textTransform:'uppercase', letterSpacing:.5, borderBottom:'1.5px solid var(--cbr)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reduxConsultations.map((c, i) => (
+                        <tr key={c._id} style={{ borderBottom:'1px solid #F3F7FF', background: i%2===0?'#fff':'#FAFBFF' }}>
+                          <td style={{ padding:'11px 14px', fontSize:12, color:'var(--cm)' }}>
+                            {c.date_consultation ? new Date(c.date_consultation).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}
+                          </td>
+                          <td style={{ padding:'11px 14px', fontWeight:600, fontSize:13, color:'var(--cn)' }}>
+                            {c.patient ? `${c.patient.prenom || ''} ${c.patient.nom || ''}`.trim() : '—'}
+                          </td>
+                          <td style={{ padding:'11px 14px', fontSize:12, color:'var(--cn)', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {c.diagnostic || <span style={{ color:'var(--cm)' }}>—</span>}
+                          </td>
+                          <td style={{ padding:'11px 14px', fontSize:12, color:'var(--cm)' }}>
+                            {c.medecin ? `${c.medecin.prenom || ''} ${c.medecin.nom || ''}`.trim() : '—'}
+                          </td>
+                          <td style={{ padding:'11px 14px' }}>
+                            <span style={{ background: c.statut==='terminee'?'#ECFDF5':c.statut==='en_cours'?'#EFF6FF':'#F5F3FF', color: c.statut==='terminee'?'#059669':c.statut==='en_cours'?'#1B4F9E':'#7C3AED', border:`1px solid ${c.statut==='terminee'?'#A7F3D0':c.statut==='en_cours'?'#BFDBFE':'#DDD6FE'}`, borderRadius:99, padding:'3px 10px', fontSize:11, fontWeight:600 }}>
+                              {c.statut==='terminee'?'✅ Terminée':c.statut==='en_cours'?'🔄 En cours':'⏸ Suspendue'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── CONTENT FORMULAIRE ── */}
+        <div style={{ padding: isMobile ? 14 : 24, display: mainView === 'new' ? 'block' : 'none' }}>
 
           {/* Bandeau patient (si renseigné) */}
           {form.patient_nom && section !== "patient" && (
