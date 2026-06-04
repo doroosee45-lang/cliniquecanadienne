@@ -334,7 +334,8 @@ export default function Consultation() {
     return () => window.removeEventListener('resize', fn);
   }, []);
 
-  const [mainView, setMainView] = useState("list"); // 'list' | 'new'
+  const [mainView, setMainView] = useState("list"); // 'list' | 'new' | 'detail'
+  const [selectedConsult, setSelectedConsult] = useState(null);
   const [section, setSection] = useState("patient");
   const [form, setForm] = useState(EMPTY_CONS);
   const [saving, setSaving] = useState(false);
@@ -511,11 +512,17 @@ export default function Consultation() {
                   {I.check} Consultation enregistrée
                 </div>
               )}
-              {mainView === 'list' ? (
+              {mainView === 'list' && (
                 <button className="cbtn cbtn-teal" onClick={() => { setMainView('new'); setForm(EMPTY_CONS); setSection('patient'); }}>
                   {I.plus} Nouvelle consultation
                 </button>
-              ) : (
+              )}
+              {mainView === 'detail' && (
+                <button className="cbtn cbtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => setMainView('list')}>
+                  ← Retour à la liste
+                </button>
+              )}
+              {mainView === 'new' && (
                 <>
                   <button className="cbtn cbtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => setMainView('list')}>
                     📋 Voir la liste
@@ -594,7 +601,7 @@ export default function Consultation() {
                   <table style={{ width:'100%', borderCollapse:'collapse' }}>
                     <thead>
                       <tr style={{ background:'#F8FAFD' }}>
-                        {['Date','Patient','Diagnostic','Médecin','Statut'].map(h => (
+                        {['Date','Patient','Diagnostic','Médecin','Statut',''].map(h => (
                           <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:700, color:'var(--cm)', textTransform:'uppercase', letterSpacing:.5, borderBottom:'1.5px solid var(--cbr)' }}>{h}</th>
                         ))}
                       </tr>
@@ -619,6 +626,15 @@ export default function Consultation() {
                               {c.statut==='terminee'?'✅ Terminée':c.statut==='en_cours'?'🔄 En cours':'⏸ Suspendue'}
                             </span>
                           </td>
+                          <td style={{ padding:'11px 14px' }}>
+                            <button
+                              className="cbtn cbtn-ghost cbtn-sm"
+                              style={{ color:'var(--cb)', borderColor:'#BFDBFE' }}
+                              onClick={() => { setSelectedConsult(c); setMainView('detail'); }}
+                            >
+                              👁 Voir
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -626,6 +642,111 @@ export default function Consultation() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ══ VUE DETAIL ══ */}
+        {mainView === 'detail' && selectedConsult && (
+          <div style={{ padding: isMobile ? 14 : 24 }}>
+            {/* En-tête patient */}
+            <div style={{ background:'linear-gradient(135deg,#0B1E3B,#132744)', borderRadius:16, padding:'20px 24px', marginBottom:20, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
+              <div style={{ fontSize:36 }}>{selectedConsult.patient?.sexe === 'F' ? '👩' : '👨'}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:18, fontWeight:700, color:'#fff' }}>
+                  {selectedConsult.patient ? `${selectedConsult.patient.prenom} ${selectedConsult.patient.nom}` : '—'}
+                </div>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,.6)', marginTop:4, display:'flex', gap:16, flexWrap:'wrap' }}>
+                  <span>📅 {selectedConsult.date_consultation ? new Date(selectedConsult.date_consultation).toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</span>
+                  <span>👨‍⚕️ {selectedConsult.medecin ? `Dr. ${selectedConsult.medecin.prenom} ${selectedConsult.medecin.nom}` : '—'}</span>
+                </div>
+              </div>
+              <span style={{ background: selectedConsult.statut==='terminee'?'rgba(5,150,105,.3)':'rgba(27,79,158,.3)', color: selectedConsult.statut==='terminee'?'#6EE7B7':'#93C5FD', border:`1px solid ${selectedConsult.statut==='terminee'?'rgba(5,150,105,.5)':'rgba(27,79,158,.5)'}`, borderRadius:99, padding:'6px 14px', fontSize:12, fontWeight:700 }}>
+                {selectedConsult.statut==='terminee'?'✅ Terminée':'🔄 En cours'}
+              </span>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns: isMobile?'1fr':'1fr 1fr', gap:16 }}>
+
+              {/* Signes vitaux */}
+              {selectedConsult.signes_vitaux && (
+                <div className="cons-card">
+                  <div className="cons-card-hdr"><h3>💓 Signes vitaux</h3></div>
+                  <div style={{ padding:16, display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                    {[
+                      { lbl:'Tension',      val: selectedConsult.signes_vitaux.tension_systolique && selectedConsult.signes_vitaux.tension_diastolique ? `${selectedConsult.signes_vitaux.tension_systolique}/${selectedConsult.signes_vitaux.tension_diastolique} mmHg` : null },
+                      { lbl:'Pouls',        val: selectedConsult.signes_vitaux.pouls       ? `${selectedConsult.signes_vitaux.pouls} bpm` : null },
+                      { lbl:'Température',  val: selectedConsult.signes_vitaux.temperature  ? `${selectedConsult.signes_vitaux.temperature} °C` : null },
+                      { lbl:'SpO₂',         val: selectedConsult.signes_vitaux.spo2         ? `${selectedConsult.signes_vitaux.spo2} %` : null },
+                      { lbl:'Glycémie',     val: selectedConsult.signes_vitaux.glycemie     ? `${selectedConsult.signes_vitaux.glycemie} mmol/L` : null },
+                      { lbl:'Poids / Taille', val: selectedConsult.signes_vitaux.poids && selectedConsult.signes_vitaux.taille ? `${selectedConsult.signes_vitaux.poids} kg / ${selectedConsult.signes_vitaux.taille} cm` : null },
+                    ].filter(v => v.val).map(v => (
+                      <div key={v.lbl} style={{ background:'#F8FAFD', borderRadius:10, padding:'10px 12px', border:'1.5px solid var(--cbr)' }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:'var(--cm)', textTransform:'uppercase', letterSpacing:.4, marginBottom:4 }}>{v.lbl}</div>
+                        <div style={{ fontSize:15, fontWeight:700, color:'var(--cn)' }}>{v.val}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Diagnostic */}
+              <div className="cons-card">
+                <div className="cons-card-hdr"><h3>🔍 Diagnostic</h3></div>
+                <div style={{ padding:16, display:'flex', flexDirection:'column', gap:12 }}>
+                  {selectedConsult.anamnese && (
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:700, color:'var(--cm)', textTransform:'uppercase', letterSpacing:.4, marginBottom:6 }}>Motif / Anamnèse</div>
+                      <p style={{ fontSize:13, color:'var(--cn)', lineHeight:1.6, margin:0 }}>{selectedConsult.anamnese}</p>
+                    </div>
+                  )}
+                  {selectedConsult.examen_clinique && (
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:700, color:'var(--cm)', textTransform:'uppercase', letterSpacing:.4, marginBottom:6 }}>Examen clinique</div>
+                      <p style={{ fontSize:13, color:'var(--cn)', lineHeight:1.6, margin:0 }}>{selectedConsult.examen_clinique}</p>
+                    </div>
+                  )}
+                  {selectedConsult.diagnostic && (
+                    <div style={{ background:'#EFF6FF', border:'1.5px solid #BFDBFE', borderRadius:10, padding:'10px 14px' }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:'#1B4F9E', textTransform:'uppercase', letterSpacing:.4, marginBottom:4 }}>Diagnostic</div>
+                      <div style={{ fontSize:14, fontWeight:600, color:'var(--cn)' }}>{selectedConsult.diagnostic}</div>
+                      {selectedConsult.diagnostic_code && <div style={{ fontSize:11, color:'var(--cm)', marginTop:2 }}>Code : {selectedConsult.diagnostic_code}</div>}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Prescriptions */}
+              {selectedConsult.prescriptions?.length > 0 && (
+                <div className="cons-card">
+                  <div className="cons-card-hdr"><h3>💊 Prescriptions ({selectedConsult.prescriptions.length})</h3></div>
+                  <div style={{ padding:16, display:'flex', flexDirection:'column', gap:10 }}>
+                    {selectedConsult.prescriptions.map((rx, i) => (
+                      <div key={i} style={{ background:'#FFF7ED', border:'1.5px solid #FED7AA', borderRadius:10, padding:'10px 14px' }}>
+                        <div style={{ fontWeight:700, fontSize:13, color:'var(--cn)', marginBottom:4 }}>{rx.medicament_nom}</div>
+                        <div style={{ fontSize:12, color:'var(--cm)' }}>{rx.posologie}{rx.duree ? ` · ${rx.duree}` : ''}</div>
+                        {rx.notes && <div style={{ fontSize:11, color:'#D97706', marginTop:4 }}>ℹ {rx.notes}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recommandations */}
+              {selectedConsult.recommandations && (
+                <div className="cons-card">
+                  <div className="cons-card-hdr"><h3>📌 Recommandations</h3></div>
+                  <div style={{ padding:16 }}>
+                    <p style={{ fontSize:13, color:'var(--cn)', lineHeight:1.7, margin:0 }}>{selectedConsult.recommandations}</p>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            <div style={{ marginTop:20, display:'flex', gap:10, flexWrap:'wrap' }}>
+              <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => window.print()}>🖨️ Imprimer</button>
+              <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => setMainView('list')}>← Retour à la liste</button>
+            </div>
           </div>
         )}
 
