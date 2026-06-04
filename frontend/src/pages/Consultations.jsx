@@ -301,11 +301,7 @@ const EMPTY_CONS = {
 };
 
 // ─── DEMO PATIENTS ────────────────────────────────────────────
-const DEMO_PATIENTS = [
-  { id: "p1", nom: "Dupont", prenom: "Jean", sexe: "homme", ddn: "1975-04-12", tel: "+242 06 123 4567", adresse: "Quartier Makélékélé, Brazzaville", groupe_sanguin: "O+", antecedents: "HTA, Diabète type 2", allergies: "Pénicilline" },
-  { id: "p2", nom: "Paul", prenom: "Marie", sexe: "femme", ddn: "1988-11-03", tel: "+242 05 987 6543", adresse: "Poto-Poto, Brazzaville", groupe_sanguin: "A+", antecedents: "", allergies: "" },
-  { id: "p3", nom: "Nguema", prenom: "Paul", sexe: "homme", ddn: "1962-07-22", tel: "+242 06 555 0011", adresse: "Moungali, Brazzaville", groupe_sanguin: "B+", antecedents: "BPCO, Insuffisance rénale", allergies: "Aspirine" },
-];
+const DEMO_PATIENTS = [];
 
 const ageCalc = (dob) => {
   if (!dob) return null;

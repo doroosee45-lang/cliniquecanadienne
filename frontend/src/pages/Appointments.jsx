@@ -274,24 +274,9 @@ const MOTIF_CFG = {
 };
 
 // ─── Demo data ────────────────────────────────────────────────
-const DEMO_RDVS = [
-  { _id:"1", reference:"RDV-001", patient_nom:"Jean Dupont",    patient_tel:"+242 06 123 4567", date:"2026-06-01T09:00:00", duree:30, medecin_nom:"Dr. Martin Leblanc", service:"Chirurgie",    motif:"consultation",    statut:"confirme",  salle:"Salle 1", notes:"Suivi hernie inguinale" },
-  { _id:"2", reference:"RDV-002", patient_nom:"Marie Paul",     patient_tel:"+242 05 987 6543", date:"2026-06-01T10:30:00", duree:45, medecin_nom:"Dr. Sophie Pierre",  service:"Gynécologie",  motif:"controle",        statut:"arrive",    salle:"Salle 3", notes:"" },
-  { _id:"3", reference:"RDV-003", patient_nom:"Paul Nguema",    patient_tel:"+242 06 555 0011", date:"2026-06-01T11:00:00", duree:60, medecin_nom:"Dr. Martin Leblanc", service:"Urgences",     motif:"chirurgie",       statut:"en_consultation", salle:"Bloc 1", notes:"Urgence absolue" },
-  { _id:"4", reference:"RDV-004", patient_nom:"Fatou Bongo",    patient_tel:"+242 05 222 3344", date:"2026-06-01T14:00:00", duree:20, medecin_nom:"Dr. Claire Mba",     service:"Pédiatrie",    motif:"vaccination",     statut:"attente",   salle:"Salle 2", notes:"" },
-  { _id:"5", reference:"RDV-005", patient_nom:"André Mboula",   patient_tel:"+242 06 777 8899", date:"2026-06-01T15:30:00", duree:30, medecin_nom:"Dr. Sophie Pierre",  service:"Cardiologie",  motif:"echographie",     statut:"attente",   salle:"Salle Echo", notes:"Contrôle post-op" },
-  { _id:"6", reference:"RDV-006", patient_nom:"Brigitte Obam",  patient_tel:"+242 06 111 2233", date:"2026-06-02T09:00:00", duree:30, medecin_nom:"Dr. Claire Mba",     service:"Médecine gén.","motif":"controle",       statut:"confirme",  salle:"Salle 1", notes:"" },
-  { _id:"7", reference:"RDV-007", patient_nom:"Clément Ondo",   patient_tel:"+242 05 444 5566", date:"2026-06-02T11:00:00", duree:45, medecin_nom:"Dr. Martin Leblanc", service:"Chirurgie",    motif:"consultation",    statut:"attente",   salle:"Salle 2", notes:"" },
-  { _id:"8", reference:"RDV-008", patient_nom:"Sylvie Ndong",   patient_tel:"+242 06 333 7788", date:"2026-06-03T10:00:00", duree:30, medecin_nom:"Dr. Sophie Pierre",  service:"Gynécologie",  motif:"echographie",     statut:"confirme",  salle:"Salle Echo", notes:"" },
-  { _id:"9", reference:"RDV-009", patient_nom:"Marc Ella",      patient_tel:"+242 05 888 9900", date:"2026-05-31T09:30:00", duree:20, medecin_nom:"Dr. Claire Mba",     service:"Pédiatrie",    motif:"vaccination",     statut:"termine",   salle:"Salle 2", notes:"" },
-  { _id:"10",reference:"RDV-010", patient_nom:"Rose Minko",     patient_tel:"+242 06 999 1122", date:"2026-05-30T16:00:00", duree:30, medecin_nom:"Dr. Martin Leblanc", service:"Chirurgie",    motif:"controle",        statut:"annule",    salle:"Salle 1", notes:"Annulé par patient" },
-];
+const DEMO_RDVS = [];
 
-const DEMO_MEDECINS = [
-  { _id:"m1", nom:"Dr. Martin Leblanc", specialite:"Chirurgie Générale",  color:"#1B4F9E" },
-  { _id:"m2", nom:"Dr. Sophie Pierre",  specialite:"Gynécologie",         color:"#7C3AED" },
-  { _id:"m3", nom:"Dr. Claire Mba",     specialite:"Pédiatrie / Méd. gén",color:"#0EA5A0" },
-];
+const DEMO_MEDECINS = [];
 
 const EMPTY_RDV = {
   patient_nom:"", patient_tel:"", patient_email:"",

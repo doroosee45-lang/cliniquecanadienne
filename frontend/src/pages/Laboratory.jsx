@@ -390,104 +390,10 @@ const REF_VALUES = {
 };
 
 // ─── DEMO DATA ───────────────────────────────────────────────
-const DEMO_ANALYSES = [
-  {
-    _id: "1", numero: "LAB-2025-0001",
-    patient_nom: "Jean Dupont", patient_dossier: "PAT-001",
-    date_naissance: "1975-04-12", sexe: "homme", telephone: "+242 06 123 4567",
-    service_demandeur: "Chirurgie", medecin_prescripteur: "Dr. Martin Leblanc",
-    date_demande: "2025-05-31T08:30:00", date_prelevement: "2025-05-31T09:00:00",
-    date_resultat: "2025-05-31T14:00:00",
-    statut: "valide",
-    type_echantillon: "sang", preleveur: "Inf. Sophie",
-    examens_demandes: ["nfs", "glycemie", "hb"],
-    resultats: [
-      { exam_id: "nfs",      valeur: "G:4500 L:8000 Plt:220000", ref: "Voir détails",      unite: "",     statut_res: "normal" },
-      { exam_id: "glycemie", valeur: "1.25",                       ref: "0.70 – 1.10",      unite: "g/L",  statut_res: "anormal" },
-      { exam_id: "hb",       valeur: "13.5",                       ref: "12.0 – 17.5",      unite: "g/dL", statut_res: "normal" },
-    ],
-    commentaire_biologiste: "Hyperglycémie modérée — Glycémie de contrôle recommandée",
-    technicien: "Tech. Aline", biologiste: "Dr. Pierre Nkomo",
-    date_validation: "2025-05-31T16:30:00",
-    paye: true,
-  },
-  {
-    _id: "2", numero: "LAB-2025-0002",
-    patient_nom: "Marie Paul", patient_dossier: "PAT-002",
-    date_naissance: "1988-11-03", sexe: "femme", telephone: "+242 05 987 6543",
-    service_demandeur: "Consultation", medecin_prescripteur: "Dr. Sophie Pierre",
-    date_demande: "2025-05-31T10:00:00", date_prelevement: "2025-05-31T10:30:00",
-    date_resultat: null,
-    statut: "en_cours",
-    type_echantillon: "sang", preleveur: "Inf. Marc",
-    examens_demandes: ["glycemie", "cholesterol", "triglycerides"],
-    resultats: [],
-    commentaire_biologiste: "",
-    technicien: "Tech. Paul", biologiste: "",
-    date_validation: null,
-    paye: false,
-  },
-  {
-    _id: "3", numero: "LAB-2025-0003",
-    patient_nom: "Paul Nguema", patient_dossier: "PAT-003",
-    date_naissance: "1962-07-22", sexe: "homme", telephone: "+242 06 555 0011",
-    service_demandeur: "Urgences", medecin_prescripteur: "Dr. Martin Leblanc",
-    date_demande: "2025-05-31T06:00:00", date_prelevement: "2025-05-31T06:15:00",
-    date_resultat: "2025-05-31T08:00:00",
-    statut: "termine",
-    type_echantillon: "sang", preleveur: "Inf. Sophie",
-    examens_demandes: ["nfs", "creatinine", "uree", "glycemie"],
-    resultats: [
-      { exam_id: "nfs",        valeur: "G:2800 L:14000 Plt:180000", ref: "Voir détails", unite: "",     statut_res: "anormal" },
-      { exam_id: "creatinine", valeur: "21",                          ref: "7 – 13",       unite: "mg/L", statut_res: "critique" },
-      { exam_id: "uree",       valeur: "0.85",                        ref: "0.15 – 0.45",  unite: "g/L",  statut_res: "critique" },
-      { exam_id: "glycemie",   valeur: "0.95",                        ref: "0.70 – 1.10",  unite: "g/L",  statut_res: "normal" },
-    ],
-    commentaire_biologiste: "⚡ VALEURS CRITIQUES — Insuffisance rénale probable — Contacter le médecin IMMÉDIATEMENT",
-    technicien: "Tech. Aline", biologiste: "Dr. Pierre Nkomo",
-    date_validation: null,
-    paye: true,
-  },
-  {
-    _id: "4", numero: "LAB-2025-0004",
-    patient_nom: "Fatou Bongo", patient_dossier: "PAT-004",
-    date_naissance: "1995-02-14", sexe: "femme", telephone: "+242 05 222 3344",
-    service_demandeur: "Consultation", medecin_prescripteur: "Dr. Sophie Pierre",
-    date_demande: "2025-06-01T08:00:00", date_prelevement: null,
-    date_resultat: null,
-    statut: "en_attente",
-    type_echantillon: "", preleveur: "",
-    examens_demandes: ["test_palu", "nfs"],
-    resultats: [],
-    commentaire_biologiste: "",
-    technicien: "", biologiste: "",
-    date_validation: null,
-    paye: false,
-  },
-  {
-    _id: "5", numero: "LAB-2025-0005",
-    patient_nom: "André Mboula", patient_dossier: "PAT-005",
-    date_naissance: "1950-09-18", sexe: "homme", telephone: "+242 06 777 8899",
-    service_demandeur: "Hospitalisation", medecin_prescripteur: "Dr. Martin Leblanc",
-    date_demande: "2025-05-30T14:00:00", date_prelevement: "2025-05-30T14:30:00",
-    date_resultat: "2025-05-30T18:00:00",
-    statut: "valide",
-    type_echantillon: "sang", preleveur: "Inf. Marc",
-    examens_demandes: ["vih", "hep_b", "hep_c"],
-    resultats: [
-      { exam_id: "vih",   valeur: "Non réactif", ref: "Non réactif", unite: "", statut_res: "normal" },
-      { exam_id: "hep_b", valeur: "Non réactif", ref: "Non réactif", unite: "", statut_res: "normal" },
-      { exam_id: "hep_c", valeur: "Non réactif", ref: "Non réactif", unite: "", statut_res: "normal" },
-    ],
-    commentaire_biologiste: "Sérologies négatives",
-    technicien: "Tech. Paul", biologiste: "Dr. Pierre Nkomo",
-    date_validation: "2025-05-30T19:00:00",
-    paye: true,
-  },
-];
+const DEMO_ANALYSES = [];
 
-const DEMO_MOIS = ["Jan 25","Fév 25","Mar 25","Avr 25","Mai 25","Jun 25","Jul 25","Aoû 25","Sep 25","Oct 25","Nov 25","Déc 25"];
-const DEMO_VOLUMES = [45, 62, 38, 74, 89, 67, 55, 0, 12, 48, 71, 83];
+const DEMO_MOIS = [];
+const DEMO_VOLUMES = [];
 
 const EMPTY_FORM = {
   patient_id: "", patient_nom: "", patient_dossier: "", date_naissance: "", sexe: "", telephone: "",

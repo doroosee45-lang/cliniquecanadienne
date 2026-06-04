@@ -247,38 +247,11 @@ const ACTION_CFG = {
 const now = new Date();
 const ago = (min) => new Date(now - min * 60000).toISOString();
 
-const DEMO_EVENTS = [
-  { _id: "e1", date: ago(2), utilisateur: "Admin Système", email: "admin@clinique.fr", role: "Administrateur", module: "parametres", action: "changement_perms", description: "Attribution du rôle Médecin à Dr. Sophie Pierre", ip: "192.168.1.10", device: "Chrome/Windows", risque: "eleve", ancienne_val: "Infirmier", nouvelle_val: "Médecin", resultat: "Succès" },
-  { _id: "e2", date: ago(5), utilisateur: "Dr. Martin Leblanc", email: "m.leblanc@clinique.fr", role: "Médecin", module: "patients", action: "modification", description: "Dossier patient PAT-001 mis à jour — diagnostic modifié", ip: "192.168.1.14", device: "Firefox/macOS", risque: "moyen", ancienne_val: "Hernie inguinale G", nouvelle_val: "Hernie inguinale D", resultat: "Succès" },
-  { _id: "e3", date: ago(8), utilisateur: "Inf. Anne Martin", email: "a.martin@clinique.fr", role: "Infirmier", module: "hospitalisation", action: "modification", description: "Constantes vitales mises à jour — Patient Jean Dupont", ip: "192.168.1.22", device: "Chrome/Android", risque: "faible", ancienne_val: null, nouvelle_val: "T:37.8, TA:130/85", resultat: "Succès" },
-  { _id: "e4", date: ago(12), utilisateur: "Admin Système", email: "admin@clinique.fr", role: "Administrateur", module: "authentification", action: "echec_connexion", description: "Tentative de connexion échouée — 3 essais consécutifs", ip: "88.12.45.220", device: "Chrome/Windows", risque: "critique", ancienne_val: null, nouvelle_val: null, resultat: "Échec — Compte temporairement verrouillé" },
-  { _id: "e5", date: ago(15), utilisateur: "Dr. Sophie Pierre", email: "s.pierre@clinique.fr", role: "Médecin", module: "consultations", action: "creation", description: "Nouvelle consultation créée — Patient Marie Paul", ip: "192.168.1.30", device: "Safari/iPad", risque: "faible", ancienne_val: null, nouvelle_val: "CONS-2026-0042", resultat: "Succès" },
-  { _id: "e6", date: ago(22), utilisateur: "Caissier Paul Ngom", email: "p.ngom@clinique.fr", role: "Caissier", module: "facturation", action: "annulation", description: "Facture FACT-2026-0018 annulée — motif: doublon", ip: "192.168.1.50", device: "Chrome/Windows", risque: "eleve", ancienne_val: "Payée", nouvelle_val: "Annulée", resultat: "Succès" },
-  { _id: "e7", date: ago(35), utilisateur: "Inf. Paul Ngom", email: "pngom@clinique.fr", role: "Infirmier", module: "pharmacie", action: "sortie_stock", description: "Sortie stock — Paracétamol 1g × 20 comprimés", ip: "192.168.1.25", device: "Chrome/Windows", risque: "faible", ancienne_val: "Stock:200", nouvelle_val: "Stock:180", resultat: "Succès" },
-  { _id: "e8", date: ago(42), utilisateur: "Dr. Martin Leblanc", email: "m.leblanc@clinique.fr", role: "Médecin", module: "laboratoire", action: "validation", description: "Résultats NFS validés — Patient Paul Nguema", ip: "192.168.1.14", device: "Firefox/macOS", risque: "faible", ancienne_val: null, nouvelle_val: "NFS validée", resultat: "Succès" },
-  { _id: "e9", date: ago(55), utilisateur: "Admin Système", email: "admin@clinique.fr", role: "Administrateur", module: "parametres", action: "creation", description: "Nouvel utilisateur créé — Inf. Kader Traoré", ip: "192.168.1.10", device: "Chrome/Windows", risque: "moyen", ancienne_val: null, nouvelle_val: "inf.traore@clinique.fr", resultat: "Succès" },
-  { _id: "e10", date: ago(68), utilisateur: "Dr. Sophie Pierre", email: "s.pierre@clinique.fr", role: "Médecin", module: "chirurgie", action: "modification", description: "Compte rendu opératoire mis à jour — CHIR-2025-0001", ip: "192.168.1.30", device: "Safari/iPad", risque: "moyen", ancienne_val: "Brouillon", nouvelle_val: "Finalisé", resultat: "Succès" },
-  { _id: "e11", date: ago(90), utilisateur: "Inconnu", email: "?", role: "Inconnu", module: "authentification", action: "acces_refuse", description: "Tentative d'accès non autorisée à la section Paramètres", ip: "105.67.234.11", device: "Chrome/Linux", risque: "critique", ancienne_val: null, nouvelle_val: null, resultat: "Accès refusé" },
-  { _id: "e12", date: ago(110), utilisateur: "Admin Système", email: "admin@clinique.fr", role: "Administrateur", module: "patients", action: "suppression", description: "Dossier patient test PAT-000 supprimé", ip: "192.168.1.10", device: "Chrome/Windows", risque: "eleve", ancienne_val: "PAT-000 (test)", nouvelle_val: null, resultat: "Succès" },
-  { _id: "e13", date: ago(135), utilisateur: "Dr. Martin Leblanc", email: "m.leblanc@clinique.fr", role: "Médecin", module: "imagerie", action: "impression", description: "Rapport radio thorax imprimé — Patient André Mboula", ip: "192.168.1.14", device: "Firefox/macOS", risque: "faible", ancienne_val: null, nouvelle_val: null, resultat: "Succès" },
-  { _id: "e14", date: ago(150), utilisateur: "Inf. Anne Martin", email: "a.martin@clinique.fr", role: "Infirmier", module: "authentification", action: "connexion", description: "Connexion réussie depuis poste infirmerie", ip: "192.168.1.22", device: "Chrome/Android", risque: "faible", ancienne_val: null, nouvelle_val: null, resultat: "Succès" },
-  { _id: "e15", date: ago(165), utilisateur: "Caissier Paul Ngom", email: "p.ngom@clinique.fr", role: "Caissier", module: "facturation", action: "creation", description: "Facture FACT-2026-0019 créée — 185 000 CFA", ip: "192.168.1.50", device: "Chrome/Windows", risque: "faible", ancienne_val: null, nouvelle_val: "FACT-2026-0019", resultat: "Succès" },
-];
+const DEMO_EVENTS = [];
 
-const DEMO_CONNEXIONS = [
-  { _id: "c1", utilisateur: "Dr. Martin Leblanc", email: "m.leblanc@clinique.fr", role: "Médecin", heure_connexion: ago(8), heure_deconnexion: ago(0), ip: "192.168.1.14", device: "Firefox/macOS", statut: "actif", localisation: "Dakar, Sénégal" },
-  { _id: "c2", utilisateur: "Inf. Anne Martin", email: "a.martin@clinique.fr", role: "Infirmier", heure_connexion: ago(150), heure_deconnexion: ago(30), ip: "192.168.1.22", device: "Chrome/Android", statut: "deconnecte", localisation: "Dakar, Sénégal" },
-  { _id: "c3", utilisateur: "Admin Système", email: "admin@clinique.fr", role: "Administrateur", heure_connexion: ago(3), heure_deconnexion: null, ip: "192.168.1.10", device: "Chrome/Windows", statut: "actif", localisation: "Dakar, Sénégal" },
-  { _id: "c4", utilisateur: "Dr. Sophie Pierre", email: "s.pierre@clinique.fr", role: "Médecin", heure_connexion: ago(200), heure_deconnexion: ago(100), ip: "192.168.1.30", device: "Safari/iPad", statut: "deconnecte", localisation: "Dakar, Sénégal" },
-  { _id: "c5", utilisateur: "Caissier Paul Ngom", email: "p.ngom@clinique.fr", role: "Caissier", heure_connexion: ago(60), heure_deconnexion: null, ip: "192.168.1.50", device: "Chrome/Windows", statut: "actif", localisation: "Dakar, Sénégal" },
-];
+const DEMO_CONNEXIONS = [];
 
-const DEMO_SUSPECTS = [
-  { _id: "s1", type: "Multiples échecs de connexion", utilisateur: "Admin Système (IP externe: 88.12.45.220)", description: "3 tentatives de connexion échouées en 5 minutes depuis une adresse IP externe inconnue", severite: "critique", date: ago(12), statut: "ouvert" },
-  { _id: "s2", type: "Accès non autorisé détecté", utilisateur: "Inconnu (IP: 105.67.234.11)", description: "Tentative d'accès à la section Paramètres sans les permissions requises", severite: "critique", date: ago(90), statut: "ouvert" },
-  { _id: "s3", type: "Annulation de facture suspecte", utilisateur: "Caissier Paul Ngom", description: "Annulation de facture payée de 185 000 CFA sans validation hiérarchique", severite: "eleve", date: ago(22), statut: "en_enquete" },
-  { _id: "s4", type: "Modification de permissions", utilisateur: "Admin Système", description: "Élévation de privilèges accordée hors des heures ouvrables (00:32)", severite: "eleve", date: ago(2), statut: "ouvert" },
-];
+const DEMO_SUSPECTS = [];
 
 // ─── SVG Icons ────────────────────────────────────────────────
 const I = {

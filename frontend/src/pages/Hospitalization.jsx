@@ -286,58 +286,19 @@ const PROVENANCE = {
 };
 
 // ─── Demo Data ────────────────────────────────────────────────
-const DEMO_HOSPS = [
-  { _id:"h1", numero:"HOSP-2026-0001", patient_nom:"Jean Dupont", patient_prenom:"Jean", patient_dob:"1975-04-12", patient_sexe:"homme", patient_gs:"O+", patient_tel:"77 123 45 67", patient_adresse:"12 Rue des Acacia, Dakar", patient_dossier:"PAT-001", contact_urgence:"Marie Dupont", tel_urgence:"77 987 65 43", statut:"hospitalise", provenance:"urgences", service:"Chirurgie générale", batiment:"Bâtiment A", chambre:"A12", lit:"01", type_chambre:"standard", medecin:"Dr. Martin Leblanc", diagnostic_entree:"Appendicite aiguë post-opératoire", motif:"Surveillance post-appendicectomie", date_admission:"2026-05-30T10:00", date_sortie:null },
-  { _id:"h2", numero:"HOSP-2026-0002", patient_nom:"Marie Paul", patient_prenom:"Marie", patient_dob:"1988-11-03", patient_sexe:"femme", patient_gs:"A+", patient_tel:"77 234 56 78", patient_adresse:"45 Av. Léopold Sédar Senghor, Thiès", patient_dossier:"PAT-002", contact_urgence:"Paul Martin", tel_urgence:"77 876 54 32", statut:"sorti", provenance:"consultation", service:"Gynécologie", batiment:"Bâtiment B", chambre:"B05", lit:"02", type_chambre:"privee", medecin:"Dr. Sophie Pierre", diagnostic_entree:"Fibrome utérin", motif:"Myomectomie programmée", date_admission:"2026-05-28T08:30", date_sortie:"2026-05-31T14:00" },
-  { _id:"h3", numero:"HOSP-2026-0003", patient_nom:"Paul Nguema", patient_prenom:"Paul", patient_dob:"1962-07-22", patient_sexe:"homme", patient_gs:"B+", patient_tel:"77 345 67 89", patient_adresse:"8 Rue Kléber, Saint-Louis", patient_dossier:"PAT-003", contact_urgence:"Anne Nguema", tel_urgence:"77 765 43 21", statut:"observation", provenance:"urgences", service:"Médecine interne", batiment:"Bâtiment A", chambre:"A08", lit:"03", type_chambre:"standard", medecin:"Dr. Camille Aubert", diagnostic_entree:"Occlusion intestinale aiguë", motif:"Post-laparotomie — surveillance", date_admission:"2026-05-31T14:00", date_sortie:null },
-  { _id:"h4", numero:"HOSP-2026-0004", patient_nom:"Fatou Bongo", patient_prenom:"Fatou", patient_dob:"1995-02-14", patient_sexe:"femme", patient_gs:"AB+", patient_tel:"77 456 78 90", patient_adresse:"22 Cité Keur Gorgui, Dakar", patient_dossier:"PAT-004", contact_urgence:"Ibou Bongo", tel_urgence:"77 654 32 10", statut:"hospitalise", provenance:"bloc", service:"Chirurgie générale", batiment:"Bâtiment C", chambre:"C03", lit:"01", type_chambre:"vip", medecin:"Dr. Sophie Pierre", diagnostic_entree:"Appendicite aiguë non perforée", motif:"Post-appendicectomie cœlioscopique", date_admission:"2026-05-31T18:00", date_sortie:null },
-  { _id:"h5", numero:"HOSP-2026-0005", patient_nom:"Ibrahim Diallo", patient_prenom:"Ibrahim", patient_dob:"1958-09-05", patient_sexe:"homme", patient_gs:"O-", patient_tel:"77 567 89 01", patient_adresse:"15 Rue Moussé Diop, Ziguinchor", patient_dossier:"PAT-005", contact_urgence:"Kadiatou Diallo", tel_urgence:"77 543 21 09", statut:"attente", provenance:"consultation", service:"Cardiologie", batiment:"Bâtiment B", chambre:"B12", lit:"01", type_chambre:"privee", medecin:"Dr. Martin Leblanc", diagnostic_entree:"Insuffisance cardiaque décompensée", motif:"Bilan cardiaque complet + traitement", date_admission:"2026-06-01T09:00", date_sortie:null },
-];
+const DEMO_HOSPS = [];
 
-const DEMO_LITS = [
-  { id:"A-A11-01", batiment:"A", chambre:"A11", lit:"01", type:"standard", statut:"libre" },
-  { id:"A-A11-02", batiment:"A", chambre:"A11", lit:"02", type:"standard", statut:"libre" },
-  { id:"A-A12-01", batiment:"A", chambre:"A12", lit:"01", type:"standard", statut:"occupe", patient:"Jean Dupont" },
-  { id:"A-A12-02", batiment:"A", chambre:"A12", lit:"02", type:"standard", statut:"nettoyage" },
-  { id:"A-A08-03", batiment:"A", chambre:"A08", lit:"03", type:"standard", statut:"occupe", patient:"Paul Nguema" },
-  { id:"B-B05-02", batiment:"B", chambre:"B05", lit:"02", type:"privee", statut:"libre" },
-  { id:"B-B12-01", batiment:"B", chambre:"B12", lit:"01", type:"privee", statut:"reserve" },
-  { id:"C-C03-01", batiment:"C", chambre:"C03", lit:"01", type:"vip", statut:"occupe", patient:"Fatou Bongo" },
-  { id:"C-C04-01", batiment:"C", chambre:"C04", lit:"01", type:"vip", statut:"libre" },
-];
+const DEMO_LITS = [];
 
-const DEMO_CONSTANTES = [
-  { id:"c1", date:"2026-05-31T08:00", temperature:"37.4", tension:"125/80", fc:"76", spo2:"98", poids:"78", note:"État stable, transit repris" },
-  { id:"c2", date:"2026-05-31T14:00", temperature:"37.8", tension:"130/85", fc:"82", spo2:"97", poids:"78", note:"Légère fièvre, surveillance maintenue" },
-  { id:"c3", date:"2026-06-01T08:00", temperature:"37.2", tension:"120/78", fc:"72", spo2:"99", poids:"77.5", note:"Apyrétique, douleur EVA 2/10" },
-];
+const DEMO_CONSTANTES = [];
 
-const DEMO_TRAITEMENTS = [
-  { id:"t1", medicament:"Paracétamol 1g", dose:"1 comprimé", heure:"08:00", voie:"Orale", personnel:"Inf. Anne Martin", statut:"administre" },
-  { id:"t2", medicament:"Métronidazole 500mg", dose:"1 sachet IV", heure:"12:00", voie:"IV", personnel:"Inf. Paul Ngom", statut:"administre" },
-  { id:"t3", medicament:"Céfazoline 1g", dose:"1 flacon IV", heure:"20:00", voie:"IV", personnel:"Inf. Anne Martin", statut:"planifie" },
-  { id:"t4", medicament:"Héparine LMWH", dose:"0.4 ml", heure:"21:00", voie:"SC", personnel:"Inf. Paul Ngom", statut:"planifie" },
-];
+const DEMO_TRAITEMENTS = [];
 
-const DEMO_PRESCRIPTIONS = [
-  { id:"p1", type:"medicament", designation:"Amoxicilline 1g", posologie:"3x/jour pendant 7 jours", medecin:"Dr. Martin Leblanc", date:"2026-05-31" },
-  { id:"p2", type:"perfusion",  designation:"Sérum salé 0.9% 500ml", posologie:"2 poches/jour", medecin:"Dr. Martin Leblanc", date:"2026-05-31" },
-  { id:"p3", type:"soin",       designation:"Pansement de la cicatrice", posologie:"Matin et soir", medecin:"Dr. Martin Leblanc", date:"2026-05-31" },
-  { id:"p4", type:"regime",     designation:"Régime hydrique 24h puis semi-liquide", posologie:"Progressif selon tolérance", medecin:"Dr. Martin Leblanc", date:"2026-05-31" },
-];
+const DEMO_PRESCRIPTIONS = [];
 
-const DEMO_EXAMENS = [
-  { id:"e1", type:"labo", designation:"NFS — Numération formule sanguine", statut:"resultat", date:"2026-05-31", resultat:"GB: 12.5 G/L, Hb: 13.2 g/dL, Plaquettes: 280 G/L" },
-  { id:"e2", type:"labo", designation:"CRP — Protéine C réactive", statut:"resultat", date:"2026-05-31", resultat:"CRP: 42 mg/L (↑)" },
-  { id:"e3", type:"imagerie", designation:"Radiographie de l'abdomen sans préparation", statut:"resultat", date:"2026-05-31", resultat:"Pas de pneumopéritoine, transit normal" },
-  { id:"e4", type:"labo", designation:"Ionogramme sanguin", statut:"attente", date:"2026-06-01", resultat:null },
-];
+const DEMO_EXAMENS = [];
 
-const DEMO_VISITES = [
-  { id:"v1", date:"2026-05-30", visiteur:"Marie Dupont (épouse)", heure_entree:"15:00", heure_sortie:"16:30", note:"Visite calme" },
-  { id:"v2", date:"2026-05-31", visiteur:"Thomas Dupont (fils)", heure_entree:"18:00", heure_sortie:"19:00", note:"" },
-  { id:"v3", date:"2026-06-01", visiteur:"Marie Dupont (épouse)", heure_entree:"10:00", heure_sortie:"11:00", note:"" },
-];
+const DEMO_VISITES = [];
 
 const EMPTY_HOSP = {
   patient_id:"", medecin:"", service:"", batiment:"", chambre:"", lit:"", type_chambre:"standard",

@@ -288,32 +288,11 @@ const getRoleLbl  = (role) => ROLE_CFG[role]?.label || role;
 const AV_COLORS = ["#1B4F9E","#0EA5A0","#7C3AED","#DC2626","#D97706","#059669","#4F46E5","#0B1E3B"];
 
 // ─── Demo data ────────────────────────────────────────────────
-const DEMO_USERS = [
-  { _id:"u1", prenom:"Sophie",   nom:"Martin",  role:"medecin",     service:"Chirurgie",    statut_ligne:"online"  },
-  { _id:"u2", prenom:"Alain",    nom:"Koumba",  role:"admin",       service:"Direction",    statut_ligne:"online"  },
-  { _id:"u3", prenom:"Marie",    nom:"Nzigou",  role:"infirmier",   service:"Urgences",     statut_ligne:"away"    },
-  { _id:"u4", prenom:"Paul",     nom:"Obiang",  role:"laborantin",  service:"Laboratoire",  statut_ligne:"offline" },
-  { _id:"u5", prenom:"Claire",   nom:"Bouanga", role:"pharmacien",  service:"Pharmacie",    statut_ligne:"online"  },
-  { _id:"u6", prenom:"Henri",    nom:"Mboula",  role:"comptable",   service:"Comptabilité", statut_ligne:"offline" },
-];
+const DEMO_USERS = [];
 
-const DEMO_GROUPS = [
-  { _id:"g1", nom:"Direction",      membres:3,  icon:"👔", dernierMsg:"Réunion demain à 9h" },
-  { _id:"g2", nom:"Médecins",       membres:8,  icon:"👨‍⚕️", dernierMsg:"Résultat labo patient Dupont" },
-  { _id:"g3", nom:"Infirmiers",     membres:12, icon:"💉", dernierMsg:"Planning de garde semaine 24" },
-  { _id:"g4", nom:"Bloc Opératoire",membres:5,  icon:"🔪", dernierMsg:"Salle 2 disponible à 14h" },
-  { _id:"g5", nom:"Urgences",       membres:6,  icon:"🚨", dernierMsg:"Cas critique en cours, besoin renforts" },
-  { _id:"g6", nom:"Administration", membres:4,  icon:"📋", dernierMsg:"Note de service envoyée" },
-];
+const DEMO_GROUPS = [];
 
-const buildDemoConvs = (userId) => [
-  { _id:"c1", type:"direct", membre: DEMO_USERS[0], dernier_message:"Résultats du patient Dupont reçus. Hb : 12.5 g/dL — à discuter avant l'intervention.", dernierMsg_at:"2025-06-01T10:30:00", non_lus:2, favori:true },
-  { _id:"c2", type:"direct", membre: DEMO_USERS[1], dernier_message:"Réunion de direction reportée à jeudi 14h.", dernierMsg_at:"2025-06-01T09:15:00", non_lus:0, favori:false },
-  { _id:"c3", type:"direct", membre: DEMO_USERS[2], dernier_message:"Le patient chambre 12 a de la fièvre depuis ce matin.", dernierMsg_at:"2025-05-31T22:10:00", non_lus:1, favori:false },
-  { _id:"c4", type:"group",  groupe: DEMO_GROUPS[1], dernier_message:"Qui peut assurer la garde de nuit ?", dernierMsg_at:"2025-05-31T18:00:00", non_lus:5, favori:false },
-  { _id:"c5", type:"direct", membre: DEMO_USERS[4], dernier_message:"Stock Amoxicilline critique — commande urgente nécessaire.", dernierMsg_at:"2025-05-31T14:20:00", non_lus:0, favori:false },
-  { _id:"c6", type:"group",  groupe: DEMO_GROUPS[4], dernier_message:"Cas critique en salle d'attente — besoin de renfort immédiat !", dernierMsg_at:"2025-05-31T11:45:00", non_lus:3, favori:true },
-];
+const buildDemoConvs = (userId) => [];
 
 const buildDemoMessages = (convId, userId) => {
   const msgs = {
@@ -334,14 +313,7 @@ const buildDemoMessages = (convId, userId) => {
   return msgs[convId] || [];
 };
 
-const DEMO_NOTIFS = [
-  { _id:"n1", type:"resultat", titre:"Résultat laboratoire", message:"NFS du patient Paul Nguema disponible — résultat anormal détecté", date:"2025-06-01T10:45:00", lu:false, priorite:"haute" },
-  { _id:"n2", type:"rdv",      titre:"Nouveau rendez-vous",  message:"RDV ajouté : Fatou Bongo — Consultation chirurgicale 10/06 à 9h", date:"2025-06-01T09:30:00", lu:false, priorite:"normale" },
-  { _id:"n3", type:"urgent",   titre:"Cas urgent — Urgences", message:"Patient entrant — Douleur abdominale aiguë — Évaluation immédiate requise", date:"2025-06-01T08:15:00", lu:false, priorite:"critique" },
-  { _id:"n4", type:"facture",  titre:"Facture générée",       message:"Facture #FAC-2025-0089 générée pour M. Jean Dupont — 670 000 CFA", date:"2025-05-31T16:00:00", lu:true, priorite:"normale" },
-  { _id:"n5", type:"patient",  titre:"Nouveau patient",       message:"Nouveau dossier créé : Isabelle Moyo — Pédiatrie", date:"2025-05-31T11:20:00", lu:true, priorite:"normale" },
-  { _id:"n6", type:"stock",    titre:"Stock critique",        message:"Amoxicilline 1g — Stock inférieur au seuil critique (12 boîtes restantes)", date:"2025-05-31T08:00:00", lu:true, priorite:"haute" },
-];
+const DEMO_NOTIFS = [];
 
 // ─── Modal ────────────────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth = 580 }) {

@@ -239,20 +239,9 @@ const SPECIALITE_BO = {
 };
 
 // ─── Demo data ────────────────────────────────────────────────
-const DEMO_INTERVENTIONS = [
-  { _id:"bo1", numero:"BO-2026-0001", patient_nom:"Jean Dupont", patient_dob:"1975-04-12", patient_sexe:"homme", patient_gs:"O+", patient_allergies:"Pénicilline", patient_poids:78, patient_dossier:"CHIR-2025-0001", diagnostic_preop:"Appendicite aiguë", type_intervention:"Appendicectomie cœlioscopique", specialite:"chirurgie_generale", niveau_urgence:"urgente", statut:"terminee", chirurgien:"Dr. Martin Leblanc", assistant:"Dr. Camille Aubert", anesthesiste:"Dr. Sophie Pierre", infirmier_instru:"Inf. Anne Martin", infirmier_circu:"Inf. Paul Ngom", salle:"Bloc 2", date_programmation:"2026-05-30", date_heure_op:"2026-05-31T09:00", heure_debut:"2026-05-31T09:10", heure_fin:"2026-05-31T10:45", duree_estimee:90, duree_reelle:95, etat_reveil:"stable", service_demandeur:"Urgences", consentement_signe:true, checklist_done:true },
-  { _id:"bo2", numero:"BO-2026-0002", patient_nom:"Marie Paul", patient_dob:"1988-11-03", patient_sexe:"femme", patient_gs:"A+", patient_allergies:null, patient_poids:62, patient_dossier:"CHIR-2025-0002", diagnostic_preop:"Fibrome utérin symptomatique", type_intervention:"Myomectomie laparoscopique", specialite:"gynecologie", niveau_urgence:"programmee", statut:"programmee", chirurgien:"Dr. Sophie Pierre", assistant:null, anesthesiste:"Dr. Martin Leblanc", infirmier_instru:"Inf. Anne Martin", infirmier_circu:"Inf. Paul Ngom", salle:"Bloc 1", date_programmation:"2026-05-28", date_heure_op:"2026-06-05T08:30", heure_debut:null, heure_fin:null, duree_estimee:120, service_demandeur:"Gynécologie", consentement_signe:true, checklist_done:false },
-  { _id:"bo3", numero:"BO-2026-0003", patient_nom:"Paul Nguema", patient_dob:"1962-07-22", patient_sexe:"homme", patient_gs:"B+", patient_allergies:"Aspirine, Latex", patient_poids:85, patient_dossier:"CHIR-2025-0003", diagnostic_preop:"Occlusion intestinale aiguë", type_intervention:"Laparotomie exploratrice", specialite:"chirurgie_generale", niveau_urgence:"extreme_urgence", statut:"reveil", chirurgien:"Dr. Martin Leblanc", assistant:"Dr. Camille Aubert", anesthesiste:"Dr. Sophie Pierre", infirmier_instru:"Inf. Anne Martin", infirmier_circu:"Inf. Paul Ngom", salle:"Bloc 3", date_programmation:"2026-05-31", date_heure_op:"2026-05-31T14:00", heure_debut:"2026-05-31T14:05", heure_fin:"2026-05-31T16:30", duree_estimee:150, duree_reelle:145, service_demandeur:"Chirurgie générale", consentement_signe:true, checklist_done:true },
-  { _id:"bo4", numero:"BO-2026-0004", patient_nom:"Fatou Bongo", patient_dob:"1995-02-14", patient_sexe:"femme", patient_gs:"AB+", patient_allergies:null, patient_poids:58, patient_dossier:"CHIR-2025-0004", diagnostic_preop:"Appendicite aiguë non perforée", type_intervention:"Appendicectomie cœlioscopique", specialite:"chirurgie_generale", niveau_urgence:"urgente", statut:"en_cours", chirurgien:"Dr. Sophie Pierre", assistant:null, anesthesiste:"Dr. Martin Leblanc", infirmier_instru:"Inf. Anne Martin", infirmier_circu:"Inf. Paul Ngom", salle:"Bloc 2", date_programmation:"2026-05-31", date_heure_op:"2026-05-31T17:00", heure_debut:"2026-05-31T17:05", heure_fin:null, duree_estimee:60, service_demandeur:"Urgences", consentement_signe:true, checklist_done:true },
-];
+const DEMO_INTERVENTIONS = [];
 
-const DEMO_SALLES = [
-  { id:"bloc1", nom:"Bloc 1", specialite:"Chirurgie générale / Gynéco", statut:"available", equipement:"Laparoscopie, Cœlio" },
-  { id:"bloc2", nom:"Bloc 2", specialite:"Chirurgie générale / Urgences", statut:"occupied", patient:"Fatou Bongo", heure:"17:00" },
-  { id:"bloc3", nom:"Bloc 3", specialite:"Orthopédie / ORL", statut:"available", equipement:"Arthroscopie, Microscope" },
-  { id:"bloc4", nom:"Bloc 4", specialite:"Urologie / Ophtalmologie", statut:"maintenance", maintenance:"Stérilisation en cours" },
-  { id:"reveil", nom:"Salle Réveil", specialite:"Post-anesthésie", statut:"occupied", patient:"Paul Nguema", lits:8, lits_occupes:2 },
-];
+const DEMO_SALLES = [];
 
 const CHECKLIST_ITEMS = [
   { id:"identite",       label:"Identité du patient vérifiée (bracelet, carte)" },
@@ -267,14 +256,7 @@ const CHECKLIST_ITEMS = [
   { id:"timeout",        label:"Time-out équipe réalisé avant incision" },
 ];
 
-const DEMO_CONSO = [
-  { id:"c1", designation:"Gants stériles (paires)", quantite:4, unite:"paire", stock_dispo:150, categorie:"Protection" },
-  { id:"c2", designation:"Compresses stériles 10×10", quantite:20, unite:"pièce", stock_dispo:500, categorie:"Pansement" },
-  { id:"c3", designation:"Seringues 10ml", quantite:5, unite:"pièce", stock_dispo:200, categorie:"Injection" },
-  { id:"c4", designation:"Fils de suture résorbables 2/0", quantite:2, unite:"boîte", stock_dispo:40, categorie:"Suture" },
-  { id:"c5", designation:"Trocarts 5mm", quantite:3, unite:"pièce", stock_dispo:25, categorie:"Laparoscopie" },
-  { id:"c6", designation:"Sonde vésicale Foley", quantite:1, unite:"pièce", stock_dispo:60, categorie:"Sondage" },
-];
+const DEMO_CONSO = [];
 
 const EMPTY_INTERV = {
   patient_id:"", chirurgien:"", assistant:"", anesthesiste:"", infirmier_instru:"", infirmier_circu:"",

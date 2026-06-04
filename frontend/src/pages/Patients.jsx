@@ -199,68 +199,25 @@ const ageCalc = (dob) => {
 };
 
 // ─── DEMO DATA ────────────────────────────────────────────────
-const DEMO_PATIENTS = [
-  { _id:"1", numero:"PAT-2025-0001", nom:"Dupont", prenom:"Jean", date_naissance:"1975-04-12", sexe:"homme", groupe_sanguin:"O+", telephone:"06 12 34 56 78", email:"jean.dupont@email.com", adresse:"12 Rue de la Paix, Paris", statut:"actif", nationalite:"Française", situation_mat:"marié", allergies:"Pénicilline", maladies_chroniques:["Hypertension","Diabète type 2"], nb_consultations:8, nb_hospitalisations:1, nb_analyses:12, nb_imageries:3, nb_chirurgies:1, solde:45000, date_inscription:"2023-01-15" },
-  { _id:"2", numero:"PAT-2025-0002", nom:"Paul", prenom:"Marie", date_naissance:"1988-11-03", sexe:"femme", groupe_sanguin:"A+", telephone:"05 98 76 54 32", email:"marie.paul@email.com", adresse:"8 Avenue Lumumba, Brazzaville", statut:"actif", nationalite:"Congolaise", situation_mat:"célibataire", allergies:null, maladies_chroniques:["Fibrome utérin"], nb_consultations:4, nb_hospitalisations:0, nb_analyses:6, nb_imageries:2, nb_chirurgies:0, solde:12000, date_inscription:"2024-03-20" },
-  { _id:"3", numero:"PAT-2025-0003", nom:"Nguema", prenom:"Paul", date_naissance:"1962-07-22", sexe:"homme", groupe_sanguin:"B+", telephone:"06 55 00 11 22", email:"paul.nguema@email.com", adresse:"45 Bd du 30 Juin, Kinshasa", statut:"inactif", nationalite:"Gabonaise", situation_mat:"veuf", allergies:"Aspirine, Latex", maladies_chroniques:["Diabète","Insuffisance rénale","Cardiopathie"], nb_consultations:15, nb_hospitalisations:3, nb_analyses:28, nb_imageries:7, nb_chirurgies:2, solde:0, date_inscription:"2022-06-10" },
-  { _id:"4", numero:"PAT-2025-0004", nom:"Bongo", prenom:"Fatou", date_naissance:"1995-02-14", sexe:"femme", groupe_sanguin:"AB+", telephone:"05 22 33 44 55", email:"fatou.bongo@email.com", adresse:"3 Rue Pointe-Noire, Souanké", statut:"actif", nationalite:"Gabonaise", situation_mat:"mariée", allergies:null, maladies_chroniques:[], nb_consultations:2, nb_hospitalisations:0, nb_analyses:3, nb_imageries:1, nb_chirurgies:0, solde:8000, date_inscription:"2025-01-10" },
-];
+const DEMO_PATIENTS = [];
 
-const DEMO_CONSULTATIONS = [
-  { _id:"c1", date:"2025-05-28", medecin:"Dr. Leblanc", motif:"Douleurs abdominales", diagnostic:"Appendicite aiguë", statut:"terminé" },
-  { _id:"c2", date:"2025-04-10", medecin:"Dr. Sophie Pierre", motif:"Contrôle tension artérielle", diagnostic:"HTA équilibrée", statut:"terminé" },
-  { _id:"c3", date:"2025-02-14", medecin:"Dr. Martin Leblanc", motif:"Bilan diabétique annuel", diagnostic:"Diabète type 2 — HbA1c 7.2%", statut:"terminé" },
-];
+const DEMO_CONSULTATIONS = [];
 
-const DEMO_RDV = [
-  { _id:"r1", date:"2025-07-15", heure:"09:30", medecin:"Dr. Leblanc", service:"Chirurgie", statut:"planifié" },
-  { _id:"r2", date:"2025-07-22", heure:"11:00", medecin:"Dr. Pierre", service:"Gynécologie", statut:"planifié" },
-  { _id:"r3", date:"2025-06-01", heure:"14:00", medecin:"Dr. Leblanc", service:"Médecine générale", statut:"honoré" },
-];
+const DEMO_RDV = [];
 
-const DEMO_ANALYSES = [
-  { _id:"a1", type:"NFS complète", date:"2025-06-01", prescripteur:"Dr. Leblanc", statut:"normal", valeur:"Hb: 12.5 g/dL", val_norm:"12-16 g/dL" },
-  { _id:"a2", type:"Glycémie à jeun", date:"2025-06-01", prescripteur:"Dr. Leblanc", statut:"anormal", valeur:"7.2 mmol/L", val_norm:"3.9-5.5 mmol/L" },
-  { _id:"a3", type:"Créatinine", date:"2025-05-28", prescripteur:"Dr. Pierre", statut:"normal", valeur:"85 µmol/L", val_norm:"44-97 µmol/L" },
-  { _id:"a4", type:"HbA1c", date:"2025-04-10", prescripteur:"Dr. Leblanc", statut:"anormal", valeur:"7.8%", val_norm:"< 6.5%" },
-];
+const DEMO_ANALYSES = [];
 
-const DEMO_IMAGERIE = [
-  { _id:"i1", type:"Échographie abdominale", date:"2025-05-28", resultat:"Appendicite aiguë confirmée", compte_rendu:"Appendice mesurant 9mm, non compressible. Pas d'épanchement." },
-  { _id:"i2", type:"Radiographie thorax", date:"2025-02-14", resultat:"Normal", compte_rendu:"Pas d'opacité ni de cardiomégalie. Sinus libres." },
-];
+const DEMO_IMAGERIE = [];
 
-const DEMO_HOSPIT = [
-  { _id:"h1", date_entree:"2025-05-28", date_sortie:"2025-06-02", service:"Chirurgie", chambre:"102A", medecin:"Dr. Leblanc", statut:"terminé" },
-];
+const DEMO_HOSPIT = [];
 
-const DEMO_VACCINS = [
-  { _id:"v1", vaccin:"COVID-19 (dose 3)", date:"2023-10-15", prochaine_dose:"2024-10-15", statut:"en_retard" },
-  { _id:"v2", vaccin:"Grippe saisonnière", date:"2024-11-01", prochaine_dose:"2025-11-01", statut:"ok" },
-  { _id:"v3", vaccin:"Tétanos-Diphtérie", date:"2020-06-10", prochaine_dose:"2030-06-10", statut:"ok" },
-  { _id:"v4", vaccin:"Fièvre jaune", date:"2018-03-22", prochaine_dose:null, statut:"ok" },
-];
+const DEMO_VACCINS = [];
 
-const DEMO_FACTURES = [
-  { _id:"f1", type:"Consultation", date:"2025-05-28", montant:25000, paye:25000, mode:"Espèces", statut:"payé" },
-  { _id:"f2", type:"Chirurgie — Appendicectomie", date:"2025-06-01", montant:450000, paye:405000, mode:"Assurance", statut:"partiel" },
-  { _id:"f3", type:"Laboratoire", date:"2025-06-01", montant:35000, paye:0, mode:"—", statut:"impayé" },
-];
+const DEMO_FACTURES = [];
 
-const DEMO_DOCS = [
-  { _id:"d1", type:"Ordonnance", nom:"Ordonnance postopératoire", date:"2025-06-02", format:"PDF" },
-  { _id:"d2", type:"Résultat", nom:"NFS + Glycémie 01/06/2025", date:"2025-06-01", format:"PDF" },
-  { _id:"d3", type:"Rapport", nom:"Compte rendu opératoire", date:"2025-06-01", format:"PDF" },
-  { _id:"d4", type:"Administratif", nom:"Carte nationale identité", date:"2025-01-10", format:"Image" },
-  { _id:"d5", type:"Certificat", nom:"Certificat médical repos", date:"2025-06-02", format:"PDF" },
-];
+const DEMO_DOCS = [];
 
-const DEMO_AUDIT = [
-  { _id:"au1", action:"Consultation du dossier", utilisateur:"Dr. Leblanc", date:"2025-06-02", heure:"10:34", details:"Vue d'ensemble" },
-  { _id:"au2", action:"Ajout compte rendu opératoire", utilisateur:"Dr. Leblanc", date:"2025-06-01", heure:"16:20", details:"Section Chirurgie" },
-  { _id:"au3", action:"Téléchargement résultats labo", utilisateur:"Mme. Infirmière", date:"2025-06-01", heure:"14:05", details:"NFS + Glycémie" },
-  { _id:"au4", action:"Création du dossier", utilisateur:"Admin", date:"2023-01-15", heure:"09:00", details:"Inscription initiale" },
-];
+const DEMO_AUDIT = [];
 
 // ─── Sub-components ───────────────────────────────────────────
 function Badge({ cls, children }) {

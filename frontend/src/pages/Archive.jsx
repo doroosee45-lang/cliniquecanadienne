@@ -208,37 +208,11 @@ const I = {
 // ─── Demo Data ────────────────────────────────────────────────
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : "—";
 
-const DEMO_ARCHIVES = [
-  { _id:"arc001", reference:"ARC-2025-0001", patient_nom:"Jean Dupont",    categorie:"consultation",    service:"Médecine générale", date_archive:"2025-01-15", archive_par:"Dr. Martin Leblanc", motif:"Dossier clôturé — 1 an", taille:"2.4 Mo",  nb_docs:5,  statut:"archivé" },
-  { _id:"arc002", reference:"ARC-2025-0002", patient_nom:"Marie Paul",     categorie:"hospitalisation", service:"Gynécologie",        date_archive:"2025-02-03", archive_par:"Admin Clinique",      motif:"Sortie définitive",       taille:"8.1 Mo",  nb_docs:12, statut:"archivé" },
-  { _id:"arc003", reference:"ARC-2025-0003", patient_nom:"Paul Nguema",    categorie:"laboratoire",     service:"Biologie",           date_archive:"2025-02-20", archive_par:"Admin Clinique",      motif:"Résultats validés 1 an",  taille:"1.2 Mo",  nb_docs:3,  statut:"archivé" },
-  { _id:"arc004", reference:"ARC-2025-0004", patient_nom:"Fatou Bongo",    categorie:"chirurgie",       service:"Chirurgie générale", date_archive:"2025-03-11", archive_par:"Dr. Sophie Pierre",   motif:"Dossier chirurgical clos",taille:"14.5 Mo", nb_docs:18, statut:"archivé" },
-  { _id:"arc005", reference:"ARC-2025-0005", patient_nom:"André Mboula",   categorie:"imagerie",        service:"Radiologie",         date_archive:"2025-03-28", archive_par:"Admin Clinique",      motif:"Comptes rendus 1 an",     taille:"45.2 Mo", nb_docs:7,  statut:"archivé" },
-  { _id:"arc006", reference:"ARC-2025-0006", patient_nom:"Carine Mouanda", categorie:"financier",       service:"Facturation",        date_archive:"2025-04-05", archive_par:"Béatrice Yomba",      motif:"Factures soldées 1 an",   taille:"0.8 Mo",  nb_docs:4,  statut:"archivé" },
-  { _id:"arc007", reference:"ARC-2025-0007", patient_nom:"Bernard Okala",  categorie:"consultation",    service:"Médecine interne",   date_archive:"2025-04-18", archive_par:"Admin Clinique",      motif:"Dossier clôturé — 1 an",  taille:"3.1 Mo",  nb_docs:6,  statut:"restauré" },
-  { _id:"arc008", reference:"ARC-2025-0008", patient_nom:"Solange Nkomo",  categorie:"patient",         service:"Dossier patient",    date_archive:"2025-05-02", archive_par:"Admin Clinique",      motif:"Patient inactif 3 ans",   taille:"5.9 Mo",  nb_docs:22, statut:"archivé" },
-  { _id:"arc009", reference:"ARC-2025-0009", patient_nom:"David Etana",    categorie:"laboratoire",     service:"Biologie",           date_archive:"2025-05-14", archive_par:"Paul Ngoma",          motif:"Résultats validés 1 an",  taille:"0.9 Mo",  nb_docs:2,  statut:"archivé" },
-  { _id:"arc010", reference:"ARC-2025-0010", patient_nom:"Lucie Bibang",   categorie:"hospitalisation", service:"Pédiatrie",          date_archive:"2025-05-29", archive_par:"Admin Clinique",      motif:"Sortie définitive",       taille:"6.3 Mo",  nb_docs:9,  statut:"archivé" },
-];
+const DEMO_ARCHIVES = [];
 
-const DEMO_LOGS = [
-  { user:"Admin Clinique",       action:"Consultation archive ARC-2025-0004",          type:"view",    date:"Auj. 11:42", ip:"192.168.1.1" },
-  { user:"Béatrice Yomba",       action:"Export PDF — Archives financières mai 2025",   type:"export",  date:"Auj. 10:15", ip:"192.168.1.7" },
-  { user:"Admin Clinique",       action:"Restauration dossier ARC-2025-0007",           type:"restore", date:"Auj. 09:30", ip:"192.168.1.1" },
-  { user:"Dr. Martin Leblanc",   action:"Téléchargement documents ARC-2025-0001",       type:"download",date:"Hier 16:22", ip:"192.168.1.12" },
-  { user:"Admin Clinique",       action:"Archivage automatique — 12 dossiers archivés", type:"archive", date:"Hier 02:00", ip:"192.168.1.1" },
-  { user:"Dr. Sophie Pierre",    action:"Consultation archive ARC-2025-0004",           type:"view",    date:"Hier 14:50", ip:"192.168.1.14" },
-  { user:"Admin Clinique",       action:"Suppression définitive ARC-2020-0042",         type:"delete",  date:"Il y a 3j",  ip:"192.168.1.1" },
-  { user:"Paul Ngoma",           action:"Impression rapport ARC-2025-0009",             type:"print",   date:"Il y a 4j",  ip:"192.168.1.30" },
-  { user:"Admin Clinique",       action:"Configuration archivage automatique modifiée", type:"config",  date:"Il y a 5j",  ip:"192.168.1.1" },
-];
+const DEMO_LOGS = [];
 
-const DEMO_RESTAURATIONS = [
-  { reference:"ARC-2025-0007", patient:"Bernard Okala",  date_rest:"2025-05-31", user:"Admin Clinique",    motif:"Consultation de suivi urgente",          statut:"terminé" },
-  { reference:"ARC-2024-0123", patient:"Nathalie Essie", date_rest:"2025-04-14", user:"Dr. Martin Leblanc",motif:"Expertise médico-légale",                 statut:"terminé" },
-  { reference:"ARC-2024-0089", patient:"Claude Manga",   date_rest:"2025-03-02", user:"Admin Clinique",    motif:"Demande du patient",                      statut:"terminé" },
-  { reference:"ARC-2023-0201", patient:"Joëlle Ngouma",  date_rest:"2025-01-18", user:"Béatrice Yomba",    motif:"Réclamation assurance",                   statut:"terminé" },
-];
+const DEMO_RESTAURATIONS = [];
 
 const CAT_CONFIG = {
   patient:        { icon:"👤", label:"Patient",         color:"#1B4F9E", bg:"#EFF6FF", border:"#BFDBFE" },

@@ -236,65 +236,22 @@ const TASK_STATUT = {
 const AVATAR_COLORS = ["#1B4F9E","#0EA5A0","#7C3AED","#DC2626","#D97706","#059669","#4F46E5","#0B1E3B"];
 
 // ─── DEMO DATA ───────────────────────────────────────────────
-const DEMO_USERS = [
-  { _id:"u1", prenom:"Sophie", nom:"Martin", role:"medecin", email:"s.martin@clinique.cg", telephone:"+242 06 111 2222", statut:"actif", service:"Chirurgie", derniere_connexion:"2025-06-01" },
-  { _id:"u2", prenom:"Alain", nom:"Koumba", role:"admin", email:"a.koumba@clinique.cg", telephone:"+242 05 333 4444", statut:"actif", service:"Administration", derniere_connexion:"2025-06-01" },
-  { _id:"u3", prenom:"Marie", nom:"Nzigou", role:"infirmier", email:"m.nzigou@clinique.cg", telephone:"+242 06 555 6666", statut:"actif", service:"Urgences", derniere_connexion:"2025-05-31" },
-  { _id:"u4", prenom:"Paul", nom:"Obiang", role:"laborantin", email:"p.obiang@clinique.cg", telephone:"+242 05 777 8888", statut:"actif", service:"Laboratoire", derniere_connexion:"2025-05-30" },
-  { _id:"u5", prenom:"Claire", nom:"Bouanga", role:"pharmacien", email:"c.bouanga@clinique.cg", telephone:"+242 06 999 0000", statut:"inactif", service:"Pharmacie", derniere_connexion:"2025-05-20" },
-  { _id:"u6", prenom:"Henri", nom:"Mboula", role:"comptable", email:"h.mboula@clinique.cg", telephone:"+242 05 123 4567", statut:"actif", service:"Comptabilité", derniere_connexion:"2025-06-01" },
-];
+const DEMO_USERS = [];
 
-const DEMO_DEPTS = [
-  { _id:"d1", nom:"Direction Médicale", responsable:"Dr. Jean Luc Moussavou", personnel:12, budget:8500000, statut:"actif" },
-  { _id:"d2", nom:"Administration",     responsable:"Alain Koumba",             personnel:8,  budget:4200000, statut:"actif" },
-  { _id:"d3", nom:"Comptabilité",       responsable:"Henri Mboula",             personnel:4,  budget:2100000, statut:"actif" },
-  { _id:"d4", nom:"Ressources Humaines",responsable:"Isabelle Ndong",           personnel:3,  budget:1800000, statut:"actif" },
-  { _id:"d5", nom:"Informatique",       responsable:"Patrick Ella",             personnel:2,  budget:950000,  statut:"actif" },
-];
+const DEMO_DEPTS = [];
 
-const DEMO_ROOMS = [
-  { _id:"r1", numero:"Bloc 1",   type:"bloc_operatoire", capacite:1, etat:"disponible",   responsable:"Dr. Leblanc" },
-  { _id:"r2", numero:"Bloc 2",   type:"bloc_operatoire", capacite:1, etat:"occupee",      responsable:"Dr. Sophie" },
-  { _id:"r3", numero:"Cons. 1",  type:"consultation",    capacite:1, etat:"disponible",   responsable:"Dr. Martin" },
-  { _id:"r4", numero:"Cons. 2",  type:"consultation",    capacite:1, etat:"disponible",   responsable:"Dr. Paul" },
-  { _id:"r5", numero:"Hospi. A", type:"hospitalisation",  capacite:6, etat:"partielle",   responsable:"Service Médical" },
-  { _id:"r6", numero:"Hospi. B", type:"hospitalisation",  capacite:8, etat:"disponible",  responsable:"Service Médical" },
-  { _id:"r7", numero:"Labo",     type:"laboratoire",     capacite:4, etat:"disponible",   responsable:"Paul Obiang" },
-  { _id:"r8", numero:"Urgences", type:"urgences",        capacite:5, etat:"occupee",      responsable:"Chef Urgences" },
-];
+const DEMO_ROOMS = [];
 
-const DEMO_SUPPLIERS = [
-  { _id:"s1", nom:"MedPharma Congo",    contact:"Directeur Commercial", telephone:"+242 06 100 2000", produits:"Médicaments génériques", derniere_commande:"2025-05-28", montant_total:2850000 },
-  { _id:"s2", nom:"TechMed Équipements",contact:"Service Ventes",        telephone:"+242 05 200 3000", produits:"Équipements médicaux",    derniere_commande:"2025-04-15", montant_total:7500000 },
-  { _id:"s3", nom:"LabSupply CEMAC",    contact:"Responsable Labo",      telephone:"+242 06 300 4000", produits:"Consommables laboratoire", derniere_commande:"2025-05-30", montant_total:980000  },
-  { _id:"s4", nom:"Bureau Pro Congo",   contact:"Commercial",            telephone:"+242 05 400 5000", produits:"Fournitures de bureau",    derniere_commande:"2025-05-10", montant_total:350000  },
-];
+const DEMO_SUPPLIERS = [];
 
-const DEMO_TASKS = [
-  { _id:"t1", titre:"Renouveler agrément clinique", assignee:"Alain Koumba",   priorite:"haute",  statut:"en_cours",   echeance:"2025-06-30", categorie:"administratif" },
-  { _id:"t2", titre:"Maintenance groupe électrogène", assignee:"Patrick Ella",  priorite:"haute",  statut:"en_attente", echeance:"2025-06-15", categorie:"maintenance" },
-  { _id:"t3", titre:"Formation infirmiers — protocoles", assignee:"Isabelle Ndong", priorite:"normale", statut:"en_cours", echeance:"2025-07-01", categorie:"formation" },
-  { _id:"t4", titre:"Audit financier T2 2025",     assignee:"Henri Mboula",    priorite:"haute",  statut:"en_attente", echeance:"2025-06-20", categorie:"financier" },
-  { _id:"t5", titre:"Mise à jour fiches de paie",  assignee:"Henri Mboula",    priorite:"normale", statut:"termine",   echeance:"2025-05-31", categorie:"rh" },
-];
+const DEMO_TASKS = [];
 
-const DEMO_AUDIT = [
-  { _id:"a1", utilisateur:"Alain Koumba",    action:"Création utilisateur",    detail:"Compte Dr. Sophie Martin créé", date:"2025-06-01T09:30:00", type:"creation" },
-  { _id:"a2", utilisateur:"Henri Mboula",    action:"Validation dépense",      detail:"Commande MedPharma 850 000 CFA approuvée", date:"2025-06-01T10:15:00", type:"validation" },
-  { _id:"a3", utilisateur:"Alain Koumba",    action:"Modification paramètres", detail:"Horaires d'ouverture mis à jour", date:"2025-05-31T16:00:00", type:"modification" },
-  { _id:"a4", utilisateur:"Super Admin",     action:"Réinitialisation mot de passe", detail:"Compte p.obiang@clinique.cg réinitialisé", date:"2025-05-31T11:20:00", type:"securite" },
-  { _id:"a5", utilisateur:"Isabelle Ndong",  action:"Ajout document",          detail:"Contrat fournisseur TechMed archivé", date:"2025-05-30T14:45:00", type:"document" },
-  { _id:"a6", utilisateur:"Henri Mboula",    action:"Export rapport",          detail:"Rapport financier mai 2025 exporté PDF", date:"2025-05-30T08:00:00", type:"export" },
-];
+const DEMO_AUDIT = [];
 
-const DEMO_KPIS = {
-  total_patients: 1247, rdv_jour: 38, consultations_jour: 29, hospitalisations: 18,
-  personnel_present: 42, revenus_jour: 2850000, factures_impayees: 14, alertes: 3,
-};
+const DEMO_KPIS = {};
 
 const MONTHS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
-const REVENUS_DATA = [18500000,21200000,19800000,24500000,22100000,26800000,0,0,0,0,0,0];
+const REVENUS_DATA = [];
 
 const EMPTY_USER = { prenom:"", nom:"", email:"", telephone:"", role:"medecin", service:"", statut:"actif", mot_de_passe:"" };
 const EMPTY_TASK = { titre:"", assignee:"", priorite:"normale", statut:"en_attente", echeance:"", categorie:"administratif", description:"" };

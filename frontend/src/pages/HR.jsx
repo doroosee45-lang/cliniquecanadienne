@@ -315,70 +315,25 @@ function Stars({ note, max = 5 }) {
 }
 
 // ─── DEMO DATA ───────────────────────────────────────────────
-const DEMO_EMPLOYES = [
-  { _id:"1", matricule:"EMP-001", prenom:"Martin",  nom:"Leblanc",  sexe:"homme", date_naissance:"1975-03-15", poste:"medecin",       departement:"Chirurgie",    date_embauche:"2018-01-15", contrat:"cdi",   statut:"actif",   salaire_base:850000, telephone:"+242 06 111 2233", email:"m.leblanc@clinique.cg",   nationalite:"Congolaise", note_eval:4.5, conge_solde:18, absences_mois:0 },
-  { _id:"2", matricule:"EMP-002", prenom:"Sophie",  nom:"Pierre",   sexe:"femme", date_naissance:"1982-07-22", poste:"medecin",       departement:"Gynécologie",  date_embauche:"2019-06-01", contrat:"cdi",   statut:"actif",   salaire_base:820000, telephone:"+242 05 444 5566", email:"s.pierre@clinique.cg",    nationalite:"Congolaise", note_eval:4.8, conge_solde:22, absences_mois:0 },
-  { _id:"3", matricule:"EMP-003", prenom:"Aline",   nom:"Moukala",  sexe:"femme", date_naissance:"1990-11-08", poste:"infirmier",     departement:"Chirurgie",    date_embauche:"2021-03-10", contrat:"cdi",   statut:"actif",   salaire_base:420000, telephone:"+242 06 777 8899", email:"a.moukala@clinique.cg",   nationalite:"Congolaise", note_eval:4.2, conge_solde:14, absences_mois:1 },
-  { _id:"4", matricule:"EMP-004", prenom:"Paul",    nom:"Nkomo",    sexe:"homme", date_naissance:"1985-05-20", poste:"laborantin",    departement:"Laboratoire",  date_embauche:"2020-09-15", contrat:"cdi",   statut:"actif",   salaire_base:380000, telephone:"+242 06 222 3344", email:"p.nkomo@clinique.cg",     nationalite:"Congolaise", note_eval:4.0, conge_solde:10, absences_mois:0 },
-  { _id:"5", matricule:"EMP-005", prenom:"Fatima",  nom:"Diallo",   sexe:"femme", date_naissance:"1993-09-30", poste:"pharmacien",    departement:"Pharmacie",    date_embauche:"2022-01-20", contrat:"cdi",   statut:"conge",   salaire_base:450000, telephone:"+242 05 555 6677", email:"f.diallo@clinique.cg",    nationalite:"Malienne",   note_eval:3.8, conge_solde:5,  absences_mois:0 },
-  { _id:"6", matricule:"EMP-006", prenom:"Jacques", nom:"Bongo",    sexe:"homme", date_naissance:"1988-02-14", poste:"radiologue",    departement:"Imagerie",     date_embauche:"2017-08-01", contrat:"cdi",   statut:"actif",   salaire_base:750000, telephone:"+242 06 888 9900", email:"j.bongo@clinique.cg",     nationalite:"Congolaise", note_eval:4.6, conge_solde:20, absences_mois:0 },
-  { _id:"7", matricule:"EMP-007", prenom:"Marie",   nom:"Nguema",   sexe:"femme", date_naissance:"1995-04-18", poste:"infirmier",     departement:"Pédiatrie",    date_embauche:"2023-03-01", contrat:"cdd",   statut:"actif",   salaire_base:350000, telephone:"+242 05 111 2222", email:"m.nguema@clinique.cg",    nationalite:"Congolaise", note_eval:3.5, conge_solde:8,  absences_mois:2 },
-  { _id:"8", matricule:"EMP-008", prenom:"André",   nom:"Makosso",  sexe:"homme", date_naissance:"1978-12-05", poste:"administratif", departement:"Administration",date_embauche:"2015-06-15", contrat:"cdi",   statut:"actif",   salaire_base:320000, telephone:"+242 06 333 4455", email:"a.makosso@clinique.cg",   nationalite:"Congolaise", note_eval:4.1, conge_solde:25, absences_mois:0 },
-];
+const DEMO_EMPLOYES = [];
 
-const DEMO_CONGES = [
-  { _id:"c1", employe_id:"3", employe_nom:"Aline Moukala",  type:"annuel",    date_debut:"2025-06-15", date_fin:"2025-06-29", nb_jours:15, statut:"approuve",   motif:"Congés d'été" },
-  { _id:"c2", employe_id:"5", employe_nom:"Fatima Diallo",  type:"maternite", date_debut:"2025-06-01", date_fin:"2025-08-31", nb_jours:91, statut:"approuve",   motif:"Congé maternité" },
-  { _id:"c3", employe_id:"7", employe_nom:"Marie Nguema",   type:"maladie",   date_debut:"2025-06-02", date_fin:"2025-06-06", nb_jours:5,  statut:"approuve",   motif:"Grippe sévère" },
-  { _id:"c4", employe_id:"1", employe_nom:"Martin Leblanc", type:"annuel",    date_debut:"2025-07-01", date_fin:"2025-07-14", nb_jours:14, statut:"en_attente", motif:"Vacances familiales" },
-  { _id:"c5", employe_id:"6", employe_nom:"Jacques Bongo",  type:"exceptionnel",date_debut:"2025-05-28", date_fin:"2025-05-30", nb_jours:3, statut:"approuve",   motif:"Décès familial" },
-];
+const DEMO_CONGES = [];
 
-const DEMO_CANDIDATURES = [
-  { _id:"r1", nom:"Clarisse Obiang",  poste:"infirmier",     experience:"3 ans", diplome:"BTS Infirmier", date_depot:"2025-05-28", statut:"entretien",  email:"c.obiang@gmail.com" },
-  { _id:"r2", nom:"Franck Mbemba",    poste:"laborantin",    experience:"5 ans", diplome:"BTS Labomédico", date_depot:"2025-05-30", statut:"en_analyse", email:"f.mbemba@gmail.com" },
-  { _id:"r3", nom:"Héloïse Nzamba",   poste:"administratif", experience:"2 ans", diplome:"Licence Gestion", date_depot:"2025-06-01", statut:"recu",       email:"h.nzamba@gmail.com" },
-  { _id:"r4", nom:"Bernard Koumba",   poste:"medecin",       experience:"8 ans", diplome:"Docteur en Médecine", date_depot:"2025-06-01", statut:"en_analyse", email:"b.koumba@gmail.com" },
-];
+const DEMO_CANDIDATURES = [];
 
-const DEMO_POINTAGES = [
-  { _id:"p1", employe_id:"1", employe_nom:"Martin Leblanc",  date:"2025-06-01", heure_entree:"07:45", heure_sortie:"16:30", retard_min:0,  heures_sup:0.5,  statut:"present" },
-  { _id:"p2", employe_id:"2", employe_nom:"Sophie Pierre",   date:"2025-06-01", heure_entree:"08:10", heure_sortie:"17:00", retard_min:10, heures_sup:0,    statut:"present" },
-  { _id:"p3", employe_id:"3", employe_nom:"Aline Moukala",   date:"2025-06-01", heure_entree:"08:00", heure_sortie:"16:00", retard_min:0,  heures_sup:0,    statut:"present" },
-  { _id:"p4", employe_id:"7", employe_nom:"Marie Nguema",    date:"2025-06-01", heure_entree:"—",     heure_sortie:"—",     retard_min:0,  heures_sup:0,    statut:"absent" },
-  { _id:"p5", employe_id:"4", employe_nom:"Paul Nkomo",      date:"2025-06-01", heure_entree:"07:55", heure_sortie:"16:05", retard_min:0,  heures_sup:0,    statut:"present" },
-];
+const DEMO_POINTAGES = [];
 
-const DEMO_EVALUATIONS = [
-  { _id:"e1", employe_id:"1", employe_nom:"Martin Leblanc", periode:"2025-S1", ponctualite:4, qualite:5, productivite:4, discipline:5, relation_patient:5, note_globale:4.5, commentaire:"Excellent médecin, très apprécié des patients.", evaluateur:"Direction" },
-  { _id:"e2", employe_id:"2", employe_nom:"Sophie Pierre",  periode:"2025-S1", ponctualite:5, qualite:5, productivite:5, discipline:5, relation_patient:4, note_globale:4.8, commentaire:"Travail remarquable en gynécologie.", evaluateur:"Direction" },
-  { _id:"e3", employe_id:"3", employe_nom:"Aline Moukala",  periode:"2025-S1", ponctualite:4, qualite:4, productivite:4, discipline:4, relation_patient:5, note_globale:4.2, commentaire:"Infirmière sérieuse et dévouée.", evaluateur:"Chef de service" },
-  { _id:"e4", employe_id:"7", employe_nom:"Marie Nguema",   periode:"2025-S1", ponctualite:3, qualite:4, productivite:3, discipline:4, relation_patient:4, note_globale:3.5, commentaire:"Absences répétées à surveiller.", evaluateur:"Chef de service" },
-];
+const DEMO_EVALUATIONS = [];
 
-const DEMO_FORMATIONS = [
-  { _id:"f1", titre:"Formation urgences médicales",    type:"interne",  date:"2025-04-10", duree_h:8,  participants:["Martin Leblanc","Sophie Pierre","Aline Moukala"], certificat:true, statut:"termine" },
-  { _id:"f2", titre:"Séminaire gestion des soins",     type:"externe",  date:"2025-05-20", duree_h:16, participants:["Aline Moukala","Marie Nguema"], certificat:true,  statut:"termine" },
-  { _id:"f3", titre:"Atelier hygiène et sécurité",     type:"interne",  date:"2025-06-15", duree_h:4,  participants:["Paul Nkomo","André Makosso"],    certificat:false, statut:"planifie" },
-  { _id:"f4", titre:"Formation logiciel médical",      type:"externe",  date:"2025-07-01", duree_h:12, participants:["André Makosso"],                 certificat:true,  statut:"planifie" },
-];
+const DEMO_FORMATIONS = [];
 
-const DEMO_SANCTIONS = [
-  { _id:"d1", employe_id:"7", employe_nom:"Marie Nguema",  type:"avertissement",  date:"2025-05-15", motif:"Absences injustifiées répétées (3x ce mois)", statut:"notifie" },
-  { _id:"d2", employe_id:"3", employe_nom:"Aline Moukala", type:"blame",          date:"2025-04-20", motif:"Non-respect du protocole de soins",           statut:"notifie" },
-];
+const DEMO_SANCTIONS = [];
 
-const DEMO_AUDIT = [
-  { _id:"a1", action:"Création employé",   utilisateur:"Admin RH",     date:"2025-06-01T09:15:00", details:"Création dossier EMP-008 — André Makosso" },
-  { _id:"a2", action:"Validation congé",   utilisateur:"Dir. Médicale", date:"2025-06-01T10:30:00", details:"Approbation congé maternité Fatima Diallo" },
-  { _id:"a3", action:"Paiement salaire",   utilisateur:"Comptabilité",  date:"2025-05-31T14:00:00", details:"Virement salaires mai 2025 — 8 employés" },
-  { _id:"a4", action:"Modification dossier",utilisateur:"RH",           date:"2025-05-30T11:20:00", details:"Mise à jour contrat Martin Leblanc" },
-  { _id:"a5", action:"Sanction émise",     utilisateur:"RH",           date:"2025-05-15T09:00:00", details:"Avertissement notifié à Marie Nguema" },
-];
+const DEMO_AUDIT = [];
 
 const MOIS_LABELS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
-const DEMO_EFFECTIF_MOIS = [8, 8, 9, 9, 8, 8, 9, 0, 0, 0, 0, 0];
-const DEMO_ABSENCE_MOIS  = [2, 1, 3, 2, 4, 3, 0, 0, 0, 0, 0, 0];
+const DEMO_EFFECTIF_MOIS = [];
+const DEMO_ABSENCE_MOIS  = [];
 
 const PLANNING_JOURS = ["Lun 02", "Mar 03", "Mer 04", "Jeu 05", "Ven 06", "Sam 07", "Dim 08"];
 const PLANNING_DATA = {

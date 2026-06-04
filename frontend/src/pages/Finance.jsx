@@ -186,74 +186,19 @@ const fmtMontant = (v) => v !== undefined && v !== null ? Number(v).toLocaleStri
 const genRef = (prefix) => `${prefix}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000).padStart(4, "0")}`;
 
 // ─── Demo data ────────────────────────────────────────────────
-const DEMO_REVENUS = [
-  { _id: "r1", date: "2026-06-01", service: "Consultation", reference: "FAC-2026-0041", patient: "Jean Dupont", montant: 25000, mode: "especes", statut: "paye" },
-  { _id: "r2", date: "2026-06-01", service: "Laboratoire", reference: "FAC-2026-0040", patient: "Marie Paul", montant: 45000, mode: "mobile_money", statut: "paye" },
-  { _id: "r3", date: "2026-06-01", service: "Chirurgie", reference: "FAC-2026-0039", patient: "Paul Nguema", montant: 350000, mode: "assurance", statut: "paye" },
-  { _id: "r4", date: "2026-06-01", service: "Imagerie", reference: "FAC-2026-0038", patient: "Fatou Bongo", montant: 75000, mode: "especes", statut: "partiellement_paye" },
-  { _id: "r5", date: "2026-05-31", service: "Hospitalisation", reference: "FAC-2026-0037", patient: "André Mboula", montant: 180000, mode: "virement", statut: "paye" },
-  { _id: "r6", date: "2026-05-31", service: "Pharmacie", reference: "FAC-2026-0036", patient: "Kader Traoré", montant: 35000, mode: "especes", statut: "paye" },
-  { _id: "r7", date: "2026-05-31", service: "Consultation", reference: "FAC-2026-0035", patient: "Anne Martin", montant: 15000, mode: "mobile_money", statut: "non_paye" },
-  { _id: "r8", date: "2026-05-30", service: "Maternité", reference: "FAC-2026-0034", patient: "Sophie Kone", montant: 120000, mode: "assurance", statut: "paye" },
-];
+const DEMO_REVENUS = [];
 
-const DEMO_DEPENSES = [
-  { _id: "d1", date: "2026-06-01", categorie: "Fournitures médicales", description: "Gants chirurgicaux × 500", montant: 50000, fournisseur: "MediSupply", statut: "paye" },
-  { _id: "d2", date: "2026-06-01", categorie: "Médicaments", description: "Réapprovisionnement pharmacie — Lot A", montant: 280000, fournisseur: "PharmaCo", statut: "paye" },
-  { _id: "d3", date: "2026-05-31", categorie: "Électricité", description: "Facture électricité mai 2026", montant: 95000, fournisseur: "SNEC", statut: "paye" },
-  { _id: "d4", date: "2026-05-31", categorie: "Salaires", description: "Paiement salaires — Juin 2026", montant: 1850000, fournisseur: "Interne", statut: "paye" },
-  { _id: "d5", date: "2026-05-30", categorie: "Maintenance", description: "Entretien appareil radiologie", montant: 120000, fournisseur: "TechMed Services", statut: "paye" },
-  { _id: "d6", date: "2026-05-30", categorie: "Internet", description: "Abonnement fibre optique juin", montant: 45000, fournisseur: "Airtel Business", statut: "paye" },
-  { _id: "d7", date: "2026-05-29", categorie: "Transport", description: "Carburant ambulance", montant: 30000, fournisseur: "Station Total", statut: "paye" },
-  { _id: "d8", date: "2026-05-29", categorie: "Eau", description: "Facture eau mai 2026", montant: 22000, fournisseur: "SNEC Eau", statut: "en_attente" },
-];
+const DEMO_DEPENSES = [];
 
-const DEMO_FACTURES = [
-  { _id: "f1", numero: "FAC-2026-0041", date: "2026-06-01", patient: "Jean Dupont", service: "Consultation", montant: 25000, statut: "paye", echeance: "2026-06-01" },
-  { _id: "f2", numero: "FAC-2026-0040", date: "2026-06-01", patient: "Marie Paul", service: "Laboratoire + Consultation", montant: 60000, statut: "paye", echeance: "2026-06-01" },
-  { _id: "f3", numero: "FAC-2026-0039", date: "2026-05-28", patient: "Paul Nguema", service: "Chirurgie complète", montant: 670000, statut: "partiellement_paye", echeance: "2026-06-10" },
-  { _id: "f4", numero: "FAC-2026-0038", date: "2026-06-01", patient: "Fatou Bongo", service: "Imagerie + Urgences", montant: 95000, statut: "non_paye", echeance: "2026-06-08" },
-  { _id: "f5", numero: "FAC-2026-0037", date: "2026-05-31", patient: "André Mboula", service: "Hospitalisation 5j", montant: 180000, statut: "paye", echeance: "2026-05-31" },
-  { _id: "f6", numero: "FAC-2026-0036", date: "2026-05-31", patient: "Kader Traoré", service: "Pharmacie", montant: 35000, statut: "paye", echeance: "2026-05-31" },
-  { _id: "f7", numero: "FAC-2026-0035", date: "2026-05-31", patient: "Anne Martin", service: "Consultation", montant: 15000, statut: "non_paye", echeance: "2026-06-07" },
-  { _id: "f8", numero: "FAC-2026-0034", date: "2026-05-30", patient: "Sophie Kone", service: "Accouchement + Maternité", montant: 220000, statut: "paye", echeance: "2026-05-30" },
-];
+const DEMO_FACTURES = [];
 
-const DEMO_PAIEMENTS = [
-  { _id: "p1", reference: "PAY-2026-0055", patient: "Jean Dupont", montant: 25000, mode: "especes", date: "2026-06-01", heure: "09:15", facture: "FAC-2026-0041", caissier: "Paul Ngom" },
-  { _id: "p2", reference: "PAY-2026-0054", patient: "Marie Paul", montant: 60000, mode: "mobile_money", date: "2026-06-01", heure: "10:32", facture: "FAC-2026-0040", caissier: "Paul Ngom" },
-  { _id: "p3", reference: "PAY-2026-0053", patient: "Paul Nguema", montant: 300000, mode: "assurance", date: "2026-05-28", heure: "14:20", facture: "FAC-2026-0039", caissier: "Aminata Diallo" },
-  { _id: "p4", reference: "PAY-2026-0052", patient: "André Mboula", montant: 180000, mode: "virement", date: "2026-05-31", heure: "16:00", facture: "FAC-2026-0037", caissier: "Aminata Diallo" },
-  { _id: "p5", reference: "PAY-2026-0051", patient: "Kader Traoré", montant: 35000, mode: "especes", date: "2026-05-31", heure: "11:45", facture: "FAC-2026-0036", caissier: "Paul Ngom" },
-  { _id: "p6", reference: "PAY-2026-0050", patient: "Sophie Kone", montant: 220000, mode: "assurance", date: "2026-05-30", heure: "08:55", facture: "FAC-2026-0034", caissier: "Aminata Diallo" },
-];
+const DEMO_PAIEMENTS = [];
 
-const DEMO_ASSURANCES = [
-  { _id: "a1", compagnie: "CNAM Congo", facture: "FAC-2026-0039", patient: "Paul Nguema", facture_montant: 670000, rembourse: 402000, en_attente: 268000, date_soumission: "2026-05-28", statut: "partiellement_rembourse" },
-  { _id: "a2", compagnie: "Assur Vie", facture: "FAC-2026-0034", patient: "Sophie Kone", facture_montant: 220000, rembourse: 220000, en_attente: 0, date_soumission: "2026-05-30", statut: "rembourse" },
-  { _id: "a3", compagnie: "CNAM Congo", facture: "FAC-2026-0028", patient: "Jean Mbeki", facture_montant: 145000, rembourse: 0, en_attente: 145000, date_soumission: "2026-05-15", statut: "en_attente" },
-  { _id: "a4", compagnie: "Mutuelle AXA", facture: "FAC-2026-0020", patient: "Élise Nguesso", facture_montant: 95000, rembourse: 0, en_attente: 95000, date_soumission: "2026-05-10", statut: "en_attente" },
-];
+const DEMO_ASSURANCES = [];
 
-const DEMO_SALAIRES = [
-  { _id: "s1", employe: "Dr. Martin Leblanc", fonction: "Médecin Chef", base: 850000, primes: 120000, deductions: 85000, net: 885000, statut: "paye", date_paiement: "2026-05-31" },
-  { _id: "s2", employe: "Dr. Sophie Pierre", fonction: "Médecin", base: 720000, primes: 80000, deductions: 72000, net: 728000, statut: "paye", date_paiement: "2026-05-31" },
-  { _id: "s3", employe: "Inf. Anne Martin", fonction: "Infirmier(e)", base: 380000, primes: 30000, deductions: 38000, net: 372000, statut: "paye", date_paiement: "2026-05-31" },
-  { _id: "s4", employe: "Paul Ngom", fonction: "Caissier", base: 280000, primes: 20000, deductions: 28000, net: 272000, statut: "paye", date_paiement: "2026-05-31" },
-  { _id: "s5", employe: "Aminata Diallo", fonction: "Secrétaire médicale", base: 260000, primes: 15000, deductions: 26000, net: 249000, statut: "en_attente", date_paiement: null },
-  { _id: "s6", employe: "Kader Traoré", fonction: "Aide-soignant", base: 200000, primes: 10000, deductions: 20000, net: 190000, statut: "en_attente", date_paiement: null },
-];
+const DEMO_SALAIRES = [];
 
-const DEMO_BUDGET = [
-  { departement: "Consultations", budget: 500000, realise: 420000 },
-  { departement: "Laboratoire", budget: 300000, realise: 285000 },
-  { departement: "Chirurgie", budget: 800000, realise: 670000 },
-  { departement: "Pharmacie", budget: 400000, realise: 380000 },
-  { departement: "Imagerie", budget: 250000, realise: 195000 },
-  { departement: "Hospitalisation", budget: 600000, realise: 540000 },
-  { departement: "Maternité", budget: 350000, realise: 310000 },
-  { departement: "Urgences", budget: 200000, realise: 175000 },
-];
+const DEMO_BUDGET = [];
 
 // ─── SVG Icons ────────────────────────────────────────────────
 const I = {

@@ -283,80 +283,23 @@ function Badge({ cls, children }) { return <span className={`abdg ${cls}`}>{chil
 // ─── DEMO DATA ────────────────────────────────────────────
 const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
-const DEMO_KPI = {
-  patients_total: 4820, patients_nouveaux: 143, patients_actifs: 612, patients_hospitalises: 34,
-  consultations_total: 892, consultations_terminees: 810, consultations_annulees: 52, temps_moyen_consult: 24,
-  labo_demandes: 342, labo_realises: 298, labo_attente: 44,
-  imagerie_demandes: 124, imagerie_realises: 108, imagerie_attente: 16,
-  hospit_admissions: 78, hospit_sorties: 44, taux_occupation: 72,
-  chirurgie_programmees: 28, chirurgie_realisees: 22, chirurgie_annulees: 3,
-  ca_total: 38450000, depenses: 14200000, benefice: 24250000, factures_impayees: 5800000,
-};
+const DEMO_KPI = {};
 
-const DEMO_CONSULT_LINE = {
-  labels: ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"],
-  datasets: [
-    { label:"Cette semaine", data:[42,58,50,65,72,38,15], borderColor:"#0EA5A0", backgroundColor:"rgba(14,165,160,.1)", tension:.4, fill:true, pointRadius:5, pointBackgroundColor:"#0EA5A0" },
-    { label:"Semaine précédente", data:[38,45,43,55,60,30,12], borderColor:"#1B4F9E", backgroundColor:"rgba(27,79,158,.06)", tension:.4, fill:true, borderDash:[5,5], pointRadius:3, pointBackgroundColor:"#1B4F9E" },
-  ],
-};
+const DEMO_CONSULT_LINE = {};
 
-const DEMO_REVENUS_BAR = {
-  labels:["Consultations","Laboratoire","Imagerie","Hospitalisation","Pharmacie","Chirurgie"],
-  data:[12500000, 6800000, 4200000, 7900000, 3200000, 3850000],
-  colors:["#1B4F9E","#0EA5A0","#7C3AED","#D97706","#059669","#DC2626"],
-};
+const DEMO_REVENUS_BAR = {};
 
-const DEMO_GENDER = {
-  labels:["Hommes","Femmes","Enfants (< 15 ans)"],
-  data:[1842, 2210, 768],
-  colors:["#1B4F9E","#0EA5A0","#D97706"],
-};
+const DEMO_GENDER = {};
 
-const DEMO_PATHOLOGIES = [
-  { maladie:"Paludisme",          nb:320, pct:100, color:"#DC2626" },
-  { maladie:"Hypertension",       nb:210, pct:66,  color:"#D97706" },
-  { maladie:"Diabète",            nb:145, pct:45,  color:"#0EA5A0" },
-  { maladie:"Infections respiratoires", nb:128, pct:40, color:"#1B4F9E" },
-  { maladie:"Diarrhées",          nb:98,  pct:31,  color:"#059669" },
-  { maladie:"Typhoïde",           nb:87,  pct:27,  color:"#7C3AED" },
-  { maladie:"Anémie",             nb:74,  pct:23,  color:"#F59E0B" },
-  { maladie:"VIH/SIDA",           nb:62,  pct:19,  color:"#EC4899" },
-  { maladie:"Tuberculose",        nb:45,  pct:14,  color:"#06B6D4" },
-  { maladie:"Insuffisance cardiaque",nb:38, pct:12, color:"#6366F1" },
-];
+const DEMO_PATHOLOGIES = [];
 
-const DEMO_MEDECINS = [
-  { nom:"Dr. Martin Leblanc",  specialite:"Chirurgie",      consultations:120, taux:96, color:"#1B4F9E" },
-  { nom:"Dr. Sophie Pierre",   specialite:"Gynécologie",    consultations:98,  taux:94, color:"#0EA5A0" },
-  { nom:"Dr. Amina Diallo",    specialite:"Médecine interne",consultations:76, taux:91, color:"#7C3AED" },
-  { nom:"Dr. Pierre Mouanda",  specialite:"Radiologie",     consultations:65,  taux:88, color:"#D97706" },
-  { nom:"Dr. Carine Bakounga", specialite:"Pédiatrie",      consultations:52,  taux:97, color:"#059669" },
-];
+const DEMO_MEDECINS = [];
 
-const DEMO_ALERTES_MED = [
-  { type:"danger",  icon:"🔬", titre:"44 examens labo en attente",   detail:"Dont 8 urgents depuis plus de 24h",            heure:"Il y a 30 min" },
-  { type:"danger",  icon:"🛏️",  titre:"Lit réanimation critique",    detail:"Patient Paul N. — Unité soins intensifs",       heure:"Il y a 1h" },
-  { type:"warn",    icon:"💊",  titre:"Stock Amoxicilline faible",   detail:"Seuil minimum atteint — 48h restantes",         heure:"Il y a 2h" },
-  { type:"warn",    icon:"📅",  titre:"3 rendez-vous non honorés",   detail:"Patients sans confirmation pour demain",        heure:"Il y a 3h" },
-  { type:"info",    icon:"🤖",  titre:"IA : Anomalie détectée",      detail:"Scanner patient CHIR-003 — Révision recommandée",heure:"Il y a 4h" },
-];
+const DEMO_ALERTES_MED = [];
 
-const DEMO_ALERTES_ADM = [
-  { type:"danger",  icon:"💰", titre:"5 800 000 CFA impayés",        detail:"23 factures en attente de règlement",            heure:"Aujourd'hui" },
-  { type:"warn",    icon:"💊", titre:"8 médicaments en rupture",     detail:"Réapprovisionnement urgent requis",               heure:"Aujourd'hui" },
-  { type:"danger",  icon:"⏰", titre:"2 médicaments expirés",        detail:"Ciprofloxacine lot A2024 — À retirer immédiatement",heure:"Hier" },
-  { type:"warn",    icon:"📋", titre:"12 dossiers incomplets",       detail:"Patients sans bilan préopératoire complet",       heure:"Cette semaine" },
-];
+const DEMO_ALERTES_ADM = [];
 
-const DEMO_PERF = [
-  { label:"Taux de satisfaction patient",  val:87, unit:"%", color:"#059669", icon:"😊", good:true },
-  { label:"Temps moyen d'attente",         val:22,  unit:"min", color:"#D97706", icon:"⏳", good:false },
-  { label:"Temps moyen de prise en charge",val:35,  unit:"min", color:"#1B4F9E", icon:"🏥", good:null },
-  { label:"Taux de retour patients",       val:68,  unit:"%",   color:"#0EA5A0", icon:"🔄", good:true },
-  { label:"Taux d'occupation des lits",    val:72,  unit:"%",   color:"#7C3AED", icon:"🛏️", good:null },
-  { label:"Taux de complications chir.",   val:4.2, unit:"%",   color:"#DC2626", icon:"⚠️", good:false },
-];
+const DEMO_PERF = [];
 
 // ─── MAIN ───────────────────────────────────────────────────
 export default function Analytics() {

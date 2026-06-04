@@ -211,16 +211,7 @@ const GROUP_ICONS = {
 };
 
 // ─── DEMO fallback data ───────────────────────────────────────
-const DEMO_USERS = [
-  { id:1, prenom:"Martin",  nom:"Leblanc",  email:"m.leblanc@clinique.cg",  role:"medecin",       statut:"actif",   last:"Auj. 09:15" },
-  { id:2, prenom:"Sophie",  nom:"Pierre",   email:"s.pierre@clinique.cg",   role:"medecin",       statut:"actif",   last:"Auj. 08:42" },
-  { id:3, prenom:"Amina",   nom:"Diallo",   email:"a.diallo@clinique.cg",   role:"infirmier",     statut:"actif",   last:"Hier 16:30" },
-  { id:4, prenom:"Jean",    nom:"Bakala",   email:"j.bakala@clinique.cg",   role:"pharmacien",    statut:"actif",   last:"Auj. 10:00" },
-  { id:5, prenom:"Carine",  nom:"Mouanda",  email:"c.mouanda@clinique.cg",  role:"receptionniste",statut:"actif",   last:"Auj. 07:55" },
-  { id:6, prenom:"Paul",    nom:"Ngoma",    email:"p.ngoma@clinique.cg",    role:"laborantin",    statut:"inactif", last:"Il y a 3j"  },
-  { id:7, prenom:"Béatrice",nom:"Yomba",    email:"b.yomba@clinique.cg",    role:"comptable",     statut:"actif",   last:"Hier 14:20" },
-  { id:8, prenom:"Admin",   nom:"Clinique", email:"admin@clinique.cg",      role:"superadmin",    statut:"actif",   last:"Auj. 11:00" },
-];
+const DEMO_USERS = [];
 
 const ROLES_PERMS = [
   { role:"Super Admin",     read:true,  add:true,  edit:true,  del:true,  print:true,  export:true },
@@ -233,15 +224,7 @@ const ROLES_PERMS = [
   { role:"Réceptionniste",  read:true,  add:true,  edit:false, del:false, print:false, export:false },
 ];
 
-const DEMO_LOGS = [
-  { user:"Admin Clinique",     action:"Modification paramètres généraux",  type:"edit",   date:"Auj. 11:42", ip:"192.168.1.1" },
-  { user:"Dr. Martin Leblanc", action:"Connexion réussie",                 type:"login",  date:"Auj. 09:15", ip:"192.168.1.12" },
-  { user:"Dr. Sophie Pierre",  action:"Connexion réussie",                 type:"login",  date:"Auj. 08:42", ip:"192.168.1.14" },
-  { user:"Admin Clinique",     action:"Ajout utilisateur Béatrice Yomba",  type:"add",    date:"Hier 14:20", ip:"192.168.1.1" },
-  { user:"Admin Clinique",     action:"Suppression rôle test",             type:"delete", date:"Hier 10:11", ip:"192.168.1.1" },
-  { user:"Paul Ngoma",         action:"Tentative connexion échouée",       type:"error",  date:"Il y a 3j",  ip:"192.168.1.30" },
-  { user:"Admin Clinique",     action:"Sauvegarde manuelle effectuée",     type:"backup", date:"Il y a 4j",  ip:"192.168.1.1" },
-];
+const DEMO_LOGS = [];
 
 const INTEGRATIONS = [
   { nom:"SMS Gateway (Orange)",  statut:"connecté",    icon:"📱", desc:"Envoi SMS patients & alertes",             color:"#059669" },

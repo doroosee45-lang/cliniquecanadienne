@@ -225,49 +225,10 @@ const EXAMENS_IMAG   = ["Radiographie thorax","Échographie abdominale","Échogr
 const ALLERGIES_COMMUNES = ["Pénicilline","Aspirine","AINS","Sulfamides","Codéine","Latex","Iode","Tétracyclines"];
 
 // ─── Demo data ────────────────────────────────────────────────
-const DEMO_ORDONNANCES = [
-  { _id:"1", numero:"ORD-2025-0001", statut:"active", patient_nom:"Jean Dupont", patient_dob:"1975-04-12", sexe:"homme", poids:78, allergies:["Pénicilline"], telephone:"+242 06 123 4567", medecin:"Dr. Martin Leblanc", specialite:"Chirurgie générale", date_prescription:"2025-05-28", date_expiration:"2025-06-28", diagnostic:"Infection post-opératoire — hernie inguinale", consultation_liee:"CONS-2025-0042", chronique:false,
-    medicaments:[
-      { id:1, medicament:"Amoxicilline", forme:"Comprimé", dosage:"1g", voie:"Orale", frequence:"3 fois/jour", duree:"7 jours", quantite:21, instructions:"Prendre pendant le repas" },
-      { id:2, medicament:"Paracétamol", forme:"Comprimé", dosage:"1g", voie:"Orale", frequence:"3 fois/jour", duree:"5 jours", quantite:15, instructions:"En cas de douleur ou fièvre" },
-      { id:3, medicament:"Oméprazole", forme:"Gélule", dosage:"20mg", voie:"Orale", frequence:"1 fois/jour", duree:"7 jours", quantite:7, instructions:"À jeun le matin" },
-    ],
-    examens_labo:[], examens_imagerie:[], recommandations:"Repos relatif 5 jours. Éviter les efforts. Consultation de contrôle dans 10 jours.",
-    interactions:[], pharmacie_statut:"délivrée", ia_interactions:false, note_confidentielle:"",
-  },
-  { _id:"2", numero:"ORD-2025-0002", statut:"active", patient_nom:"Marie Paul", patient_dob:"1988-11-03", sexe:"femme", poids:60, allergies:[], telephone:"+242 05 987 6543", medecin:"Dr. Sophie Pierre", specialite:"Gynécologie", date_prescription:"2025-06-01", date_expiration:"2025-07-01", diagnostic:"Fibrome utérin — traitement pré-opératoire", consultation_liee:"CONS-2025-0043", chronique:false,
-    medicaments:[
-      { id:1, medicament:"Acide tranexamique", forme:"Comprimé", dosage:"500mg", voie:"Orale", frequence:"3 fois/jour", duree:"5 jours", quantite:15, instructions:"Pendant les règles" },
-      { id:2, medicament:"Ibuprofène", forme:"Comprimé", dosage:"400mg", voie:"Orale", frequence:"3 fois/jour", duree:"5 jours", quantite:15, instructions:"Pendant le repas" },
-    ],
-    examens_labo:["NFS (Numération Formule Sanguine)","Groupage sanguin"], examens_imagerie:["Échographie pelvienne"], recommandations:"Surveillance des saignements. Consultation si aggravation.", interactions:[], pharmacie_statut:"en attente", ia_interactions:false, note_confidentielle:"",
-  },
-  { _id:"3", numero:"ORD-2025-0003", statut:"active", patient_nom:"Paul Nguema", patient_dob:"1962-07-22", sexe:"homme", poids:85, allergies:["Aspirine","Latex"], telephone:"+242 06 555 0011", medecin:"Dr. Martin Leblanc", specialite:"Médecine interne", date_prescription:"2025-05-15", date_expiration:"2025-11-15", diagnostic:"Hypertension artérielle — Diabète type 2", consultation_liee:"CONS-2025-0038", chronique:true, maladie_chronique:"Hypertension artérielle",
-    medicaments:[
-      { id:1, medicament:"Amlodipine", forme:"Comprimé", dosage:"5mg", voie:"Orale", frequence:"1 fois/jour", duree:"6 mois", quantite:180, instructions:"Le matin à heure fixe" },
-      { id:2, medicament:"Metformine", forme:"Comprimé", dosage:"850mg", voie:"Orale", frequence:"2 fois/jour", duree:"6 mois", quantite:360, instructions:"Pendant les repas" },
-      { id:3, medicament:"Aspirine", forme:"Comprimé", dosage:"75mg", voie:"Orale", frequence:"1 fois/jour", duree:"6 mois", quantite:180, instructions:"Le soir" },
-    ],
-    examens_labo:["Glycémie à jeun","Créatinémie","Lipidogramme"], examens_imagerie:[], recommandations:"Régime hyposodé. Activité physique modérée 30min/jour. Contrôle glycémique mensuel.", interactions:["Aspirine + Amlodipine : potentialisation hypotensive modérée"], pharmacie_statut:"délivrée", ia_interactions:true, note_confidentielle:"",
-  },
-  { _id:"4", numero:"ORD-2025-0004", statut:"expiree", patient_nom:"Fatou Bongo", patient_dob:"1995-02-14", sexe:"femme", poids:55, allergies:[], telephone:"+242 05 222 3344", medecin:"Dr. Sophie Pierre", specialite:"Médecine générale", date_prescription:"2025-04-01", date_expiration:"2025-05-01", diagnostic:"Infection urinaire", consultation_liee:"CONS-2025-0029", chronique:false,
-    medicaments:[
-      { id:1, medicament:"Ciprofloxacine", forme:"Comprimé", dosage:"500mg", voie:"Orale", frequence:"2 fois/jour", duree:"7 jours", quantite:14, instructions:"À jeun" },
-    ],
-    examens_labo:["ECBU"], examens_imagerie:[], recommandations:"Hydratation abondante. Contrôle ECBU à J7.", interactions:[], pharmacie_statut:"délivrée", ia_interactions:false, note_confidentielle:"",
-  },
-  { _id:"5", numero:"ORD-2025-0005", statut:"active", patient_nom:"André Mboula", patient_dob:"1950-09-18", sexe:"homme", poids:72, allergies:["Morphine"], telephone:"+242 06 777 8899", medecin:"Dr. Martin Leblanc", specialite:"Chirurgie générale", date_prescription:"2025-05-20", date_expiration:"2025-06-20", diagnostic:"Suivi post-opératoire — Hémicolectomie droite", consultation_liee:"CONS-2025-0041", chronique:false,
-    medicaments:[
-      { id:1, medicament:"Tramadol", forme:"Comprimé", dosage:"50mg", voie:"Orale", frequence:"2 fois/jour", duree:"10 jours", quantite:20, instructions:"En cas de douleur" },
-      { id:2, medicament:"Oméprazole", forme:"Gélule", dosage:"20mg", voie:"Orale", frequence:"1 fois/jour", duree:"10 jours", quantite:10, instructions:"À jeun" },
-      { id:3, medicament:"Enoxaparine", forme:"Injectable", dosage:"40mg", voie:"Sous-cutanée", frequence:"1 fois/jour", duree:"7 jours", quantite:7, instructions:"Injection abdominale le soir" },
-    ],
-    examens_labo:["NFS (Numération Formule Sanguine)","CRP (Protéine C réactive)"], examens_imagerie:["Radiographie thorax"], recommandations:"Alimentation progressive. Lever précoce. Soins de plaie quotidiens.", interactions:[], pharmacie_statut:"partielle", ia_interactions:false, note_confidentielle:"",
-  },
-];
+const DEMO_ORDONNANCES = [];
 
-const DEMO_MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
-const DEMO_DATA = [42,58,50,65,72,60,48,35,55,68,61,74];
+const DEMO_MOIS = [];
+const DEMO_DATA = [];
 
 const EMPTY_MED = { id:Date.now(), medicament:"", forme:"Comprimé", dosage:"", voie:"Orale", frequence:"2 fois/jour", duree:"7 jours", quantite:"", instructions:"" };
 const EMPTY_ORD = {

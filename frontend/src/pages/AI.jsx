@@ -227,31 +227,11 @@ const I = {
 };
 
 // ─── Demo data ────────────────────────────────────────────────
-const DEMO_ALERTS = [
-  { id:"a1", type:"medical",  priority:"critique", icon:"🚨", title:"Allergie critique détectée", detail:"Patient Paul Nguema — Prescription Aspirine en cours. Allergie connue.", time:"Il y a 3 min", module:"Pharmacie" },
-  { id:"a2", type:"medical",  priority:"eleve",    icon:"⚠️", title:"Résultat labo anormal",      detail:"Glycémie 7.8 mmol/L — Patient Jean Dupont. Valeur critique.", time:"Il y a 12 min", module:"Laboratoire" },
-  { id:"a3", type:"medical",  priority:"eleve",    icon:"🔴", title:"Patient à risque cardiaque",  detail:"Score risque cardiovasculaire 78/100 — André Mboula. Suivi urgent.", time:"Il y a 28 min", module:"Patients" },
-  { id:"a4", type:"admin",    priority:"modere",   icon:"💊", title:"Stock médicament faible",     detail:"Amoxicilline 1g — 12 boîtes restantes. Seuil critique à 10.", time:"Il y a 1h", module:"Pharmacie" },
-  { id:"a5", type:"admin",    priority:"modere",   icon:"📅", title:"Rendez-vous manqués",         detail:"4 patients n'ont pas honoré leur rendez-vous aujourd'hui.", time:"Il y a 2h", module:"Rendez-vous" },
-  { id:"a6", type:"finance",  priority:"modere",   icon:"💰", title:"Factures impayées",           detail:"3 factures > 30 jours non réglées. Total : 510 000 CFA.", time:"Il y a 3h", module:"Finance" },
-  { id:"a7", type:"medical",  priority:"faible",   icon:"💉", title:"Vaccin en retard",             detail:"Jean Dupont — Rappel COVID-19 prévu le 15/10/2024.", time:"Hier", module:"Vaccination" },
-];
+const DEMO_ALERTS = [];
 
-const DEMO_ANALYSES_IA = [
-  { id:"h1", date:"2025-06-02 10:34", user:"Dr. Leblanc", action:"Analyse clinique", patient:"Jean Dupont", resultat:"2 diagnostics suggérés", valide:true },
-  { id:"h2", date:"2025-06-02 09:12", user:"Dr. Pierre",  action:"Ordonnance IA",   patient:"Marie Paul",  resultat:"Interactions vérifiées OK", valide:true },
-  { id:"h3", date:"2025-06-01 16:45", user:"Lab. Tech",   action:"Analyse labo",    patient:"Paul Nguema", resultat:"3 valeurs anormales détectées", valide:true },
-  { id:"h4", date:"2025-06-01 14:20", user:"Dr. Leblanc", action:"Risque patient",  patient:"André Mboula", resultat:"Risque cardiovasculaire élevé", valide:false },
-  { id:"h5", date:"2025-06-01 11:05", user:"Admin",       action:"Rapport mensuel", patient:"—",            resultat:"Rapport PDF généré", valide:true },
-];
+const DEMO_ANALYSES_IA = [];
 
-const DEMO_KNOWLEDGE = [
-  { id:"k1", categorie:"Protocole",          titre:"Prise en charge appendicite aiguë",   tags:["chirurgie","urgence","abdomen"] },
-  { id:"k2", categorie:"Recommandation",     titre:"HTA — Cibles tensionnelles 2024",      tags:["cardiologie","HTA","médecine"] },
-  { id:"k3", categorie:"Guide thérapeutique",titre:"Diabète type 2 — Algorithme insuline", tags:["diabète","insuline","endocrinologie"] },
-  { id:"k4", categorie:"Protocole",          titre:"Antibiothérapie post-opératoire",       tags:["chirurgie","antibiotiques","infection"] },
-  { id:"k5", categorie:"Recommandation",     titre:"Dépistage cancer colorectal",           tags:["oncologie","coloscopie","dépistage"] },
-];
+const DEMO_KNOWLEDGE = [];
 
 // ─── Score Ring SVG ───────────────────────────────────────────
 function ScoreRing({ score, size = 80, color = "#1B4F9E" }) {

@@ -306,16 +306,10 @@ function BarChart({ labels, data, color = "#1B4F9E", height = 200 }) {
 }
 
 // ─── DEMO DATA ───────────────────────────────────────────────
-const DEMO_DOSSIERS = [
-  { _id: "1", numero: "CHIR-2025-0001", patient_nom: "Jean Dupont", date_naissance: "1975-04-12", sexe: "homme", groupe_sanguin: "O+", allergies: "Pénicilline", antecedents_medicaux: "HTA, Diabète type 2", antecedents_chirurgicaux: "Appendicectomie 2010", telephone: "+242 06 123 4567", diagnostic_chirurgical: "Hernie inguinale droite", type_intervention: "Cure de hernie inguinale droite", chirurgien_nom: "Dr. Martin Leblanc", statut: "suivi_postop", niveau_urgence: "electif", ia_risque_score: 45, ia_risque_niveau: "modere", date_intervention_prev: "2025-06-10", nb_complications: 0, nb_suivis: 3 },
-  { _id: "2", numero: "CHIR-2025-0002", patient_nom: "Marie Paul", date_naissance: "1988-11-03", sexe: "femme", groupe_sanguin: "A+", allergies: null, antecedents_medicaux: "Fibrome utérin", antecedents_chirurgicaux: null, telephone: "+242 05 987 6543", diagnostic_chirurgical: "Fibrome utérin symptomatique", type_intervention: "Myomectomie laparoscopique", chirurgien_nom: "Dr. Sophie Pierre", statut: "preoperatoire", niveau_urgence: "electif", ia_risque_score: 28, ia_risque_niveau: "faible", date_intervention_prev: "2025-06-20", nb_complications: 0, nb_suivis: 0 },
-  { _id: "3", numero: "CHIR-2025-0003", patient_nom: "Paul Nguema", date_naissance: "1962-07-22", sexe: "homme", groupe_sanguin: "B+", allergies: "Aspirine, Latex", antecedents_medicaux: "Diabète, HTA, Insuffisance rénale", antecedents_chirurgicaux: "Bypass coronarien 2018", telephone: "+242 06 555 0011", diagnostic_chirurgical: "Occlusion intestinale aiguë", type_intervention: "Laparotomie exploratrice", chirurgien_nom: "Dr. Martin Leblanc", statut: "opere", niveau_urgence: "urgence_absolue", ia_risque_score: 82, ia_risque_niveau: "critique", date_intervention_prev: "2025-05-28", date_intervention_reelle: "2025-05-28", nb_complications: 1, nb_suivis: 5 },
-  { _id: "4", numero: "CHIR-2025-0004", patient_nom: "Fatou Bongo", date_naissance: "1995-02-14", sexe: "femme", groupe_sanguin: "AB+", allergies: null, antecedents_medicaux: null, antecedents_chirurgicaux: null, telephone: "+242 05 222 3344", diagnostic_chirurgical: "Appendicite aiguë", type_intervention: "Appendicectomie cœlioscopique", chirurgien_nom: "Dr. Sophie Pierre", statut: "consultation", niveau_urgence: "urgent", ia_risque_score: 22, ia_risque_niveau: "faible", date_intervention_prev: null, nb_complications: 0, nb_suivis: 0 },
-  { _id: "5", numero: "CHIR-2025-0005", patient_nom: "André Mboula", date_naissance: "1950-09-18", sexe: "homme", groupe_sanguin: "O-", allergies: "Morphine", antecedents_medicaux: "BPCO, Cardiopathie ischémique", antecedents_chirurgicaux: "Résection colique 2015", telephone: "+242 06 777 8899", diagnostic_chirurgical: "Néoplasie colique droite", type_intervention: "Hémicolectomie droite", chirurgien_nom: "Dr. Martin Leblanc", statut: "cloture", niveau_urgence: "electif", ia_risque_score: 68, ia_risque_niveau: "eleve", date_intervention_prev: "2025-04-15", date_intervention_reelle: "2025-04-15", nb_complications: 1, nb_suivis: 8 },
-];
+const DEMO_DOSSIERS = [];
 
-const DEMO_MOIS = ["Jan 25","Fév 25","Mar 25","Avr 25","Mai 25","Jun 25","Jul 25","Aoû 25","Sep 25","Oct 25","Nov 25","Déc 25"];
-const DEMO_INTERV = [2, 3, 1, 4, 5, 3, 2, 0, 1, 3, 2, 4];
+const DEMO_MOIS = [];
+const DEMO_INTERV = [];
 
 const EMPTY_DOSSIER = {
   patient_id: "", chirurgien_id: "", statut: "consultation", niveau_urgence: "electif",

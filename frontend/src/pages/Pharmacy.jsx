@@ -1558,37 +1558,13 @@ const MVT_CFG = {
 };
 
 // ─── DEMO DATA ────────────────────────────────────────────────
-const DEMO_MEDS = [
-  { _id:"m1", code:"MED-001", nom_commercial:"AMOXICILLINE 500MG", dci:"Amoxicilline", categorie:"Antibiotiques", forme:"Comprimé", dosage:"500mg", fabricant:"SANOFI", fournisseur:"PharmaCongo", prix_achat:200, prix_vente:350, stock_quantite:0, stock_minimum:50, stock_maximum:500, emplacement:"A1-01", lot:"AMX-2025-01", date_expiration:"2025-03-15", statut:"rupture", ordonnance:true },
-  { _id:"m2", code:"MED-002", nom_commercial:"PARACÉTAMOL 1G", dci:"Paracétamol", categorie:"Analgésiques", forme:"Comprimé", dosage:"1g", fabricant:"PFIZER", fournisseur:"MedSupply", prix_achat:80, prix_vente:150, stock_quantite:12, stock_minimum:100, stock_maximum:1000, emplacement:"A1-02", lot:"PAR-2025-02", date_expiration:"2026-08-20", statut:"critique", ordonnance:false },
-  { _id:"m3", code:"MED-003", nom_commercial:"METRONIDAZOLE 250MG", dci:"Métronidazole", categorie:"Antiprotozoaires", forme:"Comprimé", dosage:"250mg", fabricant:"MERCK", fournisseur:"CAMPC", prix_achat:120, prix_vente:200, stock_quantite:280, stock_minimum:80, stock_maximum:800, emplacement:"B2-01", lot:"MET-2025-03", date_expiration:"2027-01-10", statut:"ok", ordonnance:true },
-  { _id:"m4", code:"MED-004", nom_commercial:"SÉRUM PHYSIOLOGIQUE 500ML", dci:"NaCl 0.9%", categorie:"Solutés", forme:"Injectable", dosage:"500ml", fabricant:"BAXTER", fournisseur:"MedSupply", prix_achat:600, prix_vente:1200, stock_quantite:8, stock_minimum:30, stock_maximum:200, emplacement:"C1-01", lot:"SP-2025-04", date_expiration:"2025-12-31", statut:"critique", ordonnance:false },
-  { _id:"m5", code:"MED-005", nom_commercial:"ARTEMETHER 20MG", dci:"Artéméther", categorie:"Antipaludéens", forme:"Comprimé", dosage:"20mg", fabricant:"SANOFI", fournisseur:"PharmaCongo", prix_achat:400, prix_vente:800, stock_quantite:150, stock_minimum:60, stock_maximum:600, emplacement:"A2-01", lot:"ART-2025-05", date_expiration:"2026-06-30", statut:"ok", ordonnance:true },
-  { _id:"m6", code:"MED-006", nom_commercial:"OMÉPRAZOLE 20MG", dci:"Oméprazole", categorie:"Gastro-entérologie", forme:"Gélule", dosage:"20mg", fabricant:"AstraZeneca", fournisseur:"CAMPC", prix_achat:150, prix_vente:280, stock_quantite:42, stock_minimum:60, stock_maximum:400, emplacement:"B1-03", lot:"OMP-2025-06", date_expiration:"2027-03-15", statut:"bas", ordonnance:false },
-  { _id:"m7", code:"MED-007", nom_commercial:"GLIBENCLAMIDE 5MG", dci:"Glibenclamide", categorie:"Antidiabétiques", forme:"Comprimé", dosage:"5mg", fabricant:"MERCK", fournisseur:"MedSupply", prix_achat:90, prix_vente:180, stock_quantite:320, stock_minimum:100, stock_maximum:1000, emplacement:"A3-02", lot:"GLI-2025-07", date_expiration:"2026-12-01", statut:"ok", ordonnance:true },
-  { _id:"m8", code:"MED-008", nom_commercial:"AMLODIPINE 5MG", dci:"Amlodipine", categorie:"Antihypertenseurs", forme:"Comprimé", dosage:"5mg", fabricant:"PFIZER", fournisseur:"PharmaCongo", prix_achat:100, prix_vente:200, stock_quantite:180, stock_minimum:80, stock_maximum:800, emplacement:"A3-01", lot:"AML-2025-08", date_expiration:"2027-02-28", statut:"ok", ordonnance:true },
-];
+const DEMO_MEDS = [];
 
-const DEMO_MVTS = [
-  { _id:"v1", medicament_nom:"AMOXICILLINE 500MG", type:"dispensation", quantite:10, stock_avant:10, stock_apres:0, reference:"ORD-2025-0012", pharmacien:"Jean Bakala", patient:"Fatou Bongo", date:"2025-06-01T09:15:00" },
-  { _id:"v2", medicament_nom:"PARACÉTAMOL 1G", type:"entree", quantite:50, stock_avant:0, stock_apres:50, reference:"BC-2025-0003", pharmacien:"Jean Bakala", patient:null, date:"2025-05-30T14:30:00" },
-  { _id:"v3", medicament_nom:"METRONIDAZOLE 250MG", type:"sortie", quantite:20, stock_avant:300, stock_apres:280, reference:"BLOC-001", pharmacien:"Jean Bakala", patient:null, date:"2025-05-29T11:00:00" },
-  { _id:"v4", medicament_nom:"SÉRUM PHYSIOLOGIQUE 500ML", type:"dispensation", quantite:4, stock_avant:12, stock_apres:8, reference:"ORD-2025-0011", pharmacien:"Jean Bakala", patient:"Paul Nguema", date:"2025-05-28T16:00:00" },
-  { _id:"v5", medicament_nom:"ARTEMETHER 20MG", type:"entree", quantite:200, stock_avant:0, stock_apres:200, reference:"BC-2025-0002", pharmacien:"Jean Bakala", patient:null, date:"2025-05-25T08:45:00" },
-  { _id:"v6", medicament_nom:"GLIBENCLAMIDE 5MG", type:"dispensation", quantite:30, stock_avant:350, stock_apres:320, reference:"ORD-2025-0009", pharmacien:"Jean Bakala", patient:"Paul Nguema", date:"2025-05-22T10:20:00" },
-];
+const DEMO_MVTS = [];
 
-const DEMO_FOURNISSEURS = [
-  { _id:"f1", nom:"PharmaCongo Brazzaville", contact:"M. Okemba Gilles", email:"commandes@pharmacongo.cg", telephone:"+242 06 111 2233", ville:"Brazzaville", delai_livraison:5, type:"principal" },
-  { _id:"f2", nom:"MedSupply Africa", contact:"Dr. Mouamba Sophie", email:"supply@medsupply.africa", telephone:"+242 05 222 3344", ville:"Pointe-Noire", delai_livraison:7, type:"secondaire" },
-  { _id:"f3", nom:"CAMPC", contact:"Mme. Ngoma Céleste", email:"commandes@campc.cg", telephone:"+242 06 333 4455", ville:"Brazzaville", delai_livraison:3, type:"gouvernemental" },
-];
+const DEMO_FOURNISSEURS = [];
 
-const DEMO_COMMANDES = [
-  { _id:"c1", numero:"BC-2025-00001", fournisseur:"PharmaCongo", nb_lignes:6, montant:450000, date:"2025-05-20", statut:"recu" },
-  { _id:"c2", numero:"BC-2025-00002", fournisseur:"MedSupply Africa", nb_lignes:3, montant:280000, date:"2025-05-25", statut:"envoye" },
-  { _id:"c3", numero:"BC-2025-00003", fournisseur:"CAMPC", nb_lignes:4, montant:120000, date:"2025-05-28", statut:"brouillon" },
-];
+const DEMO_COMMANDES = [];
 
 const FORMES_PHARMA = ["Comprimé","Gélule","Sirop","Injectable","Perfusion","Pommade","Crème","Suppositoire","Patch","Spray","Sachet","Gouttes"];
 const CATEGORIES = ["Antibiotiques","Analgésiques","Antipaludéens","Antidiabétiques","Antihypertenseurs","Anti-inflammatoires","Gastro-entérologie","Antiprotozoaires","Solutés","Vitamines","Antiseptiques","Cardiologie","Neurologie"];
