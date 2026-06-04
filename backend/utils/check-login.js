@@ -6,7 +6,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const User = require('../models/User');
 
-const EMAIL    = 'superadmin@medisync.clinic';
+const EMAIL    = 'oseedoro@gmail.com';
 const PASSWORD = 'medisync123';
 
 async function check() {
