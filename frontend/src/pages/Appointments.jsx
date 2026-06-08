@@ -286,10 +286,11 @@ const normalizeRdv = (r) => {
   return {
     _id:          r._id,
     reference:    r.reference || `RDV-${r._id?.slice(-4).toUpperCase()}`,
-    patient_nom:  r.patient ? `${r.patient.prenom} ${r.patient.nom}` : (r.patient_nom || '—'),
-    patient_tel:  r.patient?.telephone || r.patient_tel || '',
-    patient_email:r.patient?.email     || r.patient_email || '',
-    patient_id:   r.patient?._id       || r.patient || '',
+    patient_nom:    r.patient ? `${r.patient.prenom} ${r.patient.nom}` : (r.patient_nom || '—'),
+    patient_tel:    r.patient?.telephone    || r.patient_tel    || '',
+    patient_email:  r.patient?.email        || r.patient_email  || '',
+    patient_id:     r.patient?._id          || r.patient        || '',
+    patient_dossier:r.patient?.numero_dossier || r.patient_dossier || '',
     medecin_nom:  r.medecin ? `Dr. ${r.medecin.prenom} ${r.medecin.nom}` : (r.medecin_nom || '—'),
     medecin_id:   r.medecin?._id       || r.medecin || '',
     // `date` = ISO complet pour que fmtTime() retourne l'heure correcte
@@ -759,7 +760,7 @@ function RecurrentsTab({ medecins }) {
                 </div>
               ) : (
                 <div style={{ position:"relative" }}>
-                  <input className="cinp" placeholder="Rechercher un patient…"
+                  <input className="cinp" placeholder="Rechercher par nom, prénom ou n° dossier…"
                     value={planSearch} onChange={e => setPlanSearch(e.target.value)} required={!planPatient} />
                   {planResults.length > 0 && (
                     <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:"1.5px solid #E2EAF4", borderRadius:10, boxShadow:"0 8px 24px rgba(11,30,59,.12)", zIndex:100, maxHeight:180, overflowY:"auto" }}>
@@ -1006,7 +1007,7 @@ export default function RendezVous() {
   // Filtered list
   const rdvsFiltres = rdvs.filter(r => {
     const q = search.toLowerCase();
-    const matchQ = !q || r.patient_nom.toLowerCase().includes(q) || r.reference.toLowerCase().includes(q) || r.medecin_nom.toLowerCase().includes(q);
+    const matchQ = !q || r.patient_nom.toLowerCase().includes(q) || r.reference.toLowerCase().includes(q) || r.medecin_nom.toLowerCase().includes(q) || (r.patient_dossier || '').toLowerCase().includes(q);
     const matchS = !filterStatut || r.statut === filterStatut;
     const matchM = !filterMedecin || r.medecin_id === filterMedecin;
     return matchQ && matchS && matchM;
@@ -1298,6 +1299,7 @@ export default function RendezVous() {
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--cb)", fontSize:12 }}>{r.reference}</span></td>
                             <td>
                               <div style={{ fontWeight:600, color:"var(--cn)" }}>{r.patient_nom}</div>
+                              {r.patient_dossier && <div style={{ fontSize:10, color:"var(--cb)", fontFamily:"monospace", fontWeight:600 }}>{r.patient_dossier}</div>}
                               <div style={{ fontSize:11, color:"var(--cm)", display:"flex", alignItems:"center", gap:4 }}>{I.phone} {r.patient_tel}</div>
                             </td>
                             <td>
@@ -1407,7 +1409,7 @@ export default function RendezVous() {
                 <div className="rdv-filters">
                   <div style={{ position:"relative", flex:"1 1 200px" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="cinp rdv-inp-s" style={{ paddingLeft:34 }} placeholder="Patient, référence..." value={search} onChange={e => setSearch(e.target.value)} />
+                    <input className="cinp rdv-inp-s" style={{ paddingLeft:34 }} placeholder="Patient, référence, n° dossier..." value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
                   <select className="cinp rdv-inp-m" value={filterStatut} onChange={e => setFilter(e.target.value)}>
                     <option value="">Tous les statuts</option>
@@ -1441,6 +1443,7 @@ export default function RendezVous() {
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--cb)", fontSize:12 }}>{r.reference}</span></td>
                             <td>
                               <div style={{ fontWeight:600, color:"var(--cn)" }}>{r.patient_nom}</div>
+                              {r.patient_dossier && <div style={{ fontSize:10, color:"var(--cb)", fontFamily:"monospace", fontWeight:600 }}>{r.patient_dossier}</div>}
                               <div style={{ fontSize:11, color:"var(--cm)", display:"flex", alignItems:"center", gap:4 }}>{I.phone} {r.patient_tel}</div>
                             </td>
                             <td style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>{fmtDate(r.date)}</td>
