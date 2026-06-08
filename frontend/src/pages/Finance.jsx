@@ -195,7 +195,7 @@ const normalizeFacture = (f) => {
     numero:   f.numero          || f.numero_facture  || genRef("FAC"),
     date:     f.date            || f.date_facture     || f.createdAt,
     echeance: f.echeance        || f.date_echeance    || null,
-    patient:  f.patient         || f.patient_nom      || (pat ? `${pat.prenom} ${pat.nom}` : '—'),
+    patient:  pat ? `${pat.prenom || ''} ${pat.nom || ''}`.trim() : (typeof f.patient === 'string' ? f.patient : f.patient_nom || '—'),
     service:  f.service         || f.service_label    || '—',
     montant:  Number(f.montant  || f.montant_direct   || f.montant_ttc || 0),
     statut:   statutMap[f.statut] || f.statut         || 'non_paye',
