@@ -183,7 +183,7 @@ textarea.finp { resize:vertical; }
 
 // ─── Helpers ─────────────────────────────────────────────────
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : "—";
-const fmtMontant = (v) => v !== undefined && v !== null ? Number(v).toLocaleString("fr-FR") + " CFA" : "—";
+const fmtMontant = (v) => { const n = Number(v); return (!isNaN(n) ? n : 0).toLocaleString("fr-FR") + " CFA"; };
 const genRef = (prefix) => `${prefix}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000).padStart(4, "0")}`;
 
 // Adapter Invoice (modèle backend) → champs affichés dans le frontend
@@ -564,13 +564,14 @@ export default function Finance() {
   useRealtimeRefresh(loadData);
 
   // ── Computed KPIs ────────────────────────────────────────
-  const totalRevenus   = revenus.reduce((s, r) => s + Number(r.montant), 0);
-  const totalDepenses  = depenses.reduce((s, d) => s + Number(d.montant), 0);
+  const safeNum = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
+  const totalRevenus   = revenus.reduce((s, r) => s + safeNum(r.montant), 0);
+  const totalDepenses  = depenses.reduce((s, d) => s + safeNum(d.montant), 0);
   const beneficeNet    = totalRevenus - totalDepenses;
   const facturesImpayees = factures.filter(f => f.statut === "non_paye");
-  const montantImpaye  = facturesImpayees.reduce((s, f) => s + Number(f.montant), 0);
-  const creanceAssur   = assurances.filter(a => a.statut !== "rembourse").reduce((s, a) => s + Number(a.en_attente), 0);
-  const totalSalaires  = salaires.reduce((s, sl) => s + Number(sl.net), 0);
+  const montantImpaye  = facturesImpayees.reduce((s, f) => s + safeNum(f.montant), 0);
+  const creanceAssur   = assurances.filter(a => a.statut !== "rembourse").reduce((s, a) => s + safeNum(a.en_attente), 0);
+  const totalSalaires  = salaires.reduce((s, sl) => s + safeNum(sl.net), 0);
   const soldeCaisse    = 485000; // Demo
   const tauxRecouvrement = totalRevenus > 0 ? Math.round(((totalRevenus - montantImpaye) / totalRevenus) * 100) : 0;
 

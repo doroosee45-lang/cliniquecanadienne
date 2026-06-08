@@ -13,13 +13,27 @@ router.get('/kpis',         protect, authorize(...CAN_ACCESS), finC.stats);
 router.get('/factures',     protect, authorize(...CAN_ACCESS), finC.getAll);
 router.post('/factures',    protect, authorize(...CAN_ACCESS), finC.create);
 
-// Revenus = factures payées
+// Revenus = factures payées ou partiellement payées
 router.get('/revenus', protect, authorize(...CAN_ACCESS), async (req, res, next) => {
   try {
-    const { limit = 50 } = req.query;
-    const items = await Invoice.find({ statut: 'payee' })
+    const { limit = 100 } = req.query;
+    const items = await Invoice.find({ statut: { $in: ['payee', 'partiellement_payee'] } })
       .populate('patient', 'nom prenom').sort('-date_facture').limit(Number(limit));
-    res.json({ success: true, revenus: items });
+    const revenus = items.map(inv => {
+      const i = inv.toObject ? inv.toObject() : inv;
+      const pat = i.patient && typeof i.patient === 'object' ? i.patient : null;
+      return {
+        _id:       i._id,
+        reference: i.numero_facture || i.numero || '—',
+        date:      i.date_facture   || i.createdAt,
+        patient:   i.patient_nom    || (pat ? `${pat.prenom || ''} ${pat.nom || ''}`.trim() : (typeof i.patient === 'string' ? i.patient : '—')),
+        service:   i.service_label  || i.service || '—',
+        montant:   Number(i.montant_direct || i.montant_ttc || i.montant || 0),
+        mode:      (i.paiements && i.paiements[0]?.mode) || 'especes',
+        statut:    i.statut === 'payee' ? 'paye' : 'partiellement_paye',
+      };
+    });
+    res.json({ success: true, revenus });
   } catch (err) { next(err); }
 });
 
