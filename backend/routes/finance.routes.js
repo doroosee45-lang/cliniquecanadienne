@@ -13,6 +13,50 @@ router.get('/kpis',         protect, authorize(...CAN_ACCESS), finC.stats);
 router.get('/factures',     protect, authorize(...CAN_ACCESS), finC.getAll);
 router.post('/factures',    protect, authorize(...CAN_ACCESS), finC.create);
 
+// Enregistrer un revenu direct (crée une facture payée)
+router.post('/revenus', protect, authorize(...CAN_ACCESS), async (req, res, next) => {
+  try {
+    const { date, service, patient, reference, montant, mode, statut, notes } = req.body;
+    const montantNum = Number(montant);
+    if (!montantNum || montantNum <= 0) return res.status(400).json({ success: false, message: 'Montant invalide.' });
+
+    const mongoose = require('mongoose');
+    const body = {
+      created_by:    req.user._id,
+      date_facture:  date ? new Date(date) : new Date(),
+      service_label: service || 'Consultation',
+      statut:        'payee',
+      montant_direct: montantNum,
+      montant_ttc:   montantNum,
+      montant_paye:  montantNum,
+      montant_restant: 0,
+      notes:         notes || '',
+      lignes: [{ libelle: service || 'Prestation médicale', categorie: (['consultation','hospitalisation','laboratoire','imagerie','pharmacie'].includes((service||'').toLowerCase()) ? (service||'').toLowerCase() : 'autre'), prix_unitaire: montantNum, quantite: 1, montant: montantNum }],
+      paiements: [{ montant: montantNum, mode: mode || 'especes', reference: reference || undefined, date: date ? new Date(date) : new Date(), enregistre_par: req.user._id }],
+    };
+
+    // Patient : ObjectId valide ou nom libre
+    if (patient && mongoose.Types.ObjectId.isValid(String(patient))) {
+      body.patient = patient;
+    } else if (patient) {
+      body.patient_nom = String(patient);
+    }
+
+    const invoice = await Invoice.create(body);
+    const revenu = {
+      _id:       invoice._id,
+      reference: reference || invoice.numero_facture || `FAC-${invoice._id.toString().slice(-6)}`,
+      date:      invoice.date_facture,
+      patient:   invoice.patient_nom || patient || '—',
+      service:   service || '—',
+      montant:   montantNum,
+      mode:      mode || 'especes',
+      statut:    'paye',
+    };
+    res.status(201).json({ success: true, revenu });
+  } catch (err) { next(err); }
+});
+
 // Revenus = factures payées ou partiellement payées
 router.get('/revenus', protect, authorize(...CAN_ACCESS), async (req, res, next) => {
   try {
