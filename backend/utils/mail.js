@@ -191,4 +191,92 @@ const sendPrescriptionEmail = async ({ email, prenom, nom, numero_rx, date, mede
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail };
+/**
+ * Envoie la confirmation de rendez-vous au patient par email.
+ * @param {{ email, prenom, nom, date_heure, medecin, type, motif, duree_minutes, service }} opts
+ */
+const sendAppointmentEmail = async ({ email, prenom, nom, date_heure, medecin, type, motif, duree_minutes, service }) => {
+  const dateObj   = new Date(date_heure);
+  const dateStr   = dateObj.toLocaleDateString('fr-FR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  const heureStr  = dateObj.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+
+  const typeLabel = {
+    consultation: 'Consultation',
+    suivi:        'Suivi médical',
+    urgence:      'Urgence',
+    bilan:        'Bilan de santé',
+    vaccination:  'Vaccination',
+    prevention:   'Prévention',
+  }[type] || type || 'Rendez-vous';
+
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#EFF6FF;border-left:4px solid #1B4F9E;border-radius:8px;padding:14px 18px;margin-bottom:24px;">
+        <div style="font-size:11px;color:#6B7A99;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Confirmation de rendez-vous</div>
+        <div style="font-size:20px;font-weight:800;color:#0B1E3B;margin-top:4px;">✅ Rendez-vous confirmé</div>
+      </div>
+
+      <h2 style="color:#0B1E3B;font-size:17px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Votre rendez-vous a été enregistré avec succès dans notre système.
+        Veuillez trouver ci-dessous le récapitulatif de votre consultation.
+      </p>
+
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;width:40%;">📅 Date</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;text-transform:capitalize;">${dateStr}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🕐 Heure</td>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;">${heureStr} (durée : ${duree_minutes || 30} min)</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">👨‍⚕️ Médecin</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:600;">${medecin || '—'}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🩺 Type</td>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;">${typeLabel}</td>
+        </tr>
+        ${service ? `
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🏥 Service</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;">${service}</td>
+        </tr>` : ''}
+        ${motif ? `
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:12px;color:#6B7A99;font-weight:700;">📝 Motif</td>
+          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:13px;color:#374151;">${motif}</td>
+        </tr>` : ''}
+      </table>
+
+      <div style="background:#FFFBEB;border-left:4px solid #F59E0B;border-radius:8px;padding:14px 18px;margin-top:8px;">
+        <p style="color:#92400E;font-size:13px;margin:0;line-height:1.6;">
+          ⚠️ <strong>Rappel important :</strong> Merci de vous présenter <strong>15 minutes avant</strong> l'heure prévue,
+          muni de votre carte patient et de vos ordonnances en cours.
+          En cas d'empêchement, contactez-nous le plus tôt possible au <strong>+242 22 295 0000</strong>.
+        </p>
+      </div>
+    </div>
+
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: `Confirmation rendez-vous du ${dateStr} — Clinique Canadienne`,
+    html,
+  });
+};
+
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail };

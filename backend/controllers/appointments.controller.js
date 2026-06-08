@@ -1,6 +1,9 @@
 const Appointment = require('../models/Appointment');
+const Patient     = require('../models/Patient');
+const User        = require('../models/User');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { sendAppointmentEmail } = require('../utils/mail');
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -66,7 +69,35 @@ exports.create = async (req, res, next) => {
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'appointments', entite_id: appt._id, ip: req.ip, message: `Nouveau RDV: ${appt.type}` });
     emitActivity({ module: 'appointments', action: 'Nouveau rendez-vous', detail: appt.type, icon: '📅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
-    res.status(201).json({ success: true, appointment: appt });
+
+    // Envoi email de confirmation au patient (non bloquant)
+    let emailEnvoye = false;
+    try {
+      const [patient, medecinDoc] = await Promise.all([
+        Patient.findById(appt.patient).select('nom prenom email').lean(),
+        User.findById(appt.medecin).select('nom prenom specialite').lean(),
+      ]);
+      if (patient?.email) {
+        const medecinNom = medecinDoc
+          ? `Dr ${medecinDoc.prenom} ${medecinDoc.nom}${medecinDoc.specialite ? ` (${medecinDoc.specialite})` : ''}`
+          : '—';
+        await sendAppointmentEmail({
+          email:         patient.email,
+          prenom:        patient.prenom,
+          nom:           patient.nom,
+          date_heure:    appt.date_heure,
+          medecin:       medecinNom,
+          type:          appt.type,
+          motif:         appt.motif,
+          duree_minutes: appt.duree_minutes,
+        });
+        emailEnvoye = true;
+      }
+    } catch (mailErr) {
+      console.error('[MAIL RDV]', mailErr.message);
+    }
+
+    res.status(201).json({ success: true, appointment: appt, email_envoye: emailEnvoye });
   } catch (err) { next(err); }
 };
 
