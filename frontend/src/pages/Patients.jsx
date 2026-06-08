@@ -1,6 +1,7 @@
 ﻿
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
@@ -306,6 +307,7 @@ function LineChart({ labels, data, color = "#0EA5A0", height = 160 }) {
 // ═════════════════════════════════════════════════════════════
 export default function Patient() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const reduxPatients = useSelector(selectPatients);
   const reduxLoading = useSelector(selectPatientsLoading);
 
@@ -319,6 +321,14 @@ export default function Patient() {
   const [modalNouv, setModalNouv] = useState(false);
   const [modalRdv, setModalRdv] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // ── Patient-specific data (loaded on demand)
+  const PD_INIT = { loading: false, consultations: [], rdvs: [], labResults: [], imaging: [], hospitalisations: [], chirurgie: [], prescriptions: [], invoices: [], auditLogs: [] };
+  const [pdData, setPdData] = useState(PD_INIT);
+  const [medecins, setMedecins] = useState([]);
+  const [formRdv, setFormRdv] = useState({ date: '', heure: '', medecin_id: '', motif: '', duree: '30' });
+  const [rdvSaving, setRdvSaving] = useState(false);
+  const [msgRdv, setMsgRdv] = useState('');
 
   const FORM_INIT = {
     nom:"", prenom:"", date_naissance:"", sexe:"",
@@ -343,6 +353,74 @@ export default function Patient() {
   }, [dispatch, search, filterStatut]);
   useRealtimeRefresh(refreshPatients);
 
+  // ── Load all patient-specific data when currentPatient changes
+  useEffect(() => {
+    if (!currentPatient?._id) return;
+    const id = currentPatient._id;
+    setPdData(d => ({ ...d, loading: true }));
+    Promise.allSettled([
+      api.get(`/consultations?patient=${id}&limit=100`),
+      api.get(`/appointments?patient=${id}&limit=100&from=2000-01-01`),
+      api.get(`/laboratory?patient=${id}&limit=100`),
+      api.get(`/radiology?patient=${id}&limit=100`),
+      api.get(`/hospitalization?patient=${id}&limit=100`),
+      api.get(`/chirurgie?patient_id=${id}&limit=50`),
+      api.get(`/prescriptions?patient=${id}&limit=50`),
+      api.get(`/finance?patient=${id}&limit=100`),
+      api.get(`/audit?q=${id}&limit=30`),
+    ]).then(([cR, rdvR, lR, iR, hR, chR, rxR, finR, auR]) => {
+      setPdData({
+        loading: false,
+        consultations:    cR.status   === 'fulfilled' ? (cR.value.data.consultations    || []) : [],
+        rdvs:             rdvR.status === 'fulfilled' ? (rdvR.value.data.appointments   || []) : [],
+        labResults:       lR.status   === 'fulfilled' ? (lR.value.data.results          || lR.value.data.analyses || []) : [],
+        imaging:          iR.status   === 'fulfilled' ? (iR.value.data.results          || iR.value.data.examens  || []) : [],
+        hospitalisations: hR.status   === 'fulfilled' ? (hR.value.data.hospitalizations || []) : [],
+        chirurgie:        chR.status  === 'fulfilled' ? (chR.value.data.dossiers        || []) : [],
+        prescriptions:    rxR.status  === 'fulfilled' ? (rxR.value.data.prescriptions   || []) : [],
+        invoices:         finR.status === 'fulfilled' ? (finR.value.data.invoices       || finR.value.data.factures || []) : [],
+        auditLogs:        auR.status  === 'fulfilled' ? (auR.value.data.events          || []) : [],
+      });
+    });
+  }, [currentPatient?._id]);
+
+  // ── Load medecins once
+  useEffect(() => {
+    api.get('/admin/users?role=medecin&limit=100')
+      .then(({ data }) => setMedecins(data.users || data.staff || []))
+      .catch(() => {});
+  }, []);
+
+  // ── Create RDV
+  const handleCreateRdv = async () => {
+    if (!formRdv.medecin_id || !formRdv.date || !formRdv.heure) {
+      setMsgRdv('error:Veuillez remplir la date, l\'heure et le médecin.');
+      return;
+    }
+    setRdvSaving(true);
+    setMsgRdv('');
+    try {
+      await api.post('/appointments', {
+        patient:       currentPatient._id,
+        medecin:       formRdv.medecin_id,
+        date_heure:    `${formRdv.date}T${formRdv.heure}:00`,
+        duree_minutes: parseInt(formRdv.duree) || 30,
+        motif:         formRdv.motif || 'Consultation',
+        type:          'consultation',
+        statut:        'planifie',
+      });
+      setMsgRdv('ok:Rendez-vous créé avec succès.');
+      setFormRdv({ date: '', heure: '', medecin_id: '', motif: '', duree: '30' });
+      const { data } = await api.get(`/appointments?patient=${currentPatient._id}&limit=100&from=2000-01-01`);
+      setPdData(d => ({ ...d, rdvs: data.appointments || [] }));
+      setTimeout(() => { setModalRdv(false); setMsgRdv(''); }, 1800);
+    } catch (err) {
+      setMsgRdv(`error:${err?.response?.data?.message || 'Erreur lors de la création du rendez-vous'}`);
+    } finally {
+      setRdvSaving(false);
+    }
+  };
+
   const patients = reduxPatients.length > 0 ? reduxPatients : DEMO_PATIENTS;
   const filtered = patients.filter(p => {
     const q = search.toLowerCase();
@@ -353,6 +431,7 @@ export default function Patient() {
 
   const openPatient = (p) => {
     setCurrentPatient(p);
+    setPdData(PD_INIT);
     setSection("overview");
     setTab("dossier");
   };
@@ -373,19 +452,19 @@ export default function Patient() {
 
   // ── Sections nav for dossier
   const SECTIONS = [
-    { id:"overview",      label:"📊 Vue d'ensemble" },
-    { id:"infos",         label:"👤 Informations" },
-    { id:"medical",       label:"🩺 Dossier médical" },
-    { id:"consultations", label:`💬 Consultations (${DEMO_CONSULTATIONS.length})` },
-    { id:"rdv",           label:`📅 Rendez-vous (${DEMO_RDV.length})` },
-    { id:"laboratoire",   label:`🔬 Laboratoire (${DEMO_ANALYSES.length})` },
-    { id:"imagerie",      label:`🩻 Imagerie (${DEMO_IMAGERIE.length})` },
-    { id:"hospitalisation",label:`🛏 Hospitalisation (${DEMO_HOSPIT.length})` },
-    { id:"chirurgie",     label:"🔪 Chirurgie" },
-    { id:"vaccination",   label:`💉 Vaccination (${DEMO_VACCINS.length})` },
-    { id:"finance",       label:"💰 Finance" },
-    { id:"documents",     label:`📄 Documents (${DEMO_DOCS.length})` },
-    { id:"audit",         label:"📋 Audit" },
+    { id:"overview",       label:"📊 Vue d'ensemble" },
+    { id:"infos",          label:"👤 Informations" },
+    { id:"medical",        label:"🩺 Dossier médical" },
+    { id:"consultations",  label:`💬 Consultations (${pdData.consultations.length})` },
+    { id:"rdv",            label:`📅 Rendez-vous (${pdData.rdvs.length})` },
+    { id:"laboratoire",    label:`🔬 Laboratoire (${pdData.labResults.length})` },
+    { id:"imagerie",       label:`🩻 Imagerie (${pdData.imaging.length})` },
+    { id:"hospitalisation",label:`🛏 Hospitalisation (${pdData.hospitalisations.length})` },
+    { id:"chirurgie",      label:`🔪 Chirurgie (${pdData.chirurgie.length})` },
+    { id:"vaccination",    label:"💉 Vaccination" },
+    { id:"finance",        label:`💰 Finance (${pdData.invoices.length})` },
+    { id:"documents",      label:"📄 Documents" },
+    { id:"audit",          label:`📋 Audit (${pdData.auditLogs.length})` },
   ];
 
   // ─── Helpers formulaire ───────────────────────────────────────
@@ -612,10 +691,10 @@ export default function Patient() {
                   <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
                     {/* Stats rapides */}
                     {[
-                      ["💬", currentPatient.nb_consultations, "Consult."],
-                      ["🛏", currentPatient.nb_hospitalisations, "Hospit."],
-                      ["🔬", currentPatient.nb_analyses, "Analyses"],
-                      ["🔪", currentPatient.nb_chirurgies, "Chir."],
+                      ["💬", pdData.consultations.length,    "Consult."],
+                      ["🛏", pdData.hospitalisations.length, "Hospit."],
+                      ["🔬", pdData.labResults.length,        "Analyses"],
+                      ["🔪", pdData.chirurgie.length,         "Chir."],
                     ].map(([ico, val, lbl]) => (
                       <div key={lbl} style={{ background:"rgba(255,255,255,.1)", borderRadius:10, padding:"8px 14px", textAlign:"center", minWidth:64 }}>
                         <div style={{ fontSize:18, lineHeight:1 }}>{ico}</div>
@@ -652,14 +731,15 @@ export default function Patient() {
                   <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                     {/* Résumé général */}
                     <div className="pat-card fu">
-                      <div className="pat-card-hdr"><h3>📊 Résumé du dossier</h3></div>
+                      <div className="pat-card-hdr"><h3>📊 Résumé du dossier</h3>{pdData.loading && <span style={{ fontSize:11, color:"var(--cm)" }}>Chargement...</span>}</div>
                       <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
                         {[
-                          ["💬", "Consultations", currentPatient.nb_consultations, "#1B4F9E"],
-                          ["🛏", "Hospitalisations", currentPatient.nb_hospitalisations, "#D97706"],
-                          ["🔬", "Analyses labo", currentPatient.nb_analyses, "#0EA5A0"],
-                          ["🩻", "Examens imagerie", currentPatient.nb_imageries, "#7C3AED"],
-                          ["🔪", "Interventions chirurg.", currentPatient.nb_chirurgies, "#DC2626"],
+                          ["💬", "Consultations",          pdData.consultations.length,    "#1B4F9E"],
+                          ["🛏", "Hospitalisations",        pdData.hospitalisations.length,  "#D97706"],
+                          ["🔬", "Analyses labo",           pdData.labResults.length,        "#0EA5A0"],
+                          ["🩻", "Examens imagerie",        pdData.imaging.length,           "#7C3AED"],
+                          ["🔪", "Interventions chirurg.", pdData.chirurgie.length,          "#DC2626"],
+                          ["📅", "Rendez-vous",             pdData.rdvs.length,              "#059669"],
                         ].map(([ico, lbl, val, col]) => (
                           <div key={lbl} className="metric-row">
                             <span style={{ fontSize:18 }}>{ico}</span>
@@ -686,21 +766,25 @@ export default function Patient() {
                       <div className="pat-card-hdr"><h3>📅 Timeline médicale</h3><p>Chronologie des soins</p></div>
                       <div style={{ padding:20 }}>
                         <div className="tl-line">
-                          {[
-                            { date:"02/06/2025", label:"Sortie d'hospitalisation", icon:"🚪", col:"#059669" },
-                            { date:"28/05/2025", label:"Intervention chirurgicale — Appendicectomie", icon:"🔪", col:"#DC2626" },
-                            { date:"28/05/2025", label:"Hospitalisation — Service Chirurgie", icon:"🛏", col:"#D97706" },
-                            { date:"28/05/2025", label:"Consultation urgences — Appendicite aiguë", icon:"💬", col:"#1B4F9E" },
-                            { date:"01/06/2025", label:"Résultats labo — NFS + Glycémie", icon:"🔬", col:"#0EA5A0" },
-                          ].map((e, i) => (
-                            <div key={i} style={{ position:"relative", marginBottom:16, paddingBottom:4 }}>
-                              <div className="tl-dot" style={{ background:e.col, top:2 }}>{e.icon}</div>
-                              <div style={{ marginLeft:12 }}>
-                                <div style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>{e.label}</div>
-                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{e.date}</div>
+                          {(() => {
+                            const items = [
+                              ...pdData.consultations.map(c => ({ date:c.date_heure||c.createdAt, label:`Consultation — ${c.motif||''}`, icon:'💬', col:'#1B4F9E' })),
+                              ...pdData.rdvs.map(r => ({ date:r.date_heure, label:`Rendez-vous — ${r.motif||r.type||''}`, icon:'📅', col:'#0EA5A0' })),
+                              ...pdData.hospitalisations.map(h => ({ date:h.date_entree, label:`Hospitalisation — ${h.service||''}`, icon:'🛏', col:'#D97706' })),
+                              ...pdData.labResults.map(l => ({ date:l.date_prescription||l.createdAt, label:`Analyse labo — ${l.type_analyse||l.type||''}`, icon:'🔬', col:'#059669' })),
+                              ...pdData.chirurgie.map(c => ({ date:c.date_intervention||c.createdAt, label:`Chirurgie — ${c.diagnostic_chirurgical||''}`, icon:'🔪', col:'#DC2626' })),
+                            ].filter(i => i.date).sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0,8);
+                            if (!items.length) return <div style={{ textAlign:"center", color:"var(--cm)", fontSize:12, padding:16 }}>Aucun événement médical enregistré</div>;
+                            return items.map((e, i) => (
+                              <div key={i} style={{ position:"relative", marginBottom:16, paddingBottom:4 }}>
+                                <div className="tl-dot" style={{ background:e.col, top:2 }}>{e.icon}</div>
+                                <div style={{ marginLeft:12 }}>
+                                  <div style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>{e.label}</div>
+                                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{fmtDate(e.date)}</div>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ));
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -712,17 +796,20 @@ export default function Patient() {
                         <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => { setModalRdv(true); }}>+ Planifier</button>
                       </div>
                       <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
-                        {DEMO_RDV.filter(r => r.statut === "planifié").map(r => (
-                          <div key={r._id} style={{ display:"flex", alignItems:"center", gap:12, background:"#F8FAFD", borderRadius:10, padding:"10px 14px", border:"1.5px solid var(--cbr)" }}>
-                            <div style={{ width:40, height:40, background:"#EEF4FF", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>📅</div>
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{r.medecin}</div>
-                              <div style={{ fontSize:11, color:"var(--cm)" }}>{r.service} · {fmtDate(r.date)} à {r.heure}</div>
+                        {pdData.rdvs.filter(r => r.statut === "planifie" || r.statut === "planifié").slice(0, 5).map(r => {
+                          const med = r.medecin ? `Dr. ${r.medecin.prenom || ''} ${r.medecin.nom || ''}`.trim() : r.medecin_nom || '—';
+                          return (
+                            <div key={r._id} style={{ display:"flex", alignItems:"center", gap:12, background:"#F8FAFD", borderRadius:10, padding:"10px 14px", border:"1.5px solid var(--cbr)" }}>
+                              <div style={{ width:40, height:40, background:"#EEF4FF", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>📅</div>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{med}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)" }}>{r.type} · {fmtDate(r.date_heure)}</div>
+                              </div>
+                              <Badge cls="teal">Planifié</Badge>
                             </div>
-                            <Badge cls="teal">Planifié</Badge>
-                          </div>
-                        ))}
-                        {DEMO_RDV.filter(r => r.statut === "planifié").length === 0 && (
+                          );
+                        })}
+                        {pdData.rdvs.filter(r => r.statut === "planifie" || r.statut === "planifié").length === 0 && (
                           <div style={{ textAlign:"center", color:"var(--cm)", fontSize:13, padding:12 }}>Aucun rendez-vous à venir</div>
                         )}
                       </div>
@@ -733,15 +820,18 @@ export default function Patient() {
                       <div className="pat-card-hdr"><h3>🔬 Dernières analyses</h3></div>
                       <div style={{ overflowX:"auto" }}>
                         <table className="pat-tbl">
-                          <thead><tr><th>Analyse</th><th>Résultat</th><th>Statut</th></tr></thead>
+                          <thead><tr><th>Analyse</th><th>Date</th><th>Statut</th></tr></thead>
                           <tbody>
-                            {DEMO_ANALYSES.slice(0, 4).map(a => (
+                            {pdData.labResults.slice(0, 4).map(a => (
                               <tr key={a._id}>
-                                <td style={{ fontWeight:600, fontSize:12 }}>{a.type}</td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{a.valeur}</td>
-                                <td><Badge cls={a.statut === "normal" ? "green" : "red"}>{a.statut}</Badge></td>
+                                <td style={{ fontWeight:600, fontSize:12 }}>{a.type_analyse || a.type || '—'}</td>
+                                <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtDate(a.date_prescription || a.createdAt)}</td>
+                                <td><Badge cls={a.statut === "valide" || a.statut === "normal" ? "green" : a.statut === "en_attente" ? "orange" : "blue"}>{a.statut || '—'}</Badge></td>
                               </tr>
                             ))}
+                            {pdData.labResults.length === 0 && (
+                              <tr><td colSpan={3} style={{ textAlign:"center", color:"var(--cm)", fontSize:12, padding:16 }}>Aucune analyse enregistrée</td></tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -771,7 +861,11 @@ export default function Patient() {
                     <div className="pat-card fu">
                       <div className="pat-card-hdr"><h3>📞 Coordonnées</h3></div>
                       <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
-                        {[["Téléphone principal", currentPatient.telephone], ["E-mail", currentPatient.email], ["Adresse", currentPatient.adresse]].map(([lbl, val]) => (
+                        {[
+                          ["Téléphone principal", currentPatient.telephone],
+                          ["E-mail", currentPatient.email],
+                          ["Adresse", currentPatient.adresse?.rue ? `${currentPatient.adresse.rue}, ${currentPatient.adresse.ville || ''} ${currentPatient.adresse.pays || ''}`.trim() : (typeof currentPatient.adresse === 'string' ? currentPatient.adresse : null)],
+                        ].map(([lbl, val]) => (
                           <div key={lbl} className="info-cell" style={{ gridColumn:"1/-1" }}>
                             <div className="ic-lbl">{lbl}</div>
                             <div className="ic-val">{val || "—"}</div>
@@ -780,15 +874,19 @@ export default function Patient() {
                         <div style={{ marginTop:8 }}>
                           <div style={{ fontSize:12, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Personne à contacter en urgence</div>
                           <div style={{ background:"#FFF7ED", border:"1.5px solid #FED7AA", borderRadius:12, padding:14, display:"flex", flexDirection:"column", gap:8 }}>
-                            {[["Nom", "Claire Dupont"], ["Lien de parenté", "Épouse"], ["Téléphone", "06 98 76 54 32"]].map(([lbl, val]) => (
-                              <div key={lbl}>
-                                <div style={{ fontSize:10, fontWeight:600, color:"#92400E", textTransform:"uppercase", letterSpacing:.4 }}>{lbl}</div>
-                                <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)", marginTop:1 }}>{val}</div>
-                              </div>
-                            ))}
+                            {currentPatient.contact_urgence?.nom ? (
+                              [["Nom", currentPatient.contact_urgence.nom], ["Lien de parenté", currentPatient.contact_urgence.relation || '—'], ["Téléphone", currentPatient.contact_urgence.telephone || '—']].map(([lbl, val]) => (
+                                <div key={lbl}>
+                                  <div style={{ fontSize:10, fontWeight:600, color:"#92400E", textTransform:"uppercase", letterSpacing:.4 }}>{lbl}</div>
+                                  <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)", marginTop:1 }}>{val}</div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ fontSize:12, color:"var(--cm)", textAlign:"center" }}>Aucun contact d'urgence renseigné</div>
+                            )}
                           </div>
                         </div>
-                        <button className="pbtn pbtn-teal" style={{ marginTop:8 }}>{I.edit} Modifier les informations</button>
+                        <button className="pbtn pbtn-teal" style={{ marginTop:8 }} onClick={() => navigate(`/patients`)}>{I.edit} Modifier les informations</button>
                       </div>
                     </div>
                   </div>
@@ -801,14 +899,12 @@ export default function Patient() {
                       <div className="pat-card-hdr"><h3>📋 Données médicales</h3></div>
                       <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                         <InfoCell label="Groupe sanguin" value={currentPatient.groupe_sanguin || "—"} />
-                        <InfoCell label="Taille" value="175 cm" />
-                        <InfoCell label="Poids" value="78 kg" />
-                        <InfoCell label="IMC" value="25.5 — Normal" />
-                        {currentPatient.allergies && <InfoCell label="Allergies" value={currentPatient.allergies} full warn />}
-                        <div className="info-cell" style={{ gridColumn:"1/-1" }}>
-                          <div className="ic-lbl">Handicap éventuel</div>
-                          <div className="ic-val">Aucun</div>
-                        </div>
+                        <InfoCell label="Taille" value={currentPatient.taille ? `${currentPatient.taille} cm` : "—"} />
+                        <InfoCell label="Poids" value={currentPatient.poids ? `${currentPatient.poids} kg` : "—"} />
+                        <InfoCell label="IMC" value={currentPatient.taille && currentPatient.poids ? `${(currentPatient.poids / ((currentPatient.taille/100)**2)).toFixed(1)}` : "—"} />
+                        <InfoCell label="Situation maritale" value={currentPatient.situation_mat || "—"} />
+                        <InfoCell label="Nationalité" value={currentPatient.nationalite || "—"} />
+                        {currentPatient.allergies && <InfoCell label="Allergies" value={Array.isArray(currentPatient.allergies) ? currentPatient.allergies.join(', ') : currentPatient.allergies} full warn />}
                       </div>
                     </div>
                     <div className="pat-card fu">
@@ -816,18 +912,28 @@ export default function Patient() {
                       <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
                         <div style={{ background:"#F8FAFD", borderRadius:12, padding:14 }}>
                           <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", marginBottom:8 }}>Antécédents médicaux</div>
-                          <div style={{ fontSize:13, color:"var(--cn)" }}>HTA diagnostiquée en 2018, Diabète type 2 depuis 2020</div>
+                          <div style={{ fontSize:13, color:"var(--cn)" }}>
+                            {currentPatient.antecedents_medicaux
+                              ? (Array.isArray(currentPatient.antecedents_medicaux) ? currentPatient.antecedents_medicaux.join(', ') : currentPatient.antecedents_medicaux)
+                              : <span style={{ color:"var(--cm)" }}>Aucun antécédent médical renseigné</span>}
+                          </div>
                         </div>
                         <div style={{ background:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:12, padding:14 }}>
                           <div style={{ fontSize:11, fontWeight:700, color:"#92400E", textTransform:"uppercase", marginBottom:8 }}>Antécédents chirurgicaux</div>
-                          <div style={{ fontSize:13, color:"var(--cn)" }}>Appendicectomie — 05/2025</div>
+                          <div style={{ fontSize:13, color:"var(--cn)" }}>
+                            {currentPatient.antecedents_chirurgicaux
+                              ? (Array.isArray(currentPatient.antecedents_chirurgicaux) ? currentPatient.antecedents_chirurgicaux.join(', ') : currentPatient.antecedents_chirurgicaux)
+                              : pdData.chirurgie.length > 0
+                                ? pdData.chirurgie.map(c => c.diagnostic_chirurgical || c.acte).filter(Boolean).join(', ')
+                                : <span style={{ color:"var(--cm)" }}>Aucun antécédent chirurgical</span>}
+                          </div>
                         </div>
                         <div style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:12, padding:14 }}>
                           <div style={{ fontSize:11, fontWeight:700, color:"#B91C1C", textTransform:"uppercase", marginBottom:8 }}>Maladies chroniques</div>
                           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                             {currentPatient.maladies_chroniques && currentPatient.maladies_chroniques.length > 0
                               ? currentPatient.maladies_chroniques.map(m => <Badge key={m} cls="red">{m}</Badge>)
-                              : <span style={{ fontSize:13, color:"var(--cm)" }}>Aucune</span>}
+                              : <span style={{ fontSize:13, color:"var(--cm)" }}>Aucune maladie chronique renseignée</span>}
                           </div>
                         </div>
                       </div>
@@ -839,29 +945,35 @@ export default function Patient() {
                 {section === "consultations" && (
                   <div>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Historique des consultations</div>
-                      <button className="pbtn pbtn-primary">{I.plus} Nouvelle consultation</button>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Historique des consultations <span style={{ color:"var(--cm)", fontWeight:400, fontSize:13 }}>({pdData.consultations.length})</span></div>
+                      <button className="pbtn pbtn-primary" onClick={() => navigate('/consultations')}>{I.plus} Nouvelle consultation</button>
                     </div>
                     <div className="pat-card fu">
                       <div style={{ overflowX:"auto" }}>
                         <table className="pat-tbl">
                           <thead><tr><th>Date</th><th>Médecin</th><th>Motif</th><th>Diagnostic</th><th>Statut</th><th>Actions</th></tr></thead>
                           <tbody>
-                            {DEMO_CONSULTATIONS.map(c => (
-                              <tr key={c._id}>
-                                <td style={{ fontSize:12, fontWeight:600 }}>{fmtDate(c.date)}</td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{c.medecin}</td>
-                                <td style={{ fontSize:12 }}>{c.motif}</td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{c.diagnostic}</td>
-                                <td><Badge cls="green">{c.statut}</Badge></td>
-                                <td>
-                                  <div style={{ display:"flex", gap:4 }}>
-                                    <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }}>👁 Voir</button>
-                                    <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }}>{I.dl} PDF</button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
+                            {pdData.consultations.map(c => {
+                              const med = c.medecin ? `Dr. ${c.medecin.prenom||''} ${c.medecin.nom||''}`.trim() : c.medecin_nom || '—';
+                              const sc = { termine:"green", en_cours:"teal", annule:"red" }[c.statut] || "blue";
+                              return (
+                                <tr key={c._id}>
+                                  <td style={{ fontSize:12, fontWeight:600 }}>{fmtDate(c.date_heure || c.createdAt)}</td>
+                                  <td style={{ fontSize:12, color:"var(--cm)" }}>{med}</td>
+                                  <td style={{ fontSize:12 }}>{c.motif || '—'}</td>
+                                  <td style={{ fontSize:12, color:"var(--cm)" }}>{c.diagnostic || '—'}</td>
+                                  <td><Badge cls={sc}>{c.statut || 'N/A'}</Badge></td>
+                                  <td>
+                                    <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} onClick={() => navigate('/consultations')}>👁 Voir</button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {pdData.consultations.length === 0 && (
+                              <tr><td colSpan={6} style={{ textAlign:"center", color:"var(--cm)", padding:24, fontSize:13 }}>
+                                {pdData.loading ? "Chargement..." : "Aucune consultation enregistrée pour ce patient"}
+                              </td></tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -873,43 +985,55 @@ export default function Patient() {
                 {section === "rdv" && (
                   <div>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Rendez-vous</div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Rendez-vous <span style={{ color:"var(--cm)", fontWeight:400, fontSize:13 }}>({pdData.rdvs.length})</span></div>
                       <button className="pbtn pbtn-primary" onClick={() => setModalRdv(true)}>{I.plus} Planifier RDV</button>
                     </div>
                     <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                       <div className="pat-card fu">
                         <div className="pat-card-hdr"><h3>📅 Prochains rendez-vous</h3></div>
                         <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
-                          {DEMO_RDV.filter(r => r.statut === "planifié").map(r => (
-                            <div key={r._id} style={{ display:"flex", alignItems:"center", gap:12, background:"#F0FDFC", border:"1.5px solid #99F6E4", borderRadius:12, padding:"12px 14px" }}>
-                              <div style={{ fontSize:24 }}>📅</div>
-                              <div style={{ flex:1 }}>
-                                <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{r.medecin}</div>
-                                <div style={{ fontSize:11, color:"var(--cm)" }}>{r.service}</div>
-                                <div style={{ fontSize:12, color:"var(--ct)", fontWeight:600, marginTop:2 }}>{fmtDate(r.date)} à {r.heure}</div>
+                          {pdData.rdvs.filter(r => r.statut === "planifie" || r.statut === "planifié").map(r => {
+                            const med = r.medecin ? `Dr. ${r.medecin.prenom||''} ${r.medecin.nom||''}`.trim() : '—';
+                            return (
+                              <div key={r._id} style={{ display:"flex", alignItems:"center", gap:12, background:"#F0FDFC", border:"1.5px solid #99F6E4", borderRadius:12, padding:"12px 14px" }}>
+                                <div style={{ fontSize:24 }}>📅</div>
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{med}</div>
+                                  <div style={{ fontSize:11, color:"var(--cm)" }}>{r.type || '—'}</div>
+                                  <div style={{ fontSize:12, color:"var(--ct)", fontWeight:600, marginTop:2 }}>{fmtDate(r.date_heure)}</div>
+                                </div>
+                                <Badge cls="teal">Planifié</Badge>
                               </div>
-                              <Badge cls="teal">Planifié</Badge>
-                            </div>
-                          ))}
+                            );
+                          })}
+                          {pdData.rdvs.filter(r => r.statut === "planifie" || r.statut === "planifié").length === 0 && (
+                            <div style={{ textAlign:"center", color:"var(--cm)", fontSize:13, padding:16 }}>Aucun rendez-vous à venir</div>
+                          )}
                         </div>
                       </div>
                       <div className="pat-card fu">
                         <div className="pat-card-hdr"><h3>📋 Historique</h3></div>
                         <div style={{ overflowX:"auto" }}>
                           <table className="pat-tbl">
-                            <thead><tr><th>Date</th><th>Médecin</th><th>Service</th><th>Statut</th></tr></thead>
+                            <thead><tr><th>Date</th><th>Médecin</th><th>Motif</th><th>Statut</th></tr></thead>
                             <tbody>
-                              {DEMO_RDV.map(r => {
-                                const sc = { planifié:"teal", honoré:"green", annulé:"red", manqué:"orange" }[r.statut] || "gray";
+                              {pdData.rdvs.map(r => {
+                                const sc = { planifie:"teal", planifié:"teal", honore:"green", honoré:"green", annule:"red", annulé:"red", absent:"orange" }[r.statut] || "gray";
+                                const med = r.medecin ? `Dr. ${r.medecin.prenom||''} ${r.medecin.nom||''}`.trim() : '—';
                                 return (
                                   <tr key={r._id}>
-                                    <td style={{ fontSize:12 }}>{fmtDate(r.date)} {r.heure}</td>
-                                    <td style={{ fontSize:12, color:"var(--cm)" }}>{r.medecin}</td>
-                                    <td style={{ fontSize:12, color:"var(--cm)" }}>{r.service}</td>
+                                    <td style={{ fontSize:12 }}>{fmtDate(r.date_heure)}</td>
+                                    <td style={{ fontSize:12, color:"var(--cm)" }}>{med}</td>
+                                    <td style={{ fontSize:12, color:"var(--cm)" }}>{r.motif || r.type || '—'}</td>
                                     <td><Badge cls={sc}>{r.statut}</Badge></td>
                                   </tr>
                                 );
                               })}
+                              {pdData.rdvs.length === 0 && (
+                                <tr><td colSpan={4} style={{ textAlign:"center", color:"var(--cm)", padding:20, fontSize:13 }}>
+                                  {pdData.loading ? "Chargement..." : "Aucun rendez-vous enregistré"}
+                                </td></tr>
+                              )}
                             </tbody>
                           </table>
                         </div>
@@ -922,40 +1046,36 @@ export default function Patient() {
                 {section === "laboratoire" && (
                   <div>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Analyses biologiques</div>
-                      <button className="pbtn pbtn-primary">{I.plus} Prescrire analyse</button>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Analyses biologiques <span style={{ color:"var(--cm)", fontWeight:400, fontSize:13 }}>({pdData.labResults.length})</span></div>
+                      <button className="pbtn pbtn-primary" onClick={() => navigate('/laboratory')}>{I.plus} Prescrire analyse</button>
                     </div>
                     <div className="pat-card fu">
                       <div style={{ overflowX:"auto" }}>
                         <table className="pat-tbl">
-                          <thead><tr><th>Type d'analyse</th><th>Date</th><th>Prescripteur</th><th>Valeur obtenue</th><th>Valeur normale</th><th>Statut</th><th>Rapport</th></tr></thead>
+                          <thead><tr><th>Type d'analyse</th><th>Date</th><th>Prescripteur</th><th>Statut</th><th>Actions</th></tr></thead>
                           <tbody>
-                            {DEMO_ANALYSES.map(a => (
-                              <tr key={a._id} style={{ background:a.statut === "anormal" ? "#FEF2F2":"" }}>
-                                <td style={{ fontWeight:600, color:"var(--cn)" }}>{a.type}</td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtDate(a.date)}</td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{a.prescripteur}</td>
-                                <td style={{ fontSize:12, fontWeight:600, color:a.statut === "anormal" ? "#DC2626":"var(--cn)" }}>{a.valeur}</td>
-                                <td style={{ fontSize:11, color:"var(--cm)" }}>{a.val_norm}</td>
-                                <td><Badge cls={a.statut === "normal" ? "green" : "red"}>{a.statut}</Badge></td>
-                                <td><button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }}>{I.dl} PDF</button></td>
-                              </tr>
-                            ))}
+                            {pdData.labResults.map(a => {
+                              const sc = { valide:"green", normal:"green", en_attente:"orange", anormal:"red", rejete:"red" }[a.statut] || "blue";
+                              const med = a.prescripteur ? `Dr. ${a.prescripteur.prenom||''} ${a.prescripteur.nom||''}`.trim() : a.prescripteur_nom || '—';
+                              return (
+                                <tr key={a._id}>
+                                  <td style={{ fontWeight:600, color:"var(--cn)" }}>{a.type_analyse || a.type || '—'}</td>
+                                  <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtDate(a.date_prescription || a.createdAt)}</td>
+                                  <td style={{ fontSize:12, color:"var(--cm)" }}>{med}</td>
+                                  <td><Badge cls={sc}>{a.statut || '—'}</Badge></td>
+                                  <td><button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} onClick={() => navigate('/laboratory')}>👁 Voir</button></td>
+                                </tr>
+                              );
+                            })}
+                            {pdData.labResults.length === 0 && (
+                              <tr><td colSpan={5} style={{ textAlign:"center", color:"var(--cm)", padding:24, fontSize:13 }}>
+                                {pdData.loading ? "Chargement..." : "Aucune analyse enregistrée pour ce patient"}
+                              </td></tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
                     </div>
-                    {DEMO_ANALYSES.some(a => a.statut === "anormal") && (
-                      <div className="al-warn" style={{ marginTop:16, display:"flex", alignItems:"flex-start", gap:12 }}>
-                        <span style={{ fontSize:20, flexShrink:0 }}>⚠️</span>
-                        <div>
-                          <strong style={{ color:"#92400E", fontSize:13 }}>Résultats anormaux détectés</strong>
-                          <div style={{ fontSize:12, color:"#B45309", marginTop:3 }}>
-                            {DEMO_ANALYSES.filter(a => a.statut === "anormal").length} analyse(s) présentent des valeurs hors normes. Réévaluation médicale recommandée.
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -963,83 +1083,109 @@ export default function Patient() {
                 {section === "imagerie" && (
                   <div>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Examens d'imagerie médicale</div>
-                      <button className="pbtn pbtn-primary">{I.plus} Prescrire examen</button>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Examens d'imagerie médicale <span style={{ color:"var(--cm)", fontWeight:400, fontSize:13 }}>({pdData.imaging.length})</span></div>
+                      <button className="pbtn pbtn-primary" onClick={() => navigate('/radiology')}>{I.plus} Prescrire examen</button>
                     </div>
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:16 }}>
-                      {DEMO_IMAGERIE.map(img => (
-                        <div key={img._id} className="pat-card fu">
-                          <div style={{ padding:20 }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-                              <div style={{ width:40, height:40, background:"#EEF4FF", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🩻</div>
-                              <div>
-                                <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{img.type}</div>
-                                <div style={{ fontSize:11, color:"var(--cm)" }}>{fmtDate(img.date)}</div>
+                    {pdData.imaging.length > 0 ? (
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:16 }}>
+                        {pdData.imaging.map(img => (
+                          <div key={img._id} className="pat-card fu">
+                            <div style={{ padding:20 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+                                <div style={{ width:40, height:40, background:"#EEF4FF", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🩻</div>
+                                <div>
+                                  <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{img.type_examen || img.type || '—'}</div>
+                                  <div style={{ fontSize:11, color:"var(--cm)" }}>{fmtDate(img.date_prescription || img.createdAt)}</div>
+                                </div>
+                              </div>
+                              <div style={{ background:"#F8FAFD", borderRadius:8, padding:10, fontSize:12, color:"var(--cm)", marginBottom:10 }}>
+                                <strong>Statut :</strong> {img.statut || '—'}
+                              </div>
+                              {img.compte_rendu && <div style={{ fontSize:11, color:"var(--cm)" }}>{img.compte_rendu}</div>}
+                              <div style={{ display:"flex", gap:6, marginTop:12 }}>
+                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} onClick={() => navigate('/radiology')}>👁 Voir</button>
                               </div>
                             </div>
-                            <div style={{ background:"#F8FAFD", borderRadius:8, padding:10, fontSize:12, color:"var(--cm)", marginBottom:10 }}>
-                              <strong>Résultat :</strong> {img.resultat}
-                            </div>
-                            <div style={{ fontSize:11, color:"var(--cm)" }}>{img.compte_rendu}</div>
-                            <div style={{ display:"flex", gap:6, marginTop:12 }}>
-                              <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }}>👁 Voir images</button>
-                              <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }}>{I.dl} Rapport</button>
-                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="pat-card fu" style={{ padding:40, textAlign:"center", color:"var(--cm)", fontSize:13 }}>
+                        {pdData.loading ? "Chargement..." : "Aucun examen d'imagerie enregistré pour ce patient"}
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {/* ── HOSPITALISATION ── */}
                 {section === "hospitalisation" && (
                   <div>
-                    <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Séjours hospitaliers</div>
-                    {DEMO_HOSPIT.map(h => (
-                      <div key={h._id} className="pat-card fu" style={{ marginBottom:16 }}>
-                        <div className="pat-card-hdr">
-                          <h3>🛏 Hospitalisation — {fmtDate(h.date_entree)}</h3>
-                          <Badge cls={h.statut === "terminé" ? "green":"orange"}>{h.statut}</Badge>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Séjours hospitaliers <span style={{ color:"var(--cm)", fontWeight:400, fontSize:13 }}>({pdData.hospitalisations.length})</span></div>
+                      <button className="pbtn pbtn-primary" onClick={() => navigate('/hospitalization')}>{I.plus} Nouvelle hospitalisation</button>
+                    </div>
+                    {pdData.hospitalisations.length > 0 ? pdData.hospitalisations.map(h => {
+                      const med = h.medecin_responsable ? `Dr. ${h.medecin_responsable.prenom||''} ${h.medecin_responsable.nom||''}`.trim() : h.medecin_nom || '—';
+                      const duree = h.date_entree && h.date_sortie ? `${Math.round((new Date(h.date_sortie)-new Date(h.date_entree))/(86400*1000))} jours` : 'En cours';
+                      const sc = { sorti:"green", actif:"orange", en_cours:"teal", annule:"red" }[h.statut] || "gray";
+                      return (
+                        <div key={h._id} className="pat-card fu" style={{ marginBottom:16 }}>
+                          <div className="pat-card-hdr">
+                            <h3>🛏 Hospitalisation — {fmtDate(h.date_entree)}</h3>
+                            <Badge cls={sc}>{h.statut || '—'}</Badge>
+                          </div>
+                          <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12 }}>
+                            <InfoCell label="Date d'entrée" value={fmtDate(h.date_entree)} />
+                            <InfoCell label="Date de sortie" value={h.date_sortie ? fmtDate(h.date_sortie) : "En cours"} />
+                            <InfoCell label="Service" value={h.service || '—'} />
+                            <InfoCell label="Chambre" value={h.chambre?.numero || h.chambre || '—'} />
+                            <InfoCell label="Médecin responsable" value={med} />
+                            <InfoCell label="Durée" value={duree} />
+                          </div>
+                          <div style={{ padding:"0 20px 20px", display:"flex", gap:8 }}>
+                            <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => navigate('/hospitalization')}>{I.file} Détails</button>
+                          </div>
                         </div>
-                        <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12 }}>
-                          <InfoCell label="Date d'entrée" value={fmtDate(h.date_entree)} />
-                          <InfoCell label="Date de sortie" value={fmtDate(h.date_sortie)} />
-                          <InfoCell label="Service" value={h.service} />
-                          <InfoCell label="Chambre" value={h.chambre} />
-                          <InfoCell label="Médecin responsable" value={h.medecin} />
-                          <InfoCell label="Durée" value={`${Math.round((new Date(h.date_sortie)-new Date(h.date_entree))/(86400*1000))} jours`} />
-                        </div>
-                        <div style={{ padding:"0 20px 20px", display:"flex", gap:8 }}>
-                          <button className="pbtn pbtn-ghost pbtn-sm">{I.file} Compte rendu</button>
-                          <button className="pbtn pbtn-ghost pbtn-sm">{I.dl} Rapport</button>
-                        </div>
+                      );
+                    }) : (
+                      <div className="pat-card fu" style={{ padding:40, textAlign:"center", color:"var(--cm)", fontSize:13 }}>
+                        {pdData.loading ? "Chargement..." : "Aucune hospitalisation enregistrée pour ce patient"}
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
 
                 {/* ── CHIRURGIE ── */}
                 {section === "chirurgie" && (
                   <div>
-                    <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Interventions chirurgicales</div>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Interventions chirurgicales <span style={{ color:"var(--cm)", fontWeight:400, fontSize:13 }}>({pdData.chirurgie.length})</span></div>
+                      <button className="pbtn pbtn-primary" onClick={() => navigate('/chirurgie')}>{I.plus} Nouveau dossier</button>
+                    </div>
                     <div className="pat-card fu">
                       <div style={{ overflowX:"auto" }}>
                         <table className="pat-tbl">
-                          <thead><tr><th>Date</th><th>Chirurgien</th><th>Intervention</th><th>Résultat</th><th>Documents</th></tr></thead>
+                          <thead><tr><th>Date</th><th>Chirurgien</th><th>Intervention</th><th>Statut</th><th>Actions</th></tr></thead>
                           <tbody>
-                            <tr>
-                              <td style={{ fontSize:12 }}>28/05/2025</td>
-                              <td style={{ fontSize:12 }}>Dr. Martin Leblanc</td>
-                              <td style={{ fontWeight:600 }}>Appendicectomie cœlioscopique</td>
-                              <td><Badge cls="green">✅ Succès</Badge></td>
-                              <td>
-                                <div style={{ display:"flex", gap:4 }}>
-                                  <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }}>{I.file} CR opér.</button>
-                                  <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }}>{I.dl} PDF</button>
-                                </div>
-                              </td>
-                            </tr>
+                            {pdData.chirurgie.map(c => {
+                              const sc = { planifie:"teal", en_cours:"orange", termine:"green", annule:"red" }[c.statut] || "gray";
+                              return (
+                                <tr key={c._id}>
+                                  <td style={{ fontSize:12 }}>{fmtDate(c.date_intervention || c.createdAt)}</td>
+                                  <td style={{ fontSize:12, color:"var(--cm)" }}>{c.chirurgien_principal || '—'}</td>
+                                  <td style={{ fontWeight:600, fontSize:12 }}>{c.diagnostic_chirurgical || c.acte || '—'}</td>
+                                  <td><Badge cls={sc}>{c.statut || '—'}</Badge></td>
+                                  <td>
+                                    <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} onClick={() => navigate('/chirurgie')}>{I.file} Détails</button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {pdData.chirurgie.length === 0 && (
+                              <tr><td colSpan={5} style={{ textAlign:"center", color:"var(--cm)", padding:24, fontSize:13 }}>
+                                {pdData.loading ? "Chargement..." : "Aucune intervention chirurgicale enregistrée pour ce patient"}
+                              </td></tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -1048,9 +1194,9 @@ export default function Patient() {
                       <span style={{ fontSize:20, flexShrink:0 }}>🔗</span>
                       <div style={{ flex:1 }}>
                         <strong style={{ color:"#1E40AF", fontSize:13 }}>Module Chirurgie — Dossier complet disponible</strong>
-                        <div style={{ fontSize:12, color:"#3B82F6", marginTop:3 }}>1 dossier chirurgical actif · Score IA risque : 22/100 (faible)</div>
+                        <div style={{ fontSize:12, color:"#3B82F6", marginTop:3 }}>{pdData.chirurgie.length} dossier(s) chirurgical(aux) trouvé(s)</div>
                       </div>
-                      <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }}>Ouvrir module →</button>
+                      <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} onClick={() => navigate('/chirurgie')}>Ouvrir module →</button>
                     </div>
                   </div>
                 )}
@@ -1060,35 +1206,11 @@ export default function Patient() {
                   <div>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                       <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Carnet vaccinal</div>
-                      <button className="pbtn pbtn-primary">{I.plus} Ajouter vaccin</button>
                     </div>
-                    {DEMO_VACCINS.some(v => v.statut === "en_retard") && (
-                      <div className="al-warn" style={{ marginBottom:16, display:"flex", alignItems:"flex-start", gap:12 }}>
-                        <span style={{ fontSize:20 }}>⏰</span>
-                        <div>
-                          <strong style={{ color:"#92400E", fontSize:13 }}>Vaccins en retard</strong>
-                          <div style={{ fontSize:12, color:"#B45309", marginTop:3 }}>
-                            {DEMO_VACCINS.filter(v => v.statut === "en_retard").map(v => v.vaccin).join(", ")}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <div className="pat-card fu">
-                      <div style={{ overflowX:"auto" }}>
-                        <table className="pat-tbl">
-                          <thead><tr><th>Vaccin</th><th>Date</th><th>Prochaine dose</th><th>Statut</th></tr></thead>
-                          <tbody>
-                            {DEMO_VACCINS.map(v => (
-                              <tr key={v._id}>
-                                <td style={{ fontWeight:600 }}>{v.vaccin}</td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtDate(v.date)}</td>
-                                <td style={{ fontSize:12, color:v.statut === "en_retard" ? "#DC2626":"var(--cm)" }}>{v.prochaine_dose ? fmtDate(v.prochaine_dose) : "Dose unique"}</td>
-                                <td><Badge cls={v.statut === "ok" ? "green" : "orange"}>{v.statut === "ok" ? "✅ À jour" : "⏰ En retard"}</Badge></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                    <div className="pat-card fu" style={{ padding:40, textAlign:"center" }}>
+                      <div style={{ fontSize:40, marginBottom:12 }}>💉</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:"var(--cn)", marginBottom:6 }}>Module vaccination en cours de développement</div>
+                      <div style={{ fontSize:13, color:"var(--cm)" }}>Le carnet vaccinal numérique sera disponible prochainement.</div>
                     </div>
                   </div>
                 )}
@@ -1098,50 +1220,69 @@ export default function Patient() {
                   <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20 }}>
                     <div>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-                        <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Factures</div>
-                        <button className="pbtn pbtn-primary">{I.plus} Nouvelle facture</button>
+                        <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Factures <span style={{ color:"var(--cm)", fontWeight:400, fontSize:13 }}>({pdData.invoices.length})</span></div>
+                        <button className="pbtn pbtn-primary" onClick={() => navigate('/finance')}>{I.plus} Nouvelle facture</button>
                       </div>
                       <div className="pat-card fu">
                         <div style={{ overflowX:"auto" }}>
                           <table className="pat-tbl">
-                            <thead><tr><th>Type</th><th>Date</th><th>Montant</th><th>Payé</th><th>Reste</th><th>Mode</th><th>Statut</th></tr></thead>
+                            <thead><tr><th>Type</th><th>Date</th><th>Montant</th><th>Payé</th><th>Reste</th><th>Statut</th></tr></thead>
                             <tbody>
-                              {DEMO_FACTURES.map(f => {
-                                const reste = f.montant - f.paye;
-                                const sc = { payé:"green", partiel:"orange", impayé:"red" }[f.statut] || "gray";
+                              {pdData.invoices.map(f => {
+                                const montant = f.montant_total || f.montant || 0;
+                                const paye = f.montant_paye || f.paye || 0;
+                                const reste = montant - paye;
+                                const sc = { paye:"green", payé:"green", partiel:"orange", impaye:"red", impayé:"red" }[f.statut] || "gray";
                                 return (
                                   <tr key={f._id}>
-                                    <td style={{ fontWeight:600, fontSize:12 }}>{f.type}</td>
-                                    <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtDate(f.date)}</td>
-                                    <td style={{ fontSize:12, fontWeight:700 }}>{f.montant.toLocaleString("fr-FR")} CFA</td>
-                                    <td style={{ fontSize:12, color:"#059669" }}>{f.paye.toLocaleString("fr-FR")}</td>
+                                    <td style={{ fontWeight:600, fontSize:12 }}>{f.type || f.description || '—'}</td>
+                                    <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtDate(f.date_creation || f.date || f.createdAt)}</td>
+                                    <td style={{ fontSize:12, fontWeight:700 }}>{montant.toLocaleString("fr-FR")} CFA</td>
+                                    <td style={{ fontSize:12, color:"#059669" }}>{paye.toLocaleString("fr-FR")}</td>
                                     <td style={{ fontSize:12, color: reste > 0 ? "#DC2626":"#059669", fontWeight:600 }}>{reste > 0 ? `${reste.toLocaleString("fr-FR")}` : "—"}</td>
-                                    <td style={{ fontSize:12, color:"var(--cm)" }}>{f.mode}</td>
-                                    <td><Badge cls={sc}>{f.statut}</Badge></td>
+                                    <td><Badge cls={sc}>{f.statut || '—'}</Badge></td>
                                   </tr>
                                 );
                               })}
+                              {pdData.invoices.length === 0 && (
+                                <tr><td colSpan={6} style={{ textAlign:"center", color:"var(--cm)", padding:24, fontSize:13 }}>
+                                  {pdData.loading ? "Chargement..." : "Aucune facture enregistrée pour ce patient"}
+                                </td></tr>
+                              )}
                             </tbody>
                           </table>
                         </div>
-                        <div style={{ padding:"12px 20px", borderTop:"1.5px solid var(--cbr)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <span style={{ fontSize:13, color:"var(--cm)" }}>Solde total restant</span>
-                          <strong style={{ fontSize:16, color: currentPatient.solde > 0 ? "#DC2626":"#059669" }}>
-                            {currentPatient.solde > 0 ? `${currentPatient.solde.toLocaleString("fr-FR")} CFA` : "✅ Tout payé"}
-                          </strong>
-                        </div>
+                        {pdData.invoices.length > 0 && (
+                          <div style={{ padding:"12px 20px", borderTop:"1.5px solid var(--cbr)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <span style={{ fontSize:13, color:"var(--cm)" }}>Solde total restant</span>
+                            <strong style={{ fontSize:16, color: currentPatient.solde > 0 ? "#DC2626":"#059669" }}>
+                              {currentPatient.solde > 0 ? `${currentPatient.solde.toLocaleString("fr-FR")} CFA` : "✅ Tout payé"}
+                            </strong>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="pat-card fu">
-                      <div className="pat-card-hdr"><h3>🛡 Assurance</h3></div>
+                      <div className="pat-card-hdr"><h3>🛡 Assurance(s)</h3></div>
                       <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
-                        {[["Compagnie", "CNSS Congo"], ["N° adhérent", "CNS-2025-7734"], ["Taux prise en charge", "90%"], ["Validité", "31/12/2025"]].map(([lbl, val]) => (
-                          <div key={lbl} className="info-cell">
-                            <div className="ic-lbl">{lbl}</div>
-                            <div className="ic-val">{val}</div>
+                        {currentPatient.assurances && currentPatient.assurances.length > 0 ? (
+                          currentPatient.assurances.map((a, idx) => (
+                            <div key={idx} style={{ background:"#F0FDFC", border:"1.5px solid #99F6E4", borderRadius:12, padding:12 }}>
+                              {[["Compagnie", a.compagnie], ["N° Police", a.numero_police], ["Taux prise en charge", a.taux ? `${a.taux}%` : '—']].map(([lbl, val]) => (
+                                <div key={lbl} className="info-cell" style={{ marginBottom:6 }}>
+                                  <div className="ic-lbl">{lbl}</div>
+                                  <div className="ic-val">{val || '—'}</div>
+                                </div>
+                              ))}
+                              <Badge cls="green">✅ Assurance active</Badge>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:13 }}>
+                            <div style={{ fontSize:24, marginBottom:8 }}>🛡</div>
+                            Aucune assurance enregistrée
                           </div>
-                        ))}
-                        <Badge cls="green" style={{ marginTop:8, alignSelf:"flex-start" }}>✅ Assurance active</Badge>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1152,25 +1293,11 @@ export default function Patient() {
                   <div>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                       <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Documents du dossier</div>
-                      <button className="pbtn pbtn-primary">{I.plus} Ajouter document</button>
                     </div>
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:14 }}>
-                      {DEMO_DOCS.map(d => {
-                        const typeIco = { Ordonnance:"📋", Résultat:"🔬", Rapport:"📄", Administratif:"🪪", Certificat:"🏅" }[d.type] || "📄";
-                        return (
-                          <div key={d._id} className="pat-card fu" style={{ cursor:"pointer" }} onMouseOver={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(11,30,59,.1)"} onMouseOut={e=>e.currentTarget.style.boxShadow=""}>
-                            <div style={{ padding:16 }}>
-                              <div style={{ fontSize:28, marginBottom:8 }}>{typeIco}</div>
-                              <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{d.nom}</div>
-                              <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>{d.type} · {fmtDate(d.date)}</div>
-                              <div style={{ display:"flex", gap:6, marginTop:12 }}>
-                                <button className="pbtn pbtn-teal pbtn-sm" style={{ fontSize:10 }}>{I.dl} Télécharger</button>
-                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }}>{I.print} Imprimer</button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="pat-card fu" style={{ padding:40, textAlign:"center" }}>
+                      <div style={{ fontSize:40, marginBottom:12 }}>📄</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:"var(--cn)", marginBottom:6 }}>Gestion des documents en cours de développement</div>
+                      <div style={{ fontSize:13, color:"var(--cm)" }}>Les ordonnances, résultats et documents administratifs seront accessibles ici prochainement.</div>
                     </div>
                   </div>
                 )}
@@ -1178,29 +1305,36 @@ export default function Patient() {
                 {/* ── AUDIT ── */}
                 {section === "audit" && (
                   <div>
-                    <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Journal des activités & Traçabilité</div>
+                    <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Journal des activités & Traçabilité <span style={{ color:"var(--cm)", fontWeight:400, fontSize:13 }}>({pdData.auditLogs.length})</span></div>
                     <div className="pat-card fu">
                       <div style={{ overflowX:"auto" }}>
                         <table className="pat-tbl">
-                          <thead><tr><th>Action</th><th>Utilisateur</th><th>Date</th><th>Heure</th><th>Détails</th></tr></thead>
+                          <thead><tr><th>Action</th><th>Module</th><th>Utilisateur</th><th>Date</th><th>Détails</th></tr></thead>
                           <tbody>
-                            {DEMO_AUDIT.map(a => (
-                              <tr key={a._id}>
-                                <td style={{ fontWeight:600, fontSize:12 }}>{a.action}</td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{a.utilisateur}</td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{a.date}</td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{a.heure}</td>
-                                <td style={{ fontSize:11, color:"var(--cm)" }}>{a.details}</td>
-                              </tr>
-                            ))}
+                            {pdData.auditLogs.map(a => {
+                              const riskCls = { faible:"gray", moyen:"blue", eleve:"orange", critique:"red" }[a.risque] || "gray";
+                              return (
+                                <tr key={a._id}>
+                                  <td style={{ fontWeight:600, fontSize:12 }}><Badge cls={riskCls}>{a.action}</Badge></td>
+                                  <td style={{ fontSize:12, color:"var(--cm)" }}>{a.module}</td>
+                                  <td style={{ fontSize:12, color:"var(--cm)" }}>{a.utilisateur}</td>
+                                  <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtDate(a.date)}</td>
+                                  <td style={{ fontSize:11, color:"var(--cm)", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{a.description}</td>
+                                </tr>
+                              );
+                            })}
+                            {pdData.auditLogs.length === 0 && (
+                              <tr><td colSpan={5} style={{ textAlign:"center", color:"var(--cm)", padding:24, fontSize:13 }}>
+                                {pdData.loading ? "Chargement..." : "Aucune activité enregistrée"}
+                              </td></tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
                     </div>
                     <div style={{ marginTop:16, display:"flex", gap:10 }}>
-                      <button className="pbtn pbtn-ghost pbtn-sm">{I.dl} Exporter journal</button>
-                      <button className="pbtn pbtn-ghost pbtn-sm">{I.qr} Générer QR code dossier</button>
-                      <button className="pbtn pbtn-ghost pbtn-sm">{I.print} Carte patient imprimable</button>
+                      <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => navigate('/audit')}>{I.shield} Voir journal complet</button>
+                      <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => window.print()}>{I.print} Carte patient imprimable</button>
                     </div>
                   </div>
                 )}
@@ -1390,43 +1524,51 @@ export default function Patient() {
         </Modal>
 
         {/* ═══ MODAL : RENDEZ-VOUS ═══ */}
-        <Modal open={modalRdv} onClose={() => setModalRdv(false)} title="📅 Planifier un rendez-vous" maxWidth={480}>
+        <Modal open={modalRdv} onClose={() => { setModalRdv(false); setFormRdv({ date:'', heure:'', medecin_id:'', motif:'', duree:'30' }); setMsgRdv(''); }} title="📅 Planifier un rendez-vous" maxWidth={480}>
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-            <div>
-              <label className="plbl">Date *</label>
-              <input type="date" className="pinp" min={new Date().toISOString().substring(0,10)} />
+            {currentPatient && (
+              <div style={{ background:"#EEF4FF", border:"1.5px solid var(--cbr)", borderRadius:10, padding:"10px 14px", fontSize:13, color:"var(--cn)", fontWeight:600 }}>
+                👤 {currentPatient.prenom} {currentPatient.nom} · {currentPatient.numero_dossier || currentPatient.numero}
+              </div>
+            )}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div>
+                <label className="plbl">Date *</label>
+                <input type="date" className="pinp" min={new Date().toISOString().substring(0,10)} value={formRdv.date} onChange={e => setFormRdv(f => ({...f, date:e.target.value}))} />
+              </div>
+              <div>
+                <label className="plbl">Heure *</label>
+                <input type="time" className="pinp" value={formRdv.heure} onChange={e => setFormRdv(f => ({...f, heure:e.target.value}))} />
+              </div>
             </div>
             <div>
-              <label className="plbl">Heure *</label>
-              <input type="time" className="pinp" />
-            </div>
-            <div>
-              <label className="plbl">Médecin</label>
-              <select className="pinp">
-                <option>— Sélectionner —</option>
-                <option>Dr. Martin Leblanc — Chirurgie</option>
-                <option>Dr. Sophie Pierre — Gynécologie</option>
-                <option>Dr. Médecin Général</option>
+              <label className="plbl">Médecin *</label>
+              <select className="pinp" value={formRdv.medecin_id} onChange={e => setFormRdv(f => ({...f, medecin_id:e.target.value}))}>
+                <option value="">— Sélectionner un médecin —</option>
+                {medecins.map(m => (
+                  <option key={m._id} value={m._id}>Dr. {m.prenom} {m.nom}{m.specialite ? ` — ${m.specialite}` : ''}</option>
+                ))}
               </select>
             </div>
             <div>
-              <label className="plbl">Service</label>
-              <select className="pinp">
-                <option>Médecine générale</option>
-                <option>Chirurgie</option>
-                <option>Gynécologie</option>
-                <option>Laboratoire</option>
-                <option>Imagerie</option>
+              <label className="plbl">Durée (minutes)</label>
+              <select className="pinp" value={formRdv.duree} onChange={e => setFormRdv(f => ({...f, duree:e.target.value}))}>
+                {[15,20,30,45,60,90].map(d => <option key={d} value={d}>{d} min</option>)}
               </select>
             </div>
             <div>
               <label className="plbl">Motif</label>
-              <textarea className="pinp" rows={2} placeholder="Motif de la consultation..." />
+              <textarea className="pinp" rows={2} placeholder="Motif de la consultation..." value={formRdv.motif} onChange={e => setFormRdv(f => ({...f, motif:e.target.value}))} />
             </div>
+            {msgRdv && (
+              <div className={msgRdv.startsWith('ok:') ? "al-success" : "al-danger"} style={{ padding:"10px 14px", fontSize:13 }}>
+                {msgRdv.startsWith('ok:') ? '✅ ' : '❌ '}{msgRdv.replace(/^(ok:|error:)/, '')}
+              </div>
+            )}
             <div style={{ display:"flex", gap:10 }}>
-              <button className="pbtn pbtn-ghost" onClick={() => setModalRdv(false)}>Annuler</button>
-              <button className="pbtn pbtn-teal" style={{ marginLeft:"auto" }} onClick={() => setModalRdv(false)}>
-                {I.save} Confirmer le RDV
+              <button className="pbtn pbtn-ghost" onClick={() => { setModalRdv(false); setFormRdv({ date:'', heure:'', medecin_id:'', motif:'', duree:'30' }); setMsgRdv(''); }}>Annuler</button>
+              <button className="pbtn pbtn-teal" style={{ marginLeft:"auto" }} disabled={rdvSaving} onClick={handleCreateRdv}>
+                {I.save} {rdvSaving ? "Enregistrement..." : "Confirmer le RDV"}
               </button>
             </div>
           </div>

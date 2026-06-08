@@ -30,11 +30,12 @@ function updateIaNiveau(score) {
 // Récupération des dossiers (liste paginée, recherche, filtre)
 exports.getDossiers = async (req, res) => {
   try {
-    const { page = 1, limit = 15, q = '', statut = '' } = req.query;
+    const { page = 1, limit = 15, q = '', statut = '', patient_id = '' } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     let filter = {};
 
     if (statut) filter.statut = statut;
+    if (patient_id) filter.patient_id = patient_id;
     if (q) {
       filter.$or = [
         { patient_nom: { $regex: q, $options: 'i' } },
