@@ -5,7 +5,7 @@ const dossierChirurgicalSchema = new mongoose.Schema({
   numero: { type: String, unique: true, required: true },
   patient_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
   patient_nom: { type: String, required: true },
-  date_naissance: { type: Date, required: true },
+  date_naissance: { type: Date },
   sexe: { type: String, enum: ['homme', 'femme', 'autre'] },
   groupe_sanguin: String,
   allergies: String,

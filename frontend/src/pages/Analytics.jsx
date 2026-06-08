@@ -6,6 +6,7 @@ import {
 } from '../store/slices/analyticsSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -304,14 +305,34 @@ const DEMO_PERF = [];
 // ─── MAIN ───────────────────────────────────────────────────
 export default function Analytics() {
   const dispatch = useDispatch();
-  const reduxChartData = useSelector(selectAnalyticsChartData);
-  const reduxFinancialData = useSelector(selectFinancialData);
+  const reduxChartData    = useSelector(selectAnalyticsChartData);
+  const reduxFinancialData= useSelector(selectFinancialData);
+  const reduxLoading      = useSelector(selectAnalyticsLoading);
 
   useEffect(() => {
     dispatch(fetchAnalyticsReport({ type: 'global', period: '30d' }));
     dispatch(fetchFinancialReport({ period: '30d' }));
     dispatch(fetchPatientStats({ period: '30d' }));
   }, [dispatch]);
+
+  // ── Données graphiques depuis Redux (remplacent les DEMO vides) ──
+  const charts          = reduxChartData || {};
+  // eslint-disable-next-line no-shadow
+  const DEMO_CONSULT_LINE = charts.consultations_par_mois || { labels: [], datasets: [] };
+  // eslint-disable-next-line no-shadow
+  const DEMO_REVENUS_BAR  = charts.revenus_par_service    || { labels: [], data: [], colors: [] };
+  // eslint-disable-next-line no-shadow
+  const DEMO_GENDER       = charts.repartition_genre      || { labels: [], data: [], colors: [] };
+  // eslint-disable-next-line no-shadow
+  const DEMO_PATHOLOGIES  = charts.top_pathologies        || [];
+  // eslint-disable-next-line no-shadow
+  const DEMO_MEDECINS     = charts.top_medecins           || [];
+  // eslint-disable-next-line no-shadow
+  const DEMO_ALERTES_MED  = charts.alertes_medicales      || [];
+  // eslint-disable-next-line no-shadow
+  const DEMO_ALERTES_ADM  = charts.alertes_admin          || [];
+  // eslint-disable-next-line no-shadow
+  const DEMO_PERF         = charts.perf_indicateurs       || [];
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
@@ -340,6 +361,7 @@ export default function Analytics() {
   }, [periode, filterService, filterMedecin]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useRealtimeRefresh(refresh);
 
   const periodes = [
     { key:"aujourd_hui", label:"Aujourd'hui" },
@@ -433,7 +455,7 @@ export default function Analytics() {
               <option value="">Tous les médecins</option>
               {DEMO_MEDECINS.map(m=><option key={m.nom} value={m.nom}>{m.nom}</option>)}
             </select>
-            {loading && <span style={{ fontSize:11, color:"var(--at)", fontWeight:600 }}>⏳ Mise à jour...</span>}
+            {(loading || reduxLoading) && <span style={{ fontSize:11, color:"var(--at)", fontWeight:600 }}>⏳ Mise à jour...</span>}
           </div>
 
           {/* ══════════ VUE GLOBALE ══════════ */}
@@ -809,11 +831,11 @@ export default function Analytics() {
                   </div>
                   <div style={{ padding:20 }}>
                     <LineChart
-                      labels={MOIS}
+                      labels={reduxFinancialData?.financial?.labels || MOIS}
                       datasets={[
-                        { label:"Chiffre d'affaires", data:[28,32,30,35,38,36,31,25,33,37,34,40].map(v=>v*1000000), borderColor:"#059669", backgroundColor:"rgba(5,150,105,.1)", tension:.4, fill:false, pointRadius:4, pointBackgroundColor:"#059669" },
-                        { label:"Dépenses",           data:[11,13,12,13,14,13,12,10,12,14,13,15].map(v=>v*1000000), borderColor:"#DC2626", backgroundColor:"rgba(220,38,38,.08)", tension:.4, fill:false, borderDash:[4,4], pointRadius:3, pointBackgroundColor:"#DC2626" },
-                        { label:"Bénéfice",           data:[17,19,18,22,24,23,19,15,21,23,21,25].map(v=>v*1000000), borderColor:"#0EA5A0", backgroundColor:"rgba(14,165,160,.12)", tension:.4, fill:true, pointRadius:4, pointBackgroundColor:"#0EA5A0" },
+                        { label:"Chiffre d'affaires", data: reduxFinancialData?.financial?.ca       || [], borderColor:"#059669", backgroundColor:"rgba(5,150,105,.1)",    tension:.4, fill:false, pointRadius:4, pointBackgroundColor:"#059669" },
+                        { label:"Dépenses",           data: reduxFinancialData?.financial?.depenses  || [], borderColor:"#DC2626", backgroundColor:"rgba(220,38,38,.08)",   tension:.4, fill:false, borderDash:[4,4], pointRadius:3, pointBackgroundColor:"#DC2626" },
+                        { label:"Bénéfice",           data: reduxFinancialData?.financial?.benefice  || [], borderColor:"#0EA5A0", backgroundColor:"rgba(14,165,160,.12)",  tension:.4, fill:true,  pointRadius:4, pointBackgroundColor:"#0EA5A0" },
                       ]}
                       height={220}
                     />

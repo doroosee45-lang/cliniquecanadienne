@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import {
   fetchPatients, createPatient, updatePatient, deletePatient,
   selectPatients, selectPatientsTotal, selectPatientsLoading, selectPatientsSaving,
@@ -335,6 +336,12 @@ export default function Patient() {
   useEffect(() => {
     dispatch(fetchPatients({ page: 1, limit: 100, search, statut: filterStatut }));
   }, [dispatch, search, filterStatut]);
+
+  // Rafraîchissement automatique (polling 30s + socket dashboard:refresh)
+  const refreshPatients = useCallback(() => {
+    dispatch(fetchPatients({ page: 1, limit: 100, search, statut: filterStatut }));
+  }, [dispatch, search, filterStatut]);
+  useRealtimeRefresh(refreshPatients);
 
   const patients = reduxPatients.length > 0 ? reduxPatients : DEMO_PATIENTS;
   const filtered = patients.filter(p => {

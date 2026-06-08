@@ -11,7 +11,7 @@ const AppointmentSchema = new Schema({
   motif: { type: String, required: true },
   statut: {
     type: String,
-    enum: ['planifie','confirme','en_attente','en_cours','termine','annule','absent'],
+    enum: ['planifie','en_attente','confirme','arrive','en_consultation','en_cours','termine','reporte','annule','absent'],
     default: 'planifie',
   },
   notes: String,

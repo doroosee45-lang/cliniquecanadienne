@@ -1151,6 +1151,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from 'react-redux';
 import { useAuth } from "../contexts/AuthContext";
+import { useSocket } from "../contexts/SocketContext";
 import api from "../api";
 import toast from "react-hot-toast";
 import { fetchDashboardData, selectDashboardData, selectDashboardLoading } from '../store/slices/dashboardSlice';
@@ -2086,6 +2087,9 @@ export default function Dashboard() {
   const role = user?.role || "patient";
   const rc   = ROLE_CFG[role] || ROLE_CFG.patient;
 
+  // ── Socket.IO (temps réel) ───────────────────────────────────
+  const { socket, connected, activities } = useSocket();
+
   // ── Redux sync ──────────────────────────────────────────────
   useEffect(() => { dispatch(fetchDashboardData(role)); }, [dispatch, role]);
   useEffect(() => { if (reduxDashData) { setStats(reduxDashData); setLoading(false); } }, [reduxDashData]);
@@ -2122,6 +2126,20 @@ export default function Dashboard() {
   }, [role]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Polling de sécurité toutes les 30s (fallback si socket indisponible)
+  useEffect(() => {
+    const iv = setInterval(loadData, 30000);
+    return () => clearInterval(iv);
+  }, [loadData]);
+
+  // Refresh immédiat déclenché par le serveur via Socket.IO
+  useEffect(() => {
+    if (!socket) return;
+    const handler = () => loadData();
+    socket.on('dashboard:refresh', handler);
+    return () => socket.off('dashboard:refresh', handler);
+  }, [socket, loadData]);
 
   const quickActions = QUICK_ACTIONS[role] || QUICK_ACTIONS.patient;
 
@@ -2197,9 +2215,9 @@ export default function Dashboard() {
                   <span style={{ fontSize:12, fontWeight:600, color:"#6EE7B7" }}>Portail patient</span>
                 </div>
               ) : (
-                <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(5,150,105,.25)", border:"1px solid rgba(5,150,105,.4)", borderRadius:10, padding:"6px 14px" }}>
-                  <div style={{ width:8, height:8, borderRadius:"50%", background:"#34D399", animation:"dbpulse 2s infinite" }} />
-                  <span style={{ fontSize:12, fontWeight:600, color:"#6EE7B7" }}>Système opérationnel</span>
+                <div style={{ display:"flex", alignItems:"center", gap:6, background: connected ? "rgba(5,150,105,.25)" : "rgba(107,122,153,.2)", border: connected ? "1px solid rgba(5,150,105,.4)" : "1px solid rgba(255,255,255,.15)", borderRadius:10, padding:"6px 14px" }}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", background: connected ? "#34D399" : "#9CA3AF", animation: connected ? "dbpulse 2s infinite" : "none" }} />
+                  <span style={{ fontSize:12, fontWeight:600, color: connected ? "#6EE7B7" : "rgba(255,255,255,.5)" }}>{connected ? "Temps réel actif" : "Actualisation auto"}</span>
                 </div>
               )}
               <button className="dbtn dbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)", fontSize:12 }} onClick={loadData}>🔄 Actualiser</button>
@@ -2225,6 +2243,36 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+
+        {/* ── FLUX D'ACTIVITÉS EN TEMPS RÉEL (staff uniquement) ── */}
+        {role !== "patient" && activities.length > 0 && (
+          <div className="db-card fu d1" style={{ marginBottom:20 }}>
+            <div className="db-card-hdr">
+              <h3>
+                <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                  <span style={{ width:8, height:8, borderRadius:"50%", background:"#34D399", display:"inline-block", animation:"dbpulse 1.5s infinite" }} />
+                  Activité en temps réel
+                </span>
+              </h3>
+              <p>{activities.length} événement{activities.length > 1 ? "s" : ""} récent{activities.length > 1 ? "s" : ""}</p>
+            </div>
+            <div style={{ maxHeight:220, overflowY:"auto", padding:"4px 0" }}>
+              {activities.slice(0, 10).map((a) => (
+                <div key={a.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 20px", borderBottom:"1px solid #F3F7FF", animation:"fadeUp .3s ease both" }}>
+                  <span style={{ fontSize:18, flexShrink:0 }}>{a.icon || "📌"}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:"#0B1E3B" }}>{a.action}</div>
+                    <div style={{ fontSize:11, color:"#6B7A99", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{a.detail}</div>
+                  </div>
+                  <div style={{ fontSize:10, color:"#9CA3AF", flexShrink:0, textAlign:"right" }}>
+                    <div style={{ fontWeight:600 }}>{a.userName || "Système"}</div>
+                    <div>{new Date(a.timestamp).toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit", second:"2-digit" })}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── ROLE-BASED CONTENT ── */}
         <div className="fu d2">

@@ -6,6 +6,7 @@ import {
 } from '../store/slices/laboratorySlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -191,11 +192,13 @@ const ageCalc = (dob) => {
 };
 
 const STATUT_CFG = {
+  prescrit:           { cls: "orange", label: "En attente",           icon: "⏳" },
   en_attente:         { cls: "orange", label: "En attente",           icon: "⏳" },
   preleve:            { cls: "blue",   label: "Échantillon prélevé",  icon: "🩺" },
   en_cours:           { cls: "purple", label: "En cours d'analyse",   icon: "🔬" },
   termine:            { cls: "teal",   label: "Terminé",              icon: "✅" },
   valide:             { cls: "green",  label: "Validé",               icon: "🏷️" },
+  annule:             { cls: "gray",   label: "Annulé",               icon: "❌" },
 };
 
 const RESULTATS_CFG = {
@@ -395,6 +398,9 @@ const DEMO_ANALYSES = [];
 const DEMO_MOIS = [];
 const DEMO_VOLUMES = [];
 
+// Garantit que `resultats` est toujours un tableau, quel que soit le type retourné par l'API
+const asArr = v => (Array.isArray(v) ? v : []);
+
 const EMPTY_FORM = {
   patient_id: "", patient_nom: "", patient_dossier: "", date_naissance: "", sexe: "", telephone: "",
   service_demandeur: "", medecin_prescripteur: "",
@@ -477,7 +483,7 @@ export default function Laboratoire() {
         en_cours:   d.filter(x => x.statut === "en_cours").length,
         termines:   d.filter(x => x.statut === "termine").length,
         valides:    d.filter(x => x.statut === "valide").length,
-        critiques:  d.filter(x => x.resultats?.some(r => r.statut_res === "critique")).length,
+        critiques:  d.filter(x => asArr(x.resultats).some(r => r.statut_res === "critique")).length,
       });
     }
   }, []);
@@ -495,6 +501,7 @@ export default function Laboratoire() {
   }, []);
 
   useEffect(() => { loadAnalyses(); loadStats(); loadPatients(); }, [loadAnalyses, loadStats, loadPatients]);
+  useRealtimeRefresh(loadAnalyses);
 
   // ── Open analyse ──────────────────────────────────────────
   const openAnalyse = (a) => {
@@ -503,7 +510,7 @@ export default function Laboratoire() {
     setTab("dossier");
     // Init résultats form
     const rf = {};
-    (a.examens_demandes || []).forEach(eid => { rf[eid] = a.resultats?.find(r => r.exam_id === eid)?.valeur || ""; });
+    (a.examens_demandes || []).forEach(eid => { rf[eid] = asArr(a.resultats).find(r => r.exam_id === eid)?.valeur || ""; });
     setFormRes(rf);
     setFormValid({ commentaire_biologiste: a.commentaire_biologiste || "", technicien: a.technicien || "", biologiste: a.biologiste || "" });
   };
@@ -666,7 +673,7 @@ export default function Laboratoire() {
                   <button key={t.key} className={`lab-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
-                    {t.key==="dossier"&&currentAnalyse?.resultats?.some(r=>r.statut_res==="critique")&&<span className="lab-tab-badge">⚡</span>}
+                    {t.key==="dossier"&&asArr(currentAnalyse?.resultats).some(r=>r.statut_res==="critique")&&<span className="lab-tab-badge">⚡</span>}
                   </button>
                 ))}
               </div>
@@ -740,7 +747,7 @@ export default function Laboratoire() {
                       <tbody>
                         {(loading ? DEMO_ANALYSES : analyses).slice(0, 6).map(a => {
                           const sc = STATUT_CFG[a.statut] || { cls:"gray", label:a.statut, icon:"" };
-                          const hasCritique = a.resultats?.some(r => r.statut_res === "critique");
+                          const hasCritique = asArr(a.resultats).some(r => r.statut_res === "critique");
                           return (
                             <tr key={a._id} style={{ background:hasCritique ? "#FFF8F8" : "" }}>
                               <td>
@@ -846,8 +853,8 @@ export default function Laboratoire() {
                         <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--lm)" }}>Chargement...</td></tr>
                       ) : analyses.map(a => {
                         const sc = STATUT_CFG[a.statut] || { cls:"gray", label:a.statut, icon:"" };
-                        const hasCritique = a.resultats?.some(r => r.statut_res === "critique");
-                        const hasAnormal  = a.resultats?.some(r => r.statut_res === "anormal");
+                        const hasCritique = asArr(a.resultats).some(r => r.statut_res === "critique");
+                        const hasAnormal  = asArr(a.resultats).some(r => r.statut_res === "anormal");
                         return (
                           <tr key={a._id} style={{ background:hasCritique ? "#FFF5F5" : hasAnormal ? "#FFFBF0" : "" }}>
                             <td>
@@ -865,7 +872,7 @@ export default function Laboratoire() {
                                 {a.examens_demandes?.length > 3 && <span style={{ color:"var(--lb)", fontWeight:600 }}> +{a.examens_demandes.length - 3}</span>}
                               </div>
                             </td>
-                            <td style={{ fontSize:12, color:"var(--lm)" }}>{a.medecin_prescripteur || "—"}</td>
+                            <td style={{ fontSize:12, color:"var(--lm)" }}>{a.medecin_prescripteur_nom || "—"}</td>
                             <td style={{ fontSize:12, color:"var(--lm)" }}>{fmtDateTime(a.date_demande)}</td>
                             <td style={{ fontSize:12 }}>{a.date_prelevement ? <span style={{ color:"var(--lg)", fontWeight:600 }}>✅ {fmtDate(a.date_prelevement)}</span> : <span style={{ color:"var(--lo)" }}>En attente</span>}</td>
                             <td style={{ fontSize:12 }}>{a.date_resultat ? <span style={{ color:"var(--lt)", fontWeight:600 }}>✅ {fmtDate(a.date_resultat)}</span> : "—"}</td>
@@ -903,7 +910,7 @@ export default function Laboratoire() {
           {/* ══ DOSSIER ANALYSE ══ */}
           {tab === "dossier" && currentAnalyse && (() => {
             const sc = STATUT_CFG[currentAnalyse.statut] || { cls:"gray", label:currentAnalyse.statut, icon:"" };
-            const hasCritique = currentAnalyse.resultats?.some(r => r.statut_res === "critique");
+            const hasCritique = asArr(currentAnalyse.resultats).some(r => r.statut_res === "critique");
             const iaCol = hasCritique ? "#DC2626" : "#059669";
 
             return (
@@ -934,7 +941,7 @@ export default function Laboratoire() {
                       <div style={{ textAlign:"right" }}>
                         <div style={{ fontFamily:"monospace", fontSize:16, fontWeight:700, color:"rgba(255,255,255,.9)" }}>{currentAnalyse.numero}</div>
                         <div style={{ fontSize:11, color:"rgba(255,255,255,.55)", marginTop:4 }}>📅 {fmtDateTime(currentAnalyse.date_demande)}</div>
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginTop:2 }}>{currentAnalyse.medecin_prescripteur || "—"}</div>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginTop:2 }}>{currentAnalyse.medecin_prescripteur_nom || "—"}</div>
                       </div>
                     </div>
                   </div>
@@ -1146,7 +1153,7 @@ export default function Laboratoire() {
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                       <div>
                         <div style={{ fontSize:15, fontWeight:700, color:"var(--ln)" }}>Résultats biologiques</div>
-                        <div style={{ fontSize:12, color:"var(--lm)" }}>{currentAnalyse.resultats?.length || 0} résultat(s) saisi(s)</div>
+                        <div style={{ fontSize:12, color:"var(--lm)" }}>{asArr(currentAnalyse.resultats).length || 0} résultat(s) saisi(s)</div>
                       </div>
                       {["preleve","en_cours"].includes(currentAnalyse.statut) && (
                         <button className="lbtn lbtn-teal" onClick={() => setModalResultats(true)}>
@@ -1155,7 +1162,7 @@ export default function Laboratoire() {
                       )}
                     </div>
 
-                    {currentAnalyse.resultats?.length > 0 ? (
+                    {asArr(currentAnalyse.resultats).length > 0 ? (
                       <div className="lab-card">
                         <div style={{ overflowX:"auto" }}>
                           <table className="res-tbl">
@@ -1169,7 +1176,7 @@ export default function Laboratoire() {
                               </tr>
                             </thead>
                             <tbody>
-                              {currentAnalyse.resultats.map(r => {
+                              {asArr(currentAnalyse.resultats).map(r => {
                                 const ref = REF_VALUES[r.exam_id] || {};
                                 const statut = getStatutRes(r);
                                 return (

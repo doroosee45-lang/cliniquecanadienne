@@ -409,7 +409,11 @@ export default function Administration() {
         api.get("/admin/audit?limit=20"),
       ]);
       const toArr = (v, fallback) => Array.isArray(v) ? v : fallback;
-      if (kRes.status === "fulfilled" && kRes.value.data) setKpis(kRes.value.data);
+      if (kRes.status === "fulfilled" && kRes.value.data) {
+        const k = kRes.value.data;
+        setKpis(k);
+        if (Array.isArray(k.revenus_par_mois)) setRevenus(k.revenus_par_mois);
+      }
       setUsers(uRes.status === "fulfilled"  ? toArr(uRes.value.data.users  || uRes.value.data, DEMO_USERS)     : DEMO_USERS);
       setDepts(dRes.status === "fulfilled"  ? toArr(dRes.value.data.departments || dRes.value.data, DEMO_DEPTS): DEMO_DEPTS);
       setRooms(rRes.status === "fulfilled"  ? toArr(rRes.value.data.rooms  || rRes.value.data, DEMO_ROOMS)     : DEMO_ROOMS);
@@ -604,12 +608,12 @@ export default function Administration() {
 
               {/* KPIs */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))", gap:14, marginBottom:24 }}>
-                <KpiCard color="blue"   icon={I.users}    value={kpis.total_patients || 1247}         label="Total patients"        sub="tous dossiers confondus" />
-                <KpiCard color="teal"   icon={I.task}     value={kpis.rdv_jour || 38}                 label="RDV du jour"           sub="planifiés aujourd'hui" />
-                <KpiCard color="green"  icon={I.activity} value={kpis.consultations_jour || 29}        label="Consultations"         sub="ce jour" />
-                <KpiCard color="purple" icon={I.building} value={kpis.hospitalisations || 18}          label="Hospitalisations"      sub="en cours" />
-                <KpiCard color="orange" icon={I.hr}       value={kpis.personnel_present || 42}         label="Personnel présent"     sub="aujourd'hui" />
-                <KpiCard color="teal"   icon={I.dollar}   value={(kpis.revenus_jour || 2850000).toLocaleString("fr-FR")} label="Revenus du jour" sub="CFA" />
+                <KpiCard color="blue"   icon={I.users}    value={kpis.total_patients ?? 0}            label="Total patients"        sub="tous dossiers confondus" />
+                <KpiCard color="teal"   icon={I.task}     value={kpis.rdv_jour ?? 0}                  label="RDV du jour"           sub="planifiés aujourd'hui" />
+                <KpiCard color="green"  icon={I.activity} value={kpis.consultations_jour ?? 0}         label="Consultations"         sub="ce jour" />
+                <KpiCard color="purple" icon={I.building} value={kpis.hospitalisations ?? 0}           label="Hospitalisations"      sub="en cours" />
+                <KpiCard color="orange" icon={I.hr}       value={kpis.personnel_present ?? 0}          label="Personnel présent"     sub="aujourd'hui" />
+                <KpiCard color="teal"   icon={I.dollar}   value={(kpis.revenus_jour ?? 0).toLocaleString("fr-FR")} label="Revenus du jour" sub="CFA" />
                 <KpiCard color={impayesCount > 10 ? "red" : "orange"} icon={I.file} value={impayesCount} label="Factures impayées" sub="en attente" urgent={impayesCount > 10} onClick={() => setTab("finances")} />
                 <KpiCard color={alerteCount > 0 ? "red" : "green"} icon={I.alert} value={alerteCount} label="Alertes admin." sub="à traiter" urgent={alerteCount > 0} />
               </div>
@@ -625,42 +629,53 @@ export default function Administration() {
                   </div>
                 </div>
                 <div className="adm-card fu">
-                  <div className="adm-card-hdr"><div><h3>Occupation des salles</h3><p>{rooms.length} salles / blocs</p></div></div>
-                  <div style={{ padding:20 }}>
-                    {[
-                      ["Disponibles",  rooms.filter(r => r.etat === "disponible").length,  "#059669"],
-                      ["Occupées",     rooms.filter(r => r.etat === "occupee").length,      "#DC2626"],
-                      ["Partiellement",rooms.filter(r => r.etat === "partielle").length,    "#D97706"],
-                    ].map(([lbl, val, col]) => (
-                      <div key={lbl} style={{ marginBottom:12 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ display:"flex", alignItems:"center", gap:7, fontSize:12, color:"var(--cm)" }}>
-                            <span style={{ width:10, height:10, borderRadius:3, background:col, display:"inline-block" }} />
-                            {lbl}
-                          </span>
-                          <span style={{ fontWeight:700, fontSize:12, color:"var(--cn)" }}>{val}</span>
+                  {(() => {
+                    const rm = kpis.rooms || {};
+                    const totalRooms = rm.total || rooms.length || 0;
+                    const rData = [
+                      ["Disponibles",  rm.libres    ?? rooms.filter(r => r.statut === "libre").length,    "#059669"],
+                      ["Occupées",     rm.occupees  ?? rooms.filter(r => r.statut === "occupe").length,   "#DC2626"],
+                      ["Maintenance",  rm.maintenance ?? rooms.filter(r => r.statut === "maintenance").length, "#D97706"],
+                    ];
+                    const pr = kpis.personnel_par_role || {};
+                    const pData = [
+                      ["Médecins",    pr.medecins    ?? users.filter(u => u.role === "medecin").length,    "#1B4F9E"],
+                      ["Infirmiers",  pr.infirmiers  ?? users.filter(u => u.role === "infirmier").length,  "#0EA5A0"],
+                      ["Pharmaciens", pr.pharmaciens ?? users.filter(u => u.role === "pharmacien").length, "#059669"],
+                      ["Autres",      pr.autres      ?? users.filter(u => !["medecin","infirmier","pharmacien"].includes(u.role)).length, "#7C3AED"],
+                    ];
+                    return (
+                      <>
+                        <div className="adm-card-hdr"><div><h3>Occupation des salles</h3><p>{totalRooms} salles / blocs</p></div></div>
+                        <div style={{ padding:20 }}>
+                          {rData.map(([lbl, val, col]) => (
+                            <div key={lbl} style={{ marginBottom:12 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                                <span style={{ display:"flex", alignItems:"center", gap:7, fontSize:12, color:"var(--cm)" }}>
+                                  <span style={{ width:10, height:10, borderRadius:3, background:col, display:"inline-block" }} />
+                                  {lbl}
+                                </span>
+                                <span style={{ fontWeight:700, fontSize:12, color:"var(--cn)" }}>{val}</span>
+                              </div>
+                              <Prog pct={totalRooms > 0 ? Math.round(val / totalRooms * 100) : 0} color={col} />
+                            </div>
+                          ))}
+                          <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid var(--cbr)" }}>
+                            <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Répartition personnel</div>
+                            {pData.map(([lbl, val, col]) => (
+                              <div key={lbl} style={{ display:"flex", justifyContent:"space-between", fontSize:12, padding:"4px 0" }}>
+                                <span style={{ display:"flex", alignItems:"center", gap:6, color:"var(--cm)" }}>
+                                  <span style={{ width:8, height:8, borderRadius:2, background:col, display:"inline-block" }} />
+                                  {lbl}
+                                </span>
+                                <span style={{ fontWeight:700, color:"var(--cn)" }}>{val}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        <Prog pct={rooms.length > 0 ? Math.round(val / rooms.length * 100) : 0} color={col} />
-                      </div>
-                    ))}
-                    <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid var(--cbr)" }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Répartition personnel</div>
-                      {[
-                        ["Médecins",    users.filter(u => u.role === "medecin").length,    "#1B4F9E"],
-                        ["Infirmiers",  users.filter(u => u.role === "infirmier").length,  "#0EA5A0"],
-                        ["Pharmaciens", users.filter(u => u.role === "pharmacien").length, "#059669"],
-                        ["Autres",      users.filter(u => !["medecin","infirmier","pharmacien"].includes(u.role)).length, "#7C3AED"],
-                      ].map(([lbl, val, col]) => (
-                        <div key={lbl} style={{ display:"flex", justifyContent:"space-between", fontSize:12, padding:"4px 0" }}>
-                          <span style={{ display:"flex", alignItems:"center", gap:6, color:"var(--cm)" }}>
-                            <span style={{ width:8, height:8, borderRadius:2, background:col, display:"inline-block" }} />
-                            {lbl}
-                          </span>
-                          <span style={{ fontWeight:700, color:"var(--cn)" }}>{val}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 

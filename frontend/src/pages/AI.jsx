@@ -337,8 +337,9 @@ function LineChart({ labels, data, color="#0EA5A0", height=160 }) {
 export default function IntelligenceArtificielle() {
   const dispatch = useDispatch();
   const reduxPredictions = useSelector(selectAIPredictions);
-  const reduxStats = useSelector(selectAIStats);
-  const reduxWarnings = useSelector(selectAIWarnings);
+  const reduxStats       = useSelector(selectAIStats);
+  const reduxWarnings    = useSelector(selectAIWarnings);
+  const reduxLoading     = useSelector(selectAILoading);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -384,7 +385,7 @@ export default function IntelligenceArtificielle() {
 
   // Alertes lues
   const [alertesLues, setAlertesLues] = useState([]);
-  const nbAlertesNonLues = DEMO_ALERTS.filter(a => !alertesLues.includes(a.id) && a.priority === "critique").length;
+  const nbAlertesNonLues = reduxStats.alertes_risque ?? DEMO_ALERTS.filter(a => !alertesLues.includes(a.id) && a.priority === "critique").length;
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [chatMessages]);
 
@@ -555,12 +556,12 @@ export default function IntelligenceArtificielle() {
 
               {/* KPIs */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))", gap:14, marginBottom:24 }}>
-                <KpiCard color="blue"   icon={I.iaS}      value="248"  label="Analyses IA"        sub="ce mois" />
-                <KpiCard color="red"    icon={I.alert}    value={DEMO_ALERTS.filter(a=>a.priority==="critique").length} label="Alertes critiques" sub="aujourd'hui" urgent />
-                <KpiCard color="teal"   icon={I.pulse}    value="31"   label="Diagnostics assistés" sub="ce mois" />
-                <KpiCard color="purple" icon={I.pill}     value="94"   label="Ordonnances vérifiées" sub="0 interaction grave" />
-                <KpiCard color="green"  icon={I.calendar} value="67"   label="RDV optimisés"      sub="réduction attente 24%" />
-                <KpiCard color="orange" icon={I.file}     value="18"   label="Rapports générés"    sub="automatiquement" />
+                <KpiCard color="blue"   icon={I.iaS}      value={reduxLoading ? "…" : (reduxStats.analyses_mois ?? 0)}   label="Analyses IA"          sub="ce mois" />
+                <KpiCard color="red"    icon={I.alert}    value={reduxLoading ? "…" : (reduxStats.alertes_risque ?? 0)}   label="Alertes critiques"    sub="aujourd'hui" urgent />
+                <KpiCard color="teal"   icon={I.pulse}    value={reduxLoading ? "…" : (reduxStats.diagnostics ?? 0)}      label="Diagnostics assistés" sub="ce mois" />
+                <KpiCard color="purple" icon={I.pill}     value={reduxLoading ? "…" : (reduxStats.interactions ?? 0)}     label="Ordonnances vérifiées" sub={reduxStats.interactions > 0 ? `${reduxStats.interactions} vérif.` : "aucune interaction"} />
+                <KpiCard color="green"  icon={I.calendar} value={reduxLoading ? "…" : (reduxStats.patients_analyses ?? 0)} label="Patients analysés"   sub="ce mois" />
+                <KpiCard color="orange" icon={I.file}     value={reduxLoading ? "…" : (reduxStats.labo_anomalies_ia ?? 0)} label="Anomalies IA labo"   sub="détectées" />
               </div>
 
               {/* Charts + reco */}

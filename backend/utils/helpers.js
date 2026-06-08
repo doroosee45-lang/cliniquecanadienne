@@ -1,5 +1,6 @@
 const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
+const { emitTo } = require('./socket');
 
 const logAction = async ({ utilisateur, action, module, entite_id, ip, ua, avant, apres, message, statut = 'succes' }) => {
   try {
@@ -22,7 +23,9 @@ const logAction = async ({ utilisateur, action, module, entite_id, ip, ua, avant
 
 const createNotification = async ({ destinataire, type = 'info', titre, message, lien, priorite = 'normale' }) => {
   try {
-    await Notification.create({ destinataire, type, titre, message, lien, priorite });
+    const notif = await Notification.create({ destinataire, type, titre, message, lien, priorite });
+    // Push en temps réel vers la room privée de l'utilisateur destinataire
+    emitTo(`user:${destinataire}`, 'notification:new', notif);
   } catch (e) {
     console.error('Notification error:', e.message);
   }

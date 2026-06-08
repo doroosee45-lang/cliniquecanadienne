@@ -8,6 +8,7 @@ import {
 } from '../store/slices/auditSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -386,6 +387,7 @@ export default function JournalAudit() {
   const [events, setEvents] = useState(DEMO_EVENTS);
   const [connexions, setConnexions] = useState(DEMO_CONNEXIONS);
   const [suspects, setSuspects] = useState(DEMO_SUSPECTS);
+  const [stats, setStats] = useState({ activite_7j: { labels: [], data: [] }, activite_30j: { labels: [], data: [] }, connexions_heure: { labels: [], data: [] }, top_utilisateurs: [] });
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -429,10 +431,27 @@ export default function JournalAudit() {
   }, [page, search, filterModule, filterAction, filterRisque, filterUser, filterIp, filterDateDeb, filterDateFin]);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
+  useRealtimeRefresh(loadEvents);
+
+  // ── Load connexions / suspects / stats ─────────────────────
+  const loadOtherData = useCallback(async () => {
+    try {
+      const [connRes, suspRes, statsRes] = await Promise.allSettled([
+        api.get('/audit/connexions'),
+        api.get('/audit/suspects'),
+        api.get('/audit/stats'),
+      ]);
+      if (connRes.status === 'fulfilled')  setConnexions(connRes.value.data.connexions  || []);
+      if (suspRes.status === 'fulfilled')  setSuspects(suspRes.value.data.suspects      || []);
+      if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
+    } catch { /* keep empty state */ }
+  }, []);
+
+  useEffect(() => { loadOtherData(); }, [loadOtherData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await new Promise(r => setTimeout(r, 800));
+    await Promise.allSettled([loadEvents(), loadOtherData()]);
     setRefreshing(false);
     toast.success("✅ Journal actualisé");
   };
@@ -572,7 +591,7 @@ export default function JournalAudit() {
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr"><div><h3>{I.trend} Activité — 7 derniers jours</h3><p>Volume d'événements journaliers</p></div></div>
                   <div style={{ padding: 20 }}>
-                    <LineChart labels={["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]} data={[42, 58, 35, 67, 72, 28, 15]} color="#1B4F9E" height={140} />
+                    <LineChart labels={stats.activite_7j.labels.length ? stats.activite_7j.labels : ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"]} data={stats.activite_7j.data.length ? stats.activite_7j.data : [0,0,0,0,0,0,0]} color="#1B4F9E" height={140} />
                   </div>
                 </div>
                 <div className="aud-card aufu">
@@ -911,7 +930,7 @@ export default function JournalAudit() {
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr"><h3>📊 Connexions par heure</h3></div>
                   <div style={{ padding: 20 }}>
-                    <BarChart labels={["07h", "08h", "09h", "10h", "11h", "12h", "13h", "14h", "15h", "16h", "17h", "18h"]} data={[2, 8, 12, 9, 6, 4, 3, 7, 11, 8, 5, 2]} color="#0EA5A0" height={140} />
+                    <BarChart labels={stats.connexions_heure.labels.length ? stats.connexions_heure.labels : ["07h","08h","09h","10h","11h","12h","13h","14h","15h","16h","17h","18h"]} data={stats.connexions_heure.data.length ? stats.connexions_heure.data : [0,0,0,0,0,0,0,0,0,0,0,0]} color="#0EA5A0" height={140} />
                   </div>
                 </div>
                 <div className="aud-card aufu">
@@ -1093,7 +1112,7 @@ export default function JournalAudit() {
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr"><h3>{I.trend} Activité sur 30 jours</h3></div>
                   <div style={{ padding: 20 }}>
-                    <LineChart labels={["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18", "S19", "S20", "S21", "S22", "S23", "S24", "S25", "S26", "S27", "S28", "S29", "S30"]} data={[45, 52, 38, 67, 71, 48, 32, 55, 62, 44, 58, 75, 39, 51, 64, 47, 83, 56, 40, 69, 53, 61, 38, 74, 48, 65, 42, 57, 80, 45]} color="#1B4F9E" height={150} />
+                    <LineChart labels={stats.activite_30j.labels.length ? stats.activite_30j.labels : Array.from({length:30},(_,i)=>`J${i+1}`)} data={stats.activite_30j.data.length ? stats.activite_30j.data : Array(30).fill(0)} color="#1B4F9E" height={150} />
                   </div>
                 </div>
                 <div className="aud-card aufu">
@@ -1125,27 +1144,29 @@ export default function JournalAudit() {
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr"><h3>👤 Top utilisateurs actifs</h3></div>
                   <div style={{ padding: 16 }}>
-                    {[
-                      { nom: "Dr. Martin Leblanc", role: "Médecin", count: 42, color: "#1B4F9E" },
-                      { nom: "Inf. Anne Martin", role: "Infirmier", count: 38, color: "#0EA5A0" },
-                      { nom: "Admin Système", role: "Administrateur", count: 31, color: "#DC2626" },
-                      { nom: "Dr. Sophie Pierre", role: "Médecin", count: 27, color: "#7C3AED" },
-                      { nom: "Caissier Paul Ngom", role: "Caissier", count: 18, color: "#D97706" },
-                    ].map((u, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #F3F7FF" }}>
-                        <div style={{ width: 28, height: 28, borderRadius: 8, background: u.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                          {u.nom.split(" ").slice(-1)[0]?.charAt(0)}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--an)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.nom}</div>
-                          <div style={{ fontSize: 10, color: "var(--cm)" }}>{u.role}</div>
-                        </div>
-                        <div style={{ textAlign: "right", flexShrink: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: u.color }}>{u.count}</div>
-                          <div style={{ fontSize: 10, color: "var(--cm)" }}>actions</div>
-                        </div>
-                      </div>
-                    ))}
+                    {(() => {
+                      const COLORS = ["#1B4F9E","#0EA5A0","#DC2626","#7C3AED","#D97706"];
+                      const users = stats.top_utilisateurs;
+                      if (!users.length) return <div style={{ padding: 16, textAlign: "center", color: "var(--cm)", fontSize: 12 }}>Aucune donnée disponible</div>;
+                      return users.map((u, i) => {
+                        const col = COLORS[i % COLORS.length];
+                        return (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #F3F7FF" }}>
+                            <div style={{ width: 28, height: 28, borderRadius: 8, background: col, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                              {u.nom.split(" ").slice(-1)[0]?.charAt(0) || "?"}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--an)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.nom}</div>
+                              <div style={{ fontSize: 10, color: "var(--cm)" }}>{u.role}</div>
+                            </div>
+                            <div style={{ textAlign: "right", flexShrink: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: col }}>{u.count}</div>
+                              <div style={{ fontSize: 10, color: "var(--cm)" }}>actions</div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
 
@@ -1154,10 +1175,10 @@ export default function JournalAudit() {
                   <div style={{ padding: 16 }}>
                     {[
                       { label: "Politique actuelle", val: "Conservation 1 an", color: "var(--at)" },
-                      { label: "Logs archivés", val: "12 380 entrées", color: "var(--ab)" },
-                      { label: "Espace utilisé", val: "48 MB / 2 GB", color: "var(--ao)" },
-                      { label: "Dernier archivage", val: "01/05/2026", color: "var(--ag)" },
-                      { label: "Prochain archivage", val: "01/07/2026", color: "var(--cm)" },
+                      { label: "Total événements", val: `${events.length + (stats.total_logs || 0)} entrées`, color: "var(--ab)" },
+                      { label: "Espace utilisé", val: "—", color: "var(--ao)" },
+                      { label: "Dernier archivage", val: "—", color: "var(--ag)" },
+                      { label: "Prochain archivage", val: "—", color: "var(--cm)" },
                     ].map(r => (
                       <div key={r.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: "#F8FAFD", borderRadius: 8, marginBottom: 8 }}>
                         <span style={{ fontSize: 12, color: "var(--cm)" }}>{r.label}</span>

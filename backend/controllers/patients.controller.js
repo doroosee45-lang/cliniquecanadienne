@@ -4,6 +4,7 @@ const Patient = require('../models/Patient');
 const User    = require('../models/User');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
 const { sendActivationEmail } = require('../utils/mail');
+const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 // Génère un mot de passe temporaire : 8 car. avec maj, min, chiffre
 const generateTempPassword = () => {
@@ -145,6 +146,9 @@ exports.create = async (req, res, next) => {
       ua:          req.headers['user-agent'],
       message:     `Nouveau dossier patient créé : ${patient.nom} ${patient.prenom} (${patient.numero_dossier}) par ${req.user.prenom} ${req.user.nom}`,
     });
+
+    emitActivity({ module: 'patients', action: 'Nouveau patient', detail: `${patient.prenom} ${patient.nom} (${patient.numero_dossier})`, icon: '👤', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
 
     res.status(201).json({
       success:       true,

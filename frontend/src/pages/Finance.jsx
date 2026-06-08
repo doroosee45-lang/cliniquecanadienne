@@ -10,6 +10,7 @@ import {
 } from '../store/slices/financeSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -185,6 +186,106 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : "—";
 const fmtMontant = (v) => v !== undefined && v !== null ? Number(v).toLocaleString("fr-FR") + " CFA" : "—";
 const genRef = (prefix) => `${prefix}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000).padStart(4, "0")}`;
 
+// Adapter Invoice (modèle backend) → champs affichés dans le frontend
+const normalizeFacture = (f) => {
+  const pat = f.patient && typeof f.patient === 'object' ? f.patient : null;
+  const statutMap = { emise:'non_paye', payee:'paye', partiellement_payee:'partiellement_paye', annulee:'annule', contentieux:'non_paye', brouillon:'non_paye' };
+  return {
+    ...f,
+    numero:   f.numero          || f.numero_facture  || genRef("FAC"),
+    date:     f.date            || f.date_facture     || f.createdAt,
+    echeance: f.echeance        || f.date_echeance    || null,
+    patient:  f.patient         || f.patient_nom      || (pat ? `${pat.prenom} ${pat.nom}` : '—'),
+    service:  f.service         || f.service_label    || '—',
+    montant:  Number(f.montant  || f.montant_direct   || f.montant_ttc || 0),
+    statut:   statutMap[f.statut] || f.statut         || 'non_paye',
+  };
+};
+
+// Impression d'une facture dans une nouvelle fenêtre
+const printInvoice = (f) => {
+  const win = window.open('', '_blank', 'width=800,height=900');
+  if (!win) { window.print(); return; }
+  win.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>Facture ${f.numero}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif}
+body{padding:15mm 12mm;font-size:10pt;color:#1a1a2e}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}
+.clinic-name{font-size:15pt;font-weight:bold;color:#0B1E3B}
+.clinic-sub{font-size:8pt;color:#666;margin-top:4px;line-height:1.5}
+.inv-title{text-align:right}.inv-title h1{font-size:20pt;color:#0EA5A0}
+.inv-num{font-size:9pt;color:#666;margin-top:3px}
+hr{border:none;border-top:2px solid #E2EAF4;margin:16px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.ib h3{font-size:7pt;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:6px}
+.ib p{font-size:10pt;font-weight:bold;color:#0B1E3B}
+.ib p.sub{font-size:8.5pt;font-weight:normal;color:#666;margin-top:2px}
+table{width:100%;border-collapse:collapse;margin-bottom:18px}
+thead tr{background:#0B1E3B;color:white}
+th{padding:8px 10px;text-align:left;font-size:8pt;text-transform:uppercase;letter-spacing:.5px}
+td{padding:10px;border-bottom:1px solid #E2EAF4;font-size:9.5pt}
+.ar{text-align:right;font-weight:bold}
+.totals{display:flex;justify-content:flex-end;margin-bottom:24px}
+.tbox{min-width:260px}
+.trow{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #E2EAF4;font-size:9.5pt}
+.trow.tot{font-weight:bold;font-size:12pt;border-bottom:none;border-top:2px solid #0B1E3B;padding-top:10px;margin-top:3px}
+.badge{display:inline-block;padding:3px 12px;border-radius:99px;font-size:8pt;font-weight:bold}
+.paye{background:#DCFCE7;color:#15803D}.non_paye{background:#FEE2E2;color:#DC2626}.partial{background:#FEF3C7;color:#D97706}
+footer{text-align:center;font-size:7.5pt;color:#999;border-top:1px solid #E2EAF4;padding-top:12px;margin-top:30px}
+@media print{body{padding:10mm}}
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="clinic-name">🏥 Clinique Canadienne de Souanké</div>
+    <div class="clinic-sub">BP 123, Souanké, Sangha-Mbaéré<br>Tél: +236 XX XX XX XX · clinique@souanke.cg</div>
+  </div>
+  <div class="inv-title">
+    <h1>FACTURE</h1>
+    <div class="inv-num">${f.numero}</div>
+    <div style="margin-top:6px">
+      <span class="badge ${f.statut === 'paye' ? 'paye' : f.statut === 'partiellement_paye' ? 'partial' : 'non_paye'}">
+        ${f.statut === 'paye' ? '✓ Payée' : f.statut === 'partiellement_paye' ? '⚠ Part. payée' : '✗ Non payée'}
+      </span>
+    </div>
+  </div>
+</div>
+<hr/>
+<div class="grid2">
+  <div class="ib"><h3>Facturé à</h3><p>${f.patient || 'N/A'}</p><p class="sub">Patient · Clinique Canadienne de Souanké</p></div>
+  <div class="ib"><h3>Détails</h3><p>${f.numero}</p><p class="sub">Émise le ${fmtDate(f.date)}</p><p class="sub">Échéance : ${fmtDate(f.echeance)}</p></div>
+</div>
+<table>
+  <thead><tr><th>Prestation / Service</th><th>Qté</th><th class="ar">Montant</th></tr></thead>
+  <tbody>
+    <tr><td>${f.service || 'Prestation médicale'}</td><td>1</td><td class="ar">${fmtMontant(f.montant)}</td></tr>
+  </tbody>
+</table>
+<div class="totals">
+  <div class="tbox">
+    <div class="trow"><span>Sous-total HT</span><span>${fmtMontant(f.montant)}</span></div>
+    <div class="trow"><span>TVA (0%)</span><span>0 CFA</span></div>
+    <div class="trow tot"><span>TOTAL TTC</span><span>${fmtMontant(f.montant)}</span></div>
+  </div>
+</div>
+<footer>Clinique Canadienne de Souanké — Souanké, Sangha-Mbaéré<br>
+Document généré automatiquement. Pour toute question : service comptabilité.</footer>
+</body></html>`);
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+};
+
+const shareWhatsApp = (f) => {
+  const msg = `🏥 *Clinique Canadienne de Souanké*\n\n📋 *FACTURE N° ${f.numero}*\n\n👤 Patient : ${f.patient}\n💼 Service : ${f.service}\n💰 Montant : ${fmtMontant(f.montant)}\n📅 Date : ${fmtDate(f.date)}\n⏰ Échéance : ${fmtDate(f.echeance)}\n✅ Statut : ${f.statut === 'paye' ? 'Payée' : f.statut === 'partiellement_paye' ? 'Partiellement payée' : 'Non payée'}\n\nMerci de régler votre facture dans les délais impartis.\n📞 Contact : +236 XX XX XX XX`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+const shareEmail = (f) => {
+  const subject = `Facture N° ${f.numero} — Clinique Canadienne de Souanké`;
+  const body = `Bonjour,\n\nVeuillez trouver ci-dessous votre facture.\n\nN° Facture : ${f.numero}\nPatient : ${f.patient}\nPrestation : ${f.service}\nMontant : ${fmtMontant(f.montant)}\nDate d'émission : ${fmtDate(f.date)}\nDate d'échéance : ${fmtDate(f.echeance)}\nStatut : ${f.statut === 'paye' ? 'Payée' : 'Non payée'}\n\nCordialement,\nService Comptabilité\nClinique Canadienne de Souanké`;
+  window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+};
+
 // ─── Demo data ────────────────────────────────────────────────
 const DEMO_REVENUS = [];
 
@@ -354,8 +455,9 @@ const CAT_DEP_COLOR = {
 // ─── EMPTY FORMS ──────────────────────────────────────────────
 const EMPTY_REVENU = { date: new Date().toISOString().substring(0, 10), service: "Consultation", patient: "", reference: "", montant: "", mode: "especes", statut: "paye", notes: "" };
 const EMPTY_DEPENSE = { date: new Date().toISOString().substring(0, 10), categorie: "Médicaments", description: "", montant: "", fournisseur: "", statut: "paye", notes: "" };
-const EMPTY_FACTURE = { patient: "", service: "", montant: "", echeance: "", statut: "non_paye" };
-const EMPTY_CAISSE = { type: "entree", montant: "", libelle: "", mode: "especes" };
+const EMPTY_FACTURE = { patient_id: "", patient_nom: "", service: "", montant: "", echeance: "", statut: "non_paye" };
+const EMPTY_CAISSE    = { type: "entree", montant: "", libelle: "", mode: "especes" };
+const EMPTY_PAIEMENT  = { facture_id: "", facture_num: "", patient: "", montant_restant: 0, montant: "", mode: "especes", reference: "" };
 
 // ═══════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -394,6 +496,9 @@ export default function Finance() {
   const [modalExport, setModalExport] = useState(false);
   const [modalFactureDetail, setModalFactureDetail] = useState(false);
   const [selectedFacture, setSelectedFacture] = useState(null);
+  const [modalPaiement, setModalPaiement] = useState(false);
+  const [formPaiement, setFormPaiement] = useState(EMPTY_PAIEMENT);
+  const [paiementFactureQ, setPaiementFactureQ] = useState("");
 
   // Forms
   const [formRevenu, setFormRevenu] = useState(EMPTY_REVENU);
@@ -406,6 +511,24 @@ export default function Finance() {
   const [filterStatutFact, setFilterStatutFact] = useState("");
   const [searchDep, setSearchDep] = useState("");
   const [filterCatDep, setFilterCatDep] = useState("");
+
+  // Recherche patient pour formulaire facture
+  const [patientResults, setPatientResults] = useState([]);
+  const [patientSearching, setPatientSearching] = useState(false);
+  const patientTimer = useRef(null);
+
+  const searchPatients = (q) => {
+    if (patientTimer.current) clearTimeout(patientTimer.current);
+    if (!q || q.length < 2) { setPatientResults([]); return; }
+    patientTimer.current = setTimeout(async () => {
+      setPatientSearching(true);
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(q)}`);
+        setPatientResults(data.patients || []);
+      } catch { setPatientResults([]); }
+      finally { setPatientSearching(false); }
+    }, 280);
+  };
 
   // ── Load data ───────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -420,28 +543,25 @@ export default function Finance() {
         api.get("/finance/salaires"),
         api.get("/finance/kpis"),
       ]);
-      if (revRes.status  === "fulfilled") setRevenus(revRes.value.data.revenus || revRes.value.data.data || []);
-      if (depRes.status  === "fulfilled") setDepenses(depRes.value.data.depenses || depRes.value.data.data || []);
-      if (factRes.status === "fulfilled") setFactures(factRes.value.data.factures || factRes.value.data.data || []);
-      if (payRes.status  === "fulfilled") setPaiements(payRes.value.data.paiements || payRes.value.data.data || []);
+      if (revRes.status  === "fulfilled") setRevenus(revRes.value.data.revenus  || revRes.value.data.data  || []);
+      if (depRes.status  === "fulfilled") setDepenses(depRes.value.data.depenses || depRes.value.data.data  || []);
+      if (factRes.status === "fulfilled") {
+        const raw = factRes.value.data.invoices || factRes.value.data.factures || factRes.value.data.data || [];
+        setFactures(raw.map(normalizeFacture));
+      }
+      if (payRes.status  === "fulfilled") setPaiements(payRes.value.data.paiements || payRes.value.data.data  || []);
       if (assRes.status  === "fulfilled") setAssurances(assRes.value.data.assurances || []);
-      if (salRes.status  === "fulfilled") setSalaires(salRes.value.data.salaires || []);
+      if (salRes.status  === "fulfilled") setSalaires(salRes.value.data.salaires   || []);
       if (kpiRes.status  === "fulfilled") setKpis(kpiRes.value.data || {});
-    } catch {/* fallback demo */ } finally {
+    } catch (err) {
+      console.error("Erreur chargement finance:", err);
+    } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-    // Fallback demo data
-    setRevenus(DEMO_REVENUS);
-    setDepenses(DEMO_DEPENSES);
-    setFactures(DEMO_FACTURES);
-    setPaiements(DEMO_PAIEMENTS);
-    setAssurances(DEMO_ASSURANCES);
-    setSalaires(DEMO_SALAIRES);
-  }, []);
+  useEffect(() => { loadData(); }, [loadData]);
+  useRealtimeRefresh(loadData);
 
   // ── Computed KPIs ────────────────────────────────────────
   const totalRevenus   = revenus.reduce((s, r) => s + Number(r.montant), 0);
@@ -462,11 +582,11 @@ export default function Finance() {
       const { data } = await api.post("/finance/revenus", { ...formRevenu, reference: formRevenu.reference || genRef("FAC") });
       toast.success("✅ Revenu enregistré");
       setRevenus(prev => [data.revenu || { ...formRevenu, _id: Date.now(), reference: genRef("FAC") }, ...prev]);
-    } catch {
-      setRevenus(prev => [{ ...formRevenu, _id: Date.now().toString(), reference: genRef("FAC") }, ...prev]);
-      toast.success("✅ Revenu enregistré (local)");
+      setModalRevenu(false); setFormRevenu(EMPTY_REVENU);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement du revenu");
     } finally {
-      setModalRevenu(false); setFormRevenu(EMPTY_REVENU); setSaving(false);
+      setSaving(false);
     }
   };
 
@@ -478,11 +598,11 @@ export default function Finance() {
       const { data } = await api.post("/finance/depenses", formDepense);
       toast.success("✅ Dépense enregistrée");
       setDepenses(prev => [data.depense || { ...formDepense, _id: Date.now() }, ...prev]);
-    } catch {
-      setDepenses(prev => [{ ...formDepense, _id: Date.now().toString() }, ...prev]);
-      toast.success("✅ Dépense enregistrée (local)");
+      setModalDepense(false); setFormDepense(EMPTY_DEPENSE);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement de la dépense");
     } finally {
-      setModalDepense(false); setFormDepense(EMPTY_DEPENSE); setSaving(false);
+      setSaving(false);
     }
   };
 
@@ -490,16 +610,32 @@ export default function Finance() {
   const createFacture = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const newFact = { ...formFacture, numero: genRef("FAC"), date: new Date().toISOString().substring(0, 10) };
     try {
-      const { data } = await api.post("/finance/factures", newFact);
-      toast.success(`✅ Facture ${data.numero || newFact.numero} créée`);
-      setFactures(prev => [data.facture || { ...newFact, _id: Date.now() }, ...prev]);
-    } catch {
-      setFactures(prev => [{ ...newFact, _id: Date.now().toString() }, ...prev]);
-      toast.success("✅ Facture créée (local)");
+      const payload = {
+        service:  formFacture.service,
+        montant:  Number(formFacture.montant),
+        echeance: formFacture.echeance || undefined,
+        statut:   formFacture.statut,
+      };
+      if (formFacture.patient_id) {
+        payload.patient = formFacture.patient_id;
+      } else {
+        payload.patient_nom = formFacture.patient_nom;
+      }
+      const { data } = await api.post("/finance/factures", payload);
+      const facture = normalizeFacture(data.facture || data.invoice || {});
+      setFactures(prev => [facture, ...prev]);
+      toast.success(`✅ Facture ${facture.numero} créée`);
+      setModalFacture(false);
+      setFormFacture(EMPTY_FACTURE);
+      setPatientResults([]);
+      // Ouvrir directement le détail avec options impression/partage
+      setSelectedFacture(facture);
+      setModalFactureDetail(true);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la création de la facture");
     } finally {
-      setModalFacture(false); setFormFacture(EMPTY_FACTURE); setSaving(false);
+      setSaving(false);
     }
   };
 
@@ -515,11 +651,51 @@ export default function Finance() {
     }
   };
 
+  // ── Enregistrer un paiement sur une facture ─────────────
+  const enregistrerPaiement = async (e) => {
+    e.preventDefault();
+    if (!formPaiement.facture_id) { toast.error("Sélectionnez une facture"); return; }
+    if (!formPaiement.montant || Number(formPaiement.montant) <= 0) { toast.error("Montant invalide"); return; }
+    setSaving(true);
+    try {
+      const { data } = await api.post(`/finance/${formPaiement.facture_id}/paiement`, {
+        montant:   Number(formPaiement.montant),
+        mode:      formPaiement.mode,
+        reference: formPaiement.reference || undefined,
+      });
+      // Mettre à jour la facture dans la liste
+      const updated = normalizeFacture(data.invoice || {});
+      if (updated._id) setFactures(prev => prev.map(f => f._id === updated._id ? updated : f));
+      // Ajouter le paiement à l'historique local
+      const newPay = {
+        _id:       `local-${Date.now()}`,
+        reference: formPaiement.reference || formPaiement.facture_num,
+        date:      new Date(),
+        heure:     new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }),
+        patient:   formPaiement.patient,
+        facture:   formPaiement.facture_num,
+        montant:   Number(formPaiement.montant),
+        mode:      formPaiement.mode,
+        caissier:  'Caisse',
+      };
+      setPaiements(prev => [newPay, ...prev]);
+      toast.success(`✅ Paiement de ${Number(formPaiement.montant).toLocaleString("fr-FR")} CFA enregistré`);
+      setModalPaiement(false);
+      setFormPaiement(EMPTY_PAIEMENT);
+      setPaiementFactureQ("");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement du paiement");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ── Update statut facture ────────────────────────────────
-  const updateStatutFacture = async (id, statut) => {
-    try { await api.put(`/finance/factures/${id}`, { statut }); } catch { /* local */ }
-    setFactures(prev => prev.map(f => f._id === id ? { ...f, statut } : f));
-    if (statut === "paye") toast.success("✅ Facture marquée comme payée");
+  const updateStatutFacture = async (id, statutFront) => {
+    const statutMap = { non_paye:'emise', paye:'payee', partiellement_paye:'partiellement_payee', annule:'annulee' };
+    try { await api.put(`/finance/${id}`, { statut: statutMap[statutFront] || statutFront }); } catch { /* local */ }
+    setFactures(prev => prev.map(f => f._id === id ? { ...f, statut: statutFront } : f));
+    if (statutFront === "paye") toast.success("✅ Facture marquée comme payée");
   };
 
   // ── Filtered data ────────────────────────────────────────
@@ -1076,17 +1252,28 @@ export default function Finance() {
           {/* ══ PAIEMENTS ══ */}
           {tab === "paiements" && (
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"var(--fn)", marginBottom:20 }}>Historique des paiements</div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:20 }}>
+                <div>
+                  <div style={{ fontSize:16, fontWeight:700, color:"var(--fn)" }}>Historique des paiements</div>
+                  <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>{paiements.length} paiement(s) enregistré(s)</div>
+                </div>
+                <button className="fbtn fbtn-teal" onClick={() => { setFormPaiement(EMPTY_PAIEMENT); setPaiementFactureQ(""); setModalPaiement(true); }}>
+                  {I.plus} Enregistrer un paiement
+                </button>
+              </div>
 
-              {/* Statistiques modes */}
+              {/* Statistiques par mode */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12, marginBottom:20 }}>
                 {Object.entries(MODE_PAY).map(([mode, cfg]) => {
-                  const total = paiements.filter(p => p.mode === mode).reduce((s, p) => s + Number(p.montant), 0);
+                  const total = paiements.filter(p => p.mode === mode).reduce((s, p) => s + Number(p.montant || 0), 0);
+                  const count = paiements.filter(p => p.mode === mode).length;
                   return (
                     <div key={mode} style={{ background:"#fff", border:"1.5px solid var(--cbr)", borderRadius:14, padding:"14px 16px" }}>
                       <div style={{ fontSize:13, marginBottom:6 }}>{cfg.label}</div>
-                      <div style={{ fontSize:17, fontWeight:800, color:"var(--fn)" }}>{fmtMontant(total).replace(" CFA","")}</div>
-                      <div style={{ fontSize:10, color:"var(--cm)", marginTop:1 }}>CFA · {paiements.filter(p=>p.mode===mode).length} opération(s)</div>
+                      <div style={{ fontSize:17, fontWeight:800, color: count > 0 ? "var(--fn)" : "var(--cm)" }}>
+                        {count > 0 ? fmtMontant(total).replace(" CFA","") : "0"}
+                      </div>
+                      <div style={{ fontSize:10, color:"var(--cm)", marginTop:1 }}>CFA · {count} opération(s)</div>
                     </div>
                   );
                 })}
@@ -1095,33 +1282,56 @@ export default function Finance() {
               <div className="fin-card">
                 <div style={{ overflowX:"auto" }}>
                   <table className="fin-tbl" style={{ minWidth:800 }}>
-                    <thead><tr><th>Référence</th><th>Date & Heure</th><th>Patient</th><th>Facture</th><th>Montant</th><th>Mode</th><th>Caissier</th></tr></thead>
+                    <thead>
+                      <tr><th>Référence</th><th>Date & Heure</th><th>Patient</th><th>Facture</th><th>Montant</th><th>Mode</th><th>Caissier</th></tr>
+                    </thead>
                     <tbody>
-                      {paiements.map(p => {
-                        const mp = MODE_PAY[p.mode] || { cls:"gray", label:p.mode };
+                      {paiements.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ padding:"48px 24px", textAlign:"center" }}>
+                            <div style={{ fontSize:36, marginBottom:12 }}>💳</div>
+                            <div style={{ fontSize:14, fontWeight:600, color:"var(--fn)", marginBottom:6 }}>Aucun paiement enregistré</div>
+                            <div style={{ fontSize:12, color:"var(--cm)", marginBottom:16 }}>
+                              Les paiements apparaissent ici dès qu'une facture est marquée comme payée.
+                            </div>
+                            <button className="fbtn fbtn-teal" onClick={() => { setFormPaiement(EMPTY_PAIEMENT); setPaiementFactureQ(""); setModalPaiement(true); }}>
+                              {I.plus} Enregistrer un paiement
+                            </button>
+                          </td>
+                        </tr>
+                      ) : paiements.map((p, idx) => {
+                        const mp = MODE_PAY[p.mode] || { cls:"gray", label: p.mode || "Autre" };
+                        const patNom = p.patient && typeof p.patient === 'object'
+                          ? `${p.patient.prenom || ''} ${p.patient.nom || ''}`.trim()
+                          : (p.patient || '—');
+                        const heure = p.heure || (p.date ? new Date(p.date).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }) : '—');
                         return (
-                          <tr key={p._id}>
-                            <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--ft)", fontSize:12 }}>{p.reference}</span></td>
+                          <tr key={p._id || `pay-${idx}`}>
+                            <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--ft)", fontSize:12 }}>{p.reference || '—'}</span></td>
                             <td>
                               <div style={{ fontSize:12, fontWeight:600 }}>{fmtDate(p.date)}</div>
-                              <div style={{ fontSize:10, color:"var(--cm)" }}>{p.heure}</div>
+                              <div style={{ fontSize:10, color:"var(--cm)" }}>{heure}</div>
                             </td>
-                            <td style={{ fontWeight:600, color:"var(--fn)" }}>{p.patient}</td>
-                            <td><span style={{ fontFamily:"monospace", fontSize:11, color:"var(--fb)" }}>{p.facture}</span></td>
+                            <td style={{ fontWeight:600, color:"var(--fn)" }}>{patNom}</td>
+                            <td><span style={{ fontFamily:"monospace", fontSize:11, color:"var(--fb)" }}>{p.facture || '—'}</span></td>
                             <td style={{ fontWeight:800, fontSize:14, color:"var(--fg)" }}>{fmtMontant(p.montant)}</td>
                             <td><span className={`fbdg ${mp.cls}`}>{mp.label}</span></td>
-                            <td style={{ fontSize:12, color:"var(--cm)" }}>{p.caissier}</td>
+                            <td style={{ fontSize:12, color:"var(--cm)" }}>{p.caissier || '—'}</td>
                           </tr>
                         );
                       })}
                     </tbody>
-                    <tfoot>
-                      <tr style={{ background:"linear-gradient(to right,#ECFDF5,#D1FAE5)" }}>
-                        <td colSpan={4} style={{ color:"var(--fn)" }}>TOTAL ENCAISSÉ</td>
-                        <td style={{ color:"var(--fg)", fontSize:15 }}>{fmtMontant(paiements.reduce((s,p)=>s+Number(p.montant),0))}</td>
-                        <td colSpan={2} />
-                      </tr>
-                    </tfoot>
+                    {paiements.length > 0 && (
+                      <tfoot>
+                        <tr style={{ background:"linear-gradient(to right,#ECFDF5,#D1FAE5)" }}>
+                          <td colSpan={4} style={{ fontWeight:700, color:"var(--fn)", padding:"10px 12px" }}>TOTAL ENCAISSÉ</td>
+                          <td style={{ fontWeight:800, color:"var(--fg)", fontSize:15, padding:"10px 12px" }}>
+                            {fmtMontant(paiements.reduce((s, p) => s + Number(p.montant || 0), 0))}
+                          </td>
+                          <td colSpan={2} />
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
@@ -1537,12 +1747,73 @@ export default function Finance() {
         </Modal>
 
         {/* ═══ MODAL : FACTURE ═══ */}
-        <Modal open={modalFacture} onClose={() => setModalFacture(false)} title="🧾 Nouvelle facture">
+        <Modal open={modalFacture} onClose={() => { setModalFacture(false); setPatientResults([]); }} title="🧾 Nouvelle facture">
           <form onSubmit={createFacture}>
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <div>
-                <label className="flbl">Patient *</label>
-                <input className="finp" required value={formFacture.patient} onChange={e => setFormFacture(f=>({...f,patient:e.target.value}))} placeholder="Nom et prénom du patient" />
+
+              {/* ─ Sélecteur patient intelligent ─ */}
+              <div style={{ position:"relative" }}>
+                <label className="flbl">Patient * <span style={{ fontSize:10, color:"var(--cm)", fontWeight:400 }}>(recherche dans le système)</span></label>
+                {formFacture.patient_id ? (
+                  /* Patient sélectionné — badge avec bouton effacer */
+                  <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:"#EEF4FF", borderRadius:10, border:"2px solid var(--fb)" }}>
+                    <span style={{ fontSize:18 }}>👤</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:700, color:"var(--fn)", fontSize:13 }}>{formFacture.patient_nom}</div>
+                      <div style={{ fontSize:11, color:"var(--cm)", marginTop:1 }}>Patient enregistré dans le système</div>
+                    </div>
+                    <button type="button" onClick={() => { setFormFacture(f=>({...f, patient_id:"", patient_nom:""})); setPatientResults([]); }}
+                      style={{ background:"none", border:"none", cursor:"pointer", color:"var(--fr)", fontSize:20, lineHeight:1, padding:"0 2px" }}>×</button>
+                  </div>
+                ) : (
+                  /* Champ de recherche */
+                  <>
+                    <div style={{ position:"relative" }}>
+                      <input className="finp" required={!formFacture.patient_id}
+                        value={formFacture.patient_nom}
+                        placeholder="Taper le nom du patient..."
+                        autoComplete="off"
+                        onChange={e => {
+                          setFormFacture(f=>({...f, patient_nom:e.target.value, patient_id:""}));
+                          searchPatients(e.target.value);
+                        }}
+                        onBlur={() => setTimeout(() => setPatientResults([]), 200)}
+                        style={{ paddingRight:patientSearching ? 38 : 12 }}
+                      />
+                      {patientSearching && (
+                        <span style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", fontSize:13, color:"var(--cm)" }}>⏳</span>
+                      )}
+                    </div>
+                    {/* Dropdown résultats */}
+                    {patientResults.length > 0 && (
+                      <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:"1.5px solid var(--cbr)", borderRadius:10, boxShadow:"0 8px 24px rgba(11,30,59,.12)", zIndex:200, maxHeight:220, overflowY:"auto", marginTop:2 }}>
+                        {patientResults.map(p => (
+                          <div key={p._id}
+                            onMouseDown={() => {
+                              setFormFacture(f=>({...f, patient_id:p._id, patient_nom:`${p.prenom} ${p.nom}`}));
+                              setPatientResults([]);
+                            }}
+                            style={{ padding:"10px 14px", cursor:"pointer", borderBottom:"1px solid var(--cbr)", transition:"background .15s" }}
+                            onMouseEnter={e=>e.currentTarget.style.background="#EEF4FF"}
+                            onMouseLeave={e=>e.currentTarget.style.background=""}
+                          >
+                            <div style={{ fontWeight:600, color:"var(--fn)", fontSize:13 }}>👤 {p.prenom} {p.nom}</div>
+                            <div style={{ fontSize:11, color:"var(--cm)", marginTop:2, display:"flex", gap:10 }}>
+                              <span>📋 {p.numero_dossier || "—"}</span>
+                              {p.telephone && <span>📞 {p.telephone}</span>}
+                              {p.date_naissance && <span>🎂 {new Date(p.date_naissance).getFullYear()}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {formFacture.patient_nom.length >= 2 && !patientSearching && patientResults.length === 0 && (
+                      <div style={{ fontSize:11, color:"var(--cm)", marginTop:4, padding:"6px 10px", background:"#FFF8F0", borderRadius:8, border:"1px solid #FED7AA" }}>
+                        ⚠ Aucun patient trouvé. Vérifiez l'orthographe ou ajoutez le patient depuis la page Patients.
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
               <div>
                 <label className="flbl">Service / Prestations *</label>
@@ -1620,41 +1891,242 @@ export default function Finance() {
         </Modal>
 
         {/* ═══ MODAL : FACTURE DETAIL ═══ */}
-        <Modal open={modalFactureDetail} onClose={() => setModalFactureDetail(false)} title="🧾 Détail facture" maxWidth={540}>
-          {selectedFacture && (
-            <div>
-              <div style={{ background:"linear-gradient(135deg,#0B1E3B,#132744)", borderRadius:14, padding:"18px 20px", marginBottom:16, color:"#fff" }}>
-                <div style={{ fontFamily:"monospace", fontSize:14, fontWeight:700, color:"rgba(255,255,255,.7)", marginBottom:8 }}>{selectedFacture.numero}</div>
-                <div style={{ fontSize:20, fontWeight:800 }}>{fmtMontant(selectedFacture.montant)}</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:4 }}>
-                  {selectedFacture.service} · {fmtDate(selectedFacture.date)}
+        <Modal open={modalFactureDetail} onClose={() => setModalFactureDetail(false)} title="🧾 Détail facture" maxWidth={560}>
+          {selectedFacture && (() => {
+            const sc = STATUT_FACT[selectedFacture.statut] || { cls:"gray", label: selectedFacture.statut };
+            return (
+              <div>
+                {/* En-tête colorée */}
+                <div style={{ background:"linear-gradient(135deg,#0B1E3B,#1B4F9E)", borderRadius:14, padding:"18px 20px", marginBottom:16, color:"#fff" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:8 }}>
+                    <div>
+                      <div style={{ fontFamily:"monospace", fontSize:13, fontWeight:700, color:"rgba(255,255,255,.6)", marginBottom:6 }}>{selectedFacture.numero}</div>
+                      <div style={{ fontSize:22, fontWeight:800, letterSpacing:-1 }}>{fmtMontant(selectedFacture.montant)}</div>
+                      <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:5 }}>{selectedFacture.service} · {fmtDate(selectedFacture.date)}</div>
+                    </div>
+                    <span className={`fbdg ${sc.cls}`} style={{ alignSelf:"flex-start", marginTop:4 }}>{sc.label}</span>
+                  </div>
+                </div>
+
+                {/* Infos */}
+                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10, marginBottom:16 }}>
+                  {[
+                    ["Patient",      selectedFacture.patient],
+                    ["Service",      selectedFacture.service],
+                    ["Date facture", fmtDate(selectedFacture.date)],
+                    ["Échéance",     fmtDate(selectedFacture.echeance)],
+                  ].map(([lbl,val]) => (
+                    <div key={lbl} style={{ background:"#F8FAFD", borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ fontSize:10, fontWeight:600, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.4 }}>{lbl}</div>
+                      <div style={{ fontSize:13, fontWeight:600, color:"var(--fn)", marginTop:3 }}>{val || "—"}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Statut */}
+                <div style={{ marginBottom:16 }}>
+                  <label className="flbl">Statut de paiement</label>
+                  <select className="finp" value={selectedFacture.statut} onChange={e => { updateStatutFacture(selectedFacture._id, e.target.value); setSelectedFacture(f => ({...f, statut:e.target.value})); }}>
+                    <option value="non_paye">❌ Non payée</option>
+                    <option value="paye">✅ Payée</option>
+                    <option value="partiellement_paye">⚠ Partiellement payée</option>
+                    <option value="annule">🚫 Annulée</option>
+                  </select>
+                </div>
+
+                {/* Archive automatique info */}
+                <div style={{ background:"#EEF4FF", borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:12, color:"var(--fb)", display:"flex", alignItems:"center", gap:8 }}>
+                  <span>📁</span>
+                  <span>Cette facture est <strong>archivée automatiquement</strong> dans le système dès sa création.</span>
+                </div>
+
+                {/* Actions */}
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                  <button className="fbtn fbtn-teal" onClick={() => printInvoice(selectedFacture)}>
+                    {I.print} Imprimer / PDF
+                  </button>
+                  <button className="fbtn fbtn-green" style={{ background:"#25D366", borderColor:"#25D366", color:"#fff" }} onClick={() => shareWhatsApp(selectedFacture)}>
+                    📱 WhatsApp
+                  </button>
+                  <button className="fbtn fbtn-ghost" onClick={() => shareEmail(selectedFacture)}>
+                    📧 Email
+                  </button>
+                  {selectedFacture.statut !== "paye" && (
+                    <button className="fbtn fbtn-primary" style={{ marginLeft:"auto" }} onClick={() => { updateStatutFacture(selectedFacture._id, "paye"); setSelectedFacture(f => ({...f, statut:"paye"})); }}>
+                      {I.check} Marquer payée
+                    </button>
+                  )}
                 </div>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10, marginBottom:16 }}>
-                {[["Patient", selectedFacture.patient], ["Service", selectedFacture.service], ["Date facture", fmtDate(selectedFacture.date)], ["Échéance", fmtDate(selectedFacture.echeance)]].map(([lbl,val]) => (
-                  <div key={lbl} className="info-box"><div className="info-box-lbl">{lbl}</div><div className="info-box-val">{val}</div></div>
-                ))}
-              </div>
-              <div style={{ marginBottom:16 }}>
-                <label className="flbl">Statut de paiement</label>
-                <select className="finp" value={selectedFacture.statut} onChange={e => { updateStatutFacture(selectedFacture._id, e.target.value); setSelectedFacture(f => ({...f, statut:e.target.value})); }}>
-                  <option value="non_paye">❌ Non payée</option>
-                  <option value="paye">✅ Payée</option>
-                  <option value="partiellement_paye">⚠ Partiellement payée</option>
-                  <option value="annule">🚫 Annulée</option>
-                </select>
-              </div>
-              <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                <button className="fbtn fbtn-teal" onClick={() => toast.success("🖨️ Facture imprimée")}>{I.print} Imprimer</button>
-                <button className="fbtn fbtn-ghost" onClick={() => toast.success("📧 Envoyée au patient")}>{I.send} Envoyer</button>
-                {selectedFacture.statut !== "paye" && (
-                  <button className="fbtn fbtn-green" onClick={() => { updateStatutFacture(selectedFacture._id, "paye"); setModalFactureDetail(false); }}>
-                    {I.check} Marquer comme payée
-                  </button>
+            );
+          })()}
+        </Modal>
+
+        {/* ═══ MODAL : ENREGISTRER PAIEMENT ═══ */}
+        <Modal open={modalPaiement} onClose={() => { setModalPaiement(false); setPaiementFactureQ(""); }} title="💳 Enregistrer un paiement" maxWidth={540}>
+          <form onSubmit={enregistrerPaiement}>
+            <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+
+              {/* ─ Recherche facture ─ */}
+              <div>
+                <label className="flbl">Facture à régler *</label>
+                {formPaiement.facture_id ? (
+                  /* Facture sélectionnée */
+                  <div style={{ background:"#EEF4FF", border:"2px solid var(--fb)", borderRadius:12, padding:"12px 16px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                      <div>
+                        <div style={{ fontFamily:"monospace", fontWeight:700, color:"var(--fb)", fontSize:13 }}>{formPaiement.facture_num}</div>
+                        <div style={{ fontWeight:600, color:"var(--fn)", fontSize:13, marginTop:2 }}>👤 {formPaiement.patient}</div>
+                        <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>
+                          Restant à payer : <strong style={{ color:"var(--fr)" }}>{fmtMontant(formPaiement.montant_restant)}</strong>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setFormPaiement(EMPTY_PAIEMENT)}
+                        style={{ background:"none", border:"none", cursor:"pointer", color:"var(--fr)", fontSize:20 }}>×</button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Recherche dans les factures non payées */
+                  <div>
+                    <input className="finp" value={paiementFactureQ}
+                      placeholder="Rechercher par n° facture ou patient..."
+                      onChange={e => setPaiementFactureQ(e.target.value)}
+                      autoComplete="off"
+                    />
+                    {paiementFactureQ.length >= 1 && (() => {
+                      const q = paiementFactureQ.toLowerCase();
+                      const results = factures.filter(f =>
+                        f.statut !== "paye" &&
+                        ((f.numero || "").toLowerCase().includes(q) || (f.patient || "").toLowerCase().includes(q))
+                      ).slice(0, 8);
+                      return results.length > 0 ? (
+                        <div style={{ border:"1.5px solid var(--cbr)", borderRadius:10, marginTop:4, background:"#fff", boxShadow:"0 8px 24px rgba(11,30,59,.10)", maxHeight:220, overflowY:"auto" }}>
+                          {results.map(f => (
+                            <div key={f._id}
+                              onClick={() => {
+                                const restant = Number(f.montant_restant || f.montant || 0);
+                                setFormPaiement(p => ({
+                                  ...p,
+                                  facture_id:     f._id,
+                                  facture_num:    f.numero,
+                                  patient:        f.patient,
+                                  montant_restant:restant,
+                                  montant:        String(restant),
+                                }));
+                                setPaiementFactureQ("");
+                              }}
+                              style={{ padding:"10px 14px", cursor:"pointer", borderBottom:"1px solid var(--cbr)" }}
+                              onMouseEnter={e => e.currentTarget.style.background="#EEF4FF"}
+                              onMouseLeave={e => e.currentTarget.style.background=""}
+                            >
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                                <div>
+                                  <span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--fb)", fontSize:12 }}>{f.numero}</span>
+                                  <span style={{ fontSize:13, fontWeight:600, color:"var(--fn)", marginLeft:10 }}>{f.patient}</span>
+                                </div>
+                                <div style={{ textAlign:"right" }}>
+                                  <div style={{ fontWeight:800, color:"var(--fr)", fontSize:13 }}>{fmtMontant(f.montant_restant || f.montant)}</div>
+                                  <span className={`fbdg ${(STATUT_FACT[f.statut]||{cls:"gray"}).cls}`} style={{ fontSize:10 }}>
+                                    {(STATUT_FACT[f.statut]||{label:f.statut}).label}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize:12, color:"var(--cm)", marginTop:6, padding:"8px 12px", background:"#F8FAFD", borderRadius:8 }}>
+                          Aucune facture non payée trouvée pour « {paiementFactureQ} »
+                        </div>
+                      );
+                    })()}
+                    {paiementFactureQ.length === 0 && factures.filter(f => f.statut !== "paye").length > 0 && (
+                      <div style={{ marginTop:8, display:"flex", flexWrap:"wrap", gap:6 }}>
+                        <span style={{ fontSize:11, color:"var(--cm)" }}>Factures en attente :</span>
+                        {factures.filter(f => f.statut !== "paye").slice(0, 5).map(f => (
+                          <span key={f._id} onClick={() => {
+                            const restant = Number(f.montant_restant || f.montant || 0);
+                            setFormPaiement(p => ({ ...p, facture_id:f._id, facture_num:f.numero, patient:f.patient, montant_restant:restant, montant:String(restant) }));
+                          }}
+                            style={{ background:"#EEF4FF", color:"var(--fb)", borderRadius:6, padding:"3px 10px", fontSize:11, fontWeight:600, cursor:"pointer", border:"1px solid #BFDBFE" }}>
+                            {f.numero}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
+
+              {/* ─ Montant ─ */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                <div>
+                  <label className="flbl">Montant à encaisser (CFA) *</label>
+                  <input type="number" className="finp" required min={1}
+                    max={formPaiement.montant_restant || undefined}
+                    value={formPaiement.montant}
+                    onChange={e => setFormPaiement(p => ({...p, montant:e.target.value}))}
+                    placeholder="Ex: 50000"
+                  />
+                  {formPaiement.montant_restant > 0 && Number(formPaiement.montant) > 0 && (
+                    <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>
+                      Solde après paiement : <strong style={{ color: Number(formPaiement.montant) >= formPaiement.montant_restant ? "var(--fg)" : "var(--fo)" }}>
+                        {fmtMontant(Math.max(0, formPaiement.montant_restant - Number(formPaiement.montant)))}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="flbl">Référence / Reçu</label>
+                  <input className="finp" value={formPaiement.reference}
+                    onChange={e => setFormPaiement(p => ({...p, reference:e.target.value}))}
+                    placeholder="Ex: RECU-2025-001"
+                  />
+                </div>
+              </div>
+
+              {/* ─ Mode de paiement ─ */}
+              <div>
+                <label className="flbl">Mode de paiement *</label>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(100px,1fr))", gap:8 }}>
+                  {[
+                    ["especes",      "💵", "Espèces"],
+                    ["mobile_money", "📱", "Mobile Money"],
+                    ["carte",        "💳", "Carte"],
+                    ["virement",     "🏦", "Virement"],
+                    ["cheque",       "📄", "Chèque"],
+                  ].map(([val, icon, lbl]) => (
+                    <div key={val}
+                      onClick={() => setFormPaiement(p => ({...p, mode:val}))}
+                      style={{ padding:"10px 8px", border:`2px solid ${formPaiement.mode===val?"var(--ft)":"var(--cbr)"}`, borderRadius:10, background:formPaiement.mode===val?"#F0FDFC":"#FAFBFF", cursor:"pointer", textAlign:"center", transition:"all .2s" }}>
+                      <div style={{ fontSize:20 }}>{icon}</div>
+                      <div style={{ fontSize:10, fontWeight:600, color:"var(--fn)", marginTop:4 }}>{lbl}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ─ Récapitulatif ─ */}
+              {formPaiement.facture_id && formPaiement.montant && (
+                <div style={{ background:"#ECFDF5", border:"1.5px solid #A7F3D0", borderRadius:12, padding:"12px 16px", fontSize:13 }}>
+                  <div style={{ fontWeight:700, color:"var(--fg)", marginBottom:6 }}>✅ Récapitulatif du paiement</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, color:"var(--fn)" }}>
+                    <span>Facture :</span><strong>{formPaiement.facture_num}</strong>
+                    <span>Patient :</span><strong>{formPaiement.patient}</strong>
+                    <span>Montant encaissé :</span><strong style={{ color:"var(--fg)" }}>{fmtMontant(Number(formPaiement.montant))}</strong>
+                    <span>Mode :</span><strong>{formPaiement.mode}</strong>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display:"flex", gap:10, marginTop:4 }}>
+                <button type="button" className="fbtn fbtn-ghost" onClick={() => { setModalPaiement(false); setPaiementFactureQ(""); }}>Annuler</button>
+                <button type="submit" className="fbtn fbtn-teal" style={{ marginLeft:"auto" }} disabled={saving || !formPaiement.facture_id}>
+                  {I.check} {saving ? "Enregistrement..." : "Valider le paiement"}
+                </button>
+              </div>
             </div>
-          )}
+          </form>
         </Modal>
 
         {/* ═══ MODAL : EXPORT ═══ */}

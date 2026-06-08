@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import {
   fetchStaff, fetchLeaves, fetchSchedules,
   selectStaff, selectLeaves, selectSchedules, selectHRLoading,
@@ -356,6 +357,28 @@ const EMPTY_EVAL = { employe_id:"", periode:"2025-S1", ponctualite:3, qualite:3,
 const EMPTY_FORMATION = { titre:"", type:"interne", date:"", duree_h:"", participants:"", certificat:false };
 const EMPTY_SANCTION = { employe_id:"", type:"avertissement", motif:"" };
 
+// Adapter Staff (backend) → champs attendus par le frontend
+const normalizeEmp = (s) => {
+  const u = s.utilisateur && typeof s.utilisateur === 'object' ? s.utilisateur : null;
+  return {
+    ...s,
+    prenom:         s.prenom         || u?.prenom    || '',
+    nom:            s.nom            || u?.nom       || '',
+    email:          s.email          || u?.email     || '',
+    telephone:      s.telephone      || u?.telephone || '',
+    sexe:           s.sexe           || 'homme',
+    date_naissance: s.date_naissance || null,
+    nationalite:    s.nationalite    || '',
+    departement:    s.departement    || '',
+    adresse:        s.adresse        || '',
+    service:        s.service        || '',
+    contrat:        s.contrat        || s.type_contrat || '',
+    conge_solde:    s.conge_solde    != null ? s.conge_solde : (s.conges_restants != null ? s.conges_restants : 20),
+    note_eval:      s.note_eval      ?? 0,
+    absences_mois:  s.absences_mois  ?? 0,
+  };
+};
+
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function RessourcesHumaines() {
   const dispatch = useDispatch();
@@ -367,13 +390,19 @@ export default function RessourcesHumaines() {
     dispatch(fetchLeaves());
     dispatch(fetchSchedules());
   }, [dispatch]);
+  const refreshHR = useCallback(() => {
+    dispatch(fetchStaff({}));
+    dispatch(fetchLeaves());
+    dispatch(fetchSchedules());
+  }, [dispatch]);
+  useRealtimeRefresh(refreshHR);
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
 
   const [tab, setTab]                     = useState("dashboard");
   const [section, setSection]             = useState("infos");
-  const [employes, setEmployes]           = useState(DEMO_EMPLOYES);
+  const [employes, setEmployes]           = useState([]);
   const [conges, setConges]               = useState(DEMO_CONGES);
   const [candidatures, setCandidatures]   = useState(DEMO_CANDIDATURES);
   const [evaluations, setEvaluations]     = useState(DEMO_EVALUATIONS);
@@ -405,6 +434,18 @@ export default function RessourcesHumaines() {
   const [formFormation, setFormFormation] = useState(EMPTY_FORMATION);
   const [formSanction,  setFormSanction]  = useState(EMPTY_SANCTION);
 
+  // Charger les employés depuis l'API
+  const loadEmployes = useCallback(async () => {
+    try {
+      const { data } = await api.get('/hr');
+      setEmployes((data.staff || []).map(normalizeEmp));
+    } catch (err) {
+      console.error('Erreur chargement employés:', err);
+    }
+  }, []);
+
+  useEffect(() => { loadEmployes(); }, [loadEmployes]);
+
   // KPIs
   const total      = employes.length;
   const actifs     = employes.filter(e => e.statut === "actif").length;
@@ -425,13 +466,38 @@ export default function RessourcesHumaines() {
 
   const openEmp = (e) => { setCurrentEmp(e); setSection("infos"); setTab("dossier"); };
 
-  const createEmp = (ev) => {
+  const createEmp = async (ev) => {
     ev.preventDefault();
     setSaving(true);
-    const newE = { ...formEmp, _id:Date.now().toString(), matricule:`EMP-${String(employes.length+1).padStart(3,"0")}`, note_eval:0, conge_solde:18, absences_mois:0 };
-    setEmployes(prev => [newE, ...prev]);
-    toast.success(`✅ Employé ${newE.prenom} ${newE.nom} créé`);
-    setModalEmp(false); setFormEmp(EMPTY_EMP); setSaving(false);
+    try {
+      const { data } = await api.post('/hr', {
+        prenom:         formEmp.prenom,
+        nom:            formEmp.nom,
+        email:          formEmp.email,
+        telephone:      formEmp.telephone,
+        sexe:           formEmp.sexe,
+        date_naissance: formEmp.date_naissance || undefined,
+        nationalite:    formEmp.nationalite,
+        departement:    formEmp.departement,
+        service:        formEmp.service,
+        adresse:        formEmp.adresse,
+        poste:          formEmp.poste,
+        contrat:        formEmp.contrat,
+        type_contrat:   formEmp.contrat,
+        date_embauche:  formEmp.date_embauche || undefined,
+        statut:         formEmp.statut,
+        salaire_base:   formEmp.salaire_base ? Number(formEmp.salaire_base) : 0,
+      });
+      const newE = normalizeEmp(data.staff);
+      setEmployes(prev => [newE, ...prev]);
+      toast.success(`✅ Employé ${newE.prenom} ${newE.nom} créé`);
+      setModalEmp(false);
+      setFormEmp(EMPTY_EMP);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la création de l'employé");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const addConge = (ev) => {
@@ -485,10 +551,18 @@ export default function RessourcesHumaines() {
     setModalSanction(false); setFormSanction(EMPTY_SANCTION);
   };
 
-  const updateEmp = (updates) => {
-    setEmployes(prev => prev.map(e => e._id === currentEmp._id ? { ...e, ...updates } : e));
-    setCurrentEmp(prev => ({ ...prev, ...updates }));
-    toast.success("✅ Dossier mis à jour");
+  const updateEmp = async (updates) => {
+    try {
+      const body = { ...updates };
+      if (body.contrat) { body.type_contrat = body.contrat; }
+      const { data } = await api.put(`/hr/${currentEmp._id}`, body);
+      const updated = normalizeEmp(data.staff);
+      setEmployes(prev => prev.map(e => e._id === currentEmp._id ? updated : e));
+      setCurrentEmp(updated);
+      toast.success("✅ Dossier mis à jour");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la mise à jour");
+    }
   };
 
   // Avatar color

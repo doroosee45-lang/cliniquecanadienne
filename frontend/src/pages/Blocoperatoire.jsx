@@ -10,6 +10,7 @@ import {
 } from '../store/slices/blocoperatoireSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -276,6 +277,26 @@ const EMPTY_REVEIL = {
   complications:[], observations:"",
 };
 
+// ─── Normalise un DossierChirurgical vers les champs attendus par le rendu ──
+const normalizeInterv = (d) => {
+  const pat = d.patient_id && typeof d.patient_id === 'object' ? d.patient_id : null;
+  return {
+    ...d,
+    patient_dob:       d.date_naissance || pat?.date_naissance || null,
+    patient_gs:        d.groupe_sanguin || pat?.groupe_sanguin || "—",
+    patient_sexe:      d.sexe || null,
+    patient_poids:     null,
+    patient_dossier:   d.numero || "—",
+    patient_allergies: d.allergies || null,
+    chirurgien:        d.chirurgien_nom || (d.chirurgien_id && typeof d.chirurgien_id === 'object'
+                         ? `Dr. ${d.chirurgien_id.prenom} ${d.chirurgien_id.nom}` : null),
+    salle:             d.salle_prevue || "",
+    date_heure_op:     d.date_intervention_prev || "",
+    duree_estimee:     d.duree_intervention_min || 90,
+    diagnostic_preop:  d.diagnostic_chirurgical || "",
+  };
+};
+
 // ─── SVG Icons ────────────────────────────────────────────────
 const I = {
   scalpel:  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3l4 4-9.5 9.5-4-4L17 3z"/><path d="M10.5 16.5l-6.5 3 1-6.5"/><line x1="4" y1="20" x2="8" y2="16"/></svg>,
@@ -434,6 +455,8 @@ export default function BlocOperatoire() {
 
   // Forms
   const [formInterv, setFormInterv] = useState(EMPTY_INTERV);
+  // Patient sélectionné dans le formulaire (aperçu infos)
+  const selectedPatient = patients.find(p => p._id === formInterv.patient_id) || null;
   const [formCR, setFormCR]         = useState(EMPTY_CR);
   const [formReveil, setFormReveil] = useState(EMPTY_REVEIL);
 
@@ -446,35 +469,30 @@ export default function BlocOperatoire() {
   const loadInterventions = useCallback(async () => {
     setLoading(true);
     try {
-      const p = new URLSearchParams({ page, limit:15 });
+      const p = new URLSearchParams({ page, limit: 50 });
       if (search) p.set("q", search);
       if (filterStatut) p.set("statut", filterStatut);
-      const { data } = await api.get(`/bloc-operatoire?${p}`);
-      setInterventions(data.interventions || data.data || []);
-      setTotal(data.total || 0);
-    } catch {
-      setInterventions(DEMO_INTERVENTIONS);
-      setTotal(DEMO_INTERVENTIONS.length);
+      const { data } = await api.get(`/blocoperatoire/planning?${p}`);
+      const list = (data.planning || data.interventions || data.data || []).map(normalizeInterv);
+      setInterventions(list);
+      setTotal(data.total || list.length);
+      if (data.stats) {
+        setKpis(prev => ({ ...prev, ...data.stats }));
+      }
+    } catch (err) {
+      console.error("Erreur chargement planning bloc:", err);
+      setInterventions([]);
+      setTotal(0);
     } finally { setLoading(false); }
   }, [page, search, filterStatut]);
 
-  // ── Load stats ─────────────────────────────────────────────
+  // ── Load stats (salles) ────────────────────────────────────
   const loadStats = useCallback(async () => {
     try {
-      const { data } = await api.get("/bloc-operatoire/stats");
-      setKpis(data.kpis || kpis);
-      if (data.chart) { setChartMois(data.chart.labels); setChartData(data.chart.data); }
-    } catch {
-      const d = DEMO_INTERVENTIONS;
-      setKpis({
-        total: d.length,
-        programmees: d.filter(x => x.statut === "programmee").length,
-        en_cours: d.filter(x => x.statut === "en_cours").length,
-        terminees: d.filter(x => x.statut === "terminee").length,
-        annulees: d.filter(x => x.statut === "annulee").length,
-        reveil: d.filter(x => x.statut === "reveil").length,
-        taux_occ: 65,
-      });
+      const { data } = await api.get("/blocoperatoire/salles");
+      if (data.stats) setKpis(prev => ({ ...prev, ...data.stats }));
+    } catch (err) {
+      console.error("Erreur chargement stats bloc:", err);
     }
   }, []);
 
@@ -489,10 +507,11 @@ export default function BlocOperatoire() {
   }, []);
 
   useEffect(() => { loadInterventions(); loadStats(); loadPatients(); }, [loadInterventions, loadStats, loadPatients]);
+  useRealtimeRefresh(loadInterventions);
 
   // ── Open intervention ──────────────────────────────────────
   const openInterv = (d) => {
-    setCurrentInterv(d);
+    setCurrentInterv(normalizeInterv(d));
     setChecklist(CHECKLIST_ITEMS.reduce((acc, item) => ({ ...acc, [item.id]: d.checklist_done }), {}));
     setSection("general");
     setTab("dossier");
@@ -503,17 +522,13 @@ export default function BlocOperatoire() {
     e.preventDefault();
     setSaving(true);
     try {
-      const { data } = await api.post("/bloc-operatoire", formInterv);
-      toast.success(`✅ Intervention ${data.numero || "créée"} avec succès`);
+      const { data } = await api.post("/blocoperatoire", formInterv);
+      toast.success(`✅ Intervention ${data.intervention?.numero || "créée"} avec succès`);
       setModalNouv(false);
       setFormInterv(EMPTY_INTERV);
       loadInterventions(); loadStats();
     } catch {
-      const fake = { ...formInterv, _id: Date.now().toString(), numero: `BO-2026-${String(interventions.length + 1).padStart(4,"0")}`, patient_nom:"Nouveau patient", patient_dob:"1985-01-01", patient_gs:"—", patient_poids:70, statut:"programmee" };
-      setInterventions(prev => [fake, ...prev]);
-      toast.success("✅ Intervention programmée");
-      setModalNouv(false);
-      setFormInterv(EMPTY_INTERV);
+      toast.error("Erreur lors de la création de l'intervention");
     } finally { setSaving(false); }
   };
 
@@ -522,13 +537,13 @@ export default function BlocOperatoire() {
     if (!currentInterv) return;
     setSaving(true);
     try {
-      await api.put(`/bloc-operatoire/${currentInterv._id}`, { ...currentInterv, ...updates });
+      const { data } = await api.put(`/blocoperatoire/planning/${currentInterv._id}`, { ...currentInterv, ...updates });
       toast.success("✅ Intervention mise à jour");
-      setCurrentInterv(prev => ({ ...prev, ...updates }));
+      if (data?.intervention) setCurrentInterv(normalizeInterv(data.intervention));
+      else setCurrentInterv(prev => normalizeInterv({ ...prev, ...updates }));
       loadInterventions();
     } catch {
-      setCurrentInterv(prev => ({ ...prev, ...updates }));
-      toast.success("✅ Enregistré (local)");
+      toast.error("Erreur lors de la mise à jour");
     } finally { setSaving(false); }
   };
 
@@ -537,14 +552,13 @@ export default function BlocOperatoire() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/bloc-operatoire/${currentInterv._id}/cr`, formCR);
+      await api.post(`/blocoperatoire/${currentInterv._id}/cr`, formCR);
       toast.success("✅ Compte rendu opératoire enregistré");
       setCurrentInterv(prev => ({ ...prev, cr: formCR, statut: prev.statut === "en_cours" ? "reveil" : prev.statut }));
       setModalCR(false);
+      loadInterventions();
     } catch {
-      setCurrentInterv(prev => ({ ...prev, cr: formCR }));
-      toast.success("✅ CR enregistré (local)");
-      setModalCR(false);
+      toast.error("Erreur lors de l'enregistrement du CR");
     } finally { setSaving(false); }
   };
 
@@ -553,14 +567,13 @@ export default function BlocOperatoire() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/bloc-operatoire/${currentInterv._id}/reveil`, formReveil);
+      await api.post(`/blocoperatoire/${currentInterv._id}/reveil`, formReveil);
       toast.success("✅ Salle de réveil enregistrée");
       setCurrentInterv(prev => ({ ...prev, reveil: formReveil }));
       setModalReveil(false);
+      loadInterventions();
     } catch {
-      setCurrentInterv(prev => ({ ...prev, reveil: formReveil }));
-      toast.success("✅ Réveil enregistré (local)");
-      setModalReveil(false);
+      toast.error("Erreur lors de l'enregistrement du réveil");
     } finally { setSaving(false); }
   };
 
@@ -964,7 +977,7 @@ export default function BlocOperatoire() {
                     <div>
                       <div style={{ fontSize:18, fontWeight:700 }}>{currentInterv.patient_nom}</div>
                       <div style={{ fontSize:12, color:"rgba(255,255,255,.65)", marginTop:2 }}>
-                        {ageCalc(currentInterv.patient_dob)} · {currentInterv.patient_poids}kg · Gr. {currentInterv.patient_gs || "—"}
+                        {ageCalc(currentInterv.patient_dob)} · {currentInterv.patient_poids ? `${currentInterv.patient_poids} kg` : "—"} · Gr. {currentInterv.patient_gs || "—"}
                         {currentInterv.patient_allergies && <span style={{ color:"#F5B7B1" }}> · ⚠ {currentInterv.patient_allergies}</span>}
                       </div>
                       <div style={{ fontSize:11, color:"rgba(255,255,255,.45)", marginTop:3 }}>
@@ -1756,6 +1769,24 @@ export default function BlocOperatoire() {
                   {patients.map(p => <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier}</option>)}
                 </select>
               </div>
+              {/* ── Aperçu infos patient ── */}
+              {selectedPatient && (
+                <div style={{ gridColumn:"1/-1", background:"#EAF6FB", border:"1.5px solid #A9D9ED", borderRadius:10, padding:"10px 14px", display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))", gap:10 }}>
+                  {[
+                    ["Âge",           ageCalc(selectedPatient.date_naissance)],
+                    ["Sexe",          selectedPatient.sexe === "M" ? "Masculin" : selectedPatient.sexe === "F" ? "Féminin" : "—"],
+                    ["Groupe sanguin", selectedPatient.groupe_sanguin || "—"],
+                    ["N° dossier",    selectedPatient.numero_dossier || "—"],
+                    ["Poids",         "—"],
+                    ["Allergies",     Array.isArray(selectedPatient.allergies) && selectedPatient.allergies.length > 0 ? selectedPatient.allergies.join(", ") : "Aucune"],
+                  ].map(([lbl, val]) => (
+                    <div key={lbl}>
+                      <div style={{ fontSize:10, fontWeight:600, color:"#3B8DB3", textTransform:"uppercase", letterSpacing:.4 }}>{lbl}</div>
+                      <div style={{ fontSize:13, fontWeight:600, color:"#1A3550", marginTop:2 }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div>
                 <label className="blbl">Type d'intervention *</label>
                 <input className="binp" required placeholder="Ex: Appendicectomie, Myomectomie..." value={formInterv.type_intervention} onChange={e => setFormInterv(f=>({...f,type_intervention:e.target.value}))} />
@@ -1782,8 +1813,14 @@ export default function BlocOperatoire() {
                 <label className="blbl">Salle attribuée</label>
                 <select className="binp" value={formInterv.salle} onChange={e => setFormInterv(f=>({...f,salle:e.target.value}))}>
                   <option value="">— Non attribuée —</option>
-                  {[1,2,3,4].map(n => <option key={n} value={`Bloc ${n}`}>Bloc {n}</option>)}
-                  <option value="Salle urgences">Salle urgences</option>
+                  {reduxSalles && reduxSalles.length > 0
+                    ? reduxSalles.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)
+                    : [
+                        <option key="BO-1" value="BO-1">Salle 1 — Chirurgie générale</option>,
+                        <option key="BO-2" value="BO-2">Salle 2 — Orthopédie</option>,
+                        <option key="BO-3" value="BO-3">Salle 3 — Urgences / Polyvalent</option>,
+                      ]
+                  }
                 </select>
               </div>
               <div>

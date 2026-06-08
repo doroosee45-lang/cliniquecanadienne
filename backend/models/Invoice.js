@@ -11,8 +11,11 @@ const PaiementSchema = new Schema({
 
 const InvoiceSchema = new Schema({
   numero_facture: { type: String, unique: true },
-  patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
-  created_by: { type: Schema.Types.ObjectId, ref: 'User' },
+  patient:        { type: Schema.Types.ObjectId, ref: 'Patient' },
+  patient_nom:    String,
+  service_label:  String,
+  montant_direct: Number,
+  created_by:     { type: Schema.Types.ObjectId, ref: 'User' },
   date_facture: { type: Date, default: Date.now },
   date_echeance: Date,
   lignes: [{

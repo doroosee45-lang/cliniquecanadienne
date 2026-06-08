@@ -1,21 +1,35 @@
 const Appointment = require('../models/Appointment');
 const { logAction, paginate } = require('../utils/helpers');
+const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 exports.getAll = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, statut, medecin, patient, date } = req.query;
+    const { page = 1, limit = 500, statut, medecin, patient, date, from, to } = req.query;
     const filter = {};
-    if (statut) filter.statut = statut;
+    if (statut)  filter.statut  = statut;
     if (medecin) filter.medecin = medecin;
     if (patient) filter.patient = patient;
+
     if (date) {
+      // Filtre jour précis
       const d = new Date(date);
       filter.date_heure = { $gte: new Date(d.setHours(0,0,0,0)), $lt: new Date(d.setHours(23,59,59,999)) };
+    } else if (from || to) {
+      // Plage de dates explicite
+      filter.date_heure = {};
+      if (from) filter.date_heure.$gte = new Date(from);
+      if (to)   filter.date_heure.$lte = new Date(to);
+    } else {
+      // Par défaut : 60 jours passés → 12 mois à venir
+      const debut = new Date(); debut.setDate(debut.getDate() - 60);
+      const fin   = new Date(); fin.setFullYear(fin.getFullYear() + 1);
+      filter.date_heure = { $gte: debut, $lte: fin };
     }
+
     const total = await Appointment.countDocuments(filter);
     const appointments = await paginate(
       Appointment.find(filter)
-        .populate('patient', 'nom prenom numero_dossier')
+        .populate('patient', 'nom prenom numero_dossier telephone')
         .populate('medecin', 'nom prenom specialite')
         .sort('date_heure'),
       page, limit
@@ -50,6 +64,8 @@ exports.create = async (req, res, next) => {
 
     const appt = await Appointment.create({ ...req.body, created_by: req.user._id });
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'appointments', entite_id: appt._id, ip: req.ip, message: `Nouveau RDV: ${appt.type}` });
+    emitActivity({ module: 'appointments', action: 'Nouveau rendez-vous', detail: appt.type, icon: '📅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
     res.status(201).json({ success: true, appointment: appt });
   } catch (err) { next(err); }
 };

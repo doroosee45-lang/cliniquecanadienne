@@ -3,7 +3,7 @@ import api from '../../api';
 
 export const fetchConsultations = createAsyncThunk(
   'consultations/fetchAll',
-  async ({ page = 1, limit = 20, patient = '', medecin = '', statut = '', date = '' } = {}, { rejectWithValue }) => {
+  async ({ page = 1, limit = 500, patient = '', medecin = '', statut = '', date = '' } = {}, { rejectWithValue }) => {
     try {
       const params = new URLSearchParams({ page, limit });
       if (patient) params.set('patient', patient);

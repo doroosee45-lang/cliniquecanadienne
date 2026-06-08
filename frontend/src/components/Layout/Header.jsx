@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSocket } from '../../contexts/SocketContext';
 import api from '../../api';
 import toast from 'react-hot-toast';
 
 export default function Header({ title, onMenuToggle }) {
   const { user } = useAuth();
+  const { socket, connected } = useSocket();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -19,6 +21,7 @@ export default function Header({ title, onMenuToggle }) {
   const [aiInput, setAiInput] = useState('');
   const notifRef = useRef(null);
 
+  // Chargement initial + polling de sécurité toutes les 60s
   useEffect(() => {
     const load = async () => {
       try {
@@ -28,9 +31,24 @@ export default function Header({ title, onMenuToggle }) {
       } catch {}
     };
     load();
-    const iv = setInterval(load, 30000);
+    const iv = setInterval(load, 60000);
     return () => clearInterval(iv);
   }, []);
+
+  // Réception des nouvelles notifications en temps réel via Socket.IO
+  useEffect(() => {
+    if (!socket) return;
+    const handleNew = (notif) => {
+      setNotifications(prev => [notif, ...prev].slice(0, 50));
+      setUnread(prev => prev + 1);
+      toast(notif.titre, {
+        icon: notif.type === 'critical' ? '🚨' : notif.type === 'warning' ? '⚠️' : '🔔',
+        duration: 4000,
+      });
+    };
+    socket.on('notification:new', handleNew);
+    return () => socket.off('notification:new', handleNew);
+  }, [socket]);
 
   useEffect(() => {
     const handleClick = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifs(false); };
@@ -86,8 +104,9 @@ export default function Header({ title, onMenuToggle }) {
           </button>
           <div className="min-w-0">
             <h1 className="text-lg font-bold text-gray-900 truncate">{title}</h1>
-            <p className="text-gray-400 text-xs hidden sm:block">
+            <p className="text-gray-400 text-xs hidden sm:block flex items-center gap-2">
               {new Date().toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' })} — {user?.prenom} {user?.nom}
+              <span className={`inline-block w-2 h-2 rounded-full ml-2 ${connected ? 'bg-green-400' : 'bg-gray-300'}`} title={connected ? 'Temps réel actif' : 'Hors ligne'} />
             </p>
           </div>
         </div>

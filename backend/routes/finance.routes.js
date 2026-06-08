@@ -27,11 +27,56 @@ router.get('/revenus', protect, authorize(...CAN_ACCESS), async (req, res, next)
 router.get('/paiements', protect, authorize(...CAN_ACCESS), async (req, res, next) => {
   try {
     const { limit = 50 } = req.query;
-    const invoices = await Invoice.find({ 'paiements.0': { $exists: true } })
-      .populate('patient', 'nom prenom').sort('-date_facture').limit(Number(limit));
-    const paiements = invoices.flatMap(inv =>
-      inv.paiements.map(p => ({ ...p.toObject(), facture: inv.numero_facture, patient: inv.patient }))
-    );
+    // Toutes les factures payées OU ayant des paiements enregistrés
+    const invoices = await Invoice.find({
+      $or: [
+        { 'paiements.0': { $exists: true } },
+        { statut: { $in: ['payee', 'partiellement_payee'] } },
+      ],
+    })
+      .populate('patient', 'nom prenom')
+      .populate('paiements.enregistre_par', 'nom prenom')
+      .sort('-date_facture')
+      .limit(Number(limit));
+
+    const paiements = invoices.flatMap(inv => {
+      const patObj = inv.patient && typeof inv.patient === 'object' ? inv.patient : null;
+      const patNom = inv.patient_nom || (patObj ? `${patObj.prenom} ${patObj.nom}` : '—');
+
+      // Paiements explicites enregistrés
+      if (inv.paiements && inv.paiements.length > 0) {
+        return inv.paiements.map((p, i) => {
+          const userObj = p.enregistre_par && typeof p.enregistre_par === 'object' ? p.enregistre_par : null;
+          const d = p.date ? new Date(p.date) : new Date(inv.date_facture || inv.createdAt);
+          return {
+            _id:       `${inv._id}-p${i}`,
+            reference: p.reference || inv.numero_facture || `PAY-${i + 1}`,
+            date:      d,
+            heure:     d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+            patient:   patNom,
+            facture:   inv.numero_facture || '—',
+            montant:   p.montant,
+            mode:      p.mode || 'especes',
+            caissier:  userObj ? `${userObj.prenom} ${userObj.nom}` : 'Caisse',
+          };
+        });
+      }
+
+      // Facture payée sans paiement explicite → enregistrement synthétique
+      const d = new Date(inv.date_facture || inv.createdAt);
+      return [{
+        _id:       `${inv._id}-synth`,
+        reference: inv.numero_facture || '—',
+        date:      d,
+        heure:     d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        patient:   patNom,
+        facture:   inv.numero_facture || '—',
+        montant:   inv.montant_paye || inv.montant_ttc || inv.montant_direct || 0,
+        mode:      'especes',
+        caissier:  'Caisse',
+      }];
+    });
+
     res.json({ success: true, paiements });
   } catch (err) { next(err); }
 });

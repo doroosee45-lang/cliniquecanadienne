@@ -1,4 +1,5 @@
 const Conversation = require('../models/Conversation');
+const { emitTo } = require('../utils/socket');
 
 exports.getConversations = async (req, res, next) => {
   try {
@@ -35,7 +36,27 @@ exports.sendMessage = async (req, res, next) => {
     conv.messages.push(msg);
     conv.dernier_message = new Date();
     await conv.save();
-    res.json({ success: true, message: conv.messages[conv.messages.length - 1] });
+
+    // Populer l'expéditeur pour l'affichage temps réel
+    await conv.populate('messages.expediteur', 'nom prenom avatar role');
+    const lastMsg = conv.messages[conv.messages.length - 1];
+
+    // Émettre le message à la room de la conversation
+    emitTo(`conversation:${conv._id}`, 'message:new', {
+      conversationId: conv._id,
+      message: lastMsg,
+    });
+    // Notifier aussi chaque membre via sa room privée (badge non-lus)
+    conv.membres.forEach(memberId => {
+      if (memberId.toString() !== req.user._id.toString()) {
+        emitTo(`user:${memberId}`, 'message:new', {
+          conversationId: conv._id,
+          message: lastMsg,
+        });
+      }
+    });
+
+    res.json({ success: true, message: lastMsg });
   } catch (err) { next(err); }
 };
 

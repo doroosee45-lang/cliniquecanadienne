@@ -24,6 +24,13 @@ router.delete('/users/:id',   protect, authorize('superadmin'), async (req, res,
 // ── Services médicaux ─────────────────────────────────────────
 router.get('/services',       protect,                        settingsC.getServices);
 router.post('/services',      protect, authorize(...ADMIN),   settingsC.createService);
+router.put('/services/:id',   protect, authorize(...ADMIN),   settingsC.updateService);
+
+// ── Salles ────────────────────────────────────────────────────
+router.get('/rooms',          protect,                        settingsC.getRooms);
+
+// ── KPIs administration ───────────────────────────────────────
+router.get('/kpis',           protect, authorize(...ADMIN),   settingsC.getKpis);
 
 // ── Assurances ────────────────────────────────────────────────
 router.get('/insurances',     protect,                        settingsC.getInsurances);

@@ -6,6 +6,7 @@ import {
 } from '../store/slices/prescriptionsSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -207,11 +208,13 @@ const fmtNumOrd = (n) => `ORD-${new Date().getFullYear()}-${String(n).padStart(4
 
 // ─── Constantes ───────────────────────────────────────────────
 const STATUTS = {
-  active:    { cls:"green",  label:"Active",    icon:"✅" },
-  partielle: { cls:"orange", label:"Partielle", icon:"⚡" },
-  expiree:   { cls:"red",    label:"Expirée",   icon:"❌" },
-  annulee:   { cls:"gray",   label:"Annulée",   icon:"🚫" },
-  renouvellee:{ cls:"teal",  label:"Renouvelée",icon:"🔄" },
+  brouillon:   { cls:"gray",   label:"Brouillon",  icon:"📝" },
+  active:      { cls:"green",  label:"Active",     icon:"✅" },
+  publiee:     { cls:"teal",   label:"Publiée",    icon:"📨" },
+  dispensee:   { cls:"blue",   label:"Dispensée",  icon:"💊" },
+  expiree:     { cls:"red",    label:"Expirée",    icon:"❌" },
+  annulee:     { cls:"gray",   label:"Annulée",    icon:"🚫" },
+  renouvellee: { cls:"purple", label:"Renouvelée", icon:"🔄" },
 };
 
 const FORMES_PHARMA = ["Comprimé","Gélule","Sirop","Injectable","Pommade","Crème","Patch","Gouttes","Spray","Suppositoire","Sachet","Solution buvable"];
@@ -374,38 +377,61 @@ export default function Ordonnances() {
   const updateMed = (id, key, val) => setFormOrd(f => ({ ...f, medicaments:f.medicaments.map(m=>m.id===id?{...m,[key]:val}:m) }));
 
   // ── Chargement ──────────────────────────────────────────────
+  // Normalise une prescription API vers le format attendu par la vue
+  const normalizeOrd = (rx) => ({
+    _id:             rx._id,
+    numero:          rx.numero_rx || rx.numero || `RX-${rx._id?.slice(-5)}`,
+    patient_nom:     rx.patient ? `${rx.patient.prenom || ''} ${rx.patient.nom || ''}`.trim() : (rx.patient_nom || '—'),
+    patient_dob:     rx.patient?.date_naissance || rx.patient_dob || '',
+    patient_id:      rx.patient?._id || rx.patient_id || '',
+    medecin:         rx.medecin ? `Dr. ${rx.medecin.prenom || ''} ${rx.medecin.nom || ''}`.trim() : (rx.medecin || '—'),
+    specialite:      rx.medecin?.specialite || rx.specialite || '',
+    diagnostic:      rx.diagnostic || rx.motif || '—',
+    medicaments:     rx.lignes   || rx.medicaments   || [],   // lignes = backend, medicaments = ancienne forme
+    lignes:          rx.lignes   || rx.medicaments   || [],
+    date_prescription: rx.date_prescription,
+    date_expiration:   rx.date_expiration,
+    statut:          rx.statut || 'brouillon',
+    publie_at:       rx.publie_at,
+    chronique:       rx.chronique || false,
+    allergies:       rx.allergies || [],
+    poids:           rx.poids || '',
+    pharmacie_statut:rx.pharmacie_statut || '',
+    ia_interactions: (rx.interactions_detectees?.length || 0) > 0,
+    interactions:    rx.interactions_detectees || [],
+  });
+
   const loadOrds = useCallback(async () => {
     setLoading(true);
     try {
-      const p = new URLSearchParams({ page, limit:15 });
+      const p = new URLSearchParams({ page, limit:50 });
       if (search) p.set("q", search);
       if (filterSt) p.set("statut", filterSt);
-      if (filterChr) p.set("chronique", "1");
-      const { data } = await api.get(`/ordonnances?${p}`);
-      setOrds(data.ordonnances || data.data || []);
-      setTotal(data.total || 0);
+      const { data } = await api.get(`/prescriptions?${p}`);
+      const raw = data.prescriptions || data.ordonnances || [];
+      setOrds(raw.map(normalizeOrd));
+      setTotal(data.total || raw.length || 0);
     } catch {
-      setOrds(DEMO_ORDONNANCES);
-      setTotal(DEMO_ORDONNANCES.length);
+      setOrds([]);
+      setTotal(0);
     } finally { setLoading(false); }
   }, [page, search, filterSt, filterChr]);
 
   const loadStats = useCallback(async () => {
     try {
-      const { data } = await api.get("/ordonnances/stats");
-      setKpis(data.kpis || kpis);
-    } catch {
-      const d = DEMO_ORDONNANCES;
-      setKpis({
-        total: d.length,
-        actives: d.filter(x=>x.statut==="active").length,
-        expirees: d.filter(x=>x.statut==="expiree").length,
-        renouvellements: 2,
-        chroniques: d.filter(x=>x.chronique).length,
-        interactions: d.filter(x=>x.ia_interactions).length,
-        aujourd_hui: 3,
-      });
-    }
+      const { data } = await api.get("/prescriptions/stats");
+      const s = data.stats || {};
+      setKpis(prev => ({
+        ...prev,
+        total:          s.total          ?? prev.total,
+        actives:        (s.actives || 0) + (s.publiees || 0),
+        expirees:       s.expirees       ?? prev.expirees,
+        chroniques:     s.chroniques     ?? prev.chroniques,
+        aujourd_hui:    s.aujourd_hui    ?? prev.aujourd_hui,
+        brouillons:     s.brouillons     ?? 0,
+        publiees:       s.publiees       ?? 0,
+      }));
+    } catch {}
   }, []);
 
   const loadPatients = useCallback(async () => {
@@ -422,25 +448,42 @@ export default function Ordonnances() {
   }, []);
 
   useEffect(() => { loadOrds(); loadStats(); loadPatients(); }, [loadOrds, loadStats, loadPatients]);
+  useRealtimeRefresh(loadOrds);
 
   const openOrd = (ord) => { setCurrent(ord); setSection("patient"); setTab("ordonnance"); };
 
   // ── Créer ──────────────────────────────────────────────────
   const createOrd = async (ev) => {
     ev.preventDefault();
+    if (!formOrd.patient_id) { toast.error("Veuillez sélectionner un patient."); return; }
+    if (!formOrd.diagnostic)  { toast.error("Le diagnostic est obligatoire."); return; }
     setSaving(true);
     try {
-      const { data } = await api.post("/ordonnances", formOrd);
-      toast.success(`✅ Ordonnance ${data.numero || "créée"}`);
+      // Mapper les champs frontend → backend (Prescription model)
+      const payload = {
+        patient:          formOrd.patient_id,
+        lignes:           (formOrd.medicaments || []).map(m => ({
+          medicament_nom: m.medicament,
+          posologie:      `${m.dosage} — ${m.frequence}${m.voie ? ` (${m.voie})` : ''}${m.instructions ? ` — ${m.instructions}` : ''}`,
+          duree:          m.duree,
+          quantite:       m.quantite ? parseInt(m.quantite, 10) : undefined,
+          notes:          m.instructions,
+        })),
+        diagnostic:       formOrd.diagnostic,
+        date_prescription:formOrd.date_prescription,
+        date_expiration:  formOrd.date_expiration || undefined,
+        statut:           'brouillon',
+      };
+      const { data } = await api.post("/prescriptions", payload);
+      const newOrd = normalizeOrd(data.prescription || {});
+      setOrds(prev => [newOrd, ...prev]);
+      toast.success(`✅ Ordonnance ${data.prescription?.numero_rx || "créée"} — En brouillon, pensez à la publier.`);
       setModalNouv(false);
       setFormOrd(EMPTY_ORD);
       loadOrds(); loadStats();
-    } catch {
-      const fake = { ...formOrd, _id:Date.now().toString(), numero:fmtNumOrd(Date.now()%9999+1), statut:"active", pharmacie_statut:"en attente", ia_interactions:false, patient_nom:"Patient créé", interactions:[] };
-      setOrds(prev => [fake, ...prev]);
-      toast.success("✅ Ordonnance créée");
-      setModalNouv(false);
-      setFormOrd(EMPTY_ORD);
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Erreur lors de la création.";
+      toast.error(`❌ ${msg}`);
     } finally { setSaving(false); }
   };
 
@@ -449,15 +492,33 @@ export default function Ordonnances() {
     if (!currentOrd) return;
     setSaving(true);
     try {
-      await api.post(`/ordonnances/${currentOrd._id}/renouveler`);
-      toast.success("🔄 Ordonnance renouvelée");
-      setCurrent(prev => ({ ...prev, statut:"renouvellee" }));
+      await api.post(`/prescriptions/${currentOrd._id}/renouveler`);
+      toast.success("🔄 Ordonnance renouvelée — un brouillon a été créé.");
       setModalRenew(false);
-    } catch {
-      toast.success("🔄 Ordonnance renouvelée");
-      setCurrent(prev => ({ ...prev, statut:"renouvellee" }));
-      setModalRenew(false);
+      loadOrds();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur renouvellement.");
     } finally { setSaving(false); }
+  };
+
+  // ── Publier (rend visible au patient + notif + email) ─────
+  const [publishing, setPublishing] = useState(false);
+  const handlePublier = async () => {
+    if (!currentOrd) return;
+    if (!window.confirm("Publier cette ordonnance ? Elle sera envoyée au patient par email et visible sur son portail.")) return;
+    setPublishing(true);
+    try {
+      const { data } = await api.post(`/prescriptions/${currentOrd._id}/publier`);
+      setCurrent(prev => ({ ...prev, statut:"publiee", publie_at: new Date().toISOString() }));
+      setOrds(prev => prev.map(o => o._id === currentOrd._id ? { ...o, statut:"publiee" } : o));
+      const msg = data.email_envoye
+        ? "📨 Ordonnance publiée et envoyée au patient par email !"
+        : "✅ Ordonnance publiée (email non envoyé — SMTP non configuré).";
+      toast.success(msg, { duration: 5000 });
+      loadStats();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la publication.");
+    } finally { setPublishing(false); }
   };
 
   // ── Annuler ────────────────────────────────────────────────
@@ -465,12 +526,12 @@ export default function Ordonnances() {
     if (!currentOrd) return;
     setSaving(true);
     try {
-      await api.put(`/ordonnances/${currentOrd._id}`, { statut:"annulee" });
+      await api.put(`/prescriptions/${currentOrd._id}/cancel`, {});
       toast.success("🚫 Ordonnance annulée");
       setCurrent(prev => ({ ...prev, statut:"annulee" }));
+      setOrds(prev => prev.map(o => o._id === currentOrd._id ? { ...o, statut:"annulee" } : o));
       setModalAnnul(false);
     } catch {
-      toast.success("🚫 Ordonnance annulée");
       setCurrent(prev => ({ ...prev, statut:"annulee" }));
       setModalAnnul(false);
     } finally { setSaving(false); }
@@ -481,12 +542,12 @@ export default function Ordonnances() {
     if (!currentOrd) return;
     setSaving(true);
     try {
-      await api.put(`/ordonnances/${currentOrd._id}`, { ...currentOrd, ...updates });
-      toast.success("✅ Enregistré");
+      await api.put(`/prescriptions/${currentOrd._id}`, updates);
       setCurrent(prev => ({ ...prev, ...updates }));
-    } catch {
-      setCurrent(prev => ({ ...prev, ...updates }));
-      toast.success("✅ Enregistré (local)");
+      setOrds(prev => prev.map(o => o._id === currentOrd._id ? { ...o, ...updates } : o));
+      toast.success("✅ Ordonnance mise à jour.");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur mise à jour.");
     } finally { setSaving(false); }
   };
 
@@ -709,7 +770,7 @@ export default function Ordonnances() {
                             </td>
                             <td><Badge cls={sc.cls}>{sc.icon} {sc.label}</Badge></td>
                             <td>
-                              <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:11 }} onClick={() => openOrd(ord)}>{I.open} Ouvrir</button>
+                              <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:11 }} onClick={() => { openOrd(ord); setSection("impression"); }}>👁 Voir</button>
                             </td>
                           </tr>
                         );
@@ -788,10 +849,51 @@ export default function Ordonnances() {
                             <td><Badge cls={phCol}>{ord.pharmacie_statut||"—"}</Badge></td>
                             <td><Badge cls={sc.cls}>{sc.icon} {sc.label}</Badge></td>
                             <td>
-                              <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-                                <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:10 }} onClick={() => openOrd(ord)}>{I.open}</button>
-                                <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrent(ord); setModalRenew(true); }} title="Renouveler">{I.refresh}</button>
-                                <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:10 }} onClick={() => toast.success("📄 Ordonnance dupliquée")} title="Dupliquer">{I.copy}</button>
+                              <div style={{ display:"flex", gap:4, flexWrap:"wrap", alignItems:"center" }}>
+
+                                {/* Voir → TOUJOURS disponible (ouvre la vue impression/détail) */}
+                                <button
+                                  className="obtn obtn-ghost obtn-sm"
+                                  style={{ fontSize:10, display:"flex", alignItems:"center", gap:3 }}
+                                  title="Voir l'ordonnance"
+                                  onClick={() => { openOrd(ord); setSection("impression"); }}
+                                >
+                                  👁 Voir
+                                </button>
+
+                                {/* Publier → uniquement si pas encore publiée ni annulée */}
+                                {!["publiee","annulee","dispensee"].includes(ord.statut) && (
+                                  <button
+                                    className="obtn obtn-sm"
+                                    style={{ background:"#EFF6FF", color:"#1B4F9E", border:"1px solid #BFDBFE", fontSize:10, padding:"4px 8px", borderRadius:6 }}
+                                    title="Publier et envoyer au patient"
+                                    onClick={async () => {
+                                      if (!window.confirm(`Publier l'ordonnance ${ord.numero || ord.numero_rx} et l'envoyer au patient ?`)) return;
+                                      try {
+                                        const { data } = await api.post(`/prescriptions/${ord._id}/publier`);
+                                        setOrds(prev => prev.map(o => o._id === ord._id ? { ...o, statut:"publiee" } : o));
+                                        toast.success(data.email_envoye ? "📨 Publiée et envoyée au patient !" : "✅ Ordonnance publiée.", { duration: 4000 });
+                                        loadStats();
+                                      } catch (err) {
+                                        toast.error(err?.response?.data?.message || "Erreur publication.");
+                                      }
+                                    }}
+                                  >
+                                    📨 Publier
+                                  </button>
+                                )}
+
+                                {/* Badge publiée */}
+                                {ord.statut === "publiee" && (
+                                  <span style={{ background:"#ECFDF5", color:"#059669", border:"1px solid #A7F3D0", fontSize:10, padding:"3px 7px", borderRadius:6, fontWeight:600 }}>
+                                    📨 Publiée
+                                  </span>
+                                )}
+
+                                {/* Renouveler */}
+                                {!["annulee"].includes(ord.statut) && (
+                                  <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrent(ord); setModalRenew(true); }} title="Renouveler">{I.refresh}</button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1178,12 +1280,35 @@ export default function Ordonnances() {
               {/* ── IMPRESSION ── */}
               {section === "impression" && (
                 <div style={{ marginTop:20 }}>
-                  <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
+                  <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap", alignItems:"center" }}>
                     <button className="obtn obtn-teal" onClick={() => window.print()}>{I.print} Imprimer</button>
-                    <button className="obtn obtn-ghost" onClick={() => toast.success("📄 PDF généré")}>{I.dl} Télécharger PDF</button>
-                    <button className="obtn obtn-ghost" onClick={() => toast.success("📨 Envoyée par email")}>{I.send} Envoyer par email</button>
-                    <button className="obtn obtn-ghost" onClick={() => toast.success("📱 Envoyée par WhatsApp")}>{I.send} Envoyer WhatsApp</button>
-                    <button className="obtn obtn-ghost" onClick={() => toast.success("📱 Envoyée par SMS")}>{I.send} Envoyer SMS</button>
+
+                    {/* ── PUBLIER — visible uniquement si pas encore publiée ── */}
+                    {currentOrd.statut !== "publiee" && currentOrd.statut !== "annulee" && (
+                      <button
+                        className="obtn obtn-primary"
+                        style={{ background:"#1B4F9E", color:"#fff", fontWeight:700 }}
+                        disabled={publishing}
+                        onClick={handlePublier}
+                      >
+                        {publishing ? "⏳ Publication…" : "📨 Publier & Envoyer au patient"}
+                      </button>
+                    )}
+
+                    {/* ── DÉJÀ PUBLIÉE ── */}
+                    {currentOrd.statut === "publiee" && (
+                      <div style={{ display:"flex", alignItems:"center", gap:8, background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:10, padding:"8px 16px" }}>
+                        <span style={{ fontSize:16 }}>📨</span>
+                        <div>
+                          <div style={{ fontWeight:700, fontSize:12, color:"#065F46" }}>Publiée — Visible par le patient</div>
+                          {currentOrd.publie_at && (
+                            <div style={{ fontSize:11, color:"#059669" }}>
+                              Le {new Date(currentOrd.publie_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Format imprimable */}
@@ -1403,8 +1528,8 @@ export default function Ordonnances() {
                                 <td><Badge cls={jRestants<15?"orange":jRestants<30?"yellow":"green"}>{jRestants<15?"Renouvellement urgent":jRestants<30?"Bientôt":"Actif"}</Badge></td>
                                 <td>
                                   <div style={{ display:"flex", gap:4 }}>
-                                    <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:10 }} onClick={() => openOrd(ord)}>{I.open}</button>
-                                    <button className="obtn obtn-teal obtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrent(ord); setModalRenew(true); }}>{I.refresh}</button>
+                                    <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:10 }} onClick={() => { openOrd(ord); setSection("impression"); }} title="Voir">👁 Voir</button>
+                                    <button className="obtn obtn-teal obtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrent(ord); setModalRenew(true); }} title="Renouveler">{I.refresh}</button>
                                   </div>
                                 </td>
                               </tr>

@@ -9,6 +9,7 @@ import {
 } from '../store/slices/radiologySlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -383,11 +384,13 @@ export default function Imagerie() {
       if (filterStatut) p.set("statut", filterStatut);
       if (filterType)   p.set("type_categorie", filterType);
       const { data } = await api.get(`/imagerie?${p}`);
-      setExamens(data.examens || data.data || []);
+      setExamens(data.examens || data.results || data.data || []);
       setTotal(data.total || 0);
-    } catch {
-      setExamens(DEMO_EXAMENS);
-      setTotal(DEMO_EXAMENS.length);
+    } catch (err) {
+      console.error("Erreur chargement imagerie:", err?.response?.data || err.message);
+      toast.error("Erreur chargement des examens");
+      setExamens([]);
+      setTotal(0);
     } finally { setLoading(false); }
   }, [page, search, filterStatut, filterType]);
 
@@ -432,6 +435,7 @@ export default function Imagerie() {
   }, []);
 
   useEffect(() => { loadExamens(); loadStats(); loadPatients(); }, [loadExamens, loadStats, loadPatients]);
+  useRealtimeRefresh(loadExamens);
 
   const openExamen = (e) => {
     setCurrent(e);
@@ -445,13 +449,39 @@ export default function Imagerie() {
     ev.preventDefault();
     setSaving(true);
     try {
-      const { data } = await api.post("/imagerie", formExamen);
-      toast.success(`✅ Examen ${data.numero || "créé"} avec succès`);
+      // Enrichir avec patient_nom pour affichage immédiat
+      const selectedPatient = patients.find(p => p._id === formExamen.patient_id);
+      const payload = {
+        ...formExamen,
+        patient_nom: selectedPatient ? `${selectedPatient.prenom} ${selectedPatient.nom}`.trim() : "",
+        medecin_prescripteur_nom: formExamen.medecin_prescripteur,
+      };
+      const { data } = await api.post("/imagerie", payload);
+      toast.success(`✅ Examen ${data.examen?.numero || data.result?.numero || "créé"} avec succès`);
       setModalNouv(false);
       setFormExamen(EMPTY_EXAMEN);
       loadExamens(); loadStats();
-    } catch {
-      toast.error("Erreur lors de la création");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la création");
+    } finally { setSaving(false); }
+  };
+
+  // ── Upload images vers le serveur ────────────────────────
+  const archiveImages = async () => {
+    if (!currentExamen || uploadedImages.length === 0) return;
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      uploadedImages.forEach(f => fd.append('images', f));
+      const { data } = await api.post(`/imagerie/${currentExamen._id}/images`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setCurrent(prev => ({ ...prev, images: data.images || [] }));
+      setUploaded([]);
+      setModalImg(false);
+      toast.success(`✅ ${uploadedImages.length} image(s) archivée(s)`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'archivage des images");
     } finally { setSaving(false); }
   };
 
@@ -659,7 +689,7 @@ export default function Imagerie() {
                               <div style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>{e.type_examen}</div>
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{tc?.label || e.type_categorie}</div>
                             </td>
-                            <td style={{ fontSize:12, color:"var(--cm)" }}>{e.medecin_prescripteur || "—"}</td>
+                            <td style={{ fontSize:12, color:"var(--cm)" }}>{e.medecin_prescripteur_nom || "—"}</td>
                             <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtDate(e.date_rdv)}{e.heure_rdv && ` ${e.heure_rdv}`}</td>
                             <td><Badge cls={pc.cls}>{pc.label}</Badge></td>
                             <td><Badge cls={sc.cls}>{sc.icon} {sc.label}</Badge></td>
@@ -717,7 +747,9 @@ export default function Imagerie() {
                     <tbody>
                       {loading ? (
                         <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>Chargement...</td></tr>
-                      ) : (examens.length === 0 ? DEMO_EXAMENS : examens).map(e => {
+                      ) : examens.length === 0 ? (
+                        <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>Aucun examen enregistré</td></tr>
+                      ) : examens.map(e => {
                         const sc = STATUT_CFG[e.statut] || { cls:"gray", label:e.statut };
                         const pc = PRIORITE_CFG[e.priorite] || { cls:"gray", label:e.priorite };
                         const tc = TYPE_EXAMENS[e.type_categorie];
@@ -734,7 +766,7 @@ export default function Imagerie() {
                               </span>
                             </td>
                             <td style={{ fontSize:12, color:"var(--cn)", maxWidth:160 }}><div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{e.type_examen}</div></td>
-                            <td style={{ fontSize:12, color:"var(--cm)" }}>{e.medecin_prescripteur || "—"}</td>
+                            <td style={{ fontSize:12, color:"var(--cm)" }}>{e.medecin_prescripteur_nom || "—"}</td>
                             <td style={{ fontSize:12, color:"var(--cm)" }}>{e.service_demandeur || "—"}</td>
                             <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtDate(e.date_rdv)}{e.heure_rdv && <div style={{fontSize:11}}>{e.heure_rdv}</div>}</td>
                             <td><Badge cls={pc.cls}>{pc.label}</Badge></td>
@@ -789,7 +821,7 @@ export default function Imagerie() {
                                 <div style={{ fontWeight:800, color:"var(--cn)", fontSize:13, minWidth:48 }}>{e.heure_rdv || "—"}</div>
                                 <div style={{ flex:1 }}>
                                   <div style={{ fontWeight:600, color:"var(--cn)", fontSize:13 }}>{e.patient_nom}</div>
-                                  <div style={{ fontSize:12, color:"var(--cm)" }}>{e.type_examen} · {e.medecin_prescripteur}</div>
+                                  <div style={{ fontSize:12, color:"var(--cm)" }}>{e.type_examen} · {e.medecin_prescripteur_nom || "—"}</div>
                                 </div>
                                 <Badge cls={pc.cls}>{pc.label}</Badge>
                                 <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:11 }} onClick={() => openExamen(e)}>{I.open}</button>
@@ -1075,7 +1107,7 @@ export default function Imagerie() {
                     <div>
                       <strong style={{ color:"#1E40AF", fontSize:13 }}>Compte rendu — {currentExamen.type_examen}</strong>
                       <div style={{ fontSize:12, color:"#3B82F6", marginTop:3 }}>
-                        Patient : <strong>{currentExamen.patient_nom}</strong> · Prescripteur : <strong>{currentExamen.medecin_prescripteur}</strong>
+                        Patient : <strong>{currentExamen.patient_nom}</strong> · Prescripteur : <strong>{currentExamen.medecin_prescripteur_nom || "—"}</strong>
                         {currentExamen.date_realisation && ` · Réalisé le ${fmtDate(currentExamen.date_realisation)}`}
                       </div>
                     </div>
@@ -1127,7 +1159,7 @@ export default function Imagerie() {
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                     <div>
                       <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Gestion des images médicales</div>
-                      <div style={{ fontSize:12, color:"var(--cm)" }}>{(currentExamen.images||[]).length + uploadedImages.length} cliché(s) archivé(s)</div>
+                      <div style={{ fontSize:12, color:"var(--cm)" }}>{(currentExamen.images||[]).length} cliché(s) archivé(s){uploadedImages.length > 0 ? ` · ${uploadedImages.length} en attente d'envoi` : ""}</div>
                     </div>
                     <div style={{ display:"flex", gap:8 }}>
                       <button className="ibtn ibtn-primary" onClick={() => setModalImg(true)}>{I.upload} Importer images</button>
@@ -1144,18 +1176,35 @@ export default function Imagerie() {
                       <div className="img-viewer" style={{ minHeight:280 }}>
                         {(currentExamen.images?.length > 0 || uploadedImages.length > 0) ? (
                           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12, padding:16, width:"100%" }}>
-                            {[...(currentExamen.images||[]), ...uploadedImages.map(f=>({ name:f.name, preview:URL.createObjectURL(f) }))].map((img, i) => (
-                              <div key={i} style={{ background:"rgba(255,255,255,.08)", borderRadius:10, overflow:"hidden", cursor:"pointer", border:"1.5px solid rgba(255,255,255,.15)", transition:"all .2s" }}
+                            {[
+                              ...(currentExamen.images||[]).map(img => ({
+                                name: img.filename || img.name,
+                                src: img.path,
+                                isImage: /\.(jpe?g|png|bmp|tiff?)$/i.test(img.filename || img.path || ''),
+                              })),
+                              ...uploadedImages.map(f => ({
+                                name: f.name,
+                                src: URL.createObjectURL(f),
+                                isImage: /\.(jpe?g|png|bmp|tiff?)$/i.test(f.name),
+                                pending: true,
+                              })),
+                            ].map((img, i) => (
+                              <div key={i} style={{ background:"rgba(255,255,255,.08)", borderRadius:10, overflow:"hidden", cursor:"pointer", border:`1.5px solid ${img.pending ? "rgba(14,165,160,.5)" : "rgba(255,255,255,.15)"}`, transition:"all .2s" }}
                                 onMouseOver={e=>e.currentTarget.style.borderColor="rgba(14,165,160,.6)"}
-                                onMouseOut={e=>e.currentTarget.style.borderColor="rgba(255,255,255,.15)"}
+                                onMouseOut={e=>e.currentTarget.style.borderColor=img.pending?"rgba(14,165,160,.5)":"rgba(255,255,255,.15)"}
+                                onClick={() => window.open(img.src, '_blank')}
                               >
-                                {img.preview ? (
-                                  <img src={img.preview} alt={img.name} style={{ width:"100%", height:120, objectFit:"cover" }} />
+                                {img.isImage ? (
+                                  <img src={img.src} alt={img.name} style={{ width:"100%", height:120, objectFit:"cover" }} />
                                 ) : (
-                                  <div style={{ height:120, display:"flex", alignItems:"center", justifyContent:"center", color:"rgba(255,255,255,.4)", fontSize:32 }}>🖼</div>
+                                  <div style={{ height:120, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", color:"rgba(255,255,255,.4)", gap:6 }}>
+                                    <span style={{ fontSize:36 }}>{/\.pdf$/i.test(img.name) ? "📄" : "🖼"}</span>
+                                    <span style={{ fontSize:10 }}>{img.name?.split('.').pop()?.toUpperCase()}</span>
+                                  </div>
                                 )}
-                                <div style={{ padding:"8px 10px" }}>
-                                  <div style={{ fontSize:11, color:"rgba(255,255,255,.7)", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{img.name || `Cliché ${i+1}`}</div>
+                                <div style={{ padding:"8px 10px", display:"flex", alignItems:"center", gap:4 }}>
+                                  {img.pending && <span style={{ fontSize:9, color:"rgba(14,165,160,.9)", fontWeight:700 }}>EN ATTENTE</span>}
+                                  <div style={{ fontSize:11, color:"rgba(255,255,255,.7)", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", flex:1 }}>{img.name || `Cliché ${i+1}`}</div>
                                 </div>
                               </div>
                             ))}
@@ -1504,8 +1553,8 @@ export default function Imagerie() {
             <div style={{ display:"flex", gap:10 }}>
               <button className="ibtn ibtn-ghost" onClick={() => setModalImg(false)}>Fermer</button>
               {uploadedImages.length > 0 && (
-                <button className="ibtn ibtn-teal" style={{ marginLeft:"auto" }} onClick={() => { toast.success(`✅ ${uploadedImages.length} image(s) archivée(s)`); setModalImg(false); }}>
-                  {I.save} Archiver ({uploadedImages.length})
+                <button className="ibtn ibtn-teal" style={{ marginLeft:"auto" }} disabled={saving} onClick={archiveImages}>
+                  {I.save} {saving ? "Envoi..." : `Archiver (${uploadedImages.length})`}
                 </button>
               )}
             </div>

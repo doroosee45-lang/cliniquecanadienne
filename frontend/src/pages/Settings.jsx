@@ -252,6 +252,9 @@ export default function Settings() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [logs, setLogs]           = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [services, setServices]   = useState([]);
+  const [rooms, setRooms]         = useState([]);
+  const [loadingServices, setLoadingServices] = useState(false);
 
   // ── Chargement API /settings ──────────────────────────────
   const loadSettings = useCallback(async () => {
@@ -327,12 +330,27 @@ export default function Settings() {
     finally { setLoadingLogs(false); }
   }, [logs.length]);
 
+  // ── Chargement services & salles ──────────────────────────
+  const loadServicesData = useCallback(async () => {
+    setLoadingServices(true);
+    try {
+      const [sRes, rRes] = await Promise.allSettled([
+        api.get("/admin/services"),
+        api.get("/admin/rooms"),
+      ]);
+      if (sRes.status === "fulfilled") setServices(sRes.value.data.services || sRes.value.data.data || []);
+      if (rRes.status === "fulfilled") setRooms(rRes.value.data.rooms || rRes.value.data.data || []);
+    } catch { /* garde les états vides */ }
+    finally { setLoadingServices(false); }
+  }, []);
+
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
   useEffect(() => {
     if (active === "utilisateurs") loadUsers();
     if (active === "audit")        loadLogs();
-  }, [active, loadUsers, loadLogs]);
+    if (["services","consultations","laboratoire","imagerie","hospitalisation","bloc"].includes(active)) loadServicesData();
+  }, [active, loadUsers, loadLogs, loadServicesData]);
 
   // ── get / set helpers ─────────────────────────────────────
   const val = (key, def = "") => values[key] !== undefined ? values[key] : def;
@@ -1153,6 +1171,533 @@ export default function Settings() {
               }}>🔄 Régénérer</button>
             </div>
             <div style={{ fontSize:11, color:"var(--sm)", marginTop:8 }}>⚠️ Ne partagez jamais votre clé API. Révoquez-la immédiatement si elle est compromise.</div>
+          </div>
+        </div>
+      </div>
+    );
+
+    // ════ SERVICES MÉDICAUX ════
+    case "services": return (
+      <div className="fu">
+        <div className="set-section-top">
+          <div><div className="set-section-title">🏥 Services médicaux</div><div className="set-section-sub">Activer / désactiver les services · API /admin/services</div></div>
+          <button className="sbtn sbtn-primary" onClick={loadServicesData}>{I.refresh} Recharger</button>
+        </div>
+        {loadingServices ? <Skeleton rows={6} /> : (
+          <>
+            {services.length > 0 ? (
+              <div className="set-card">
+                <div className="set-card-hdr"><h3>🏥 Services de la clinique</h3><p>{services.length} service(s)</p></div>
+                <div style={{ overflowX:"auto" }}>
+                  <table className="set-tbl">
+                    <thead><tr><th>Service</th><th>Responsable</th><th>Personnel</th><th>Statut</th><th>Action</th></tr></thead>
+                    <tbody>
+                      {services.map(s => (
+                        <tr key={s._id}>
+                          <td><div style={{ fontWeight:700, color:"var(--sn)", fontSize:13 }}>{s.nom}</div>{s.description&&<div style={{fontSize:11,color:"var(--sm)"}}>{s.description}</div>}</td>
+                          <td style={{ fontSize:12, color:"var(--sm)" }}>{s.chef_service?.prenom} {s.chef_service?.nom || "—"}</td>
+                          <td><Badge cls="blue">{s.nb_personnel || 0} agents</Badge></td>
+                          <td><Badge cls={s.statut==="actif"?"green":"red"}>{s.statut==="actif"?"● Actif":"○ Fermé"}</Badge></td>
+                          <td>
+                            <button className="sbtn sbtn-ghost sbtn-sm" onClick={async () => {
+                              const newStatut = s.statut === "actif" ? "ferme" : "actif";
+                              try { await api.put(`/admin/services/${s._id}`, { statut: newStatut }); toast.success("✅ Statut mis à jour"); loadServicesData(); }
+                              catch { toast.error("Erreur mise à jour"); }
+                            }}>{s.statut==="actif"?"Fermer":"Activer"}</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="al-info" style={{ marginBottom:20 }}><strong>ℹ️</strong> Aucun service configuré — utilisez le bouton "Ajouter" dans la section Administration pour créer des services.</div>
+            )}
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+              {[
+                { key:"services_consultations", nom:"Consultations", icon:"🩺", col:"#1B4F9E" },
+                { key:"services_laboratoire",   nom:"Laboratoire",   icon:"🔬", col:"#059669" },
+                { key:"services_imagerie",       nom:"Imagerie",      icon:"🩻", col:"#7C3AED" },
+                { key:"services_hospitalisation",nom:"Hospitalisation",icon:"🛏️",col:"#D97706" },
+                { key:"services_bloc",           nom:"Bloc opératoire",icon:"🔪",col:"#DC2626" },
+                { key:"services_pharmacie",      nom:"Pharmacie",     icon:"💊", col:"#0EA5A0" },
+              ].map(s => (
+                <div key={s.key} className="set-card" style={{ borderTop:`3px solid ${s.col}` }}>
+                  <div className="set-card-body" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:14 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                      <span style={{ fontSize:28 }}>{s.icon}</span>
+                      <div>
+                        <div style={{ fontWeight:700, color:"var(--sn)", fontSize:13 }}>{s.nom}</div>
+                        <div style={{ fontSize:11, color:"var(--sm)" }}>Module {val(s.key, "actif") === "actif" ? "activé" : "désactivé"}</div>
+                      </div>
+                    </div>
+                    <Toggle checked={val(s.key, true)} onChange={v => { set(s.key, v ? "actif" : "inactif"); saveKey(s.key); }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+
+    // ════ CONSULTATIONS ════
+    case "consultations": return (
+      <div className="fu">
+        <div className="set-section-top">
+          <div><div className="set-section-title">🩺 Paramètres des consultations</div><div className="set-section-sub">API /settings · groupe : consultations</div></div>
+          <button className="sbtn sbtn-teal" disabled={saving} onClick={() => saveGroup([
+            {cle:"consult_duree_defaut",type:"number"},{cle:"consult_delai_min",type:"number"},
+            {cle:"consult_tarif_base",type:"number"},{cle:"consult_rappel_sms",type:"boolean"},
+            {cle:"consult_rappel_h",type:"number"},{cle:"consult_max_jour",type:"number"},
+          ], "Consultations")}>
+            {I.save} {saving?"...":"Tout enregistrer"}
+          </button>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>⏱️ Durées & planning</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:16 }}>
+              {[
+                ["consult_duree_defaut","Durée par défaut (minutes)","number",30],
+                ["consult_delai_min","Délai minimum entre RDV (min)","number",10],
+                ["consult_max_jour","Nombre max de consultations/jour","number",20],
+              ].map(([cle,label,type,def]) => (
+                <div key={cle}>
+                  <label className="slbl">{label}</label>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input type="number" className="sinp" style={{ width:120 }} value={val(cle, def)} min={1} onChange={e => set(cle, Number(e.target.value))} />
+                    <SaveBtn cle={cle} type={type} />
+                    {saved[cle] && <span className="saved-dot" style={{ alignSelf:"center" }} />}
+                  </div>
+                </div>
+              ))}
+              <div>
+                <div className="slbl" style={{ marginBottom:8 }}>Durées disponibles (minutes)</div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {[15,20,30,45,60,90].map(d => (
+                    <button key={d} className={`sbtn sbtn-sm ${val("consult_duree_defaut",30)==d?"sbtn-teal":"sbtn-ghost"}`}
+                      onClick={() => { set("consult_duree_defaut", d); saveKey("consult_duree_defaut","number"); }}>
+                      {d} min
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>💰 Tarification</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {[
+                ["consult_tarif_base",      "Tarif consultation standard (CFA)", 5000],
+                ["consult_tarif_specialiste","Tarif spécialiste (CFA)",           10000],
+                ["consult_tarif_urgence",   "Tarif consultation urgente (CFA)",   15000],
+                ["consult_tarif_suivi",     "Tarif consultation de suivi (CFA)",   3000],
+              ].map(([cle,label,def]) => (
+                <div key={cle}>
+                  <label className="slbl">{label}</label>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input type="number" className="sinp" value={val(cle, def)} min={0} step={500} onChange={e => set(cle, Number(e.target.value))} />
+                    <SaveBtn cle={cle} type="number" />
+                    {saved[cle] && <span className="saved-dot" style={{ alignSelf:"center" }} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>📱 Rappels automatiques</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <ParamRow cle="consult_rappel_sms" label="Rappel SMS avant RDV" type="boolean">
+                <Toggle checked={val("consult_rappel_sms", true)} onChange={v => set("consult_rappel_sms", v)} />
+              </ParamRow>
+              <div>
+                <label className="slbl">Délai de rappel (heures avant RDV)</label>
+                <div style={{ display:"flex", gap:8 }}>
+                  <select className="sinp" value={val("consult_rappel_h", 24)} onChange={e => set("consult_rappel_h", Number(e.target.value))}>
+                    {[2,4,6,12,24,48].map(h => <option key={h} value={h}>{h}h avant</option>)}
+                  </select>
+                  <SaveBtn cle="consult_rappel_h" type="number" />
+                </div>
+              </div>
+              <ParamRow cle="consult_rappel_email" label="Rappel e-mail" type="boolean">
+                <Toggle checked={val("consult_rappel_email", false)} onChange={v => set("consult_rappel_email", v)} />
+              </ParamRow>
+            </div>
+          </div>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>🩺 Types de consultations</h3></div>
+            <div className="set-card-body">
+              {[
+                ["consult_type_generale",    "💊 Consultation générale",    true],
+                ["consult_type_specialiste", "🎓 Spécialiste",              true],
+                ["consult_type_suivi",       "🔄 Consultation de suivi",    true],
+                ["consult_type_urgence",     "🚨 Urgence",                  true],
+                ["consult_type_bilan",       "📋 Bilan de santé",           false],
+                ["consult_type_preventif",   "🛡️ Médecine préventive",      false],
+              ].map(([cle, nom, def]) => (
+                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid #F3F7FF" }}>
+                  <span style={{ fontSize:13, color:"var(--sn)" }}>{nom}</span>
+                  <Toggle checked={val(cle, def)} onChange={v => { set(cle, v); saveKey(cle, "boolean"); }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+
+    // ════ LABORATOIRE ════
+    case "laboratoire": return (
+      <div className="fu">
+        <div className="set-section-top">
+          <div><div className="set-section-title">🔬 Paramètres Laboratoire</div><div className="set-section-sub">API /settings · groupe : laboratoire</div></div>
+          <button className="sbtn sbtn-teal" disabled={saving} onClick={() => saveGroup([
+            {cle:"labo_delai_validation",type:"number"},{cle:"labo_alerte_critique",type:"boolean"},
+            {cle:"labo_notif_patient",type:"boolean"},{cle:"labo_notif_medecin",type:"boolean"},
+          ], "Laboratoire")}>
+            {I.save} {saving?"...":"Tout enregistrer"}
+          </button>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>⚙️ Configuration générale</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div>
+                <label className="slbl">Délai de validation des résultats (heures)</label>
+                <div style={{ display:"flex", gap:8 }}>
+                  <input type="number" className="sinp" style={{ width:120 }} value={val("labo_delai_validation", 24)} min={1} max={72} onChange={e => set("labo_delai_validation", Number(e.target.value))} />
+                  <SaveBtn cle="labo_delai_validation" type="number" />
+                </div>
+              </div>
+              <div>
+                <label className="slbl">Préfixe numéro d'analyse</label>
+                <div style={{ display:"flex", gap:8 }}>
+                  <input className="sinp" style={{ width:140 }} value={val("labo_prefixe", "LAB-")} onChange={e => set("labo_prefixe", e.target.value)} />
+                  <SaveBtn cle="labo_prefixe" />
+                </div>
+              </div>
+              <ParamRow cle="labo_alerte_critique" label="Alertes résultats critiques" type="boolean">
+                <Toggle checked={val("labo_alerte_critique", true)} onChange={v => set("labo_alerte_critique", v)} />
+              </ParamRow>
+              <ParamRow cle="labo_notif_medecin" label="Notifier le médecin prescripteur" type="boolean">
+                <Toggle checked={val("labo_notif_medecin", true)} onChange={v => set("labo_notif_medecin", v)} />
+              </ParamRow>
+              <ParamRow cle="labo_notif_patient" label="Notifier le patient (résultats normaux)" type="boolean">
+                <Toggle checked={val("labo_notif_patient", false)} onChange={v => set("labo_notif_patient", v)} />
+              </ParamRow>
+              <ParamRow cle="labo_signature_auto" label="Signature électronique automatique" type="boolean">
+                <Toggle checked={val("labo_signature_auto", false)} onChange={v => set("labo_signature_auto", v)} />
+              </ParamRow>
+            </div>
+          </div>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>💰 Tarifs analyses</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {[
+                ["labo_tarif_nfs",      "NFS (Numération Formule Sanguine)", 5000],
+                ["labo_tarif_glycemie", "Glycémie",                          2500],
+                ["labo_tarif_creatinine","Créatinine",                       3000],
+                ["labo_tarif_bilan_hepatique","Bilan hépatique complet",    15000],
+                ["labo_tarif_ionogramme","Ionogramme sanguin",               8000],
+                ["labo_tarif_culture",  "Culture & antibiogramme",          12000],
+              ].map(([cle, label, def]) => (
+                <div key={cle}>
+                  <label className="slbl">{label} (CFA)</label>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input type="number" className="sinp" value={val(cle, def)} min={0} step={500} onChange={e => set(cle, Number(e.target.value))} />
+                    <SaveBtn cle={cle} type="number" />
+                    {saved[cle] && <span className="saved-dot" style={{ alignSelf:"center" }} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="set-card" style={{ gridColumn:isMobile?"1":"1/-1" }}>
+            <div className="set-card-hdr"><h3>🔬 Catégories d'analyses disponibles</h3></div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:12, padding:16 }}>
+              {[
+                ["labo_cat_hematologie",  "🩸 Hématologie",          true],
+                ["labo_cat_biochimie",    "🧪 Biochimie",             true],
+                ["labo_cat_immunologie",  "💉 Immunologie/Sérologie", true],
+                ["labo_cat_microbiologie","🦠 Microbiologie",         true],
+                ["labo_cat_parasitologie","🔭 Parasitologie",         true],
+                ["labo_cat_hormonologie", "⚗️ Hormonologie",          false],
+                ["labo_cat_toxicologie",  "☣️ Toxicologie",           false],
+                ["labo_cat_cytologie",    "🔬 Cytologie",             false],
+              ].map(([cle, nom, def]) => (
+                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--ss)", border:"1.5px solid var(--sbr)", borderRadius:10, padding:"10px 14px" }}>
+                  <span style={{ fontSize:13, fontWeight:500, color:"var(--sn)" }}>{nom}</span>
+                  <Toggle checked={val(cle, def)} onChange={v => { set(cle, v); saveKey(cle, "boolean"); }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+
+    // ════ IMAGERIE ════
+    case "imagerie": return (
+      <div className="fu">
+        <div className="set-section-top">
+          <div><div className="set-section-title">🩻 Paramètres Imagerie</div><div className="set-section-sub">API /settings · groupe : imagerie</div></div>
+          <button className="sbtn sbtn-teal" disabled={saving} onClick={() => saveGroup([
+            {cle:"img_delai_rapport",type:"number"},{cle:"img_alerte_urgent",type:"boolean"},
+            {cle:"img_notif_medecin",type:"boolean"},{cle:"img_archivage_auto",type:"boolean"},
+          ], "Imagerie")}>
+            {I.save} {saving?"...":"Tout enregistrer"}
+          </button>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>⚙️ Configuration générale</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div>
+                <label className="slbl">Délai standard de compte-rendu (heures)</label>
+                <div style={{ display:"flex", gap:8 }}>
+                  <input type="number" className="sinp" style={{ width:120 }} value={val("img_delai_rapport", 24)} min={1} max={96} onChange={e => set("img_delai_rapport", Number(e.target.value))} />
+                  <SaveBtn cle="img_delai_rapport" type="number" />
+                </div>
+              </div>
+              <div>
+                <label className="slbl">Préfixe numéro examen</label>
+                <div style={{ display:"flex", gap:8 }}>
+                  <input className="sinp" style={{ width:140 }} value={val("img_prefixe", "IMG-")} onChange={e => set("img_prefixe", e.target.value)} />
+                  <SaveBtn cle="img_prefixe" />
+                </div>
+              </div>
+              <ParamRow cle="img_alerte_urgent" label="Alertes examens urgents" type="boolean">
+                <Toggle checked={val("img_alerte_urgent", true)} onChange={v => set("img_alerte_urgent", v)} />
+              </ParamRow>
+              <ParamRow cle="img_notif_medecin" label="Notifier le médecin prescripteur" type="boolean">
+                <Toggle checked={val("img_notif_medecin", true)} onChange={v => set("img_notif_medecin", v)} />
+              </ParamRow>
+              <ParamRow cle="img_archivage_auto" label="Archivage automatique DICOM (après 90j)" type="boolean">
+                <Toggle checked={val("img_archivage_auto", true)} onChange={v => set("img_archivage_auto", v)} />
+              </ParamRow>
+              <ParamRow cle="img_rapport_pdf" label="Génération automatique PDF" type="boolean">
+                <Toggle checked={val("img_rapport_pdf", true)} onChange={v => set("img_rapport_pdf", v)} />
+              </ParamRow>
+            </div>
+          </div>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>💰 Tarifs examens</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {[
+                ["img_tarif_radio",     "Radiographie standard",          15000],
+                ["img_tarif_echo",      "Échographie abdominale",         20000],
+                ["img_tarif_echo_ob",   "Échographie obstétricale",       25000],
+                ["img_tarif_scanner",   "Scanner (TDM)",                  80000],
+                ["img_tarif_irm",       "IRM",                           120000],
+                ["img_tarif_mammographie","Mammographie",                 35000],
+              ].map(([cle, label, def]) => (
+                <div key={cle}>
+                  <label className="slbl">{label} (CFA)</label>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input type="number" className="sinp" value={val(cle, def)} min={0} step={1000} onChange={e => set(cle, Number(e.target.value))} />
+                    <SaveBtn cle={cle} type="number" />
+                    {saved[cle] && <span className="saved-dot" style={{ alignSelf:"center" }} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="set-card" style={{ gridColumn:isMobile?"1":"1/-1" }}>
+            <div className="set-card-hdr"><h3>🩻 Types d'examens disponibles</h3></div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:12, padding:16 }}>
+              {[
+                ["img_type_radiographie","📸 Radiographie",        true],
+                ["img_type_echographie", "🔊 Échographie",         true],
+                ["img_type_scanner",     "🔄 Scanner (TDM)",       false],
+                ["img_type_irm",         "🧲 IRM",                 false],
+                ["img_type_mammographie","🎯 Mammographie",        false],
+                ["img_type_dentaire",    "🦷 Radiologie dentaire", false],
+                ["img_type_doppler",     "💓 Doppler vasculaire",  false],
+                ["img_type_panoramique", "📐 Panoramique dentaire",false],
+              ].map(([cle, nom, def]) => (
+                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--ss)", border:"1.5px solid var(--sbr)", borderRadius:10, padding:"10px 14px" }}>
+                  <span style={{ fontSize:13, fontWeight:500, color:"var(--sn)" }}>{nom}</span>
+                  <Toggle checked={val(cle, def)} onChange={v => { set(cle, v); saveKey(cle, "boolean"); }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+
+    // ════ HOSPITALISATION ════
+    case "hospitalisation": return (
+      <div className="fu">
+        <div className="set-section-top">
+          <div><div className="set-section-title">🛏️ Paramètres Hospitalisation</div><div className="set-section-sub">API /settings · groupe : hospitalisation</div></div>
+          <button className="sbtn sbtn-teal" disabled={saving} onClick={() => saveGroup([
+            {cle:"hospit_duree_max",type:"number"},{cle:"hospit_alerte_duree",type:"boolean"},
+            {cle:"hospit_tarif_chambre_simple",type:"number"},{cle:"hospit_tarif_chambre_double",type:"number"},
+          ], "Hospitalisation")}>
+            {I.save} {saving?"...":"Tout enregistrer"}
+          </button>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>⚙️ Configuration</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div>
+                <label className="slbl">Durée maximale de séjour (jours)</label>
+                <div style={{ display:"flex", gap:8 }}>
+                  <input type="number" className="sinp" style={{ width:120 }} value={val("hospit_duree_max", 30)} min={1} onChange={e => set("hospit_duree_max", Number(e.target.value))} />
+                  <SaveBtn cle="hospit_duree_max" type="number" />
+                </div>
+              </div>
+              <ParamRow cle="hospit_alerte_duree" label="Alertes dépassement durée" type="boolean">
+                <Toggle checked={val("hospit_alerte_duree", true)} onChange={v => set("hospit_alerte_duree", v)} />
+              </ParamRow>
+              <ParamRow cle="hospit_notif_famille" label="Notifier la famille à l'admission" type="boolean">
+                <Toggle checked={val("hospit_notif_famille", false)} onChange={v => set("hospit_notif_famille", v)} />
+              </ParamRow>
+              <ParamRow cle="hospit_signature_sortie" label="Signature électronique à la sortie" type="boolean">
+                <Toggle checked={val("hospit_signature_sortie", false)} onChange={v => set("hospit_signature_sortie", v)} />
+              </ParamRow>
+            </div>
+          </div>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>💰 Tarifs d'hospitalisation (par nuit)</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {[
+                ["hospit_tarif_chambre_simple",  "Chambre simple (CFA/nuit)",    15000],
+                ["hospit_tarif_chambre_double",  "Chambre double (CFA/nuit)",    10000],
+                ["hospit_tarif_chambre_vip",     "Suite VIP (CFA/nuit)",         50000],
+                ["hospit_tarif_reanimation",     "Réanimation (CFA/nuit)",       80000],
+                ["hospit_tarif_maternite",       "Maternité (CFA/nuit)",         20000],
+                ["hospit_tarif_pediatrie",       "Pédiatrie (CFA/nuit)",         12000],
+              ].map(([cle, label, def]) => (
+                <div key={cle}>
+                  <label className="slbl">{label}</label>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input type="number" className="sinp" value={val(cle, def)} min={0} step={1000} onChange={e => set(cle, Number(e.target.value))} />
+                    <SaveBtn cle={cle} type="number" />
+                    {saved[cle] && <span className="saved-dot" style={{ alignSelf:"center" }} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="set-card" style={{ gridColumn:isMobile?"1":"1/-1" }}>
+            <div className="set-card-hdr">
+              <h3>🚪 Salles & Lits</h3>
+              <p>{rooms.length} salle(s) · {rooms.filter(r=>r.statut==="libre").length} libre(s) · {rooms.filter(r=>r.statut==="occupe").length} occupée(s)</p>
+            </div>
+            {loadingServices ? <Skeleton rows={4} /> : rooms.length > 0 ? (
+              <div style={{ overflowX:"auto" }}>
+                <table className="set-tbl">
+                  <thead><tr><th>Salle / Chambre</th><th>Type</th><th>Capacité</th><th>Statut</th><th>Responsable</th></tr></thead>
+                  <tbody>
+                    {rooms.map(r => {
+                      const typeIcons = { bloc_operatoire:"🔪", consultation:"🩺", hospitalisation:"🛏️", laboratoire:"🔬", urgences:"🚨", imagerie:"🩻" };
+                      const etatCfg = { libre:{cls:"green",label:"Libre"}, occupe:{cls:"red",label:"Occupée"}, maintenance:{cls:"orange",label:"Maintenance"}, reserve:{cls:"blue",label:"Réservée"} }[r.statut] || {cls:"gray",label:r.statut};
+                      return (
+                        <tr key={r._id}>
+                          <td style={{ fontWeight:700, color:"var(--sn)" }}>{typeIcons[r.type]||"🏥"} {r.numero}</td>
+                          <td style={{ fontSize:12, color:"var(--sm)" }}>{r.type}</td>
+                          <td><Badge cls="blue">{r.capacite} lit(s)</Badge></td>
+                          <td><Badge cls={etatCfg.cls}>{etatCfg.label}</Badge></td>
+                          <td style={{ fontSize:12, color:"var(--sm)" }}>{r.responsable||"—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ padding:24, textAlign:"center", color:"var(--sm)", fontSize:13 }}>Aucune salle configurée — créez des salles depuis le module Administration.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+
+    // ════ BLOC OPÉRATOIRE ════
+    case "bloc": return (
+      <div className="fu">
+        <div className="set-section-top">
+          <div><div className="set-section-title">🔪 Paramètres Bloc opératoire</div><div className="set-section-sub">API /settings · groupe : bloc</div></div>
+          <button className="sbtn sbtn-teal" disabled={saving} onClick={() => saveGroup([
+            {cle:"bloc_duree_prep",type:"number"},{cle:"bloc_duree_nettoyage",type:"number"},
+            {cle:"bloc_alerte_planning",type:"boolean"},{cle:"bloc_checklist_obligatoire",type:"boolean"},
+          ], "Bloc opératoire")}>
+            {I.save} {saving?"...":"Tout enregistrer"}
+          </button>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>⚙️ Configuration générale</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {[
+                ["bloc_duree_prep",       "Durée de préparation salle (min)",    30],
+                ["bloc_duree_nettoyage",  "Durée de nettoyage post-op (min)",    45],
+                ["bloc_delai_programme",  "Délai min planification opération (h)",24],
+              ].map(([cle, label, def]) => (
+                <div key={cle}>
+                  <label className="slbl">{label}</label>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input type="number" className="sinp" style={{ width:120 }} value={val(cle, def)} min={0} onChange={e => set(cle, Number(e.target.value))} />
+                    <SaveBtn cle={cle} type="number" />
+                    {saved[cle] && <span className="saved-dot" style={{ alignSelf:"center" }} />}
+                  </div>
+                </div>
+              ))}
+              <ParamRow cle="bloc_alerte_planning" label="Alertes conflits de planning" type="boolean">
+                <Toggle checked={val("bloc_alerte_planning", true)} onChange={v => set("bloc_alerte_planning", v)} />
+              </ParamRow>
+              <ParamRow cle="bloc_checklist_obligatoire" label="Checklist pré-opératoire obligatoire" type="boolean">
+                <Toggle checked={val("bloc_checklist_obligatoire", true)} onChange={v => set("bloc_checklist_obligatoire", v)} />
+              </ParamRow>
+              <ParamRow cle="bloc_consentement_numerique" label="Consentement numérique" type="boolean">
+                <Toggle checked={val("bloc_consentement_numerique", false)} onChange={v => set("bloc_consentement_numerique", v)} />
+              </ParamRow>
+            </div>
+          </div>
+          <div className="set-card">
+            <div className="set-card-hdr"><h3>💰 Tarifs opératoires</h3></div>
+            <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {[
+                ["bloc_tarif_chirurgie_mineure","Chirurgie mineure (CFA)",       50000],
+                ["bloc_tarif_chirurgie_majeure","Chirurgie majeure (CFA)",      200000],
+                ["bloc_tarif_cesarienne",       "Césarienne (CFA)",             150000],
+                ["bloc_tarif_appendicectomie",  "Appendicectomie (CFA)",        120000],
+                ["bloc_tarif_anesthesie_locale","Anesthésie locale (CFA)",       15000],
+                ["bloc_tarif_anesthesie_generale","Anesthésie générale (CFA)",  80000],
+              ].map(([cle, label, def]) => (
+                <div key={cle}>
+                  <label className="slbl">{label}</label>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input type="number" className="sinp" value={val(cle, def)} min={0} step={5000} onChange={e => set(cle, Number(e.target.value))} />
+                    <SaveBtn cle={cle} type="number" />
+                    {saved[cle] && <span className="saved-dot" style={{ alignSelf:"center" }} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="set-card" style={{ gridColumn:isMobile?"1":"1/-1" }}>
+            <div className="set-card-hdr"><h3>🩺 Types d'anesthésie disponibles</h3></div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:12, padding:16 }}>
+              {[
+                ["bloc_anesth_generale",    "😴 Anesthésie générale",      true],
+                ["bloc_anesth_locale",      "💉 Anesthésie locale",         true],
+                ["bloc_anesth_locoregionale","🦾 Anesthésie loco-régionale",true],
+                ["bloc_anesth_rachidienne", "🦴 Rachianesthésie",           true],
+                ["bloc_anesth_peridurale",  "🔗 Anesthésie péridurale",     false],
+                ["bloc_anesth_sedation",    "🌙 Sédation consciente",       false],
+              ].map(([cle, nom, def]) => (
+                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--ss)", border:"1.5px solid var(--sbr)", borderRadius:10, padding:"10px 14px" }}>
+                  <span style={{ fontSize:13, fontWeight:500, color:"var(--sn)" }}>{nom}</span>
+                  <Toggle checked={val(cle, def)} onChange={v => { set(cle, v); saveKey(cle, "boolean"); }} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

@@ -6,6 +6,7 @@ import {
 } from '../store/slices/chirurgieSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -373,11 +374,12 @@ export default function Chirurgie() {
       if (search) p.set("q", search);
       if (filterStatut) p.set("statut", filterStatut);
       const { data } = await api.get(`/chirurgie?${p}`);
-      setDossiers(data.dossiers || data.data || []);
+      setDossiers(data.dossiers || data.surgeries || data.data || []);
       setTotal(data.total || 0);
-    } catch {
-      setDossiers(DEMO_DOSSIERS);
-      setTotal(DEMO_DOSSIERS.length);
+    } catch (err) {
+      console.error("Erreur chargement dossiers chirurgie:", err);
+      setDossiers([]);
+      setTotal(0);
     } finally { setLoading(false); }
   }, [page, search, filterStatut]);
 
@@ -442,6 +444,7 @@ export default function Chirurgie() {
   }, []);
 
   useEffect(() => { loadDossiers(); loadStats(); loadSelects(); }, [loadDossiers, loadStats, loadSelects]);
+  useRealtimeRefresh(loadDossiers);
 
   // ── Open dossier ───────────────────────────────────────────
   const openDossier = (d) => {

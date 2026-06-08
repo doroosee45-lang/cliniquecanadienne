@@ -3,13 +3,15 @@ import api from '../../api';
 
 export const fetchAppointments = createAsyncThunk(
   'appointments/fetchAll',
-  async ({ page = 1, limit = 20, statut = '', date = '', medecin = '', patient = '' } = {}, { rejectWithValue }) => {
+  async ({ page = 1, limit = 500, statut = '', date = '', medecin = '', patient = '', from = '', to = '' } = {}, { rejectWithValue }) => {
     try {
       const params = new URLSearchParams({ page, limit });
       if (statut) params.set('statut', statut);
-      if (date) params.set('date', date);
+      if (date)   params.set('date', date);
       if (medecin) params.set('medecin', medecin);
       if (patient) params.set('patient', patient);
+      if (from)   params.set('from', from);
+      if (to)     params.set('to', to);
       const { data } = await api.get(`/appointments?${params}`);
       return { appointments: data.appointments, total: data.total, page };
     } catch (err) {

@@ -3,8 +3,9 @@ const DossierChirurgical = require('../models/DossierChirurgical');
 const Bilan = require('../models/Bilan');
 const SuiviPostop = require('../models/SuiviPostop');
 const Complication = require('../models/Complication');
-const Patient = require('../models/Patient'); // supposé exister
-const User = require('../models/User'); // supposé exister
+const Patient = require('../models/Patient');
+const User = require('../models/User');
+const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 // Génération du numéro de dossier : CHIR-YYYY-XXXX
 async function generateNumero() {
@@ -49,7 +50,7 @@ exports.getDossiers = async (req, res) => {
 
     const total = await DossierChirurgical.countDocuments(filter);
 
-    res.json({ dossiers, total, page: parseInt(page), pages: Math.ceil(total / limit) });
+    res.json({ success: true, dossiers, surgeries: dossiers, total, page: parseInt(page), pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -155,6 +156,8 @@ exports.createDossier = async (req, res) => {
     });
 
     await dossier.save();
+    emitActivity({ module: 'chirurgie', action: 'Nouveau dossier chirurgical', detail: `${dossier.patient_nom} — ${dossier.type_intervention || dossier.motif_consultation || ''}`, icon: '🏥', userId: chirurgien_id || null, userName: chirurgien_nom || 'Système' });
+    emitDashboardUpdate();
     res.status(201).json(dossier);
   } catch (err) {
     res.status(500).json({ message: err.message });

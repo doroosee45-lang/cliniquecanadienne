@@ -3,6 +3,7 @@ const router  = require('express').Router();
 const labC    = require('../controllers/laboratory.controller');
 const { protect, authorize } = require('../middleware/auth');
 
+router.get('/stats',            protect,                                           labC.getStats);
 router.get('/catalogue',        protect,                                           labC.getCatalogue);
 router.get('/',                 protect,                                           labC.getAll);
 router.post('/',                protect, authorize('superadmin','medecin','infirmier'), labC.create);

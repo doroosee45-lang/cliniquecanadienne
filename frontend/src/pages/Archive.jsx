@@ -231,17 +231,17 @@ const NAV_ITEMS = [
     { key:"recherche",      label:"Recherche avancée",        icon:I.search },
   ]},
   { group:"Archives par catégorie", items:[
-    { key:"patients",       label:"Patients archivés",        icon:I.patient,    badge:"8", badgeCls:"teal" },
-    { key:"consultations",  label:"Consultations archivées",  icon:I.consult,    badge:"12", badgeCls:"teal" },
-    { key:"laboratoire",    label:"Laboratoire archivé",      icon:I.lab,        badge:"9", badgeCls:"teal" },
-    { key:"imagerie",       label:"Imagerie archivée",        icon:I.scan,       badge:"5", badgeCls:"teal" },
-    { key:"hospitalisations",label:"Hospitalisations arch.", icon:I.bed,        badge:"10", badgeCls:"teal" },
-    { key:"chirurgies",     label:"Chirurgies archivées",     icon:I.surgery,    badge:"4", badgeCls:"teal" },
-    { key:"documents",      label:"Documents archivés",       icon:I.file },
-    { key:"financier",      label:"Archives financières",     icon:I.money,      badge:"6", badgeCls:"teal" },
+    { key:"patients",        label:"Patients archivés",       icon:I.patient,    badgeCls:"teal" },
+    { key:"consultations",   label:"Consultations archivées", icon:I.consult,    badgeCls:"teal" },
+    { key:"laboratoire",     label:"Laboratoire archivé",     icon:I.lab,        badgeCls:"teal" },
+    { key:"imagerie",        label:"Imagerie archivée",       icon:I.scan,       badgeCls:"teal" },
+    { key:"hospitalisations",label:"Hospitalisations arch.",  icon:I.bed,        badgeCls:"teal" },
+    { key:"chirurgies",      label:"Chirurgies archivées",    icon:I.surgery,    badgeCls:"teal" },
+    { key:"documents",       label:"Documents archivés",      icon:I.file,       badgeCls:"teal" },
+    { key:"financier",       label:"Archives financières",    icon:I.money,      badgeCls:"teal" },
   ]},
   { group:"Gestion", items:[
-    { key:"restaurations",  label:"Restaurations",            icon:I.restore,    badge:"4", badgeCls:"warn" },
+    { key:"restaurations",  label:"Restaurations",            icon:I.restore,    badgeCls:"warn" },
     { key:"audit",          label:"Journal d'audit",          icon:I.audit },
     { key:"parametres",     label:"Paramètres d'archivage",   icon:I.config },
   ]},
@@ -418,7 +418,9 @@ export default function Archivage() {
 
   const [kpis, setKpis] = useState({
     total: 0, patients: 0, consultations: 0, hospitalisations: 0,
-    examens: 0, chirurgies: 0, taille_totale: "0 Mo", derniere_op: "—",
+    labo: 0, imagerie: 0, examens: 0, chirurgies: 0,
+    financier: 0, documents: 0, archives_mois: 0, restaurations: 0,
+    taille_totale: "0 Mo", derniere_op: "—",
   });
 
   // ── Sync Redux → local state ──────────────────────────────
@@ -427,7 +429,7 @@ export default function Archivage() {
   }, [reduxArchives, reduxTotal]);
 
   useEffect(() => {
-    if (reduxKpis.total > 0) setKpis(reduxKpis);
+    setKpis(prev => ({ ...prev, ...reduxKpis }));
   }, [reduxKpis]);
 
   useEffect(() => {
@@ -466,15 +468,7 @@ export default function Archivage() {
     try {
       const { data } = await api.get("/archives/stats");
       setKpis(data.kpis || kpis);
-    } catch {
-      setKpis({
-        total: DEMO_ARCHIVES.length,
-        patients: 8, consultations: 12, hospitalisations: 10,
-        examens: 9, chirurgies: 4,
-        taille_totale: "87.4 Mo",
-        derniere_op: "Auj. 02:00 (auto)",
-      });
-    }
+    } catch { /* garde les kpis existants (zéros si DB vide) */ }
   }, [dispatch]);
 
   useEffect(() => { loadArchives(); loadStats(); }, [loadArchives, loadStats]);
@@ -574,20 +568,20 @@ export default function Archivage() {
             </div>
             <div className="arc-card-body">
               {[
-                ["👤 Patients",          kpis.patients,          "#1B4F9E", 8],
-                ["🩺 Consultations",     kpis.consultations,     "#0EA5A0", 12],
-                ["🛏️ Hospitalisations",  kpis.hospitalisations,  "#D97706", 10],
-                ["🔬 Examens labo",      kpis.examens,           "#059669", 9],
-                ["🩻 Imagerie",          5,                      "#7C3AED", 5],
-                ["🔪 Chirurgies",        kpis.chirurgies,        "#DC2626", 4],
-                ["💰 Financier",         6,                      "#7C3AED", 6],
-              ].map(([lbl, val, col, n]) => (
+                ["👤 Patients",          kpis.patients,          "#1B4F9E"],
+                ["🩺 Consultations",     kpis.consultations,     "#0EA5A0"],
+                ["🛏️ Hospitalisations",  kpis.hospitalisations,  "#D97706"],
+                ["🔬 Examens labo",      kpis.labo,              "#059669"],
+                ["🩻 Imagerie",          kpis.imagerie,          "#7C3AED"],
+                ["🔪 Chirurgies",        kpis.chirurgies,        "#DC2626"],
+                ["💰 Financier",         kpis.financier,         "#0EA5A0"],
+              ].map(([lbl, val, col]) => (
                 <div key={lbl} style={{ marginBottom:12 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
                     <span style={{ fontSize:12, color:"var(--am)" }}>{lbl}</span>
-                    <span style={{ fontSize:12, fontWeight:700, color:"var(--an)" }}>{n} archives</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:"var(--an)" }}>{val || 0} archives</span>
                   </div>
-                  <Prog pct={kpis.total > 0 ? Math.round(n / kpis.total * 100) : 0} color={col} />
+                  <Prog pct={kpis.total > 0 ? Math.round((val || 0) / kpis.total * 100) : 0} color={col} />
                 </div>
               ))}
             </div>
@@ -1039,13 +1033,27 @@ export default function Archivage() {
             {NAV_ITEMS.map(group => (
               <div key={group.group} className="arc-nav-group">
                 <span className="arc-nav-group-label">{group.group}</span>
-                {group.items.map(item => (
-                  <button key={item.key} className={`arc-nav-item ${active === item.key ? "active" : ""}`} onClick={() => setActive(item.key)}>
-                    <span style={{ opacity:.85, flexShrink:0 }}>{item.icon}</span>
-                    <span style={{ flex:1, textAlign:"left" }}>{item.label}</span>
-                    {item.badge && <span className={`arc-nav-badge ${item.badgeCls||""}`}>{item.badge}</span>}
-                  </button>
-                ))}
+                {group.items.map(item => {
+                  const kpiMap = {
+                    patients:         kpis.patients         || 0,
+                    consultations:    kpis.consultations    || 0,
+                    laboratoire:      kpis.labo             || 0,
+                    imagerie:         kpis.imagerie         || 0,
+                    hospitalisations: kpis.hospitalisations || 0,
+                    chirurgies:       kpis.chirurgies       || 0,
+                    documents:        kpis.documents        || 0,
+                    financier:        kpis.financier        || 0,
+                    restaurations:    kpis.restaurations    || 0,
+                  };
+                  const badgeVal = kpiMap[item.key];
+                  return (
+                    <button key={item.key} className={`arc-nav-item ${active === item.key ? "active" : ""}`} onClick={() => setActive(item.key)}>
+                      <span style={{ opacity:.85, flexShrink:0 }}>{item.icon}</span>
+                      <span style={{ flex:1, textAlign:"left" }}>{item.label}</span>
+                      {badgeVal > 0 && <span className={`arc-nav-badge ${item.badgeCls||""}`}>{badgeVal}</span>}
+                    </button>
+                  );
+                })}
               </div>
             ))}
 

@@ -1,26 +1,15 @@
 ﻿
 
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useDispatch, useSelector } from 'react-redux';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import {
   fetchAppointments, createAppointment, updateAppointment, cancelAppointment,
   selectAppointments, selectAppointmentsLoading, selectAppointmentsTotal,
 } from '../store/slices/appointmentsSlice';
-// import api from "../api";
-// import toast from "react-hot-toast";
-
-// ─── Stub toast & api for standalone preview ─────────────────
-const toast = {
-  success: (m) => console.log("✅", m),
-  error: (m) => console.error("❌", m),
-  loading: (m, o) => console.log("⏳", m),
-};
-const api = {
-  get: async () => { throw new Error("demo"); },
-  post: async () => { throw new Error("demo"); },
-  put: async () => { throw new Error("demo"); },
-};
+import api from "../api";
+import toast from "react-hot-toast";
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -249,17 +238,32 @@ const CSS = `
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : "—";
 const fmtDateInput = (d) => d ? new Date(d).toISOString().substring(0, 10) : "";
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
-const today = new Date();
+
+// Compare deux dates en heure LOCALE (ignore l'heure) — robuste sur tous les fuseaux
+const isSameDay = (a, b) => {
+  const da = new Date(a), db = new Date(b);
+  return da.getFullYear() === db.getFullYear() &&
+         da.getMonth()    === db.getMonth()    &&
+         da.getDate()     === db.getDate();
+};
+
+// Renvoie la date locale en string YYYY-MM-DD
+const localDateStr = (d) => {
+  const dt = new Date(d);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+};
 
 const STATUT_CFG = {
-  attente:       { cls: "orange", label: "En attente",      dot: "#D97706" },
-  confirme:      { cls: "green",  label: "Confirmé",        dot: "#059669" },
-  arrive:        { cls: "teal",   label: "Arrivé",          dot: "#0EA5A0" },
-  en_consultation:{ cls:"blue",   label: "En consultation", dot: "#1B4F9E" },
-  termine:       { cls: "gray",   label: "Terminé",         dot: "#6B7280" },
-  reporte:       { cls: "purple", label: "Reporté",         dot: "#7C3AED" },
-  annule:        { cls: "red",    label: "Annulé",          dot: "#DC2626" },
-  absent:        { cls: "red",    label: "Absent",          dot: "#DC2626" },
+  planifie:       { cls: "blue",   label: "Planifié",        dot: "#1B4F9E" },
+  en_attente:     { cls: "orange", label: "En attente",      dot: "#D97706" },
+  confirme:       { cls: "green",  label: "Confirmé",        dot: "#059669" },
+  arrive:         { cls: "teal",   label: "Arrivé",          dot: "#0EA5A0" },
+  en_consultation:{ cls: "blue",   label: "En consultation", dot: "#1B4F9E" },
+  en_cours:       { cls: "blue",   label: "En cours",        dot: "#1B4F9E" },
+  termine:        { cls: "gray",   label: "Terminé",         dot: "#6B7280" },
+  reporte:        { cls: "purple", label: "Reporté",         dot: "#7C3AED" },
+  annule:         { cls: "red",    label: "Annulé",          dot: "#DC2626" },
+  absent:         { cls: "red",    label: "Absent",          dot: "#DC2626" },
 };
 
 const MOTIF_CFG = {
@@ -273,17 +277,44 @@ const MOTIF_CFG = {
   hospitalisation:   "🛏 Hospitalisation",
 };
 
-// ─── Demo data ────────────────────────────────────────────────
-const DEMO_RDVS = [];
-
-const DEMO_MEDECINS = [];
-
-const EMPTY_RDV = {
-  patient_nom:"", patient_tel:"", patient_email:"",
-  date:"", heure:"", duree:"30",
-  motif:"consultation", service:"", medecin_id:"", salle:"", notes:"",
-  statut:"attente",
+// ─── Normalise un RDV venant de l'API vers le format UI ──────
+const normalizeRdv = (r) => {
+  // date_heure full ISO — utilisée pour fmtDate + fmtTime dans l'affichage
+  const dateIso = r.date_heure
+    || (r.date && r.heure ? `${r.date}T${r.heure}:00` : r.date)
+    || new Date().toISOString();
+  return {
+    _id:          r._id,
+    reference:    r.reference || `RDV-${r._id?.slice(-4).toUpperCase()}`,
+    patient_nom:  r.patient ? `${r.patient.prenom} ${r.patient.nom}` : (r.patient_nom || '—'),
+    patient_tel:  r.patient?.telephone || r.patient_tel || '',
+    patient_email:r.patient?.email     || r.patient_email || '',
+    patient_id:   r.patient?._id       || r.patient || '',
+    medecin_nom:  r.medecin ? `Dr. ${r.medecin.prenom} ${r.medecin.nom}` : (r.medecin_nom || '—'),
+    medecin_id:   r.medecin?._id       || r.medecin || '',
+    // `date` = ISO complet pour que fmtTime() retourne l'heure correcte
+    date:         dateIso,
+    heure:        new Date(dateIso).toTimeString().substring(0, 5),
+    duree:        String(r.duree_minutes || r.duree || 30),
+    motif:        r.motif || 'consultation',
+    type:         r.type  || 'consultation',
+    service:      r.service || '',
+    salle:        r.salle  || '',
+    notes:        r.notes  || '',
+    statut:       r.statut || 'en_attente',
+    date_heure:   dateIso,
+  };
 };
+
+// Retourne un formulaire vide avec date = aujourd'hui par défaut
+const makeEmptyRdv = () => ({
+  patient_id:"",
+  date: new Date().toISOString().substring(0, 10), // aujourd'hui
+  heure:"08:00", duree:"30",
+  motif:"consultation", type:"consultation", service:"", medecin_id:"", salle:"", notes:"",
+  statut:"en_attente",
+});
+const EMPTY_RDV = makeEmptyRdv();
 
 // ─── SVG Icons ────────────────────────────────────────────────
 const I = {
@@ -388,6 +419,7 @@ function BarChart({ labels, data, color = "#1B4F9E", height = 200 }) {
 
 // ─── Mini Calendar ────────────────────────────────────────────
 function CalendrierMois({ rdvs, onDayClick }) {
+  const today = new Date(); // local to this component
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
 
   const year = currentMonth.getFullYear();
@@ -446,12 +478,465 @@ function CalendrierMois({ rdvs, onDayClick }) {
   );
 }
 
+// ─── Fréquences disponibles ───────────────────────────────────
+const FREQ_CFG = {
+  quotidien:    { label:"Quotidien",     cls:"red",    days:1,   ex:"Pansements, dialyse, injections" },
+  hebdomadaire: { label:"Hebdomadaire",  cls:"orange", days:7,   ex:"Rééducation, chimio, suivi psy" },
+  bimensuel:    { label:"Bimensuel",     cls:"blue",   days:14,  ex:"Contrôle tension, suivi" },
+  mensuel:      { label:"Mensuel",       cls:"teal",   days:30,  ex:"Diabète, grossesse, cardiologie" },
+  trimestriel:  { label:"Trimestriel",   cls:"purple", days:90,  ex:"Bilans biologiques" },
+  annuel:       { label:"Annuel",        cls:"gray",   days:365, ex:"Bilan annuel complet" },
+  personnalise: { label:"Personnalisé",  cls:"orange", days:0,   ex:"Fréquence sur mesure du médecin" },
+};
+
+const EMPTY_PROTOCOL = {
+  titre:"", icon:"🔄", couleur:"#1B4F9E", medecin:"",
+  frequence:"mensuel", frequence_jours:"", prochaine_date:"", notes:"",
+};
+
+// ═══ COMPOSANT RÉCURRENTS ═════════════════════════════════════
+function RecurrentsTab({ medecins }) {
+  const [protocols, setProtocols]       = useState([]);
+  const [loadingRec, setLoadingRec]     = useState(true);
+  const [modalNew, setModalNew]         = useState(false);
+  const [modalEdit, setModalEdit]       = useState(false);
+  const [modalPlan, setModalPlan]       = useState(false);
+  const [currentProto, setCurrentProto] = useState(null);
+  const [form, setForm]                 = useState(EMPTY_PROTOCOL);
+  const [planForm, setPlanForm]         = useState({ date:"", heure:"", notes:"" });
+  const [saving, setSaving]             = useState(false);
+  const [planPatient, setPlanPatient]   = useState(null);
+  const [planSearch, setPlanSearch]     = useState("");
+  const [planResults, setPlanResults]   = useState([]);
+  const planTimer = useRef(null);
+
+  const loadProtocols = useCallback(async () => {
+    setLoadingRec(true);
+    try {
+      const { data } = await api.get('/recurring');
+      setProtocols(data.protocols || []);
+    } catch { setProtocols([]); }
+    finally { setLoadingRec(false); }
+  }, []);
+
+  useEffect(() => { loadProtocols(); }, [loadProtocols]);
+
+  // Recherche patient pour la modal "Planifier"
+  useEffect(() => {
+    clearTimeout(planTimer.current);
+    if (planSearch.length < 2) { setPlanResults([]); return; }
+    planTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(planSearch)}`);
+        setPlanResults(data.patients || []);
+      } catch { setPlanResults([]); }
+    }, 300);
+  }, [planSearch]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const { data } = await api.post('/recurring', form);
+      setProtocols(prev => [data.protocol, ...prev]);
+      toast.success('✅ Protocole créé !');
+      setModalNew(false);
+      setForm(EMPTY_PROTOCOL);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Erreur création protocole.');
+    } finally { setSaving(false); }
+  };
+
+  const handleEdit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const { data } = await api.put(`/recurring/${currentProto._id}`, form);
+      setProtocols(prev => prev.map(p => p._id === currentProto._id ? data.protocol : p));
+      toast.success('✅ Protocole mis à jour !');
+      setModalEdit(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Erreur mise à jour.');
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Archiver ce protocole ?')) return;
+    try {
+      await api.delete(`/recurring/${id}`);
+      setProtocols(prev => prev.filter(p => p._id !== id));
+      toast.success('Protocole archivé.');
+    } catch { toast.error('Erreur suppression.'); }
+  };
+
+  const openPlan = (proto) => {
+    setCurrentProto(proto);
+    const nextD = proto.prochaine_date ? new Date(proto.prochaine_date) : new Date();
+    setPlanForm({
+      date: nextD.toISOString().substring(0,10),
+      heure: nextD.toTimeString().substring(0,5) || '08:00',
+      notes: proto.notes || '',
+    });
+    setPlanPatient(null);
+    setPlanSearch('');
+    setModalPlan(true);
+  };
+
+  const handlePlanifier = async (e) => {
+    e.preventDefault();
+    if (!planPatient?._id) { toast.error('Sélectionnez un patient.'); return; }
+    setSaving(true);
+    try {
+      const { data } = await api.post(`/recurring/${currentProto._id}/planifier`, {
+        patient:    planPatient._id,
+        date_heure: `${planForm.date}T${planForm.heure}:00`,
+        notes:      planForm.notes,
+      });
+      // Met à jour la prochaine date dans la liste
+      setProtocols(prev => prev.map(p =>
+        p._id === currentProto._id ? { ...p, prochaine_date: data.next_date } : p
+      ));
+      toast.success('📅 RDV planifié avec succès !');
+      setModalPlan(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Erreur planification.');
+    } finally { setSaving(false); }
+  };
+
+  const openEdit = (proto) => {
+    setCurrentProto(proto);
+    setForm({
+      titre:           proto.titre,
+      icon:            proto.icon || '🔄',
+      couleur:         proto.couleur || '#1B4F9E',
+      medecin:         proto.medecin?._id || proto.medecin || '',
+      frequence:       proto.frequence,
+      frequence_jours: proto.frequence_jours || '',
+      prochaine_date:  proto.prochaine_date ? new Date(proto.prochaine_date).toISOString().substring(0,10) : '',
+      notes:           proto.notes || '',
+    });
+    setModalEdit(true);
+  };
+
+  const fCls = (f) => FREQ_CFG[f]?.cls || 'gray';
+  const fLabel = (f) => FREQ_CFG[f]?.label || f;
+
+  return (
+    <div>
+      {/* En-tête */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:10 }}>
+        <div>
+          <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Rendez-vous récurrents</div>
+          <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>Suivi de pathologies chroniques et traitements réguliers</div>
+        </div>
+        <button className="cbtn cbtn-teal" onClick={() => { setForm(EMPTY_PROTOCOL); setModalNew(true); }}>
+          {I.plus} Nouveau protocole
+        </button>
+      </div>
+
+      {/* Liste des protocoles */}
+      {loadingRec ? (
+        <div style={{ textAlign:"center", padding:40, color:"var(--cm)", fontSize:13 }}>Chargement…</div>
+      ) : protocols.length === 0 ? (
+        <div className="rdv-card" style={{ padding:40, textAlign:"center" }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>🔄</div>
+          <div style={{ fontWeight:700, color:"var(--cn)", fontSize:14, marginBottom:6 }}>Aucun protocole récurrent</div>
+          <div style={{ color:"var(--cm)", fontSize:12, marginBottom:20 }}>Créez un protocole pour planifier des RDV récurrents automatiquement.</div>
+          <button className="cbtn cbtn-teal" onClick={() => { setForm(EMPTY_PROTOCOL); setModalNew(true); }}>
+            {I.plus} Créer le premier protocole
+          </button>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16, marginBottom:24 }}>
+          {protocols.map(p => (
+            <div key={p._id} className="rdv-card fu" style={{ borderLeft:`3px solid ${p.couleur || '#1B4F9E'}` }}>
+              <div style={{ padding:18 }}>
+                <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:10 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <span style={{ fontSize:24 }}>{p.icon || '🔄'}</span>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:13.5, color:"var(--cn)" }}>{p.titre}</div>
+                      <div style={{ fontSize:11.5, color:"var(--cm)", marginTop:2 }}>
+                        {p.medecin ? `Dr. ${p.medecin.prenom} ${p.medecin.nom}` : '—'}
+                      </div>
+                    </div>
+                  </div>
+                  <Badge cls={fCls(p.frequence)}>{fLabel(p.frequence)}</Badge>
+                </div>
+
+                <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:12, fontSize:12, color:"var(--cm)" }}>
+                  <span style={{ display:"flex", alignItems:"center", gap:5 }}>
+                    {I.user} <strong style={{ color:"var(--cn)" }}>{p.nb_patients || 0}</strong> patients
+                  </span>
+                  <span style={{ display:"flex", alignItems:"center", gap:5 }}>
+                    {I.clock} Prochain :&nbsp;
+                    <strong style={{ color: new Date(p.prochaine_date) < new Date() ? "var(--cr)" : "var(--cn)" }}>
+                      {p.prochaine_date ? new Date(p.prochaine_date).toLocaleDateString('fr-FR') : '—'}
+                    </strong>
+                  </span>
+                </div>
+
+                {p.notes && (
+                  <div style={{ fontSize:11, color:"var(--cm)", background:"#F8FAFD", borderRadius:8, padding:"6px 10px", marginBottom:10 }}>
+                    {p.notes}
+                  </div>
+                )}
+
+                <div style={{ display:"flex", gap:6 }}>
+                  <button className="cbtn cbtn-ghost cbtn-sm" style={{ flex:1, justifyContent:"center" }}
+                    onClick={() => openEdit(p)}>{I.edit} Modifier</button>
+                  <button className="cbtn cbtn-primary cbtn-sm" style={{ flex:1, justifyContent:"center" }}
+                    onClick={() => openPlan(p)}>{I.cal} Planifier</button>
+                  <button className="cbtn cbtn-danger cbtn-sm" style={{ padding:"6px 10px" }}
+                    onClick={() => handleDelete(p._id)} title="Archiver">{I.x}</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Types de fréquences disponibles */}
+      <div className="rdv-card fu">
+        <div className="rdv-card-hdr">
+          <div><h3>⚙️ Fréquences disponibles</h3><p>Cliquez pour créer un protocole avec cette fréquence</p></div>
+        </div>
+        <div style={{ padding:16, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))", gap:12 }}>
+          {Object.entries(FREQ_CFG).map(([key, f]) => (
+            <div key={key}
+              style={{ background:"#F8FAFD", border:"1.5px solid #E2EAF4", borderRadius:12, padding:14, cursor:"pointer", transition:"all .2s" }}
+              onClick={() => { setForm({ ...EMPTY_PROTOCOL, frequence: key }); setModalNew(true); }}
+              onMouseOver={e => e.currentTarget.style.borderColor = "#1B4F9E"}
+              onMouseOut={e => e.currentTarget.style.borderColor = "#E2EAF4"}>
+              <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)", marginBottom:4 }}>{f.label}</div>
+              <div style={{ fontSize:11, color:"var(--cm)" }}>{f.ex}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ═══ MODAL : Nouveau protocole ═══ */}
+      <Modal open={modalNew} onClose={() => setModalNew(false)} title={<>{I.plus} Nouveau protocole récurrent</>} maxWidth={560}>
+        <form onSubmit={handleCreate}>
+          <ProtocolFormFields form={form} setForm={setForm} medecins={medecins} />
+          <div style={{ display:"flex", gap:10, marginTop:20 }}>
+            <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalNew(false)}>Annuler</button>
+            <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
+              {I.save} {saving ? "Création…" : "Créer le protocole"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ═══ MODAL : Modifier protocole ═══ */}
+      <Modal open={modalEdit && !!currentProto} onClose={() => setModalEdit(false)} title={<>{I.edit} Modifier le protocole</>} maxWidth={560}>
+        <form onSubmit={handleEdit}>
+          <ProtocolFormFields form={form} setForm={setForm} medecins={medecins} />
+          <div style={{ display:"flex", gap:10, marginTop:20 }}>
+            <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalEdit(false)}>Annuler</button>
+            <button type="submit" className="cbtn cbtn-primary" style={{ marginLeft:"auto" }} disabled={saving}>
+              {I.save} {saving ? "Mise à jour…" : "Enregistrer"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ═══ MODAL : Planifier prochain RDV ═══ */}
+      <Modal open={modalPlan && !!currentProto} onClose={() => setModalPlan(false)} title={<>{I.cal} Planifier — {currentProto?.titre}</>} maxWidth={500}>
+        <form onSubmit={handlePlanifier}>
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            {/* Patient */}
+            <div>
+              <label className="clbl">Patient *</label>
+              {planPatient ? (
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#EEF4FF", border:"1.5px solid #1B4F9E", borderRadius:10, padding:"10px 14px" }}>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:13 }}>{planPatient.prenom} {planPatient.nom}</div>
+                    <div style={{ fontSize:11, color:"#6B7A99" }}>{planPatient.numero_dossier} {planPatient.telephone ? `· ${planPatient.telephone}` : ''}</div>
+                  </div>
+                  <button type="button" style={{ background:"none", border:"none", cursor:"pointer", color:"#DC2626", fontSize:18 }}
+                    onClick={() => { setPlanPatient(null); setPlanSearch(''); }}>×</button>
+                </div>
+              ) : (
+                <div style={{ position:"relative" }}>
+                  <input className="cinp" placeholder="Rechercher un patient…"
+                    value={planSearch} onChange={e => setPlanSearch(e.target.value)} required={!planPatient} />
+                  {planResults.length > 0 && (
+                    <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:"1.5px solid #E2EAF4", borderRadius:10, boxShadow:"0 8px 24px rgba(11,30,59,.12)", zIndex:100, maxHeight:180, overflowY:"auto" }}>
+                      {planResults.map(p => (
+                        <button type="button" key={p._id}
+                          style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"none", border:"none", borderBottom:"1px solid #F3F7FF", cursor:"pointer" }}
+                          onMouseDown={() => { setPlanPatient(p); setPlanSearch(''); setPlanResults([]); }}>
+                          <div style={{ fontWeight:600, fontSize:13 }}>{p.prenom} {p.nom}</div>
+                          <div style={{ fontSize:11, color:"#6B7A99" }}>{p.numero_dossier} · {p.telephone}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {/* Date & heure */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div>
+                <label className="clbl">Date *</label>
+                <input type="date" className="cinp" required value={planForm.date}
+                  min={new Date().toISOString().substring(0,10)}
+                  onChange={e => setPlanForm(f => ({ ...f, date: e.target.value }))} />
+              </div>
+              <div>
+                <label className="clbl">Heure *</label>
+                <input type="time" className="cinp" required value={planForm.heure}
+                  onChange={e => setPlanForm(f => ({ ...f, heure: e.target.value }))} />
+              </div>
+            </div>
+            {/* Médecin (info) */}
+            {currentProto?.medecin && (
+              <div style={{ background:"#F0FDFC", border:"1px solid #99F6E4", borderRadius:10, padding:"10px 14px", fontSize:12, color:"var(--cm)" }}>
+                👨‍⚕️ Médecin : <strong style={{ color:"var(--cn)" }}>
+                  Dr. {currentProto.medecin.prenom} {currentProto.medecin.nom}
+                  {currentProto.medecin.specialite ? ` — ${currentProto.medecin.specialite}` : ''}
+                </strong>
+              </div>
+            )}
+            <div>
+              <label className="clbl">Notes (optionnel)</label>
+              <textarea className="cinp" rows={2} value={planForm.notes}
+                onChange={e => setPlanForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:10, marginTop:20 }}>
+            <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalPlan(false)}>Annuler</button>
+            <button type="submit" className="cbtn cbtn-primary" style={{ marginLeft:"auto" }} disabled={saving}>
+              {I.cal} {saving ? "Planification…" : "Planifier le RDV"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+// ─── Formulaire protocole (réutilisé create + edit) ──────────
+function ProtocolFormFields({ form, setForm, medecins }) {
+  const ICONS = ['🔄','🩺','💉','🤰','❤️','🧪','💊','🏃','🫁','🦷','👁','🧠','🦴'];
+  const COLORS = ['#1B4F9E','#0EA5A0','#DC2626','#D97706','#059669','#7C3AED','#EC4899','#06B6D4'];
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      {/* Icône + couleur */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        <div>
+          <label className="clbl">Icône</label>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:4 }}>
+            {ICONS.map(ic => (
+              <button type="button" key={ic}
+                style={{ fontSize:18, padding:"4px 6px", borderRadius:8, border: form.icon === ic ? "2px solid #1B4F9E" : "1.5px solid #E2EAF4", background: form.icon === ic ? "#EEF4FF" : "#fff", cursor:"pointer" }}
+                onClick={() => setForm(f => ({ ...f, icon: ic }))}>
+                {ic}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="clbl">Couleur</label>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:4 }}>
+            {COLORS.map(col => (
+              <button type="button" key={col}
+                style={{ width:26, height:26, borderRadius:"50%", background:col, border: form.couleur === col ? "3px solid #0B1E3B" : "2px solid transparent", cursor:"pointer" }}
+                onClick={() => setForm(f => ({ ...f, couleur: col }))} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div>
+        <label className="clbl">Titre du protocole *</label>
+        <input className="cinp" required placeholder="Ex: Suivi diabète, Dialyse…"
+          value={form.titre} onChange={e => setForm(f => ({ ...f, titre: e.target.value }))} />
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        <div>
+          <label className="clbl">Médecin *</label>
+          <select className="cinp" required value={form.medecin} onChange={e => setForm(f => ({ ...f, medecin: e.target.value }))}>
+            <option value="">— Sélectionner —</option>
+            {medecins.map(m => <option key={m._id} value={m._id}>Dr. {m.prenom} {m.nom}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="clbl">Fréquence *</label>
+          <select className="cinp" required value={form.frequence} onChange={e => setForm(f => ({ ...f, frequence: e.target.value }))}>
+            {Object.entries(FREQ_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+      </div>
+      {form.frequence === 'personnalise' && (
+        <div>
+          <label className="clbl">Intervalle (jours) *</label>
+          <input type="number" className="cinp" min={1} max={365} required={form.frequence === 'personnalise'}
+            placeholder="Ex: 10"
+            value={form.frequence_jours} onChange={e => setForm(f => ({ ...f, frequence_jours: e.target.value }))} />
+        </div>
+      )}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        <div>
+          <label className="clbl">Prochaine date *</label>
+          <input type="date" className="cinp" required
+            min={new Date().toISOString().substring(0,10)}
+            value={form.prochaine_date} onChange={e => setForm(f => ({ ...f, prochaine_date: e.target.value }))} />
+        </div>
+        <div>
+          <label className="clbl">Nb patients (indicatif)</label>
+          <input type="number" className="cinp" min={0} placeholder="0"
+            value={form.nb_patients || ''} onChange={e => setForm(f => ({ ...f, nb_patients: e.target.value }))} />
+        </div>
+      </div>
+      <div>
+        <label className="clbl">Notes / Instructions</label>
+        <textarea className="cinp" rows={2} placeholder="Instructions pour ce protocole…"
+          value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+      </div>
+    </div>
+  );
+}
+
 // ═══ MAIN ═════════════════════════════════════════════════════
 export default function RendezVous() {
   const dispatch = useDispatch();
   const reduxRdvs = useSelector(selectAppointments);
 
   useEffect(() => { dispatch(fetchAppointments({})); }, [dispatch]);
+  const refreshRdvs = useCallback(() => { dispatch(fetchAppointments({})); }, [dispatch]);
+  useRealtimeRefresh(refreshRdvs);
+
+  // ── Sync les RDV réels depuis Redux vers le state local ──────
+  useEffect(() => {
+    if (reduxRdvs && reduxRdvs.length > 0) {
+      setRdvs(reduxRdvs.map(normalizeRdv));
+    }
+  }, [reduxRdvs]);
+
+  // ── Chargement des médecins depuis l'API ─────────────────────
+  const [medecins, setMedecins] = useState([]);
+  useEffect(() => {
+    api.get('/admin/users?role=medecin&limit=100')
+      .then(({ data }) => setMedecins(data.users || data.staff || []))
+      .catch(() => {});
+  }, []);
+
+  // ── Recherche patient (debounced) ────────────────────────────
+  const [patientSearch,  setPatientSearch]  = useState("");
+  const [patientResults, setPatientResults] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const patientTimer = useRef(null);
+  useEffect(() => {
+    clearTimeout(patientTimer.current);
+    if (patientSearch.length < 2) { setPatientResults([]); return; }
+    patientTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(patientSearch)}`);
+        setPatientResults(data.patients || []);
+      } catch { setPatientResults([]); }
+    }, 300);
+  }, [patientSearch]);
 
   // Détection mobile pour les onglets (inline styles → priorité absolue)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
@@ -462,7 +947,7 @@ export default function RendezVous() {
   }, []);
 
   const [tab, setTab]               = useState("dashboard");
-  const [rdvs, setRdvs]             = useState(DEMO_RDVS);
+  const [rdvs, setRdvs]             = useState([]);
   const [loading, setLoading]       = useState(false);
   const [search, setSearch]         = useState("");
   const [filterStatut, setFilter]   = useState("");
@@ -481,27 +966,41 @@ export default function RendezVous() {
   const [formRdv, setFormRdv]           = useState(EMPTY_RDV);
   const [formReport, setFormReport]     = useState({ date:"", heure:"", motif:"" });
 
-  // KPIs computed
-  const aujourd_hui = rdvs.filter(r => {
-    const d = new Date(r.date); return d.toDateString() === today.toDateString();
-  });
+  // today : recalculé une fois par minute max (useMemo stable, évite les re-renders infinis)
+  const today = useMemo(() => new Date(), [
+    // Dépendance sur la minute courante (change au plus toutes les 60s)
+    Math.floor(Date.now() / 60000),
+  ]);
+
+  // Date plafond pour "cette semaine" = aujourd'hui + 6 jours (7 jours glissants)
+  const semaineFin = useMemo(() => {
+    const d = new Date(today); d.setDate(today.getDate() + 6); d.setHours(23, 59, 59, 999); return d;
+  }, [today]);
+  const semaineDebut = useMemo(() => {
+    const d = new Date(today); d.setHours(0, 0, 0, 0); return d;
+  }, [today]);
+
+  const aujourd_hui = rdvs.filter(r => isSameDay(r.date, today));
+
   const kpis = {
     aujourd_hui: aujourd_hui.length,
+    // 7 jours glissants : aujourd'hui → aujourd'hui + 6
     semaine: rdvs.filter(r => {
-      const d = new Date(r.date); const start = new Date(today); start.setDate(today.getDate() - today.getDay() + 1);
-      const end = new Date(start); end.setDate(start.getDate() + 6);
-      return d >= start && d <= end;
+      const d = new Date(r.date);
+      return d >= semaineDebut && d <= semaineFin;
     }).length,
     confirmes: rdvs.filter(r => r.statut === "confirme").length,
-    attente: rdvs.filter(r => r.statut === "attente").length,
-    annules: rdvs.filter(r => r.statut === "annule").length,
-    reporte: rdvs.filter(r => r.statut === "reporte").length,
-    en_salle: rdvs.filter(r => ["arrive","en_consultation"].includes(r.statut) && new Date(r.date).toDateString() === today.toDateString()).length,
+    attente:   rdvs.filter(r => r.statut === "en_attente").length,
+    annules:   rdvs.filter(r => r.statut === "annule").length,
+    reporte:   rdvs.filter(r => ["reporte","planifie"].includes(r.statut)).length,
+    en_salle:  rdvs.filter(r =>
+      ["arrive","en_consultation","en_cours"].includes(r.statut) && isSameDay(r.date, today)
+    ).length,
   };
 
-  // Salles attente (aujourd'hui)
+  // Salle d'attente : RDV du jour (tous statuts actifs)
   const salleAttente = rdvs
-    .filter(r => new Date(r.date).toDateString() === today.toDateString() && ["arrive","en_consultation","attente"].includes(r.statut))
+    .filter(r => isSameDay(r.date, today) && ["arrive","en_consultation","en_cours","en_attente","planifie","confirme"].includes(r.statut))
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   // Filtered list
@@ -509,42 +1008,81 @@ export default function RendezVous() {
     const q = search.toLowerCase();
     const matchQ = !q || r.patient_nom.toLowerCase().includes(q) || r.reference.toLowerCase().includes(q) || r.medecin_nom.toLowerCase().includes(q);
     const matchS = !filterStatut || r.statut === filterStatut;
-    const matchM = !filterMedecin || r.medecin_nom === filterMedecin;
+    const matchM = !filterMedecin || r.medecin_id === filterMedecin;
     return matchQ && matchS && matchM;
   });
 
   // Actions
-  const updateStatut = (id, statut) => {
+  const updateStatut = async (id, statut) => {
+    // Mise à jour optimiste immédiate
     setRdvs(prev => prev.map(r => r._id === id ? { ...r, statut } : r));
     if (selectedRdv?._id === id) setSelectedRdv(r => ({ ...r, statut }));
-    toast.success(`✅ Statut mis à jour : ${STATUT_CFG[statut]?.label}`);
+    try {
+      await dispatch(updateAppointment({ id, body: { statut } }));
+      toast.success(`✅ Statut mis à jour : ${STATUT_CFG[statut]?.label}`);
+    } catch {
+      toast.error("Erreur lors de la mise à jour du statut.");
+      dispatch(fetchAppointments({})); // rollback
+    }
   };
 
-  const createRdv = (e) => {
+  const createRdv = async (e) => {
     e.preventDefault();
+    if (!selectedPatient?._id) {
+      toast.error("Veuillez sélectionner un patient depuis la liste de recherche.");
+      return;
+    }
+    if (!formRdv.medecin_id) {
+      toast.error("Veuillez assigner un médecin.");
+      return;
+    }
     setSaving(true);
-    setTimeout(() => {
-      const newRdv = {
-        ...formRdv,
-        _id: Date.now().toString(),
-        reference: `RDV-${String(rdvs.length + 1).padStart(3,"0")}`,
-        date: formRdv.date && formRdv.heure ? `${formRdv.date}T${formRdv.heure}:00` : new Date().toISOString(),
-        medecin_nom: DEMO_MEDECINS.find(m => m._id === formRdv.medecin_id)?.nom || "—",
+    try {
+      const payload = {
+        patient:        selectedPatient._id,
+        medecin:        formRdv.medecin_id,
+        date_heure:     `${formRdv.date}T${formRdv.heure}:00`,
+        duree_minutes:  parseInt(formRdv.duree, 10) || 30,
+        motif:          formRdv.motif || formRdv.notes || 'Consultation',
+        type:           formRdv.type || formRdv.motif || 'consultation',
+        statut:         'en_attente',
+        notes:          formRdv.notes,
+        salle:          formRdv.salle,
       };
-      setRdvs(prev => [newRdv, ...prev]);
-      toast.success(`✅ Rendez-vous ${newRdv.reference} créé`);
-      setModalNouv(false);
-      setFormRdv(EMPTY_RDV);
+      const result = await dispatch(createAppointment(payload));
+      if (createAppointment.fulfilled.match(result)) {
+        // Ajouter immédiatement en local (optimistic)
+        setRdvs(prev => [normalizeRdv(result.payload), ...prev]);
+        toast.success("✅ Rendez-vous créé avec succès !");
+        setModalNouv(false);
+        setFormRdv(makeEmptyRdv());
+        setSelectedPatient(null);
+        setPatientSearch("");
+        // Rafraîchir la liste depuis le serveur
+        dispatch(fetchAppointments({}));
+      } else {
+        toast.error(result.payload || "Erreur lors de la création du rendez-vous.");
+      }
+    } catch (err) {
+      toast.error(err?.message || "Erreur réseau.");
+    } finally {
       setSaving(false);
-    }, 600);
+    }
   };
 
-  const reporterRdv = (e) => {
+  const reporterRdv = async (e) => {
     e.preventDefault();
     if (!selectedRdv) return;
-    const newDate = `${formReport.date}T${formReport.heure}:00`;
-    setRdvs(prev => prev.map(r => r._id === selectedRdv._id ? { ...r, statut:"reporte", date:newDate } : r));
-    toast.success("📅 Rendez-vous reporté");
+    const date_heure = `${formReport.date}T${formReport.heure}:00`;
+    // Optimistic update
+    setRdvs(prev => prev.map(r => r._id === selectedRdv._id ? { ...r, statut:"reporte", date_heure, date:formReport.date, heure:formReport.heure } : r));
+    try {
+      await dispatch(updateAppointment({ id: selectedRdv._id, body: { statut: "reporte", date_heure, motif_report: formReport.motif } }));
+      toast.success("📅 Rendez-vous reporté avec succès.");
+    } catch {
+      toast.error("Erreur lors du report.");
+      dispatch(fetchAppointments({}));
+    }
     setModalReport(false);
     setFormReport({ date:"", heure:"", motif:"" });
   };
@@ -552,7 +1090,7 @@ export default function RendezVous() {
   // Chart data
   const moisLabels = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
   const moisData   = [38, 52, 45, 61, 73, 58, 42, 35, 50, 67, 55, 70];
-  const tauxPresence = Math.round(rdvs.filter(r => r.statut === "termine").length / Math.max(1,rdvs.filter(r=>!["attente","confirme"].includes(r.statut)).length) * 100);
+  const tauxPresence = Math.round(rdvs.filter(r => r.statut === "termine").length / Math.max(1, rdvs.filter(r => !["en_attente","planifie","confirme"].includes(r.statut)).length) * 100);
 
   return (
     <>
@@ -574,7 +1112,7 @@ export default function RendezVous() {
               </div>
             </div>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="cbtn cbtn-teal" onClick={() => { setFormRdv(EMPTY_RDV); setModalNouv(true); }}>
+              <button className="cbtn cbtn-teal" onClick={() => { setFormRdv(makeEmptyRdv()); setModalNouv(true); }}>
                 {I.plus} Nouveau rendez-vous
               </button>
               <button className="cbtn cbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => setModalNotif(true)}>
@@ -636,7 +1174,7 @@ export default function RendezVous() {
                       <strong>{kpis.attente}</strong> rendez-vous nécessitent une confirmation. Veuillez les traiter dès que possible.
                     </div>
                   </div>
-                  <button className="cbtn cbtn-orange cbtn-sm" onClick={() => { setFilter("attente"); setTab("liste"); }}>Voir les RDV →</button>
+                  <button className="cbtn cbtn-orange cbtn-sm" onClick={() => { setFilter("en_attente"); setTab("liste"); }}>Voir les RDV →</button>
                 </div>
               )}
 
@@ -645,7 +1183,7 @@ export default function RendezVous() {
                 <KpiCard color="blue"   icon={I.cal}   value={kpis.aujourd_hui} label="RDV aujourd'hui"   sub="toutes statuts"       onClick={() => { setFilter(""); setTab("liste"); }} />
                 <KpiCard color="indigo" icon={I.chart} value={kpis.semaine}     label="Cette semaine"     sub="7 jours glissants"     onClick={() => setTab("calendrier")} />
                 <KpiCard color="green"  icon={I.check} value={kpis.confirmes}   label="Confirmés"         sub="en attente de venue"  onClick={() => { setFilter("confirme"); setTab("liste"); }} />
-                <KpiCard color="orange" icon={I.clock} value={kpis.attente}     label="En attente"        sub="à confirmer"          urgent={kpis.attente > 0} onClick={() => { setFilter("attente"); setTab("liste"); }} />
+                <KpiCard color="orange" icon={I.clock} value={kpis.attente}     label="En attente"        sub="à confirmer"          urgent={kpis.attente > 0} onClick={() => { setFilter("en_attente"); setTab("liste"); }} />
                 <KpiCard color="red"    icon={I.x}     value={kpis.annules}     label="Annulés"           sub="ce mois"              onClick={() => { setFilter("annule"); setTab("liste"); }} />
                 <KpiCard color="teal"   icon={I.user}  value={kpis.en_salle}    label="En salle maintenant" sub="arrivés + en consult" onClick={() => setTab("attente")} />
               </div>
@@ -665,30 +1203,46 @@ export default function RendezVous() {
 
                 {/* Panel droit */}
                 <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                  {/* RDV du jour */}
+                  {/* RDV du jour + prochains si vide */}
                   <div className="rdv-card fu">
                     <div className="rdv-card-hdr">
-                      <div><h3>📋 Aujourd'hui</h3><p>{aujourd_hui.length} rendez-vous</p></div>
+                      <div>
+                        <h3>📋 {aujourd_hui.length > 0 ? "Aujourd'hui" : "Prochains RDV"}</h3>
+                        <p>{aujourd_hui.length > 0 ? `${aujourd_hui.length} rendez-vous aujourd'hui` : "Aucun RDV aujourd'hui — affichage des prochains"}</p>
+                      </div>
                     </div>
                     <div style={{ padding:"8px 0", maxHeight:260, overflowY:"auto" }}>
-                      {aujourd_hui.length === 0 ? (
-                        <div style={{ padding:"20px", textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucun RDV aujourd'hui</div>
-                      ) : aujourd_hui.sort((a,b) => new Date(a.date)-new Date(b.date)).map(r => {
-                        const sc = STATUT_CFG[r.statut] || {};
-                        return (
-                          <div key={r._id} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 16px", borderBottom:"1px solid #F3F7FF", cursor:"pointer", transition:"background .15s" }}
-                            onClick={() => { setSelectedRdv(r); setModalDetail(true); }}
-                            onMouseOver={e=>e.currentTarget.style.background="#F8FAFF"}
-                            onMouseOut={e=>e.currentTarget.style.background=""}>
-                            <div style={{ width:6, height:6, borderRadius:"50%", background:sc.dot || "#6B7280", flexShrink:0 }} />
-                            <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ fontWeight:600, fontSize:12.5, color:"var(--cn)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{r.patient_nom}</div>
-                              <div style={{ fontSize:11, color:"var(--cm)" }}>{fmtTime(r.date)} · {r.medecin_nom.replace("Dr. ","")}</div>
-                            </div>
-                            <Badge cls={sc.cls}>{sc.label}</Badge>
-                          </div>
+                      {(() => {
+                        // Afficher aujourd'hui si dispo, sinon les 5 prochains
+                        const liste = aujourd_hui.length > 0
+                          ? [...aujourd_hui].sort((a,b) => new Date(a.date) - new Date(b.date))
+                          : rdvs.filter(r => new Date(r.date) >= today && !["annule","absent"].includes(r.statut))
+                              .sort((a,b) => new Date(a.date) - new Date(b.date))
+                              .slice(0, 5);
+                        if (liste.length === 0) return (
+                          <div style={{ padding:"20px", textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucun RDV planifié</div>
                         );
-                      })}
+                        return liste.map(r => {
+                          const sc = STATUT_CFG[r.statut] || {};
+                          const isToday = isSameDay(r.date, today);
+                          return (
+                            <div key={r._id} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 16px", borderBottom:"1px solid #F3F7FF", cursor:"pointer", transition:"background .15s" }}
+                              onClick={() => { setSelectedRdv(r); setModalDetail(true); }}
+                              onMouseOver={e=>e.currentTarget.style.background="#F8FAFF"}
+                              onMouseOut={e=>e.currentTarget.style.background=""}>
+                              <div style={{ width:6, height:6, borderRadius:"50%", background:sc.dot || "#6B7280", flexShrink:0 }} />
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontWeight:600, fontSize:12.5, color:"var(--cn)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{r.patient_nom}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)" }}>
+                                  {!isToday && <span style={{ color:"#1B4F9E", fontWeight:600 }}>{fmtDate(r.date)} · </span>}
+                                  {fmtTime(r.date)} · {r.medecin_nom.replace("Dr. ","")}
+                                </div>
+                              </div>
+                              <Badge cls={sc.cls}>{sc.label}</Badge>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
 
@@ -798,11 +1352,11 @@ export default function RendezVous() {
                     <div className="rdv-card-hdr"><h3>🎨 Légende</h3></div>
                     <div style={{ padding:16 }}>
                       {[
-                        ["confirme", "Confirmé"],
-                        ["attente",  "En attente"],
-                        ["annule",   "Annulé"],
-                        ["termine",  "Terminé"],
-                        ["reporte",  "Reporté"],
+                        ["confirme",   "Confirmé"],
+                        ["en_attente", "En attente"],
+                        ["annule",     "Annulé"],
+                        ["termine",    "Terminé"],
+                        ["reporte",    "Reporté"],
                       ].map(([st, lbl]) => {
                         const sc = STATUT_CFG[st];
                         return (
@@ -822,15 +1376,17 @@ export default function RendezVous() {
                   <div className="rdv-card">
                     <div className="rdv-card-hdr"><h3>👨‍⚕️ Médecins</h3></div>
                     <div style={{ padding:12 }}>
-                      {DEMO_MEDECINS.map(m => (
+                      {medecins.length === 0 ? (
+                        <div style={{ fontSize:12, color:"var(--cm)", textAlign:"center", padding:"12px 0" }}>Aucun médecin trouvé</div>
+                      ) : medecins.map(m => (
                         <div key={m._id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 4px", borderBottom:"1px solid #F3F7FF", cursor:"pointer" }}
-                          onClick={() => { setFilterMedecin(m.nom); setTab("liste"); }}>
-                          <div style={{ width:10, height:10, borderRadius:"50%", background:m.color, flexShrink:0 }} />
+                          onClick={() => { setFilterMedecin(m._id); setTab("liste"); }}>
+                          <div style={{ width:10, height:10, borderRadius:"50%", background:"#1B4F9E", flexShrink:0 }} />
                           <div style={{ flex:1 }}>
-                            <div style={{ fontSize:12.5, fontWeight:600, color:"var(--cn)" }}>{m.nom}</div>
-                            <div style={{ fontSize:10.5, color:"var(--cm)" }}>{m.specialite}</div>
+                            <div style={{ fontSize:12.5, fontWeight:600, color:"var(--cn)" }}>Dr. {m.prenom} {m.nom}</div>
+                            <div style={{ fontSize:10.5, color:"var(--cm)" }}>{m.specialite || m.role}</div>
                           </div>
-                          <Badge cls="blue">{rdvs.filter(r => r.medecin_nom === m.nom).length}</Badge>
+                          <Badge cls="blue">{rdvs.filter(r => r.medecin_id === m._id).length}</Badge>
                         </div>
                       ))}
                     </div>
@@ -859,9 +1415,9 @@ export default function RendezVous() {
                   </select>
                   <select className="cinp rdv-inp-l" value={filterMedecin} onChange={e => setFilterMedecin(e.target.value)}>
                     <option value="">Tous les médecins</option>
-                    {DEMO_MEDECINS.map(m => <option key={m._id} value={m.nom}>{m.nom}</option>)}
+                    {medecins.map(m => <option key={m._id} value={m._id}>Dr. {m.prenom} {m.nom}</option>)}
                   </select>
-                  <button className="cbtn cbtn-primary" onClick={() => { setFormRdv(EMPTY_RDV); setModalNouv(true); }}>
+                  <button className="cbtn cbtn-primary" onClick={() => { setFormRdv(makeEmptyRdv()); setModalNouv(true); }}>
                     {I.plus} Nouveau RDV
                   </button>
                 </div>
@@ -902,10 +1458,10 @@ export default function RendezVous() {
                             <td>
                               <div style={{ display:"flex", gap:4, flexWrap:"nowrap" }}>
                                 <button className="cbtn cbtn-ghost cbtn-sm" style={{ fontSize:11, padding:"5px 8px" }} onClick={() => { setSelectedRdv(r); setModalDetail(true); }} title="Gérer">{I.edit}</button>
-                                {r.statut === "attente" && (
+                                {["en_attente","planifie"].includes(r.statut) && (
                                   <button className="cbtn cbtn-sm" style={{ background:"#ECFDF5", color:"var(--cg)", border:"1px solid #A7F3D0", padding:"5px 8px", fontSize:11 }} onClick={() => updateStatut(r._id, "confirme")} title="Confirmer">{I.check}</button>
                                 )}
-                                {["attente","confirme"].includes(r.statut) && (
+                                {["en_attente","planifie","confirme"].includes(r.statut) && (
                                   <button className="cbtn cbtn-danger cbtn-sm" style={{ padding:"5px 8px", fontSize:11 }} onClick={() => updateStatut(r._id, "annule")} title="Annuler">{I.x}</button>
                                 )}
                               </div>
@@ -935,7 +1491,7 @@ export default function RendezVous() {
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { /* refresh */ }}>🔄 Actualiser</button>
-                  <button className="cbtn cbtn-primary cbtn-sm" onClick={() => { setFormRdv(EMPTY_RDV); setModalNouv(true); }}>
+                  <button className="cbtn cbtn-primary cbtn-sm" onClick={() => { setFormRdv(makeEmptyRdv()); setModalNouv(true); }}>
                     {I.plus} Enregistrer arrivée
                   </button>
                 </div>
@@ -944,10 +1500,10 @@ export default function RendezVous() {
               {/* Stats attente */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:24 }}>
                 {[
-                  { color:"blue",   icon:I.user,  val: aujourd_hui.length,                                      lbl:"Prévus aujourd'hui",    sub:"total" },
-                  { color:"teal",   icon:I.check, val: rdvs.filter(r=>r.statut==="arrive"&&new Date(r.date).toDateString()===today.toDateString()).length, lbl:"Arrivés", sub:"en salle" },
-                  { color:"orange", icon:I.clock, val: rdvs.filter(r=>r.statut==="en_consultation"&&new Date(r.date).toDateString()===today.toDateString()).length, lbl:"En consultation", sub:"actuellement" },
-                  { color:"green",  icon:I.check, val: rdvs.filter(r=>r.statut==="termine"&&new Date(r.date).toDateString()===today.toDateString()).length, lbl:"Terminés",      sub:"aujourd'hui" },
+                  { color:"blue",   icon:I.user,  val: aujourd_hui.length,                                                                          lbl:"Prévus aujourd'hui", sub:"total" },
+                  { color:"teal",   icon:I.check, val: rdvs.filter(r=>r.statut==="arrive"         && isSameDay(r.date, today)).length, lbl:"Arrivés",          sub:"en salle" },
+                  { color:"orange", icon:I.clock, val: rdvs.filter(r=>r.statut==="en_consultation"&& isSameDay(r.date, today)).length, lbl:"En consultation",  sub:"actuellement" },
+                  { color:"green",  icon:I.check, val: rdvs.filter(r=>r.statut==="termine"        && isSameDay(r.date, today)).length, lbl:"Terminés",         sub:"aujourd'hui" },
                 ].map((k,i) => (
                   <KpiCard key={i} color={k.color} icon={k.icon} value={k.val} label={k.lbl} sub={k.sub} />
                 ))}
@@ -980,7 +1536,7 @@ export default function RendezVous() {
                           </div>
                           <Badge cls={sc.cls}>{sc.label}</Badge>
                           <div style={{ display:"flex", gap:4 }}>
-                            {r.statut === "attente" && (
+                            {["en_attente","planifie","confirme"].includes(r.statut) && (
                               <button className="cbtn cbtn-sm" style={{ background:"#F0FDFC", color:"var(--ct)", border:"1px solid #99F6E4", padding:"5px 10px", fontSize:11 }}
                                 onClick={() => updateStatut(r._id, "arrive")}>✓ Arrivé</button>
                             )}
@@ -1004,16 +1560,18 @@ export default function RendezVous() {
                   <div className="rdv-card">
                     <div className="rdv-card-hdr"><h3>👨‍⚕️ Médecins disponibles</h3></div>
                     <div style={{ padding:14 }}>
-                      {DEMO_MEDECINS.map(m => {
-                        const enConsult = rdvs.filter(r => r.medecin_nom === m.nom && r.statut === "en_consultation" && new Date(r.date).toDateString() === today.toDateString());
-                        const enAttente = rdvs.filter(r => r.medecin_nom === m.nom && r.statut === "arrive" && new Date(r.date).toDateString() === today.toDateString());
+                      {medecins.length === 0 ? (
+                        <div style={{ fontSize:12, color:"var(--cm)", textAlign:"center", padding:"12px 0" }}>Aucun médecin trouvé</div>
+                      ) : medecins.map(m => {
+                        const enConsult = rdvs.filter(r => r.medecin_id === m._id && r.statut === "en_consultation" && isSameDay(r.date, today));
+                        const enAttente = rdvs.filter(r => r.medecin_id === m._id && r.statut === "arrive"          && isSameDay(r.date, today));
                         return (
                           <div key={m._id} style={{ background:"#F8FAFD", borderRadius:12, padding:"12px 14px", marginBottom:10 }}>
                             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                               <div style={{ width:10, height:10, borderRadius:"50%", background: enConsult.length > 0 ? "#059669" : "#D1D5DB", flexShrink:0 }} />
                               <div style={{ flex:1 }}>
-                                <div style={{ fontWeight:700, fontSize:12.5, color:"var(--cn)" }}>{m.nom}</div>
-                                <div style={{ fontSize:11, color:"var(--cm)" }}>{m.specialite}</div>
+                                <div style={{ fontWeight:700, fontSize:12.5, color:"var(--cn)" }}>Dr. {m.prenom} {m.nom}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)" }}>{m.specialite || m.role}</div>
                               </div>
                             </div>
                             <div style={{ display:"flex", gap:6, marginTop:8 }}>
@@ -1030,12 +1588,14 @@ export default function RendezVous() {
                   <div className="rdv-card">
                     <div className="rdv-card-hdr"><h3>⏱ Temps d'attente estimé</h3></div>
                     <div style={{ padding:16 }}>
-                      {DEMO_MEDECINS.map(m => {
-                        const nb = rdvs.filter(r => r.medecin_nom === m.nom && r.statut === "arrive" && new Date(r.date).toDateString() === today.toDateString()).length;
+                      {medecins.length === 0 ? (
+                        <div style={{ fontSize:12, color:"var(--cm)", textAlign:"center", padding:"8px 0" }}>Aucun médecin</div>
+                      ) : medecins.map(m => {
+                        const nb = rdvs.filter(r => r.medecin_id === m._id && r.statut === "arrive" && isSameDay(r.date, today)).length;
                         const tps = nb * 25;
                         return (
                           <div key={m._id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, fontSize:12 }}>
-                            <span style={{ color:"var(--cm)" }}>{m.nom.replace("Dr. ","Dr. ")}</span>
+                            <span style={{ color:"var(--cm)" }}>Dr. {m.prenom} {m.nom}</span>
                             <span style={{ fontWeight:700, color: tps > 45 ? "var(--cr)" : tps > 20 ? "var(--co)" : "var(--cg)" }}>
                               {nb === 0 ? "—" : `~${tps} min`}
                             </span>
@@ -1051,73 +1611,9 @@ export default function RendezVous() {
 
           {/* ══════════ RÉCURRENTS ══════════ */}
           {tab === "recurrents" && (
-            <div>
-              <div style={{ marginBottom:20 }}>
-                <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Rendez-vous récurrents</div>
-                <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>Suivi de pathologies chroniques et traitements réguliers</div>
-              </div>
-
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:16 }}>
-                {[
-                  { icon:"🤰", titre:"Suivi de grossesse",   freq:"Mensuel",     nb:4, col:"#7C3AED", cls:"purple", prochain:"15/06/2026", medecin:"Dr. Sophie Pierre" },
-                  { icon:"💉", titre:"Dialyse",               freq:"3×/semaine",  nb:8, col:"#DC2626", cls:"red",    prochain:"02/06/2026", medecin:"Dr. Martin Leblanc" },
-                  { icon:"🩺", titre:"Contrôle diabète",     freq:"Mensuel",     nb:6, col:"#D97706", cls:"orange", prochain:"10/06/2026", medecin:"Dr. Claire Mba" },
-                  { icon:"🏃", titre:"Rééducation",           freq:"Hebdomadaire",nb:3, col:"#0EA5A0", cls:"teal",  prochain:"04/06/2026", medecin:"Dr. Martin Leblanc" },
-                  { icon:"❤️", titre:"Suivi cardiologique",  freq:"Bimensuel",   nb:5, col:"#1B4F9E", cls:"blue",   prochain:"08/06/2026", medecin:"Dr. Claire Mba" },
-                  { icon:"🫁", titre:"Suivi BPCO",            freq:"Trimestriel", nb:2, col:"#059669", cls:"green",  prochain:"20/06/2026", medecin:"Dr. Sophie Pierre" },
-                ].map((p, i) => (
-                  <div key={i} className="rdv-card fu" style={{ borderLeft:`3px solid ${p.col}` }}>
-                    <div style={{ padding:18 }}>
-                      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                          <span style={{ fontSize:22 }}>{p.icon}</span>
-                          <div>
-                            <div style={{ fontWeight:700, fontSize:13.5, color:"var(--cn)" }}>{p.titre}</div>
-                            <div style={{ fontSize:11.5, color:"var(--cm)", marginTop:2 }}>{p.medecin}</div>
-                          </div>
-                        </div>
-                        <Badge cls={p.cls}>{p.freq}</Badge>
-                      </div>
-                      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
-                        <span style={{ fontSize:11.5, color:"var(--cm)", display:"flex", alignItems:"center", gap:5 }}>
-                          {I.user} <strong style={{ color:"var(--cn)" }}>{p.nb}</strong> patients
-                        </span>
-                        <span style={{ fontSize:11.5, color:"var(--cm)", display:"flex", alignItems:"center", gap:5 }}>
-                          {I.clock} Prochain : <strong style={{ color:"var(--cn)" }}>{p.prochain}</strong>
-                        </span>
-                      </div>
-                      <div style={{ display:"flex", gap:6 }}>
-                        <button className="cbtn cbtn-ghost cbtn-sm" style={{ flex:1, justifyContent:"center" }}>{I.edit} Modifier</button>
-                        <button className="cbtn cbtn-primary cbtn-sm" style={{ flex:1, justifyContent:"center" }}>{I.plus} Planifier</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="rdv-card fu" style={{ marginTop:20 }}>
-                <div className="rdv-card-hdr">
-                  <div><h3>⚙️ Configuration des récurrences</h3><p>Créer un nouveau protocole de suivi récurrent</p></div>
-                  <button className="cbtn cbtn-teal cbtn-sm">{I.plus} Nouveau protocole</button>
-                </div>
-                <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:16 }}>
-                  {[
-                    { icon:"📅", titre:"Quotidien",      ex:"Pansements, dialyse, injections" },
-                    { icon:"📆", titre:"Hebdomadaire",   ex:"Rééducation, chimio, suivi psy" },
-                    { icon:"🗓️",  titre:"Mensuel",       ex:"Diabète, grossesse, cardiologie" },
-                    { icon:"⚙️",  titre:"Personnalisé",  ex:"Fréquence sur mesure du médecin" },
-                  ].map((p, i) => (
-                    <div key={i} style={{ background:"#F8FAFD", border:"1.5px solid var(--cbr)", borderRadius:12, padding:14, cursor:"pointer", transition:"all .2s" }}
-                      onMouseOver={e=>e.currentTarget.style.boxShadow="var(--shm)"}
-                      onMouseOut={e=>e.currentTarget.style.boxShadow=""}>
-                      <div style={{ fontSize:22, marginBottom:8 }}>{p.icon}</div>
-                      <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{p.titre}</div>
-                      <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>{p.ex}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <RecurrentsTab
+              medecins={medecins}
+            />
           )}
 
           {/* ══════════ RAPPORTS ══════════ */}
@@ -1180,13 +1676,15 @@ export default function RendezVous() {
                     <table className="rdv-tbl">
                       <thead><tr><th>Médecin</th><th>Spécialité</th><th>Total</th><th>Taux présence</th></tr></thead>
                       <tbody>
-                        {DEMO_MEDECINS.map(m => {
-                          const total = rdvs.filter(r => r.medecin_nom === m.nom).length;
-                          const term = rdvs.filter(r => r.medecin_nom === m.nom && r.statut === "termine").length;
+                        {medecins.length === 0 ? (
+                          <tr><td colSpan={4} style={{ textAlign:"center", color:"var(--cm)", fontSize:12, padding:"16px 0" }}>Aucun médecin</td></tr>
+                        ) : medecins.map(m => {
+                          const total = rdvs.filter(r => r.medecin_id === m._id).length;
+                          const term  = rdvs.filter(r => r.medecin_id === m._id && r.statut === "termine").length;
                           return (
                             <tr key={m._id}>
-                              <td><div style={{ fontWeight:600, color:"var(--cn)", fontSize:12.5 }}>{m.nom}</div></td>
-                              <td><Badge cls="blue">{m.specialite}</Badge></td>
+                              <td><div style={{ fontWeight:600, color:"var(--cn)", fontSize:12.5 }}>Dr. {m.prenom} {m.nom}</div></td>
+                              <td><Badge cls="blue">{m.specialite || m.role}</Badge></td>
                               <td style={{ fontWeight:700 }}>{total}</td>
                               <td>
                                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -1233,22 +1731,36 @@ export default function RendezVous() {
           <form onSubmit={createRdv}>
             <div className="rdv-form-g">
               <div className="rdv-col-all">
-                <div style={{ background:"#EEF4FF", borderRadius:12, padding:"12px 16px", marginBottom:4 }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:"var(--cb)", marginBottom:8 }}>👤 Informations Patient</div>
-                  <div className="rdv-form-g" style={{ gap:10 }}>
-                    <div>
-                      <label className="clbl">Nom complet *</label>
-                      <input className="cinp" required placeholder="Ex: Jean Dupont" value={formRdv.patient_nom} onChange={e => setFormRdv(f=>({...f,patient_nom:e.target.value}))} />
+                <div style={{ background:"#EEF4FF", borderRadius:12, padding:"12px 16px", marginBottom:4, position:"relative" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"var(--cb)", marginBottom:8 }}>👤 Patient *</div>
+                  {selectedPatient ? (
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#fff", border:"1.5px solid #1B4F9E", borderRadius:10, padding:"10px 14px" }}>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:13, color:"#0B1E3B" }}>{selectedPatient.prenom} {selectedPatient.nom}</div>
+                        <div style={{ fontSize:11, color:"#6B7A99" }}>{selectedPatient.numero_dossier} {selectedPatient.telephone ? `· ${selectedPatient.telephone}` : ''}</div>
+                      </div>
+                      <button type="button" style={{ background:"none", border:"none", cursor:"pointer", color:"#DC2626", fontSize:18 }}
+                        onClick={() => { setSelectedPatient(null); setPatientSearch(""); }}>×</button>
                     </div>
-                    <div>
-                      <label className="clbl">Téléphone</label>
-                      <input className="cinp" placeholder="+242 06 …" value={formRdv.patient_tel} onChange={e => setFormRdv(f=>({...f,patient_tel:e.target.value}))} />
+                  ) : (
+                    <div style={{ position:"relative" }}>
+                      <input className="cinp" placeholder="Rechercher un patient par nom ou dossier…"
+                        value={patientSearch} onChange={e => setPatientSearch(e.target.value)}
+                        required={!selectedPatient} />
+                      {patientResults.length > 0 && (
+                        <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:"1.5px solid #E2EAF4", borderRadius:10, boxShadow:"0 8px 24px rgba(11,30,59,.12)", zIndex:100, maxHeight:180, overflowY:"auto" }}>
+                          {patientResults.map(p => (
+                            <button type="button" key={p._id}
+                              style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"none", border:"none", borderBottom:"1px solid #F3F7FF", cursor:"pointer" }}
+                              onMouseDown={() => { setSelectedPatient(p); setPatientSearch(""); setPatientResults([]); }}>
+                              <div style={{ fontWeight:600, fontSize:13 }}>{p.prenom} {p.nom}</div>
+                              <div style={{ fontSize:11, color:"#6B7A99" }}>{p.numero_dossier} · {p.telephone}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="rdv-col-all">
-                      <label className="clbl">E-mail</label>
-                      <input className="cinp" type="email" placeholder="patient@email.com" value={formRdv.patient_email} onChange={e => setFormRdv(f=>({...f,patient_email:e.target.value}))} />
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -1280,10 +1792,14 @@ export default function RendezVous() {
                 </select>
               </div>
               <div>
-                <label className="clbl">Médecin assigné</label>
-                <select className="cinp" value={formRdv.medecin_id} onChange={e => setFormRdv(f=>({...f,medecin_id:e.target.value}))}>
-                  <option value="">— Non assigné —</option>
-                  {DEMO_MEDECINS.map(m => <option key={m._id} value={m._id}>{m.nom}</option>)}
+                <label className="clbl">Médecin assigné *</label>
+                <select className="cinp" required value={formRdv.medecin_id} onChange={e => setFormRdv(f=>({...f,medecin_id:e.target.value}))}>
+                  <option value="">— Sélectionner un médecin —</option>
+                  {medecins.map(m => (
+                    <option key={m._id} value={m._id}>
+                      {m.role === 'medecin' ? 'Dr. ' : ''}{m.prenom} {m.nom}{m.specialite ? ` — ${m.specialite}` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>

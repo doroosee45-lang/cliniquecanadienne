@@ -1364,6 +1364,7 @@ import {
 } from '../store/slices/pharmacySlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -1569,6 +1570,20 @@ const DEMO_COMMANDES = [];
 const FORMES_PHARMA = ["Comprimé","Gélule","Sirop","Injectable","Perfusion","Pommade","Crème","Suppositoire","Patch","Spray","Sachet","Gouttes"];
 const CATEGORIES = ["Antibiotiques","Analgésiques","Antipaludéens","Antidiabétiques","Antihypertenseurs","Anti-inflammatoires","Gastro-entérologie","Antiprotozoaires","Solutés","Vitamines","Antiseptiques","Cardiologie","Neurologie"];
 
+// Normalise les champs API (stock_actuel→stock_quantite, date_peremption→date_expiration, etc.)
+const normalizeMed = (m) => ({
+  ...m,
+  stock_quantite: m.stock_actuel ?? m.stock_quantite ?? 0,
+  date_expiration: m.date_peremption || m.date_expiration || null,
+  lot: m.numero_lot || m.lot || "",
+  ordonnance: m.ordonnance_requise ?? m.ordonnance ?? false,
+  fournisseur: m.fournisseur || m.fabricant || "",
+  code: m.code || "",
+  emplacement: m.emplacement || "",
+  prix_vente: m.prix_vente ?? 0,
+  stock_minimum: m.stock_minimum ?? m.seuil_alerte ?? 10,
+});
+
 const EMPTY_MED = { code:"", nom_commercial:"", dci:"", categorie:"", forme:"Comprimé", dosage:"", fabricant:"", fournisseur:"", prix_achat:0, prix_vente:0, stock_quantite:0, stock_minimum:50, stock_maximum:500, emplacement:"", lot:"", date_expiration:"", ordonnance:false };
 const EMPTY_MVT = { medicament_id:"", type:"entree", quantite:1, reference:"", notes:"", date_peremption_lot:"", lot:"" };
 const EMPTY_CMD = { fournisseur:"", date_livraison_souhaitee:"", notes:"", lignes:[{ id:1, nom:"", forme:"", dosage:"", quantite:1, prix_unitaire:0 }] };
@@ -1715,16 +1730,25 @@ export default function Pharmacie() {
   const [modePaiement, setModePaiement] = useState("especes");
   const [rxNum, setRxNum]       = useState("");
 
+  // Recherche intelligente médicament dans le panier
+  const [panierSearch, setPanierSearch] = useState({});
+  const [panierOpen, setPanierOpen]     = useState({});
+
+  // Ticket de vente
+  const [venteTicket, setVenteTicket] = useState(null);
+  const [modalTicket, setModalTicket] = useState(false);
+
   // ── Load data ──────────────────────────────────────────────
   const loadMeds = useCallback(async () => {
     setLoading(true);
     try {
-      const p = new URLSearchParams({ page, limit:20 });
+      const p = new URLSearchParams({ page, limit:50 });
       if (search) p.set("q", search);
       if (filterCat) p.set("categorie", filterCat);
       if (filterSt) p.set("statut", filterSt);
-      const { data } = await api.get(`/pharmacie/medicaments?${p}`);
-      setMeds(data.medicaments || data.data || []);
+      const { data } = await api.get(`/pharmacy?${p}`);
+      const raw = data.medications || data.medicaments || data.data || [];
+      setMeds(raw.map(normalizeMed));
     } catch {
       setMeds(DEMO_MEDS);
     } finally { setLoading(false); }
@@ -1732,60 +1756,88 @@ export default function Pharmacie() {
 
   const loadStats = useCallback(async () => {
     try {
-      const { data } = await api.get("/pharmacie/stats");
-      setKpis(data.kpis || kpis);
-    } catch {
-      const d = DEMO_MEDS;
+      const { data } = await api.get("/pharmacy?limit=500");
+      const d = (data.medications || data.medicaments || data.data || []).map(normalizeMed);
       setKpis({
-        total: d.length,
+        total: data.total || d.length,
         ruptures: d.filter(x=>stockSt(x.stock_quantite,x.stock_minimum)==="rupture").length,
         critiques: d.filter(x=>stockSt(x.stock_quantite,x.stock_minimum)==="critique").length,
         bas: d.filter(x=>stockSt(x.stock_quantite,x.stock_minimum)==="bas").length,
         expires: d.filter(x=>perempSt(x.date_expiration)==="perime").length,
         imminents: d.filter(x=>perempSt(x.date_expiration)==="imminent").length,
-        valeur_stock: d.reduce((s,m)=>s+m.stock_quantite*m.prix_vente,0),
-        ventes_jour: 124500,
-        ventes_mois: 3840000,
+        valeur_stock: d.reduce((s,m)=>s+m.stock_quantite*(m.prix_vente||0),0),
+        ventes_jour: 0,
+        ventes_mois: 0,
       });
+    } catch {
+      // garde les kpis à zéro si l'API échoue
     }
   }, []);
 
   const loadMvts = useCallback(async () => {
     try {
-      const { data } = await api.get("/pharmacie/mouvements?limit=30");
-      setMvts(data.mouvements || data.data || []);
+      // Agrège les sous-documents mouvements depuis les médicaments
+      const { data } = await api.get("/pharmacy?limit=200");
+      const allMeds = (data.medications || []).map(normalizeMed);
+      const mvtsList = [];
+      allMeds.forEach(m => {
+        (m.mouvements || []).slice(-5).forEach(mv => {
+          mvtsList.push({ ...mv, medicament_nom: m.nom_commercial, _id: mv._id || `${m._id}-${mv.type}-${mv.date}` });
+        });
+      });
+      mvtsList.sort((a,b) => new Date(b.date||b.created_at) - new Date(a.date||a.created_at));
+      setMvts(mvtsList.slice(0, 30));
     } catch { setMvts(DEMO_MVTS); }
   }, []);
 
   const loadCommandes = useCallback(async () => {
     try {
-      const { data } = await api.get("/pharmacie/commandes?limit=20");
+      const { data } = await api.get("/pharmacy/commandes?limit=20");
       setCmds(data.commandes || data.data || []);
     } catch { setCmds(DEMO_COMMANDES); }
   }, []);
 
   const loadFournisseurs = useCallback(async () => {
     try {
-      const { data } = await api.get("/pharmacie/fournisseurs");
+      const { data } = await api.get("/pharmacy/fournisseurs");
       setFrns(data.fournisseurs || data.data || []);
     } catch { setFrns(DEMO_FOURNISSEURS); }
   }, []);
 
   useEffect(() => { loadMeds(); loadStats(); loadMvts(); loadCommandes(); loadFournisseurs(); }, [loadMeds, loadStats, loadMvts, loadCommandes, loadFournisseurs]);
+  useRealtimeRefresh(loadMeds);
 
   // ── CRUD médicament ────────────────────────────────────────
   const createMed = async (e) => {
     e.preventDefault();
     setSaving(true);
+    // Mapper les champs frontend → modèle Mongoose
+    const payload = {
+      nom_commercial: formMed.nom_commercial,
+      dci: formMed.dci,
+      forme: (formMed.forme || "comprime").toLowerCase().replace("é","e").replace("î","i"),
+      dosage: formMed.dosage,
+      categorie: formMed.categorie,
+      fabricant: formMed.fabricant || formMed.fournisseur || "",
+      numero_lot: formMed.lot || "",
+      stock_actuel: Number(formMed.stock_quantite) || 0,
+      stock_minimum: Number(formMed.stock_minimum) || 10,
+      prix_achat: Number(formMed.prix_achat) || 0,
+      prix_vente: Number(formMed.prix_vente) || 0,
+      date_peremption: formMed.date_expiration || null,
+      ordonnance_requise: !!formMed.ordonnance,
+    };
     try {
-      const { data } = await api.post("/pharmacie/medicaments", formMed);
+      const { data } = await api.post("/pharmacy", payload);
       toast.success("✅ Médicament ajouté au catalogue");
-      setMeds(prev => [data.medicament || {...formMed,_id:Date.now().toString()}, ...prev]);
+      const newMed = normalizeMed(data.medication || { ...payload, _id: Date.now().toString() });
+      setMeds(prev => [newMed, ...prev]);
       setModalAdd(false);
       setFormMed(EMPTY_MED);
       loadStats();
     } catch {
-      setMeds(prev => [{...formMed,_id:Date.now().toString()}, ...prev]);
+      const newMed = normalizeMed({ ...payload, _id: Date.now().toString() });
+      setMeds(prev => [newMed, ...prev]);
       toast.success("✅ Médicament ajouté (local)");
       setModalAdd(false);
       setFormMed(EMPTY_MED);
@@ -1796,13 +1848,27 @@ export default function Pharmacie() {
     e.preventDefault();
     if (!currentMed) return;
     setSaving(true);
+    const payload = {
+      nom_commercial: formMed.nom_commercial,
+      dci: formMed.dci,
+      forme: (formMed.forme || "comprime").toLowerCase().replace("é","e").replace("î","i"),
+      dosage: formMed.dosage,
+      categorie: formMed.categorie,
+      fabricant: formMed.fabricant || formMed.fournisseur || "",
+      numero_lot: formMed.lot || formMed.numero_lot || "",
+      stock_minimum: Number(formMed.stock_minimum) || 10,
+      prix_achat: Number(formMed.prix_achat) || 0,
+      prix_vente: Number(formMed.prix_vente) || 0,
+      date_peremption: formMed.date_expiration || formMed.date_peremption || null,
+      ordonnance_requise: !!(formMed.ordonnance ?? formMed.ordonnance_requise),
+    };
     try {
-      await api.put(`/pharmacie/medicaments/${currentMed._id}`, formMed);
+      const { data } = await api.put(`/pharmacy/${currentMed._id}`, payload);
       toast.success("✅ Médicament mis à jour");
-      setMeds(prev => prev.map(m=>m._id===currentMed._id?{...m,...formMed}:m));
+      setMeds(prev => prev.map(m => m._id===currentMed._id ? normalizeMed({ ...m, ...payload, ...(data.medication||{}) }) : m));
       setModalEdit(false);
     } catch {
-      setMeds(prev => prev.map(m=>m._id===currentMed._id?{...m,...formMed}:m));
+      setMeds(prev => prev.map(m => m._id===currentMed._id ? normalizeMed({ ...m, ...payload }) : m));
       toast.success("✅ Mis à jour (local)");
       setModalEdit(false);
     } finally { setSaving(false); }
@@ -1811,7 +1877,7 @@ export default function Pharmacie() {
   const deleteMed = async (id) => {
     if (!window.confirm("Supprimer ce médicament du catalogue ?")) return;
     try {
-      await api.delete(`/pharmacie/medicaments/${id}`);
+      await api.delete(`/pharmacy/${id}`);
       setMeds(prev => prev.filter(m=>m._id!==id));
       toast.success("🗑 Médicament supprimé");
     } catch {
@@ -1825,7 +1891,7 @@ export default function Pharmacie() {
     e.preventDefault();
     setSaving(true);
     try {
-      const { data } = await api.post("/pharmacie/mouvements", formMvt);
+      const { data } = await api.post(`/pharmacy/${formMvt.medicament_id}/mouvement`, formMvt);
       toast.success(`✅ Mouvement enregistré`);
       setMvts(prev => [data.mouvement||{...formMvt,_id:Date.now().toString(),date:new Date().toISOString()}, ...prev]);
       // Update stock local
@@ -1847,21 +1913,124 @@ export default function Pharmacie() {
     const items = panier.filter(it=>it.med&&it.quantite>0);
     if (!items.length) return toast.error("Panier vide");
     setSaving(true);
+    const total = items.reduce((s,it)=>s+it.med.prix_vente*it.quantite,0);
+    const buildTicket = (numero) => ({
+      numero: numero || `VNT-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`,
+      date: new Date(),
+      client: clientNom || "Comptoir",
+      mode_paiement: modePaiement,
+      items: items.map(it => ({
+        nom: it.med.nom_commercial,
+        dosage: it.med.dosage || "",
+        quantite: it.quantite,
+        prix_unitaire: it.med.prix_vente,
+        sous_total: it.med.prix_vente * it.quantite,
+      })),
+      total,
+    });
     try {
-      await api.post("/pharmacie/ventes", { client:clientNom, mode_paiement:modePaiement, items:items.map(it=>({medicament_id:it.med._id,quantite:it.quantite,prix_unitaire:it.med.prix_vente})) });
-      const total = items.reduce((s,it)=>s+it.med.prix_vente*it.quantite,0);
+      const { data } = await api.post("/pharmacy/ventes", { client:clientNom, mode_paiement:modePaiement, items:items.map(it=>({medicament_id:it.med._id,quantite:it.quantite,prix_unitaire:it.med.prix_vente})) });
+      setVenteTicket(buildTicket(data.vente?.numero));
       toast.success(`✅ Vente enregistrée — ${fmtCFA(total)}`);
-      setPanier([{id:Date.now(),med:null,quantite:1}]);
-      setClientNom("");
-      setModalVente(false);
       loadMeds(); loadStats();
     } catch {
-      const total = items.reduce((s,it)=>s+it.med.prix_vente*it.quantite,0);
+      setVenteTicket(buildTicket(null));
       toast.success(`✅ Vente enregistrée — ${fmtCFA(total)}`);
+    } finally {
+      setSaving(false);
       setPanier([{id:Date.now(),med:null,quantite:1}]);
-      setClientNom("");
+      setPanierSearch({}); setPanierOpen({});
+      setClientNom(""); setRxNum("");
       setModalVente(false);
-    } finally { setSaving(false); }
+      setModalTicket(true);
+    }
+  };
+
+  // ── Impression ticket thermique ───────────────────────────
+  const modeLabel = { especes:"Espèces 💵", mobile_money:"Mobile Money 📱", carte_bancaire:"Carte bancaire 💳", assurance:"Assurance 🏥" };
+
+  const printThermal = (fullA4 = false) => {
+    if (!venteTicket) return;
+    const t = venteTicket;
+    const dateStr = new Date(t.date).toLocaleString("fr-FR");
+    const rows = t.items.map(i =>
+      `<tr><td>${i.nom}${i.dosage?" ("+i.dosage+")":""}</td><td style="text-align:center">${i.quantite}</td><td style="text-align:right">${fmtCFA(i.prix_unitaire)}</td><td style="text-align:right">${fmtCFA(i.sous_total)}</td></tr>`
+    ).join("");
+    const css = fullA4 ? `
+      body { font-family:'Arial',sans-serif; font-size:12px; max-width:210mm; margin:auto; padding:20mm 15mm; }
+      h2 { font-size:18px; } .sep { border:1px dashed #ccc; margin:8px 0; }
+      table { width:100%; border-collapse:collapse; margin:10px 0; }
+      th,td { padding:5px 6px; border-bottom:1px solid #eee; }
+      th { background:#f5f5f5; font-weight:700; text-align:left; }
+      td:last-child,th:last-child { text-align:right; }
+      .total { font-size:16px; font-weight:800; }
+    ` : `
+      @page { size:80mm auto; margin:5mm 3mm; }
+      body { font-family:'Courier New',monospace; font-size:10px; width:72mm; }
+      h2 { font-size:12px; text-align:center; } .sep { border-top:1px dashed #000; margin:4px 0; }
+      table { width:100%; border-collapse:collapse; font-size:9px; }
+      th { font-weight:700; border-bottom:1px solid #000; } td,th { padding:2px 1px; }
+      td:last-child,th:last-child { text-align:right; }
+      .total { font-size:13px; font-weight:800; }
+    `;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ticket ${t.numero}</title>
+    <style>${css}</style></head><body>
+    <div style="text-align:center">
+      <h2>🏥 Clinique Canadienne de Souanké</h2>
+      <div>Souanké, Congo-Brazzaville</div>
+      <div class="sep"></div>
+      <div><strong>TICKET DE VENTE</strong></div>
+      <div>N° ${t.numero}</div>
+      <div>${dateStr}</div>
+    </div>
+    <div class="sep"></div>
+    <div>Client : <strong>${t.client}</strong></div>
+    <div>Paiement : ${modeLabel[t.mode_paiement] || t.mode_paiement}</div>
+    <div class="sep"></div>
+    <table><thead><tr><th>Médicament</th><th>Qté</th><th>PU</th><th>Total</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="sep"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span>TOTAL</span><span class="total">${fmtCFA(t.total)}</span>
+    </div>
+    <div class="sep"></div>
+    <div style="text-align:center;margin-top:8px">
+      <div>Merci de votre confiance !</div>
+      <div style="font-size:9px;margin-top:4px">Conservez ce ticket pour tout remboursement.</div>
+    </div>
+    </body></html>`;
+    const win = window.open("", "_blank", "width=500,height=700");
+    if (!win) { toast.error("Popup bloqué — autorisez les popups pour imprimer."); return; }
+    win.document.write(html);
+    win.document.close();
+    win.onload = () => { win.focus(); win.print(); };
+  };
+
+  const shareWhatsApp = () => {
+    if (!venteTicket) return;
+    const t = venteTicket;
+    const lignes = t.items.map(i => `  • ${i.nom} x${i.quantite} = ${fmtCFA(i.sous_total)}`).join("\n");
+    const txt = `🧾 *TICKET DE VENTE — Clinique Canadienne de Souanké*
+📅 ${new Date(t.date).toLocaleString("fr-FR")}
+🔢 N° ${t.numero}
+👤 Client : ${t.client}
+
+${lignes}
+
+💰 *TOTAL : ${fmtCFA(t.total)}*
+💳 Paiement : ${modeLabel[t.mode_paiement] || t.mode_paiement}
+
+✅ Merci de votre confiance !`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, "_blank");
+  };
+
+  const shareEmail = () => {
+    if (!venteTicket) return;
+    const t = venteTicket;
+    const lignes = t.items.map(i => `- ${i.nom} x${i.quantite} = ${fmtCFA(i.sous_total)}`).join("\n");
+    const subject = `Ticket de vente N° ${t.numero} — Clinique Canadienne de Souanké`;
+    const body = `Clinique Canadienne de Souanké\nSouanké, Congo-Brazzaville\n\nTICKET DE VENTE\nN° ${t.numero}\nDate : ${new Date(t.date).toLocaleString("fr-FR")}\nClient : ${t.client}\nPaiement : ${modeLabel[t.mode_paiement] || t.mode_paiement}\n\nDétail :\n${lignes}\n\nTOTAL : ${fmtCFA(t.total)}\n\nMerci de votre confiance !`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
   // ── Commande ───────────────────────────────────────────────
@@ -1869,7 +2038,7 @@ export default function Pharmacie() {
     e.preventDefault();
     setSaving(true);
     try {
-      const { data } = await api.post("/pharmacie/commandes", formCmd);
+      const { data } = await api.post("/pharmacy/commandes", formCmd);
       toast.success("📦 Bon de commande créé");
       setCmds(prev => [{...formCmd,_id:Date.now().toString(),numero:`BC-2025-000${prev.length+1}`,statut:"brouillon",date:new Date().toISOString(),...(data.commande||{})}, ...prev]);
       setModalCmd(false);
@@ -2938,22 +3107,138 @@ export default function Pharmacie() {
                 <label className="plbl" style={{ margin:0 }}>🛍️ Panier ({panier.length} article{panier.length>1?"s":""})</label>
                 <button type="button" className="pbtn pbtn-ghost pbtn-sm" onClick={() => setPanier(p=>[...p,{id:Date.now(),med:null,quantite:1}])}>{I.plus} Ajouter</button>
               </div>
-              {panier.map(it=>(
-                <div key={it.id} className="cart-item">
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <select className="pinp" style={{ fontSize:12 }} onChange={e=>{
-                      const m = meds.find(x=>x._id===e.target.value);
-                      setPanier(p=>p.map(x=>x.id===it.id?{...x,med:m||null}:x));
-                    }}>
-                      <option value="">— Sélectionner —</option>
-                      {meds.filter(m=>m.stock_quantite>0).map(m=><option key={m._id} value={m._id}>{m.nom_commercial} ({m.dosage}) — {fmtCFA(m.prix_vente)}</option>)}
-                    </select>
+              {panier.map(it=>{
+                const q = (panierSearch[it.id] ?? (it.med?.nom_commercial ?? "")).toLowerCase();
+                const isOpen = !!panierOpen[it.id];
+
+                // Filtre : si champ vide → 10 premiers du catalogue ; sinon → tous ceux qui contiennent q
+                const suggestions = isOpen
+                  ? (q.trim() === ""
+                    ? meds.slice(0, 10)
+                    : meds.filter(m =>
+                        (m.nom_commercial || "").toLowerCase().includes(q) ||
+                        (m.dci           || "").toLowerCase().includes(q) ||
+                        (m.principe_actif|| "").toLowerCase().includes(q) ||
+                        (m.code          || "").toLowerCase().includes(q) ||
+                        (m.forme         || "").toLowerCase().includes(q) ||
+                        (m.categorie     || "").toLowerCase().includes(q) ||
+                        (m.fabricant     || "").toLowerCase().includes(q) ||
+                        (m.dosage        || "").toLowerCase().includes(q)
+                      ).slice(0, 12)
+                    )
+                  : [];
+
+                const inputVal = panierSearch[it.id] !== undefined
+                  ? panierSearch[it.id]
+                  : (it.med?.nom_commercial || "");
+
+                return (
+                  <div key={it.id} className="cart-item" style={{ flexWrap:"wrap", gap:8, alignItems:"flex-start" }}>
+                    {/* ── Champ de recherche intelligent ── */}
+                    <div style={{ flex:"1 1 200px", position:"relative" }}>
+                      <input
+                        className="pinp"
+                        style={{ fontSize:12, paddingRight:it.med ? 28 : 12 }}
+                        placeholder="🔍 Taper pour rechercher (ex: Amox, Parac...)"
+                        value={inputVal}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setPanierSearch(s => ({ ...s, [it.id]: val }));
+                          setPanierOpen(o  => ({ ...o, [it.id]: true }));
+                          // Si l'utilisateur efface, déselectionner le médicament
+                          if (!val.trim()) setPanier(p => p.map(x => x.id === it.id ? { ...x, med: null } : x));
+                        }}
+                        onFocus={() => setPanierOpen(o => ({ ...o, [it.id]: true }))}
+                        onBlur={() => setTimeout(() => setPanierOpen(o => ({ ...o, [it.id]: false })), 200)}
+                      />
+
+                      {/* Icône ✓ si médicament sélectionné */}
+                      {it.med && (
+                        <span style={{ position:"absolute", right:9, top:"50%", transform:"translateY(-50%)", fontSize:14, color:"var(--pg)", pointerEvents:"none" }}>✓</span>
+                      )}
+
+                      {/* ── Dropdown suggestions ── */}
+                      {isOpen && (
+                        <div style={{
+                          position:"absolute", top:"calc(100% + 4px)", left:0, right:0,
+                          background:"#fff", border:"1.5px solid var(--pbr)", borderRadius:12,
+                          zIndex:300, maxHeight:260, overflowY:"auto",
+                          boxShadow:"0 10px 30px rgba(11,30,59,.14)"
+                        }}>
+                          {suggestions.length === 0 ? (
+                            <div style={{ padding:"14px 16px", textAlign:"center", color:"var(--pm)", fontSize:12 }}>
+                              Aucun médicament trouvé pour "{panierSearch[it.id]}"
+                            </div>
+                          ) : (
+                            <>
+                              {q.trim() === "" && (
+                                <div style={{ padding:"8px 14px", fontSize:10, fontWeight:700, color:"var(--pm)", background:"var(--ps)", borderBottom:"1px solid var(--pbr)", textTransform:"uppercase", letterSpacing:.6 }}>
+                                  Catalogue — 10 premiers ({meds.length} total)
+                                </div>
+                              )}
+                              {suggestions.map(m => {
+                                const ss = stockSt(m.stock_quantite, m.stock_minimum);
+                                const rupture = ss === "rupture";
+                                const stockColor = { ok:"var(--pg)", bas:"var(--po)", critique:"#F97316", rupture:"var(--pr)" }[ss] || "var(--pg)";
+                                return (
+                                  <div key={m._id}
+                                    onMouseDown={e => {
+                                      e.preventDefault(); // évite que onBlur ne ferme avant la sélection
+                                      setPanier(p => p.map(x => x.id === it.id ? { ...x, med: m } : x));
+                                      setPanierSearch(s => ({ ...s, [it.id]: m.nom_commercial }));
+                                      setPanierOpen(o => ({ ...o, [it.id]: false }));
+                                    }}
+                                    style={{
+                                      padding:"10px 14px", cursor: rupture ? "not-allowed" : "pointer",
+                                      borderBottom:"1px solid #F3F7FF", transition:"background .12s",
+                                      background: rupture ? "#FFF8F8" : "",
+                                      opacity: rupture ? .7 : 1,
+                                    }}
+                                    onMouseOver={e => { if (!rupture) e.currentTarget.style.background="#F0FDF8"; }}
+                                    onMouseOut={e  => { e.currentTarget.style.background = rupture ? "#FFF8F8" : ""; }}
+                                  >
+                                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                                      <span style={{ fontWeight:700, fontSize:12, color:"var(--pn)" }}>
+                                        {m.nom_commercial}
+                                        {m.dosage && <span style={{ color:"var(--pm)", fontWeight:400 }}> {m.dosage}</span>}
+                                      </span>
+                                      {rupture
+                                        ? <span style={{ fontSize:10, fontWeight:700, color:"var(--pr)", background:"#FEE2E2", padding:"2px 7px", borderRadius:99 }}>RUPTURE</span>
+                                        : <span style={{ fontSize:11, fontWeight:700, color:"var(--pg)" }}>{fmtCFA(m.prix_vente)}</span>
+                                      }
+                                    </div>
+                                    <div style={{ fontSize:11, color:"var(--pm)", marginTop:3, display:"flex", gap:10, alignItems:"center" }}>
+                                      {m.forme    && <span>{m.forme}</span>}
+                                      {m.categorie&& <span>· {m.categorie}</span>}
+                                      <span style={{ color:stockColor, fontWeight:600, marginLeft:"auto" }}>
+                                        Stock : {m.stock_quantite}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Quantité */}
+                    <input
+                      type="number" min={1} max={it.med?.stock_quantite || 999} value={it.quantite}
+                      style={{ width:68, padding:"9px 8px", border:"1.5px solid var(--pbr)", borderRadius:10, textAlign:"center", fontWeight:700, fontSize:13, outline:"none", fontFamily:"Poppins,sans-serif" }}
+                      onChange={e => setPanier(p => p.map(x => x.id === it.id ? { ...x, quantite: Math.max(1, Number(e.target.value)) } : x))}
+                    />
+                    <div style={{ width:108, textAlign:"right", fontWeight:700, color:"var(--pn)", fontSize:13, flexShrink:0, paddingTop:10 }}>
+                      {it.med ? fmtCFA(it.med.prix_vente * it.quantite) : "—"}
+                    </div>
+                    {panier.length > 1 && (
+                      <button type="button" onClick={() => setPanier(p => p.filter(x => x.id !== it.id))}
+                        style={{ background:"none", border:"none", cursor:"pointer", color:"var(--pr)", fontSize:20, lineHeight:1, paddingTop:8 }}>×</button>
+                    )}
                   </div>
-                  <input type="number" min={1} max={it.med?.stock_quantite||999} value={it.quantite} style={{ width:70, padding:"7px 8px", border:"1.5px solid var(--pbr)", borderRadius:8, textAlign:"center", fontWeight:700, fontSize:13, outline:"none" }} onChange={e=>setPanier(p=>p.map(x=>x.id===it.id?{...x,quantite:Number(e.target.value)}:x))} />
-                  <div style={{ width:110, textAlign:"right", fontWeight:700, color:"var(--pn)", fontSize:13 }}>{it.med?fmtCFA(it.med.prix_vente*it.quantite):"—"}</div>
-                  {panier.length>1&&<button type="button" onClick={() => setPanier(p=>p.filter(x=>x.id!==it.id))} style={{ background:"none", border:"none", cursor:"pointer", color:"var(--pr)", fontSize:18 }}>×</button>}
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Total */}
@@ -3068,6 +3353,77 @@ export default function Pharmacie() {
               <button className="pbtn pbtn-teal" style={{ marginLeft:"auto" }} onClick={() => { toast.success("📦 Bon de commande IA transmis — En attente validation Admin"); setModalIACmd(false); }}>📧 Transmettre la commande</button>
             </div>
           </div>
+        </Modal>
+
+        {/* ═══ MODAL : TICKET DE VENTE ═══ */}
+        <Modal open={modalTicket} onClose={() => setModalTicket(false)} title="🧾 Ticket de vente" narrow>
+          {venteTicket && (
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {/* Ticket preview */}
+              <div style={{ background:"#F8FAFD", border:"1.5px dashed var(--pbr)", borderRadius:14, padding:16, fontFamily:"'Courier New',monospace", fontSize:12 }}>
+                <div style={{ textAlign:"center", marginBottom:8 }}>
+                  <div style={{ fontWeight:800, fontSize:13 }}>🏥 Clinique Canadienne de Souanké</div>
+                  <div style={{ fontSize:10, color:"var(--pm)" }}>Souanké, Congo-Brazzaville</div>
+                  <div style={{ borderTop:"1px dashed #ccc", margin:"6px 0" }} />
+                  <div style={{ fontWeight:700 }}>TICKET DE VENTE</div>
+                  <div style={{ fontSize:11 }}>N° {venteTicket.numero}</div>
+                  <div style={{ fontSize:10, color:"var(--pm)" }}>{new Date(venteTicket.date).toLocaleString("fr-FR")}</div>
+                </div>
+                <div style={{ borderTop:"1px dashed #ccc", margin:"6px 0" }} />
+                <div style={{ fontSize:11 }}>Client : <strong>{venteTicket.client}</strong></div>
+                <div style={{ fontSize:11 }}>Paiement : {({especes:"Espèces 💵",mobile_money:"Mobile Money 📱",carte_bancaire:"Carte bancaire 💳",assurance:"Assurance 🏥"})[venteTicket.mode_paiement] || venteTicket.mode_paiement}</div>
+                <div style={{ borderTop:"1px dashed #ccc", margin:"6px 0" }} />
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:10 }}>
+                  <thead>
+                    <tr style={{ borderBottom:"1px solid #ccc" }}>
+                      <th style={{ textAlign:"left", paddingBottom:3 }}>Médicament</th>
+                      <th style={{ textAlign:"center", paddingBottom:3 }}>Qté</th>
+                      <th style={{ textAlign:"right", paddingBottom:3 }}>PU</th>
+                      <th style={{ textAlign:"right", paddingBottom:3 }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {venteTicket.items.map((item, i) => (
+                      <tr key={i}>
+                        <td style={{ paddingTop:3 }}>{item.nom}{item.dosage && <span style={{ opacity:.7 }}> ({item.dosage})</span>}</td>
+                        <td style={{ textAlign:"center", paddingTop:3 }}>{item.quantite}</td>
+                        <td style={{ textAlign:"right", paddingTop:3 }}>{fmtCFA(item.prix_unitaire)}</td>
+                        <td style={{ textAlign:"right", paddingTop:3, fontWeight:700 }}>{fmtCFA(item.sous_total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ borderTop:"1px dashed #ccc", margin:"6px 0" }} />
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontWeight:700, fontSize:12 }}>TOTAL</span>
+                  <span style={{ fontWeight:800, fontSize:16, color:"var(--pg)" }}>{fmtCFA(venteTicket.total)}</span>
+                </div>
+                <div style={{ borderTop:"1px dashed #ccc", margin:"6px 0" }} />
+                <div style={{ textAlign:"center", fontSize:10, color:"var(--pm)" }}>Merci de votre confiance !<br/>Conservez ce ticket pour tout remboursement.</div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                <button className="pbtn pbtn-primary" onClick={() => printThermal(false)}>
+                  {I.print} Impr. thermique
+                </button>
+                <button className="pbtn pbtn-teal" onClick={() => printThermal(true)}>
+                  📄 PDF complet (A4)
+                </button>
+                <button
+                  className="pbtn"
+                  style={{ background:"#25D366", color:"#fff", fontWeight:700 }}
+                  onClick={shareWhatsApp}
+                >
+                  📱 Partager WhatsApp
+                </button>
+                <button className="pbtn pbtn-ghost" onClick={shareEmail}>
+                  📧 Envoyer par email
+                </button>
+              </div>
+              <button className="pbtn pbtn-ghost" style={{ width:"100%" }} onClick={() => setModalTicket(false)}>Fermer</button>
+            </div>
+          )}
         </Modal>
 
         {/* ═══ MODAL : INVENTAIRE ═══ */}

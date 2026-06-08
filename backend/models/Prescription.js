@@ -16,10 +16,15 @@ const PrescriptionSchema = new Schema({
     quantite: Number,
     notes: String,
   }],
-  statut: { type: String, enum: ['active','dispensee','expiree','annulee'], default: 'active' },
+  statut: { type: String, enum: ['brouillon','active','publiee','dispensee','expiree','annulee'], default: 'brouillon' },
   dispensee_par: { type: Schema.Types.ObjectId, ref: 'User' },
   date_dispensation: Date,
   interactions_detectees: [{ medicaments: [String], risque: String, description: String }],
+  // Champs publication (visible par le patient après publication)
+  publie_at:        { type: Date },
+  publie_par:       { type: Schema.Types.ObjectId, ref: 'User' },
+  email_patient_envoye: { type: Boolean, default: false },
+  notif_patient_envoyee: { type: Boolean, default: false },
 }, { timestamps: true });
 
 PrescriptionSchema.pre('save', async function(next) {

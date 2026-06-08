@@ -1,5 +1,6 @@
 const Consultation = require('../models/Consultation');
 const { logAction, paginate } = require('../utils/helpers');
+const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -41,6 +42,8 @@ exports.create = async (req, res, next) => {
 
     const consultation = await Consultation.create({ ...req.body, medecin: req.user._id, ia_suggestions: iaSuggestions });
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'consultations', entite_id: consultation._id, ip: req.ip });
+    emitActivity({ module: 'consultations', action: 'Nouvelle consultation', detail: req.body.motif || 'Consultation médicale', icon: '🩺', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
     res.status(201).json({ success: true, consultation });
   } catch (err) { next(err); }
 };

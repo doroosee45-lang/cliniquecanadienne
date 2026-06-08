@@ -9,6 +9,7 @@ import {
 } from '../store/slices/messagesSlice';
 import api from "../api";
 import { useAuth } from "../contexts/AuthContext";
+import { useSocket } from "../contexts/SocketContext";
 import toast from "react-hot-toast";
 
 // ─── CSS (same design system: Medical Navy + Teal) ────────────
@@ -185,6 +186,61 @@ const CSS = `
 @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 .fu { animation:fadeUp .3s ease both; }
 
+/* ─ Bouton appel professionnel ─ */
+.msg-call-btn { display:inline-flex; align-items:center; gap:7px; padding:8px 16px; border-radius:10px; border:1.5px solid var(--cbr); background:linear-gradient(to bottom,#EEF4FF,#E8F0FE); color:var(--cn); font-size:12.5px; font-weight:600; cursor:pointer; transition:all .22s; font-family:'Poppins',sans-serif; white-space:nowrap; }
+.msg-call-btn:hover { background:linear-gradient(135deg,#1B4F9E,#0EA5A0); color:#fff; border-color:transparent; box-shadow:0 4px 14px rgba(27,79,158,.3); transform:translateY(-1px); }
+.msg-call-btn svg { flex-shrink:0; }
+
+/* ─ Enregistrement vocal ─ */
+.msg-rec-wrap { flex:1; background:#FEF2F2; border:1.5px solid #FCA5A5; border-radius:14px; padding:10px 16px; display:flex; align-items:center; gap:12px; }
+.msg-rec-dot { width:10px; height:10px; border-radius:50%; background:#DC2626; animation:recBlink 1s infinite; flex-shrink:0; }
+@keyframes recBlink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.75)} }
+.msg-rec-timer { font-size:15px; font-weight:700; color:#DC2626; font-variant-numeric:tabular-nums; min-width:36px; }
+.msg-rec-label { font-size:12px; color:#B91C1C; font-weight:500; flex:1; }
+.msg-rec-wave { display:flex; align-items:center; gap:2px; }
+.msg-rec-wave span { width:3px; border-radius:99px; background:#DC2626; animation:wave 1.2s infinite ease-in-out; }
+.msg-rec-wave span:nth-child(1){ height:8px; animation-delay:0s; }
+.msg-rec-wave span:nth-child(2){ height:14px; animation-delay:.15s; }
+.msg-rec-wave span:nth-child(3){ height:20px; animation-delay:.3s; }
+.msg-rec-wave span:nth-child(4){ height:14px; animation-delay:.45s; }
+.msg-rec-wave span:nth-child(5){ height:8px; animation-delay:.6s; }
+@keyframes wave { 0%,100%{transform:scaleY(.4)} 50%{transform:scaleY(1)} }
+.msg-mic-btn { width:42px; height:42px; border-radius:12px; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--cm); background:#F8FAFD; border:1.5px solid var(--cbr); transition:all .2s; flex-shrink:0; }
+.msg-mic-btn:hover { background:#EEF4FF; color:var(--ct); border-color:var(--ct); }
+.msg-mic-btn.recording { background:linear-gradient(135deg,#DC2626,#EF4444); color:#fff; border-color:transparent; box-shadow:0 0 0 0 rgba(220,38,38,.4); animation:micPulse 1.4s infinite; }
+@keyframes micPulse { 0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.35)} 60%{box-shadow:0 0 0 10px rgba(220,38,38,0)} }
+.msg-rec-stop { width:38px; height:38px; border-radius:10px; border:1.5px solid #FCA5A5; background:#fff; color:#DC2626; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; flex-shrink:0; transition:all .2s; }
+.msg-rec-stop:hover { background:#DC2626; color:#fff; border-color:#DC2626; }
+.msg-rec-send { width:38px; height:38px; border-radius:10px; border:none; background:linear-gradient(135deg,#059669,#10B981); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .2s; }
+.msg-rec-send:hover { transform:scale(1.07); box-shadow:0 4px 12px rgba(5,150,105,.35); }
+
+/* ─ Bulle audio ─ */
+.msg-audio-bubble { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:16px; width:270px; }
+.msg-audio-bubble.other { background:#fff; border:1.5px solid var(--cbr); box-shadow:var(--sh); border-bottom-left-radius:4px; }
+.msg-audio-bubble.me { background:linear-gradient(135deg,rgba(255,255,255,.18),rgba(255,255,255,.08)); border:1.5px solid rgba(255,255,255,.2); border-bottom-right-radius:4px; }
+.msg-audio-play { width:40px; height:40px; border-radius:50%; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .2s; }
+.msg-audio-play.other { background:#EEF4FF; color:var(--cb); }
+.msg-audio-play.me    { background:rgba(255,255,255,.28); color:#fff; }
+.msg-audio-play:hover { transform:scale(1.08); box-shadow:0 3px 10px rgba(0,0,0,.18); }
+.msg-audio-track { height:4px; border-radius:99px; cursor:pointer; position:relative; }
+.msg-audio-track.other { background:#DDE6F5; }
+.msg-audio-track.me    { background:rgba(255,255,255,.2); }
+.msg-audio-fill { position:absolute; left:0; top:0; height:100%; border-radius:99px; }
+.msg-audio-fill.other { background:var(--cb); }
+.msg-audio-fill.me    { background:rgba(255,255,255,.9); }
+.msg-audio-knob { position:absolute; top:50%; transform:translateY(-50%); width:10px; height:10px; border-radius:50%; margin-left:-5px; }
+.msg-audio-knob.other { background:var(--cb); }
+.msg-audio-knob.me    { background:#fff; }
+
+/* ─ Actions sur message (hover) ─ */
+.msg-hover-actions { position:absolute; display:flex; gap:3px; background:#fff; border:1.5px solid var(--cbr); border-radius:10px; padding:4px 6px; box-shadow:0 4px 16px rgba(11,30,59,.12); z-index:20; top:-34px; opacity:0; pointer-events:none; transition:opacity .15s; }
+.msg-wrap:hover .msg-hover-actions { opacity:1; pointer-events:auto; }
+.msg-hover-actions.me { right:0; }
+.msg-hover-actions.other { left:38px; }
+.mha-btn { width:24px; height:24px; border-radius:6px; border:none; background:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; transition:background .15s; }
+.mha-btn:hover { background:#F3F7FF; }
+.mha-btn.del:hover { background:#FEF2F2; }
+
 /* Empty state */
 .msg-empty { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; color:var(--cm); }
 
@@ -234,6 +290,9 @@ const I = {
   emoji:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
   phone:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.01 2.22 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91A16 16 0 0016 17.91l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0124 18z"/></svg>,
   video:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>,
+  mic:    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="9" y1="22" x2="15" y2="22"/></svg>,
+  stop:   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>,
+  play:   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
   info:   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>,
   star:   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
   archive:<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
@@ -258,6 +317,10 @@ const fmtTime = (d) => {
   return dt.toLocaleDateString("fr-FR", { day:"2-digit", month:"2-digit" });
 };
 const fmtFull = (d) => d ? new Date(d).toLocaleString("fr-FR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" }) : "—";
+const fmtRecTime = (s) => {
+  const sec = Math.max(0, Math.round(s || 0));
+  return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+};
 const isSameDay = (d1, d2) => {
   const a = new Date(d1), b = new Date(d2);
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -315,6 +378,105 @@ const buildDemoMessages = (convId, userId) => {
 
 const DEMO_NOTIFS = [];
 
+// ─── AudioMessage ─────────────────────────────────────────────
+function AudioMessage({ msg, isMe, onDelete }) {
+  const audioRef  = useRef(null);
+  const trackRef  = useRef(null);
+  const [playing,  setPlaying]  = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [elapsed,  setElapsed]  = useState(0);
+  const [total,    setTotal]    = useState(msg.duration || 0);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) a.pause(); else a.play().catch(() => {});
+  };
+
+  const seek = (e) => {
+    const a = audioRef.current;
+    if (!a || !a.duration) return;
+    const rect = (trackRef.current || e.currentTarget).getBoundingClientRect();
+    const pct  = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    a.currentTime = pct * a.duration;
+    setProgress(pct * 100);
+  };
+
+  const accent   = isMe ? "rgba(255,255,255,.9)" : "var(--cb)";
+  const subColor = isMe ? "rgba(255,255,255,.5)"  : "#9CA3AF";
+  const timeColor= isMe ? "rgba(255,255,255,.8)"  : "var(--cn)";
+
+  return (
+    <div className={`msg-audio-bubble ${isMe ? "me" : "other"}`}>
+      {/* Audio element caché — lecture réelle dans le navigateur */}
+      <audio
+        ref={audioRef}
+        src={msg.audio_url}
+        onPlay={()        => setPlaying(true)}
+        onPause={() =>      setPlaying(false)}
+        onEnded={() =>    { setPlaying(false); setProgress(0); setElapsed(0); }}
+        onLoadedMetadata={(e) => setTotal(e.currentTarget.duration || msg.duration || 0)}
+        onTimeUpdate={(e) => {
+          const a = e.currentTarget;
+          if (!a.duration) return;
+          setElapsed(a.currentTime);
+          setTotal(a.duration);
+          setProgress((a.currentTime / a.duration) * 100);
+        }}
+      />
+
+      {/* Bouton Play / Pause */}
+      <button className={`msg-audio-play ${isMe ? "me" : "other"}`} onClick={toggle}>
+        {playing
+          ? <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="5" height="18" rx="1"/><rect x="14" y="3" width="5" height="18" rx="1"/></svg>
+          : <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft:2 }}><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        }
+      </button>
+
+      {/* Zone centrale */}
+      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:5 }}>
+        {/* Waveform + temps */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div className="msg-rec-wave" style={{ opacity: playing ? 1 : 0.38 }}>
+            {[0,1,2,3,4].map(n => (
+              <span key={n} style={{ animationPlayState: playing ? "running" : "paused", background: accent }} />
+            ))}
+          </div>
+          <span style={{ fontSize:10, fontWeight:700, color:timeColor, fontVariantNumeric:"tabular-nums", flexShrink:0, marginLeft:8 }}>
+            {fmtRecTime(playing ? elapsed : total)}
+          </span>
+        </div>
+
+        {/* Barre de progression cliquable */}
+        <div ref={trackRef} className={`msg-audio-track ${isMe ? "me" : "other"}`}
+          style={{ position:"relative" }} onClick={seek}>
+          <div className={`msg-audio-fill ${isMe ? "me" : "other"}`} style={{ width:`${progress}%` }} />
+          {progress > 0 && (
+            <div className={`msg-audio-knob ${isMe ? "me" : "other"}`} style={{ left:`${progress}%` }} />
+          )}
+        </div>
+
+        {/* Label + actions */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <span style={{ fontSize:10, color:subColor }}>🎙️ Message vocal</span>
+          {isMe && (
+            <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+              <button title="Télécharger" style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, color:subColor, padding:0, lineHeight:1 }}
+                onClick={() => { const a = document.createElement("a"); a.href = msg.audio_url; a.download = `vocal.webm`; a.click(); }}>
+                ⬇️
+              </button>
+              <button title="Supprimer" style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, color:subColor, padding:0, lineHeight:1 }}
+                onClick={onDelete}>
+                🗑️
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Modal ────────────────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth = 580 }) {
   useEffect(() => {
@@ -364,6 +526,7 @@ export default function Messagerie() {
 
   const { user: authUser } = useAuth() || {};
   const me = authUser || { _id:"me", prenom:"Moi", nom:"", role:"medecin" };
+  const { socket } = useSocket();
 
   const [tab, setTab]               = useState("inbox");
   const [filter, setFilter]         = useState("tous");
@@ -382,8 +545,16 @@ export default function Messagerie() {
   const [newMsgForm, setNewMsgForm] = useState({ destinataire:"", objet:"", contenu:"", priorite:"normale" });
   const [newGrpForm, setNewGrpForm] = useState({ nom:"", membres:[], description:"" });
   const [groups, setGroups]         = useState(DEMO_GROUPS);
-  const bottomRef = useRef(null);
-  const textRef   = useRef(null);
+  const bottomRef     = useRef(null);
+  const textRef       = useRef(null);
+  const mediaRecRef   = useRef(null);
+  const recTimerRef   = useRef(null);
+  const audioChunksRef= useRef([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recSeconds,  setRecSeconds]  = useState(0);
+  const [playingId,   setPlayingId]   = useState(null);
+  const [audioProgress, setAudioProgress] = useState({});
+  const currentAudioRef = useRef(null);
 
   // ── Load convs ────────────────────────────────────────────
   const loadConvs = useCallback(async () => {
@@ -405,8 +576,60 @@ export default function Messagerie() {
 
   useEffect(() => { loadConvs(); loadUsers(); }, [loadConvs, loadUsers]);
 
+  // ── Socket.IO : réception des messages en temps réel ─────
+  const selectedRef = useRef(null);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewMsg = ({ conversationId, message }) => {
+      const current = selectedRef.current;
+
+      // Si la conversation active reçoit un nouveau message
+      if (current && current._id === conversationId) {
+        setMessages(prev => {
+          // Doublon exact (même _id) — déjà présent
+          if (prev.some(m => m._id === message._id)) return prev;
+          // Message de nous-mêmes : le tmp_ est déjà dans la liste (optimistic update).
+          // On remplace le tmp correspondant (même contenu, envoyé très récemment).
+          if (message.expediteur?._id === me._id) {
+            const tmpIdx = prev.findIndex(m =>
+              m._id.startsWith('tmp_') && m.contenu === message.contenu
+            );
+            if (tmpIdx !== -1) {
+              return prev.map((m, i) => i === tmpIdx ? { ...m, ...message } : m);
+            }
+            // Pas de tmp correspondant (ex: autre appareil) → on ajoute normalement
+          }
+          return [...prev, message];
+        });
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:"smooth" }), 50);
+      } else {
+        // Badge non-lu sur la conversation non ouverte
+        setConvs(prev => prev.map(c =>
+          c._id === conversationId
+            ? { ...c, non_lus: (c.non_lus || 0) + 1, dernier_message: message.contenu, dernierMsg_at: message.date_envoi }
+            : c
+        ));
+        toast('💬 Nouveau message', { duration: 2500 });
+      }
+
+      // Rafraîchir la liste des conversations
+      loadConvs();
+    };
+
+    socket.on('message:new', handleNewMsg);
+    return () => socket.off('message:new', handleNewMsg);
+  }, [socket, loadConvs]);
+
   // ── Open conversation ─────────────────────────────────────
   const openConv = async (conv) => {
+    // Quitter la room précédente et rejoindre la nouvelle
+    if (socket) {
+      if (selected) socket.emit('leave:conversation', selected._id);
+      socket.emit('join:conversation', conv._id);
+    }
     setSelected(conv);
     setShowInfo(false);
     try {
@@ -450,7 +673,17 @@ export default function Messagerie() {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:"smooth" }), 50);
     try {
       const { data } = await api.post(`/messages/${selected._id}/send`, { contenu: txt });
-      setMessages(m => m.map(msg => msg._id === tmpMsg._id ? { ...tmpMsg, ...data.message } : msg));
+      const real = data.message;
+      if (real) {
+        setMessages(m => {
+          // Si le socket a déjà remplacé le tmp (race condition) → on retire juste le tmp restant
+          if (m.some(msg => msg._id === real._id)) {
+            return m.filter(msg => msg._id !== tmpMsg._id);
+          }
+          // Sinon on remplace le tmp par le vrai message
+          return m.map(msg => msg._id === tmpMsg._id ? { ...tmpMsg, ...real } : msg);
+        });
+      }
     } catch {}
     setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message:txt, dernierMsg_at: new Date().toISOString() } : c));
     setSending(false);
@@ -502,6 +735,88 @@ export default function Messagerie() {
     setInput(e.target.value);
     e.target.style.height = "20px";
     e.target.style.height = Math.min(e.target.scrollHeight, 100) + "px";
+  };
+
+  // ── Voice message ─────────────────────────────────────────
+  const startVoice = async () => {
+    if (!selected) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mr.start(100);
+      mediaRecRef.current = mr;
+      setIsRecording(true);
+      setRecSeconds(0);
+      recTimerRef.current = setInterval(() => setRecSeconds(s => s + 1), 1000);
+    } catch {
+      toast.error("Microphone non accessible. Vérifiez les permissions.");
+    }
+  };
+
+  const stopVoice = (send = false) => {
+    const mr = mediaRecRef.current;
+    if (!mr) return;
+    mr.onstop = () => {
+      mr.stream?.getTracks().forEach(t => t.stop());
+      if (send && audioChunksRef.current.length > 0) {
+        const blob  = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const url   = URL.createObjectURL(blob);
+        const dur   = recSeconds;
+        const tmpMsg = {
+          _id: `tmp_${Date.now()}`, type_special:"audio", audio_url: url, duration: dur,
+          expediteur: { _id: me._id, prenom: me.prenom, nom: me.nom, role: me.role },
+          date_envoi: new Date().toISOString(), lu: false, reactions: [],
+        };
+        setMessages(m => [...m, tmpMsg]);
+        setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message:"🎙️ Message vocal", dernierMsg_at: new Date().toISOString() } : c));
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:"smooth" }), 50);
+        toast.success(`🎙️ Message vocal envoyé (${dur}s)`);
+      }
+      audioChunksRef.current = [];
+    };
+    mr.stop();
+    mediaRecRef.current = null;
+    clearInterval(recTimerRef.current);
+    setIsRecording(false);
+    setRecSeconds(0);
+  };
+
+  const fmtRecTime = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+  // ── Audio playback ────────────────────────────────────────
+  const toggleAudio = (msg) => {
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.onended  = null;
+      currentAudioRef.current.ontimeupdate = null;
+    }
+    if (playingId === msg._id) {
+      setPlayingId(null);
+      return;
+    }
+    const audio = new Audio(msg.audio_url);
+    audio.ontimeupdate = () => {
+      setAudioProgress(p => ({ ...p, [msg._id]: { current: audio.currentTime, total: audio.duration || msg.duration || 0 } }));
+    };
+    audio.onended = () => {
+      setPlayingId(null);
+      setAudioProgress(p => ({ ...p, [msg._id]: { current: 0, total: audio.duration || msg.duration || 0 } }));
+    };
+    audio.play().catch(() => toast.error("Lecture impossible"));
+    currentAudioRef.current = audio;
+    setPlayingId(msg._id);
+  };
+
+  // ── Delete message ────────────────────────────────────────
+  const deleteMsg = async (msgId) => {
+    setMessages(prev => prev.filter(m => m._id !== msgId));
+    if (playingId === msgId) {
+      currentAudioRef.current?.pause();
+      setPlayingId(null);
+    }
+    try { await api.delete(`/messages/${msgId}`); } catch {}
   };
 
   // ── Filtered convs ────────────────────────────────────────
@@ -572,7 +887,7 @@ export default function Messagerie() {
               { key:"groupes",       icon:I.users,   label:`Groupes (${groups.length})`, labelM:"Groupes" },
               { key:"notifications", icon:I.bell,    label:"Notifications",         labelM:"Notifs",     badge:notifsNonLues>0?notifsNonLues:null },
               { key:"patients",      icon:"📱",       label:"Communication patients",labelM:"Patients" },
-              { key:"appels",        icon:I.video,   label:"Appels & Visio",        labelM:"Appels" },
+              { key:"appels",        icon:I.phone,   label:"Appels Audio",          labelM:"Appels" },
               { key:"historique",    icon:I.archive, label:"Historique & Audit",    labelM:"Historique" },
             ];
             return (
@@ -716,24 +1031,25 @@ export default function Messagerie() {
                         </div>
                       </div>
                     </div>
-                    <div className="msg-chat-actions">
-                      <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px" }} title="Appel audio" onClick={() => toast.success("📞 Appel audio en cours...")}>
+                    <div className="msg-chat-actions" style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      {/* Appel audio — bouton professionnel */}
+                      <button className="msg-call-btn" onClick={() => toast.success("📞 Appel audio en cours...")}>
                         {I.phone}
+                        <span className="msg-hint" style={{ display:"inline" }}>Appel audio</span>
                       </button>
-                      <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px" }} title="Appel vidéo" onClick={() => toast.success("🎥 Appel vidéo en cours...")}>
-                        {I.video}
-                      </button>
-                      <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px" }} title="Informations" onClick={() => setShowInfo(!showInfo)}>
+                      {/* Séparateur */}
+                      <div style={{ width:1, height:28, background:"var(--cbr)", flexShrink:0 }} />
+                      <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px", background: showInfo?"#EEF4FF":"", color: showInfo?"var(--cb)":"" }} title="Informations" onClick={() => setShowInfo(!showInfo)}>
                         {I.info}
                       </button>
-                      <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px" }} title="Favori" onClick={() => {
+                      <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px" }} title={selected.favori ? "Retirer des favoris" : "Ajouter aux favoris"} onClick={() => {
                         setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, favori: !c.favori } : c));
                         setSelected(s => ({ ...s, favori: !s.favori }));
                         toast.success(selected.favori ? "Retiré des favoris" : "⭐ Ajouté aux favoris");
                       }}>
                         <span style={{ color: selected.favori ? "#D97706" : "var(--cm)", fontSize:15 }}>{selected.favori ? "⭐" : I.star}</span>
                       </button>
-                      <button className="cbtn-danger cbtn cbtn-sm" title="Archiver" onClick={() => {
+                      <button className="cbtn-danger cbtn cbtn-sm" title="Archiver la conversation" onClick={() => {
                         setConvs(prev => prev.filter(c => c._id !== selected._id));
                         setSelected(null);
                         toast.success("📦 Conversation archivée");
@@ -758,10 +1074,26 @@ export default function Messagerie() {
                         const msg = item;
                         const isMe = msg.expediteur?._id === me._id || msg.expediteur?._id === "me";
                         const senderName = isMe ? "Moi" : `${msg.expediteur?.prenom} ${msg.expediteur?.nom}`;
-                        const EMOJIS = ["👍","❤️","😊","👏","🙏","😮"];
+                        const isPlaying = playingId === msg._id;
+                        const prog = audioProgress[msg._id];
+                        const progPct = prog && prog.total > 0 ? Math.min(100, (prog.current / prog.total) * 100) : 0;
+                        const progTime = prog ? fmtRecTime(Math.floor(prog.current)) : fmtRecTime(msg.duration || 0);
                         return (
-                          <div key={msg._id} className="fu" style={{ display:"flex", flexDirection:"column", alignItems: isMe ? "flex-end" : "flex-start", marginBottom:4 }}>
+                          <div key={msg._id} className="fu msg-wrap" style={{ display:"flex", flexDirection:"column", alignItems: isMe ? "flex-end" : "flex-start", marginBottom:4, position:"relative" }}>
                             {!isMe && <div style={{ fontSize:10, color:"var(--cm)", marginLeft:38, marginBottom:2, fontWeight:600 }}>{senderName}</div>}
+
+                            {/* ── Actions on hover ── */}
+                            <div className={`msg-hover-actions ${isMe ? "me" : "other"}`}>
+                              {["👍","❤️","😊"].map(e => (
+                                <button key={e} className="mha-btn" onClick={() => toggleReaction(msg._id, e)} title={e}>{e}</button>
+                              ))}
+                              <div style={{ width:1, background:"var(--cbr)", margin:"0 2px" }} />
+                              <button className="mha-btn" title="Transférer" onClick={() => toast.success("↪️ Transfert...")}>{I.forward}</button>
+                              {isMe && (
+                                <button className="mha-btn del" title="Supprimer" onClick={() => deleteMsg(msg._id)}>🗑️</button>
+                              )}
+                            </div>
+
                             <div className={`msg-bubble-wrap ${isMe ? "me" : ""}`}>
                               {!isMe && (
                                 <div style={{ width:30, height:30, borderRadius:9, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0, alignSelf:"flex-end" }}>
@@ -769,7 +1101,7 @@ export default function Messagerie() {
                                 </div>
                               )}
                               <div>
-                                {/* Special medical message */}
+                                {/* ── Résultat médical ── */}
                                 {msg.type_special === "resultat" ? (
                                   <div style={{ background:isMe ? "rgba(255,255,255,.15)" : "#F0FDF4", border:`1.5px solid ${isMe ? "rgba(255,255,255,.3)" : "#A7F3D0"}`, borderRadius:14, padding:"10px 14px", maxWidth:320 }}>
                                     <div style={{ fontSize:11, fontWeight:700, color:isMe ? "rgba(255,255,255,.8)" : "#059669", marginBottom:6, textTransform:"uppercase", letterSpacing:.4 }}>🔬 Résultat médical</div>
@@ -778,11 +1110,62 @@ export default function Messagerie() {
                                       {I.dl} Télécharger le résultat
                                     </button>
                                   </div>
+
+                                ) : msg.type_special === "audio" ? (
+                                  /* ── Bulle audio ── */
+                                  <div className={`msg-audio-bubble ${isMe ? "me" : "other"}`}>
+                                    {/* Bouton play/pause */}
+                                    <button className={`msg-audio-play ${isMe ? "me" : "other"}`} onClick={() => toggleAudio(msg)}>
+                                      {isPlaying
+                                        ? <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                        : I.play}
+                                    </button>
+                                    {/* Contenu */}
+                                    <div style={{ flex:1, minWidth:0 }}>
+                                      {/* Waveform animée */}
+                                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                        <div className="msg-rec-wave" style={{ opacity: isPlaying ? 1 : 0.45 }}>
+                                          {[0,1,2,3,4].map(n => (
+                                            <span key={n} style={{
+                                              animationPlayState: isPlaying ? "running" : "paused",
+                                              background: isMe ? "rgba(255,255,255,.9)" : "var(--cb)",
+                                            }} />
+                                          ))}
+                                        </div>
+                                        <span style={{ fontSize:10, fontWeight:700, color:isMe?"rgba(255,255,255,.75)":"var(--cn)", fontVariantNumeric:"tabular-nums", marginLeft:"auto" }}>
+                                          {progTime}
+                                        </span>
+                                      </div>
+                                      {/* Barre de progression */}
+                                      <div className={`msg-audio-progress ${isMe?"me":"other"}`}>
+                                        <div className={`msg-audio-fill ${isMe?"me":"other"}`} style={{ width:`${progPct}%` }} />
+                                      </div>
+                                      {/* Label + actions */}
+                                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                                        <span style={{ fontSize:10, color:isMe?"rgba(255,255,255,.5)":"#9CA3AF" }}>🎙️ Message vocal</span>
+                                        {isMe && (
+                                          <div style={{ display:"flex", gap:4 }}>
+                                            <button style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, opacity:.7, padding:"0 2px" }} title="Télécharger"
+                                              onClick={() => { const a=document.createElement('a'); a.href=msg.audio_url; a.download=`vocal-${msg._id}.webm`; a.click(); }}>
+                                              ⬇️
+                                            </button>
+                                            <button style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, opacity:.7, padding:"0 2px" }} title="Supprimer"
+                                              onClick={() => deleteMsg(msg._id)}>
+                                              🗑️
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
                                 ) : (
+                                  /* ── Bulle texte ── */
                                   <div className={`msg-bubble ${isMe ? "me" : "other"}`}>
                                     {msg.contenu}
                                   </div>
                                 )}
+
                                 {/* Meta */}
                                 <div className={`msg-meta ${isMe ? "me" : "other"}`}>
                                   <span>{new Date(msg.date_envoi).toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" })}</span>
@@ -800,14 +1183,6 @@ export default function Messagerie() {
                                     ))}
                                   </div>
                                 )}
-                                {/* Quick reactions */}
-                                <div style={{ display:"flex", gap:3, marginTop:3, opacity:0, transition:"opacity .2s" }} className="quick-react"
-                                  onMouseOver={e => e.currentTarget.style.opacity = 1}
-                                  onMouseOut={e => e.currentTarget.style.opacity = 0}>
-                                  {["👍","❤️","😊"].map(e => (
-                                    <span key={e} style={{ cursor:"pointer", fontSize:13 }} onClick={() => toggleReaction(msg._id, e)}>{e}</span>
-                                  ))}
-                                </div>
                               </div>
                             </div>
                           </div>
@@ -869,30 +1244,60 @@ export default function Messagerie() {
 
                   {/* Input area */}
                   <div className="msg-input-area">
-                    <div className="msg-input-row">
-                      <div className="msg-input-wrap">
-                        <textarea
-                          ref={textRef}
-                          className="msg-textarea"
-                          placeholder={`Message à ${selected.type === "group" ? selGroup?.nom : selContact?.prenom}...`}
-                          value={input}
-                          onChange={handleInput}
-                          onKeyDown={handleKey}
-                          rows={1}
-                        />
-                        <div className="msg-input-tools">
-                          <button className="msg-tool-btn" title="Fichier" onClick={() => toast.success("📎 Sélectionner un fichier...")}>{I.attach}</button>
-                          <button className="msg-tool-btn" title="Image" onClick={() => toast.success("🖼️ Sélectionner une image...")}>{I.image}</button>
-                          <button className="msg-tool-btn" title="Document médical" onClick={() => toast.success("📄 Partager un document médical...")}>{I.file}</button>
-                          <button className="msg-tool-btn" title="Emoji">{I.emoji}</button>
-                          <div style={{ flex:1 }} />
-                          <div className="msg-hint" style={{ fontSize:10, color:"var(--cm)" }}>Entrée pour envoyer · Maj+Entrée pour nouvelle ligne</div>
+                    {isRecording ? (
+                      /* ─── Mode enregistrement vocal ─── */
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <div className="msg-rec-wrap">
+                          <div className="msg-rec-dot" />
+                          <div className="msg-rec-timer">{fmtRecTime(recSeconds)}</div>
+                          <div className="msg-rec-wave">
+                            <span /><span /><span /><span /><span />
+                          </div>
+                          <span className="msg-rec-label">Enregistrement en cours…</span>
                         </div>
+                        {/* Annuler */}
+                        <button className="msg-rec-stop" title="Annuler" onClick={() => stopVoice(false)}>✕</button>
+                        {/* Envoyer */}
+                        <button className="msg-rec-send" title="Envoyer le message vocal" onClick={() => stopVoice(true)}>
+                          {I.send}
+                        </button>
                       </div>
-                      <button className="msg-send-btn" onClick={sendMsg} disabled={!input.trim() || sending}>
-                        {I.send}
-                      </button>
-                    </div>
+                    ) : (
+                      /* ─── Mode texte normal ─── */
+                      <div className="msg-input-row">
+                        <div className="msg-input-wrap">
+                          <textarea
+                            ref={textRef}
+                            className="msg-textarea"
+                            placeholder={`Message à ${selected.type === "group" ? selGroup?.nom : selContact?.prenom}…`}
+                            value={input}
+                            onChange={handleInput}
+                            onKeyDown={handleKey}
+                            rows={1}
+                          />
+                          <div className="msg-input-tools">
+                            <button className="msg-tool-btn" title="Pièce jointe" onClick={() => toast.success("📎 Sélectionner un fichier...")}>{I.attach}</button>
+                            <button className="msg-tool-btn" title="Image" onClick={() => toast.success("🖼️ Sélectionner une image...")}>{I.image}</button>
+                            <button className="msg-tool-btn" title="Document médical" onClick={() => toast.success("📄 Partager un document médical...")}>{I.file}</button>
+                            <button className="msg-tool-btn" title="Emoji">{I.emoji}</button>
+                            <div style={{ flex:1 }} />
+                            <div className="msg-hint" style={{ fontSize:10, color:"var(--cm)" }}>Entrée pour envoyer · Maj+Entrée pour saut de ligne</div>
+                          </div>
+                        </div>
+                        {/* Microphone — si champ vide */}
+                        {!input.trim() && (
+                          <button className="msg-mic-btn" title="Enregistrer un message vocal" onClick={startVoice}>
+                            {I.mic}
+                          </button>
+                        )}
+                        {/* Envoyer — si texte saisi */}
+                        {input.trim() && (
+                          <button className="msg-send-btn" onClick={sendMsg} disabled={sending}>
+                            {I.send}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -930,8 +1335,9 @@ export default function Messagerie() {
                     </div>
                     <div style={{ display:"flex", gap:8, marginTop:14 }}>
                       <button className="cbtn cbtn-primary cbtn-sm" style={{ flex:1 }}>{I.chat} Ouvrir</button>
-                      <button className="cbtn cbtn-ghost cbtn-sm" onClick={e => { e.stopPropagation(); toast.success("📞 Appel groupe..."); }}>{I.phone}</button>
-                      <button className="cbtn cbtn-ghost cbtn-sm" onClick={e => { e.stopPropagation(); toast.success("🎥 Visioconférence..."); }}>{I.video}</button>
+                      <button className="msg-call-btn" style={{ padding:"6px 12px", fontSize:11 }} onClick={e => { e.stopPropagation(); toast.success("📞 Appel audio groupe…"); }}>
+                        {I.phone} Audio
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1031,46 +1437,96 @@ export default function Messagerie() {
           </div>
         )}
 
-        {/* ══ APPELS & VISIO ══ */}
+        {/* ══ APPELS AUDIO ══ */}
         {tab === "appels" && (
           <div style={{ padding:24 }}>
-            <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)", marginBottom:20 }}>Appels & Visioconférences</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:16, marginBottom:24 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:24 }}>
+              <div style={{ width:50, height:50, borderRadius:14, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>📞</div>
+              <div>
+                <div style={{ fontSize:18, fontWeight:700, color:"var(--cn)" }}>Appels Audio</div>
+                <div style={{ fontSize:12, color:"var(--cm)" }}>Communication vocale interne sécurisée</div>
+              </div>
+            </div>
+
+            {/* Cartes types d'appel */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:18, marginBottom:28 }}>
               {[
-                { icon:"📞", titre:"Appel audio",       desc:"Appel audio interne entre membres", color:"#1B4F9E" },
-                { icon:"🎥", titre:"Appel vidéo",        desc:"Visioconférence sécurisée 1-à-1",   color:"#0EA5A0" },
-                { icon:"👥", titre:"Réunion de groupe",  desc:"Conférence multi-participants",      color:"#7C3AED" },
-                { icon:"💻", titre:"Partage d'écran",    desc:"Présentation partagée en direct",   color:"#059669" },
-                { icon:"🩺", titre:"Téléconsultation",   desc:"Consultation médicale à distance",  color:"#DC2626" },
+                { icon:"📞", titre:"Appel individuel",       desc:"Appel audio direct entre deux membres du personnel", color:"#1B4F9E", tag:"1-à-1" },
+                { icon:"👥", titre:"Conférence audio",        desc:"Appel multi-participants — réunion vocale de groupe",  color:"#7C3AED", tag:"Groupe" },
+                { icon:"🩺", titre:"Téléconsultation vocale", desc:"Consultation médicale audio à distance avec un patient", color:"#DC2626", tag:"Patient" },
               ].map(a => (
-                <div key={a.titre} className="adm-card fu" style={{ cursor:"pointer" }} onClick={() => toast.success(`${a.icon} Démarrage : ${a.titre}...`)}>
-                  <div style={{ padding:20, textAlign:"center" }}>
-                    <div style={{ width:56, height:56, borderRadius:16, background:`${a.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, margin:"0 auto 12px" }}>{a.icon}</div>
-                    <div style={{ fontWeight:700, fontSize:14, color:"var(--cn)", marginBottom:4 }}>{a.titre}</div>
-                    <div style={{ fontSize:11.5, color:"var(--cm)", marginBottom:14 }}>{a.desc}</div>
-                    <button className="cbtn cbtn-primary cbtn-sm" style={{ width:"100%" }}>Démarrer →</button>
+                <div key={a.titre} className="adm-card fu" style={{ cursor:"pointer", transition:"transform .2s, box-shadow .2s" }}
+                  onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow="0 8px 28px rgba(11,30,59,.12)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow=""; }}
+                  onClick={() => toast.success(`${a.icon} Démarrage : ${a.titre}…`)}>
+                  <div style={{ padding:24 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
+                      <div style={{ width:54, height:54, borderRadius:14, background:`${a.color}12`, border:`1.5px solid ${a.color}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26 }}>{a.icon}</div>
+                      <span style={{ background:`${a.color}12`, color:a.color, border:`1px solid ${a.color}30`, borderRadius:99, padding:"3px 10px", fontSize:10, fontWeight:700 }}>{a.tag}</span>
+                    </div>
+                    <div style={{ fontWeight:700, fontSize:15, color:"var(--cn)", marginBottom:6 }}>{a.titre}</div>
+                    <div style={{ fontSize:12, color:"var(--cm)", lineHeight:1.6, marginBottom:18 }}>{a.desc}</div>
+                    <button className="cbtn cbtn-sm" style={{ width:"100%", background:`${a.color}`, color:"#fff", border:"none", justifyContent:"center" }}
+                      onClick={e => { e.stopPropagation(); toast.success(`${a.icon} ${a.titre} en cours…`); }}>
+                      📞 Démarrer l'appel
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
+
+            {/* KPIs appels */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:28 }}>
+              {[
+                { label:"Appels aujourd'hui",   val:"12",   col:"#1B4F9E", icon:"📞" },
+                { label:"Durée totale",          val:"3h 24m",col:"#7C3AED", icon:"⏱️" },
+                { label:"Appels manqués",         val:"2",    col:"#DC2626", icon:"📵" },
+                { label:"Durée moy.",             val:"17 min",col:"#059669", icon:"📊" },
+              ].map(k => (
+                <div key={k.label} className="msg-kpi" style={{ borderTop:`3px solid ${k.col}` }}>
+                  <div style={{ fontSize:20, marginBottom:6 }}>{k.icon}</div>
+                  <div style={{ fontSize:22, fontWeight:800, color:k.col }}>{k.val}</div>
+                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:3 }}>{k.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Historique */}
             <div className="adm-card">
-              <div className="adm-card-hdr"><h3>📋 Historique des appels</h3></div>
+              <div className="adm-card-hdr">
+                <h3>📋 Historique des appels audio</h3>
+                <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => toast.success("📥 Export en cours…")}>Export</button>
+              </div>
               <div style={{ overflowX:"auto" }}>
                 <table className="adm-tbl">
-                  <thead><tr><th>Type</th><th>Participant(s)</th><th>Date</th><th>Durée</th><th>Statut</th></tr></thead>
+                  <thead><tr><th>Type</th><th>Participant(s)</th><th>Date</th><th>Durée</th><th>Statut</th><th></th></tr></thead>
                   <tbody>
                     {[
-                      { type:"Visio", parts:"Dr. Martin ↔ Dr. Leblanc", date:"2025-06-01T09:00:00", duree:"18 min", statut:"Terminé" },
-                      { type:"Audio", parts:"Infirmerie → Urgences",     date:"2025-05-31T22:05:00", duree:"5 min",  statut:"Terminé" },
-                      { type:"Réunion", parts:"Direction (5 personnes)", date:"2025-05-31T14:00:00", duree:"45 min", statut:"Terminé" },
-                      { type:"Visio", parts:"Téléconsultation — Patient Dupont", date:"2025-05-30T10:30:00", duree:"22 min", statut:"Terminé" },
+                      { type:"Individuel",  parts:"Dr. Martin ↔ Dr. Leblanc",       date:"2025-06-01T09:00:00", duree:"18 min", statut:"Terminé" },
+                      { type:"Individuel",  parts:"Infirmerie → Urgences",           date:"2025-05-31T22:05:00", duree:"5 min",  statut:"Terminé" },
+                      { type:"Conférence",  parts:"Direction (5 participants)",      date:"2025-05-31T14:00:00", duree:"45 min", statut:"Terminé" },
+                      { type:"Téléconsult", parts:"Consultation — Patient Dupont",   date:"2025-05-30T10:30:00", duree:"22 min", statut:"Terminé" },
+                      { type:"Individuel",  parts:"Dr. Nzigou ↔ Pharmacie",         date:"2025-05-29T08:15:00", duree:"8 min",  statut:"Manqué" },
                     ].map((a, i) => (
                       <tr key={i}>
-                        <td><span className="cbdg blue">{a.type === "Visio" ? "🎥" : a.type === "Audio" ? "📞" : "👥"} {a.type}</span></td>
-                        <td style={{ fontSize:12, color:"var(--cn)" }}>{a.parts}</td>
+                        <td>
+                          <span className="cbdg" style={{ background: a.type==="Conférence"?"#F5F3FF": a.type==="Téléconsult"?"#FEF2F2":"#EFF6FF", color: a.type==="Conférence"?"#7C3AED": a.type==="Téléconsult"?"#DC2626":"#1B4F9E", border:`1px solid ${a.type==="Conférence"?"#DDD6FE": a.type==="Téléconsult"?"#FECACA":"#BFDBFE"}` }}>
+                            {a.type==="Conférence"?"👥": a.type==="Téléconsult"?"🩺":"📞"} {a.type}
+                          </span>
+                        </td>
+                        <td style={{ fontSize:12, color:"var(--cn)", fontWeight:500 }}>{a.parts}</td>
                         <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtFull(a.date)}</td>
-                        <td style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>{a.duree}</td>
-                        <td><span className="cbdg green">✅ {a.statut}</span></td>
+                        <td style={{ fontSize:12, fontWeight:700, color:"var(--cn)" }}>{a.duree}</td>
+                        <td>
+                          <span className={`cbdg ${a.statut==="Manqué"?"red":"green"}`}>
+                            {a.statut==="Manqué"?"📵":"✅"} {a.statut}
+                          </span>
+                        </td>
+                        <td>
+                          <button className="cbtn cbtn-ghost cbtn-sm" style={{ fontSize:11 }} onClick={() => toast.success("📞 Rappel en cours…")}>
+                            {I.phone} Rappeler
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1135,7 +1591,7 @@ export default function Messagerie() {
                     { ic:"📎", act:"Document partagé",      user:"Paul Obiang",        det:"Résultat NFS — Patient Dupont",       d:"2025-06-01T09:45:00" },
                     { ic:"🗑️", act:"Message supprimé",      user:"Marie Nzigou",       det:"Message de la conv. Urgences",        d:"2025-05-31T22:30:00" },
                     { ic:"👥", act:"Groupe créé",           user:"Alain Koumba",       det:"Groupe 'Bloc Opératoire' (5 membres)",d:"2025-05-31T14:00:00" },
-                    { ic:"📞", act:"Appel vidéo effectué",  user:"Dr. Martin",         det:"Téléconsultation — 22 min",           d:"2025-05-30T10:30:00" },
+                    { ic:"📞", act:"Appel audio effectué",   user:"Dr. Martin",         det:"Téléconsultation audio — 22 min",     d:"2025-05-30T10:30:00" },
                   ].map((a, i) => (
                     <div key={i} style={{ display:"flex", gap:12, padding:"12px 20px", borderBottom: i < 5 ? "1px solid #F3F7FF" : "" }}>
                       <div style={{ width:32, height:32, borderRadius:8, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:15 }}>{a.ic}</div>

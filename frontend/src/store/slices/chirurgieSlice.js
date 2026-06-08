@@ -10,7 +10,7 @@ export const fetchSurgeries = createAsyncThunk(
       if (patient) params.set('patient', patient);
       if (chirurgien) params.set('chirurgien', chirurgien);
       const { data } = await api.get(`/chirurgie?${params}`);
-      return { surgeries: data.surgeries || data.interventions || [], total: data.total || 0, page };
+      return { surgeries: data.dossiers || data.surgeries || data.interventions || [], total: data.total || 0, page };
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Erreur chargement chirurgies');
     }
