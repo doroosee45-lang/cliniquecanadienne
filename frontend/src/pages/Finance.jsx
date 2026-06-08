@@ -543,13 +543,13 @@ export default function Finance() {
         api.get("/finance/salaires"),
         api.get("/finance/kpis"),
       ]);
-      if (revRes.status  === "fulfilled") setRevenus(revRes.value.data.revenus  || revRes.value.data.data  || []);
+      if (revRes.status  === "fulfilled") setRevenus((revRes.value.data.revenus || revRes.value.data.data || []).map(r => ({ ...r, patient: r.patient && typeof r.patient === 'object' ? `${r.patient.prenom||''} ${r.patient.nom||''}`.trim() : (r.patient || r.patient_nom || '—') })));
       if (depRes.status  === "fulfilled") setDepenses(depRes.value.data.depenses || depRes.value.data.data  || []);
       if (factRes.status === "fulfilled") {
         const raw = factRes.value.data.invoices || factRes.value.data.factures || factRes.value.data.data || [];
         setFactures(raw.map(normalizeFacture));
       }
-      if (payRes.status  === "fulfilled") setPaiements(payRes.value.data.paiements || payRes.value.data.data  || []);
+      if (payRes.status  === "fulfilled") setPaiements((payRes.value.data.paiements || payRes.value.data.data || []).map(p => ({ ...p, patient: p.patient && typeof p.patient === 'object' ? `${p.patient.prenom||''} ${p.patient.nom||''}`.trim() : (p.patient || '—') })));
       if (assRes.status  === "fulfilled") setAssurances(assRes.value.data.assurances || []);
       if (salRes.status  === "fulfilled") setSalaires(salRes.value.data.salaires   || []);
       if (kpiRes.status  === "fulfilled") setKpis(kpiRes.value.data || {});
@@ -581,7 +581,9 @@ export default function Finance() {
     try {
       const { data } = await api.post("/finance/revenus", { ...formRevenu, reference: formRevenu.reference || genRef("FAC") });
       toast.success("✅ Revenu enregistré");
-      setRevenus(prev => [data.revenu || { ...formRevenu, _id: Date.now(), reference: genRef("FAC") }, ...prev]);
+      const newR = data.revenu || { ...formRevenu, _id: Date.now(), reference: genRef("FAC") };
+      const patObj = newR.patient && typeof newR.patient === 'object';
+      setRevenus(prev => [{ ...newR, patient: patObj ? `${newR.patient.prenom||''} ${newR.patient.nom||''}`.trim() : (newR.patient || '—') }, ...prev]);
       setModalRevenu(false); setFormRevenu(EMPTY_REVENU);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement du revenu");
