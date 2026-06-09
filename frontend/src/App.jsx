@@ -192,7 +192,7 @@ import Layout from './components/Layout/Layout';
 import Spinner from './components/UI/Spinner';
 
 // ─── Pages Publiques ──────────────────────────────────────────────────────────
-import Home             from './pages/acueil/Home';
+import Home             from './pages/acueil/home';
 import Login            from './pages/Login';
 import ForgotPassword   from './pages/ForgotPassword';
 import ResetPassword    from './pages/ResetPassword';
