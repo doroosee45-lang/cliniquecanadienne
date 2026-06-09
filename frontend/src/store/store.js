@@ -22,6 +22,10 @@ import archiveReducer from './slices/archiveSlice';
 import invoicePrintReducer from './slices/invoicePrintSlice';
 import uiReducer from './slices/uiSlice';
 import portalReducer from './slices/portalSlice';
+import materniteReducer from './slices/materniteSlice';
+import pediatrieReducer from './slices/pediatrieSlice';
+import urgencesReducer from './slices/urgencesSlice';
+import echographieReducer from './slices/echographieSlice';
 
 const store = configureStore({
   reducer: {
@@ -48,6 +52,10 @@ const store = configureStore({
     invoicePrint: invoicePrintReducer,
     ui: uiReducer,
     portal: portalReducer,
+    maternite: materniteReducer,
+    pediatrie: pediatrieReducer,
+    urgences:     urgencesReducer,
+    echographie:  echographieReducer,
   },
 });
 

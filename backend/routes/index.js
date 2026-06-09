@@ -32,6 +32,11 @@ router.use('/chirurgie',        require('./chirurgieRoutes'));
 router.use('/blocoperatoire',   require('./blocoperatoire.routes')); // Bloc opératoire
 router.use('/portal',           require('./portal.routes'));         // Portail patient
 router.use('/ai',               require('./ai.routes'));              // Intelligence Artificielle
+router.use('/maternite',        require('./maternity.routes'));       // Maternité
+router.use('/pediatrie',        require('./pediatrie.routes'));        // Pédiatrie
+router.use('/urgences',         require('./urgences.routes'));         // Urgences
+router.use('/ambulances',       require('./ambulances.routes'));       // Ambulances
+router.use('/echographie',      require('./echographie.routes'));      // Échographie
 // Alias admin/* → settings/*
 router.use('/admin',            require('./settings.routes'));
 

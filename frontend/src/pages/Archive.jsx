@@ -221,6 +221,10 @@ const CAT_CONFIG = {
   imagerie:       { icon:"🩻", label:"Imagerie",        color:"#7C3AED", bg:"#F5F3FF", border:"#DDD6FE" },
   hospitalisation:{ icon:"🛏️", label:"Hospitalisation", color:"#D97706", bg:"#FFF7ED", border:"#FED7AA" },
   chirurgie:      { icon:"🔪", label:"Chirurgie",       color:"#DC2626", bg:"#FEF2F2", border:"#FECACA" },
+  urgences:       { icon:"🚨", label:"Urgences",        color:"#EF4444", bg:"#FFF1F2", border:"#FECDD3" },
+  pediatrie:      { icon:"👶", label:"Pédiatrie",       color:"#059669", bg:"#ECFDF5", border:"#A7F3D0" },
+  maternite:      { icon:"🤱", label:"Maternité",       color:"#EC4899", bg:"#FDF2F8", border:"#FBCFE8" },
+  echographie:    { icon:"📡", label:"Échographie",     color:"#6366F1", bg:"#EEF2FF", border:"#C7D2FE" },
   financier:      { icon:"💰", label:"Financier",       color:"#7C3AED", bg:"#F5F3FF", border:"#DDD6FE" },
   documents:      { icon:"📄", label:"Documents",       color:"#6B7A99", bg:"#F9FAFB", border:"#E5E7EB" },
 };
@@ -237,6 +241,10 @@ const NAV_ITEMS = [
     { key:"imagerie",        label:"Imagerie archivée",       icon:I.scan,       badgeCls:"teal" },
     { key:"hospitalisations",label:"Hospitalisations arch.",  icon:I.bed,        badgeCls:"teal" },
     { key:"chirurgies",      label:"Chirurgies archivées",    icon:I.surgery,    badgeCls:"teal" },
+    { key:"urgences",        label:"Urgences archivées",      icon:"🚨",         badgeCls:"teal" },
+    { key:"pediatrie",       label:"Pédiatrie archivée",      icon:"👶",         badgeCls:"teal" },
+    { key:"maternite",       label:"Maternité archivée",      icon:"🤱",         badgeCls:"teal" },
+    { key:"echographies",    label:"Échographies archivées",  icon:"📡",         badgeCls:"teal" },
     { key:"documents",       label:"Documents archivés",      icon:I.file,       badgeCls:"teal" },
     { key:"financier",       label:"Archives financières",    icon:I.money,      badgeCls:"teal" },
   ]},
@@ -419,6 +427,7 @@ export default function Archivage() {
   const [kpis, setKpis] = useState({
     total: 0, patients: 0, consultations: 0, hospitalisations: 0,
     labo: 0, imagerie: 0, examens: 0, chirurgies: 0,
+    urgences: 0, pediatrie: 0, maternite: 0, echographie: 0,
     financier: 0, documents: 0, archives_mois: 0, restaurations: 0,
     taille_totale: "0 Mo", derniere_op: "—",
   });
@@ -474,8 +483,13 @@ export default function Archivage() {
   useEffect(() => { loadArchives(); loadStats(); }, [loadArchives, loadStats]);
 
   // Filter by nav category
-  const catForNav = { patients:"patient", consultations:"consultation", laboratoire:"laboratoire", imagerie:"imagerie", hospitalisations:"hospitalisation", chirurgies:"chirurgie", financier:"financier", documents:"documents" };
-  const filteredByNav = ["patients","consultations","laboratoire","imagerie","hospitalisations","chirurgies","financier","documents"].includes(active)
+  const catForNav = {
+    patients:"patient", consultations:"consultation", laboratoire:"laboratoire",
+    imagerie:"imagerie", hospitalisations:"hospitalisation", chirurgies:"chirurgie",
+    urgences:"urgences", pediatrie:"pediatrie", maternite:"maternite", echographies:"echographie",
+    financier:"financier", documents:"documents",
+  };
+  const filteredByNav = ["patients","consultations","laboratoire","imagerie","hospitalisations","chirurgies","urgences","pediatrie","maternite","echographies","financier","documents"].includes(active)
     ? archives.filter(a => a.categorie === catForNav[active])
     : archives;
 
@@ -549,6 +563,10 @@ export default function Archivage() {
             { color:"purple", icon:I.bed,     value:kpis.hospitalisations,label:"Hospitalisations arch.",sub:"séjours terminés",         onClick:() => setActive("hospitalisations") },
             { color:"orange", icon:I.lab,     value:kpis.examens,         label:"Examens archivés",     sub:"labos + imagerie",          onClick:() => setActive("laboratoire") },
             { color:"red",    icon:I.surgery, value:kpis.chirurgies,      label:"Chirurgies arch.",     sub:"interventions clôturées",   onClick:() => setActive("chirurgies") },
+            { color:"red",    icon:"🚨",      value:kpis.urgences,        label:"Urgences archivées",   sub:"cas clôturés",              onClick:() => setActive("urgences") },
+            { color:"teal",   icon:"👶",      value:kpis.pediatrie,       label:"Pédiatrie archivée",   sub:"dossiers pédiatriques",     onClick:() => setActive("pediatrie") },
+            { color:"purple", icon:"🤱",      value:kpis.maternite,       label:"Maternité archivée",   sub:"grossesses & accouchements",onClick:() => setActive("maternite") },
+            { color:"blue",   icon:"📡",      value:kpis.echographie,     label:"Échographies arch.",   sub:"rapports validés",          onClick:() => setActive("echographies") },
           ].map((k, i) => (
             <div key={i} className={`arc-kpi ${k.color}`} onClick={k.onClick} style={{ cursor:"pointer" }}>
               <div className={`arc-kpi-icon ${k.color}`}>{k.icon}</div>
@@ -574,6 +592,10 @@ export default function Archivage() {
                 ["🔬 Examens labo",      kpis.labo,              "#059669"],
                 ["🩻 Imagerie",          kpis.imagerie,          "#7C3AED"],
                 ["🔪 Chirurgies",        kpis.chirurgies,        "#DC2626"],
+                ["🚨 Urgences",          kpis.urgences,          "#EF4444"],
+                ["👶 Pédiatrie",         kpis.pediatrie,         "#0EA5A0"],
+                ["🤱 Maternité",         kpis.maternite,         "#EC4899"],
+                ["📡 Échographie",       kpis.echographie,       "#6366F1"],
                 ["💰 Financier",         kpis.financier,         "#0EA5A0"],
               ].map(([lbl, val, col]) => (
                 <div key={lbl} style={{ marginBottom:12 }}>
@@ -743,7 +765,7 @@ export default function Archivage() {
     );
 
     // ── Category views ─────────────────────────────────────
-    if (["patients","consultations","laboratoire","imagerie","hospitalisations","chirurgies","financier","documents"].includes(active)) {
+    if (["patients","consultations","laboratoire","imagerie","hospitalisations","chirurgies","urgences","pediatrie","maternite","echographies","financier","documents"].includes(active)) {
       const cat = catForNav[active];
       const catConf = CAT_CONFIG[cat] || CAT_CONFIG.documents;
       const navItem = NAV_ITEMS.flatMap(g=>g.items).find(i=>i.key===active);
@@ -1041,6 +1063,10 @@ export default function Archivage() {
                     imagerie:         kpis.imagerie         || 0,
                     hospitalisations: kpis.hospitalisations || 0,
                     chirurgies:       kpis.chirurgies       || 0,
+                    urgences:         kpis.urgences         || 0,
+                    pediatrie:        kpis.pediatrie        || 0,
+                    maternite:        kpis.maternite        || 0,
+                    echographies:     kpis.echographie      || 0,
                     documents:        kpis.documents        || 0,
                     financier:        kpis.financier        || 0,
                     restaurations:    kpis.restaurations    || 0,
