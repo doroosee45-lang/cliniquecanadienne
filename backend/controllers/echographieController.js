@@ -1,4 +1,5 @@
 const Echographie = require('../models/Echographie');
+const { emitDashboardUpdate } = require('../utils/socket');
 
 // ── GET /echographie/stats
 exports.getStats = async (req, res) => {
@@ -59,6 +60,7 @@ exports.getAll = async (req, res) => {
 
     const [demandes, total] = await Promise.all([
       Echographie.find(filter)
+        .populate('patient_ref', 'nom prenom numero_dossier')
         .sort({ createdAt: -1 })
         .skip((+page - 1) * +limit)
         .limit(+limit),
@@ -86,6 +88,7 @@ exports.getOne = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     const demande = await Echographie.create(req.body);
+    emitDashboardUpdate();
     res.status(201).json({ success: true, demande });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -99,6 +102,7 @@ exports.update = async (req, res) => {
       req.params.id, req.body, { new: true, runValidators: true }
     );
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
+    emitDashboardUpdate();
     res.json({ success: true, demande });
   } catch (err) {
     res.status(400).json({ message: err.message });

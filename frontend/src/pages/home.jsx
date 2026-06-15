@@ -247,16 +247,143 @@ export default function ClinicLanding() {
             </div>
           </div>
 
-          <div className="hidden lg:flex" style={{ alignItems: "center", gap: "6px" }}>
-            {navLinks.map(link => (
-              <span key={link} style={style.navLink}
-                onClick={() => handleNavClick(link.toLowerCase().replace(/\s/g, "-").replace("à", "a"))}
-                onMouseEnter={e => e.target.style.color = COLORS.primary}
-                onMouseLeave={e => e.target.style.color = COLORS.gray700}>{link}</span>
-            ))}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {/* Desktop links */}
+            <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              {navLinks.map(link => (
+                <span
+                  key={link}
+                  style={style.navLink}
+                  onClick={() => scrollTo(link.toLowerCase().replace(/\s/g, "-").replace("à", "a"))}
+                  onMouseEnter={e => e.target.style.color = COLORS.primary}
+                  onMouseLeave={e => e.target.style.color = COLORS.gray700}
+                  className="home-navlink"
+                >
+                  {link}
+                </span>
+              ))}
+            </div>
+
+            {/* Mobile hamburger */}
+            <button
+              type="button"
+              aria-label="Open menu"
+              className="hamburger"
+              onClick={() => {
+                const el = document.getElementById("mobile-nav");
+                if (!el) return;
+                const isOpen = el.getAttribute("data-open") === "true";
+                el.setAttribute("data-open", isOpen ? "false" : "true");
+              }}
+              style={{
+                display: "none",
+                background: "transparent",
+                border: `1.5px solid ${COLORS.primary}`,
+                color: COLORS.primary,
+                borderRadius: 14,
+                padding: "8px 12px",
+                fontWeight: 900,
+                cursor: "pointer",
+                lineHeight: 1,
+              }}
+            >
+              ☰
+            </button>
+
+            {/* Sidebar menu (mobile) */}
+            <div
+              id="mobile-nav"
+              data-open="false"
+              className="mobile-nav"
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                bottom: 0,
+                width: 280,
+                background: "rgba(255,255,255,0.98)",
+                boxShadow: "6px 0 28px rgba(0,0,0,0.18)",
+                padding: "80px 16px 16px",
+                transform: "translateX(-100%)",
+                transition: "transform 0.25s ease",
+                zIndex: 2000,
+                overflowY: "auto",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <div style={{ fontWeight: 900, color: COLORS.primary }}>MediCare</div>
+                <button
+                  type="button"
+                  aria-label="Close menu"
+                  onClick={() => {
+                    const el = document.getElementById("mobile-nav");
+                    if (el) el.setAttribute("data-open", "false");
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: `1.5px solid ${COLORS.primary}`,
+                    color: COLORS.primary,
+                    borderRadius: 12,
+                    padding: "6px 10px",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {navLinks.map(link => (
+                <div key={link} style={{ marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      scrollTo(link.toLowerCase().replace(/\s/g, "-").replace("à", "a"));
+                      const el = document.getElementById("mobile-nav");
+                      if (el) el.setAttribute("data-open", "false");
+                    }}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      background: "transparent",
+                      border: "none",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      cursor: "pointer",
+                      fontWeight: 800,
+                      color: COLORS.gray900,
+                      fontSize: 14,
+                    }}
+                  >
+                    {link}
+                  </button>
+                </div>
+              ))}
+
+              <div style={{ marginTop: 18, fontSize: 12, color: COLORS.gray600, lineHeight: 1.6 }}>
+                📞 Urgence: +216 00 000 000
+              </div>
+            </div>
+
+            {/* Overlay */}
+            <div
+              className="mobile-overlay"
+              onClick={() => {
+                const el = document.getElementById("mobile-nav");
+                if (el) el.setAttribute("data-open", "false");
+              }}
+              style={{
+                display: "none",
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.35)",
+                zIndex: 1900,
+              }}
+            />
           </div>
 
-          <div className="hidden lg:flex" style={{ alignItems: "center", gap: "8px" }}>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {/* Sélecteur de langue */}
 
             {/* Urgence — lien téléphonique natif */}

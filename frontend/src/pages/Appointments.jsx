@@ -2,6 +2,7 @@
 
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import {
@@ -902,6 +903,7 @@ function ProtocolFormFields({ form, setForm, medecins }) {
 // ═══ MAIN ═════════════════════════════════════════════════════
 export default function RendezVous() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const reduxRdvs = useSelector(selectAppointments);
 
   useEffect(() => { dispatch(fetchAppointments({})); }, [dispatch]);
@@ -1298,8 +1300,8 @@ export default function RendezVous() {
                           <tr key={r._id}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--cb)", fontSize:12 }}>{r.reference}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--cn)" }}>{r.patient_nom}</div>
-                              {r.patient_dossier && <div style={{ fontSize:10, color:"var(--cb)", fontFamily:"monospace", fontWeight:600 }}>{r.patient_dossier}</div>}
+                              <div style={{ fontWeight:600, color:"var(--cn)", cursor: r.patient_id ? 'pointer' : 'default', textDecoration: r.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => r.patient_id && navigate(`/patients/${r.patient_id}`)} title={r.patient_id ? "Ouvrir le dossier patient" : ""}>{r.patient_nom}</div>
+                              {r.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginTop:2 }}>{r.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)", display:"flex", alignItems:"center", gap:4 }}>{I.phone} {r.patient_tel}</div>
                             </td>
                             <td>
@@ -1442,8 +1444,8 @@ export default function RendezVous() {
                           <tr key={r._id}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--cb)", fontSize:12 }}>{r.reference}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--cn)" }}>{r.patient_nom}</div>
-                              {r.patient_dossier && <div style={{ fontSize:10, color:"var(--cb)", fontFamily:"monospace", fontWeight:600 }}>{r.patient_dossier}</div>}
+                              <div style={{ fontWeight:600, color:"var(--cn)", cursor: r.patient_id ? 'pointer' : 'default', textDecoration: r.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => r.patient_id && navigate(`/patients/${r.patient_id}`)} title={r.patient_id ? "Ouvrir le dossier patient" : ""}>{r.patient_nom}</div>
+                              {r.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginTop:2 }}>{r.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)", display:"flex", alignItems:"center", gap:4 }}>{I.phone} {r.patient_tel}</div>
                             </td>
                             <td style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>{fmtDate(r.date)}</td>
@@ -1531,7 +1533,8 @@ export default function RendezVous() {
                         <div key={r._id} className="wl-item">
                           <div className={`wl-num ${isUrgent ? "urgent" : ""}`}>{idx + 1}</div>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontWeight:700, fontSize:13.5, color:"var(--cn)" }}>{r.patient_nom}</div>
+                            <div style={{ fontWeight:700, fontSize:13.5, color:"var(--cn)", cursor: r.patient_id ? 'pointer' : 'default', textDecoration: r.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => r.patient_id && navigate(`/patients/${r.patient_id}`)} title={r.patient_id ? "Ouvrir le dossier patient" : ""}>{r.patient_nom}</div>
+                            {r.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{r.patient_dossier}</span>}
                             <div style={{ fontSize:11.5, color:"var(--cm)", marginTop:2 }}>
                               {fmtTime(r.date)} · {r.medecin_nom} · {r.service}
                             </div>

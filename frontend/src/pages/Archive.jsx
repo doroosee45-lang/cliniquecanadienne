@@ -16,6 +16,10 @@ import {
 } from '../store/slices/archiveSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── CSS — same Medical Navy + Teal design system as Settings ─
 const CSS = `
@@ -525,13 +529,163 @@ export default function Archivage() {
     setModalDelete(false);
   };
 
-  const handleExport = async (format) => {
-    const result = await dispatch(exportArchives(format));
-    if (exportArchives.fulfilled.match(result)) {
-      toast.success(`📤 Export ${format.toUpperCase()} lancé`);
-    } else {
-      toast.success(`📤 Export ${format.toUpperCase()} (démo)`);
+  // ─── Export helpers ────────────────────────────────────────
+  const today = new Date().toISOString().split('T')[0];
+
+  const getExportData = () => {
+    const src = filteredByNav.length > 0 ? filteredByNav : archives;
+    return src.map(a => ({
+      Référence:       a.reference || '—',
+      Patient:         a.patient_nom || '—',
+      'Archivé par':   a.archive_par || '—',
+      Catégorie:       a.categorie || '—',
+      Service:         a.service || '—',
+      'Date archivage': fmtDate(a.date_archive),
+      'Nb documents':  a.nb_docs ?? '—',
+      Taille:          a.taille || '—',
+      Statut:          a.statut === 'restauré' ? 'Restauré' : 'Archivé',
+    }));
+  };
+
+  const exportPDF = () => {
+    const rows = getExportData();
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+
+    // Header
+    doc.setFillColor(11, 30, 59);
+    doc.rect(0, 0, W, 24, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`RAPPORT D'ARCHIVAGE — ${CLINIC_NAME.toUpperCase()}`, W / 2, 10, { align: 'center' });
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${CLINIC_NAME} ${CLINIC_SUBTITLE} · Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}`, W / 2, 17, { align: 'center' });
+
+    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(8.5);
+    doc.text(`Total : ${rows.length} archive(s) exportée(s)  ·  KPIs — Total : ${kpis.total}  ·  Ce mois : ${kpis.archives_mois}  ·  Restaurations : ${kpis.restaurations}`, 14, 30);
+
+    autoTable(doc, {
+      startY: 36,
+      head: [['Référence', 'Patient', 'Archivé par', 'Catégorie', 'Service', 'Date archivage', 'Nb docs', 'Taille', 'Statut']],
+      body: rows.map(r => Object.values(r)),
+      theme: 'grid',
+      headStyles: { fillColor:[11,30,59], textColor:255, fontStyle:'bold', fontSize:8, halign:'center', cellPadding:3 },
+      bodyStyles: { fontSize:8, textColor:[30,30,30], cellPadding:2.5 },
+      alternateRowStyles: { fillColor:[240,248,255] },
+      columnStyles: {
+        0: { cellWidth:28, font:'courier', halign:'center' },
+        1: { cellWidth:40 },
+        2: { cellWidth:30 },
+        3: { cellWidth:28 },
+        4: { cellWidth:28 },
+        5: { cellWidth:26, halign:'center' },
+        6: { cellWidth:16, halign:'center' },
+        7: { cellWidth:20, halign:'center' },
+        8: { cellWidth:20, halign:'center' },
+      },
+      willDrawCell: (d) => {
+        if (d.section !== 'body') return;
+        const a = (filteredByNav.length > 0 ? filteredByNav : archives)[d.row.index];
+        if (a?.statut === 'restauré') d.cell.styles.fillColor = [255, 247, 237];
+      },
+      margin: { left:14, right:14 },
+    });
+
+    const n = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= n; i++) {
+      doc.setPage(i);
+      const H = doc.internal.pageSize.getHeight();
+      doc.setFillColor(248, 250, 255);
+      doc.rect(0, H - 10, W, 10, 'F');
+      doc.setFontSize(7); doc.setTextColor(150, 150, 150);
+      doc.text('Document confidentiel — Usage interne uniquement', 14, H - 3.5);
+      doc.text(`Page ${i} / ${n}`, W / 2, H - 3.5, { align: 'center' });
+      doc.text(today, W - 14, H - 3.5, { align: 'right' });
     }
+
+    const filename = `archives-${today}.pdf`;
+    doc.save(filename);
+    toast.success(`📄 PDF exporté : ${filename}`);
+  };
+
+  const exportExcel = () => {
+    const rows = getExportData();
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Largeur des colonnes
+    ws['!cols'] = [
+      { wch:18 }, { wch:28 }, { wch:22 }, { wch:18 },
+      { wch:18 }, { wch:16 }, { wch:12 }, { wch:12 }, { wch:12 },
+    ];
+
+    // Style en-tête (row 1)
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cell = ws[XLSX.utils.encode_cell({ r:0, c:C })];
+      if (cell) {
+        cell.s = {
+          fill: { fgColor: { rgb: '0B1E3B' } },
+          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+          alignment: { horizontal: 'center' },
+          border: { bottom: { style:'thin', color:{ rgb:'AAAAAA' } } },
+        };
+      }
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Archives');
+
+    // Feuille KPIs
+    const kpiData = [
+      { Indicateur:'Total archives',       Valeur: kpis.total },
+      { Indicateur:'Archives ce mois',     Valeur: kpis.archives_mois },
+      { Indicateur:'Restaurations',        Valeur: kpis.restaurations },
+      { Indicateur:'Patients archivés',    Valeur: kpis.patients },
+      { Indicateur:'Consultations',        Valeur: kpis.consultations },
+      { Indicateur:'Hospitalisations',     Valeur: kpis.hospitalisations },
+      { Indicateur:'Laboratoire',          Valeur: kpis.labo },
+      { Indicateur:'Imagerie',             Valeur: kpis.imagerie },
+      { Indicateur:'Taille totale',        Valeur: kpis.taille_totale },
+      { Indicateur:'Dernière opération',   Valeur: kpis.derniere_op },
+    ];
+    const wsKpi = XLSX.utils.json_to_sheet(kpiData);
+    wsKpi['!cols'] = [{ wch:28 }, { wch:18 }];
+    XLSX.utils.book_append_sheet(wb, wsKpi, 'KPIs');
+
+    const filename = `archives-${today}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`📊 Excel exporté : ${filename}`);
+  };
+
+  const exportCSV = () => {
+    const rows = getExportData();
+    const headers = Object.keys(rows[0] || {});
+    const escape = (v) => {
+      const s = String(v ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      headers.map(escape).join(','),
+      ...rows.map(r => headers.map(h => escape(r[h])).join(',')),
+    ];
+    const bom = '﻿'; // UTF-8 BOM pour Excel
+    const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `archives-${today}.csv`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+    toast.success(`📋 CSV exporté : archives-${today}.csv`);
+  };
+
+  const handleExport = (format) => {
+    if (format === 'pdf')   return exportPDF();
+    if (format === 'excel') return exportExcel();
+    if (format === 'csv')   return exportCSV();
   };
 
   // ─── Render section ────────────────────────────────────────

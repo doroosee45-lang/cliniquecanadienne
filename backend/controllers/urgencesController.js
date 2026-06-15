@@ -1,5 +1,6 @@
 const Urgence   = require('../models/Urgence');
 const Ambulance = require('../models/Ambulance');
+const { emitDashboardUpdate } = require('../utils/socket');
 
 const normalize = (u) => ({
   ...u.toObject({ virtuals: true }),
@@ -73,7 +74,7 @@ exports.getStats = async (req, res) => {
 // GET /urgences
 exports.getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 20, q, niveau_triage, statut } = req.query;
+    const { page = 1, limit = 20, q, niveau_triage, statut, patient } = req.query;
     const filter = {};
     if (q) filter.$or = [
       { patient_nom: { $regex: q, $options: 'i' } },
@@ -82,6 +83,7 @@ exports.getAll = async (req, res) => {
     ];
     if (niveau_triage) filter.niveau_triage = niveau_triage;
     if (statut)        filter.statut        = statut;
+    if (patient)       filter.patient       = patient;
 
     const skip  = (Number(page) - 1) * Number(limit);
     const [urgences, total] = await Promise.all([
@@ -128,6 +130,7 @@ exports.create = async (req, res) => {
     });
 
     await u.save();
+    emitDashboardUpdate();
     await u.populate('patient', 'prenom nom numero_dossier');
     res.status(201).json({ urgence: normalize(u), message: `Patient ${u.numero} admis aux urgences` });
   } catch (err) {
@@ -154,6 +157,7 @@ exports.update = async (req, res) => {
     }
 
     await u.save();
+    emitDashboardUpdate();
     await u.populate('patient', 'prenom nom numero_dossier');
     await u.populate('medecin_responsable', 'prenom nom');
     res.json({ urgence: normalize(u) });

@@ -11,6 +11,10 @@ import {
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -202,87 +206,244 @@ const normalizeFacture = (f) => {
   };
 };
 
-// Impression d'une facture dans une nouvelle fenêtre
+// ── Impression HTML dans une nouvelle fenêtre ────────────────
 const printInvoice = (f) => {
-  const win = window.open('', '_blank', 'width=800,height=900');
+  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+  const statutLabel = f.statut === 'paye' ? '✓ Payée' : f.statut === 'partiellement_paye' ? '⚠ Part. payée' : '✗ Non payée';
+  const statutCls   = f.statut === 'paye' ? 'paye' : f.statut === 'partiellement_paye' ? 'partial' : 'non_paye';
+  const win = window.open('', '_blank', 'width=820,height=1000');
   if (!win) { window.print(); return; }
   win.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
-<title>Facture ${f.numero}</title>
+<title>Facture ${f.numero} — ${clinicFull}</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif}
-body{padding:15mm 12mm;font-size:10pt;color:#1a1a2e}
-.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}
-.clinic-name{font-size:15pt;font-weight:bold;color:#0B1E3B}
-.clinic-sub{font-size:8pt;color:#666;margin-top:4px;line-height:1.5}
-.inv-title{text-align:right}.inv-title h1{font-size:20pt;color:#0EA5A0}
-.inv-num{font-size:9pt;color:#666;margin-top:3px}
-hr{border:none;border-top:2px solid #E2EAF4;margin:16px 0}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
-.ib h3{font-size:7pt;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:6px}
-.ib p{font-size:10pt;font-weight:bold;color:#0B1E3B}
-.ib p.sub{font-size:8.5pt;font-weight:normal;color:#666;margin-top:2px}
-table{width:100%;border-collapse:collapse;margin-bottom:18px}
-thead tr{background:#0B1E3B;color:white}
-th{padding:8px 10px;text-align:left;font-size:8pt;text-transform:uppercase;letter-spacing:.5px}
-td{padding:10px;border-bottom:1px solid #E2EAF4;font-size:9.5pt}
-.ar{text-align:right;font-weight:bold}
-.totals{display:flex;justify-content:flex-end;margin-bottom:24px}
-.tbox{min-width:260px}
-.trow{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #E2EAF4;font-size:9.5pt}
-.trow.tot{font-weight:bold;font-size:12pt;border-bottom:none;border-top:2px solid #0B1E3B;padding-top:10px;margin-top:3px}
-.badge{display:inline-block;padding:3px 12px;border-radius:99px;font-size:8pt;font-weight:bold}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif}
+body{background:#f5f7fa;padding:0;font-size:10pt;color:#1a1a2e}
+.page{max-width:760px;margin:0 auto;background:#fff;box-shadow:0 2px 20px rgba(0,0,0,.08)}
+/* Bandeau header */
+.inv-header{background:linear-gradient(135deg,#0B1E3B 0%,#1B4F9E 100%);padding:28px 36px;display:flex;justify-content:space-between;align-items:flex-start}
+.clinic-name{font-size:17pt;font-weight:800;color:#fff;letter-spacing:-.3px}
+.clinic-sub{font-size:8pt;color:rgba(255,255,255,.6);margin-top:5px;line-height:1.6}
+.inv-title-box{text-align:right}
+.inv-title-box h1{font-size:26pt;font-weight:800;color:#0EA5A0;letter-spacing:-1px;line-height:1}
+.inv-num{font-size:10pt;color:rgba(255,255,255,.7);margin-top:4px;font-family:monospace;font-weight:700}
+.badge{display:inline-block;padding:4px 14px;border-radius:99px;font-size:8.5pt;font-weight:700;margin-top:8px}
 .paye{background:#DCFCE7;color:#15803D}.non_paye{background:#FEE2E2;color:#DC2626}.partial{background:#FEF3C7;color:#D97706}
-footer{text-align:center;font-size:7.5pt;color:#999;border-top:1px solid #E2EAF4;padding-top:12px;margin-top:30px}
-@media print{body{padding:10mm}}
+/* Corps */
+.body{padding:32px 36px}
+/* Grid infos */
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px}
+.info-box{background:#F8FAFD;border:1px solid #E2EAF4;border-radius:10px;padding:14px 16px}
+.info-box-lbl{font-size:7.5pt;text-transform:uppercase;letter-spacing:1px;color:#6B7A99;font-weight:700;margin-bottom:6px}
+.info-box-val{font-size:12pt;font-weight:700;color:#0B1E3B}
+.info-box-sub{font-size:8.5pt;color:#6B7A99;margin-top:3px}
+/* Tableau */
+table{width:100%;border-collapse:collapse;margin-bottom:24px}
+thead tr{background:#0B1E3B}
+th{padding:10px 12px;text-align:left;font-size:8pt;text-transform:uppercase;letter-spacing:.6px;color:#fff;font-weight:700}
+td{padding:12px;border-bottom:1px solid #EEF4FF;font-size:9.5pt;color:#1a1a2e}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#F8FAFD}
+.ar{text-align:right;font-weight:700}
+/* Totaux */
+.totals-wrap{display:flex;justify-content:flex-end;margin-bottom:28px}
+.totals-box{min-width:280px;border:1.5px solid #E2EAF4;border-radius:12px;overflow:hidden}
+.t-row{display:flex;justify-content:space-between;padding:9px 16px;border-bottom:1px solid #EEF4FF;font-size:9.5pt;color:#6B7A99}
+.t-row.total{background:#0B1E3B;color:#fff;font-size:12pt;font-weight:800;border-bottom:none}
+/* Paiement */
+.pay-note{background:#F0FDFC;border:1.5px solid #0EA5A030;border-left:4px solid #0EA5A0;border-radius:10px;padding:12px 16px;margin-bottom:24px;font-size:9pt;color:#0D9490}
+/* Footer */
+.inv-footer{background:#F8FAFD;border-top:2px solid #E2EAF4;padding:16px 36px;text-align:center;font-size:8pt;color:#9CA3AF;line-height:1.6}
+@media print{body{background:#fff}.page{box-shadow:none}button{display:none}}
 </style></head><body>
-<div class="header">
-  <div>
-    <div class="clinic-name">🏥 Clinique Canadienne de Souanké</div>
-    <div class="clinic-sub">BP 123, Souanké, Sangha-Mbaéré<br>Tél: +236 XX XX XX XX · clinique@souanke.cg</div>
-  </div>
-  <div class="inv-title">
-    <h1>FACTURE</h1>
-    <div class="inv-num">${f.numero}</div>
-    <div style="margin-top:6px">
-      <span class="badge ${f.statut === 'paye' ? 'paye' : f.statut === 'partiellement_paye' ? 'partial' : 'non_paye'}">
-        ${f.statut === 'paye' ? '✓ Payée' : f.statut === 'partiellement_paye' ? '⚠ Part. payée' : '✗ Non payée'}
-      </span>
+<div class="page">
+  <div class="inv-header">
+    <div>
+      <div class="clinic-name">🏥 ${clinicFull}</div>
+      <div class="clinic-sub">BP 123, Souanké, Sangha-Mbaéré, Congo<br>Tél : +236 XX XX XX XX &nbsp;·&nbsp; Email : clinique@souanke.cg</div>
+    </div>
+    <div class="inv-title-box">
+      <h1>FACTURE</h1>
+      <div class="inv-num">${f.numero}</div>
+      <div><span class="badge ${statutCls}">${statutLabel}</span></div>
     </div>
   </div>
-</div>
-<hr/>
-<div class="grid2">
-  <div class="ib"><h3>Facturé à</h3><p>${f.patient || 'N/A'}</p><p class="sub">Patient · Clinique Canadienne de Souanké</p></div>
-  <div class="ib"><h3>Détails</h3><p>${f.numero}</p><p class="sub">Émise le ${fmtDate(f.date)}</p><p class="sub">Échéance : ${fmtDate(f.echeance)}</p></div>
-</div>
-<table>
-  <thead><tr><th>Prestation / Service</th><th>Qté</th><th class="ar">Montant</th></tr></thead>
-  <tbody>
-    <tr><td>${f.service || 'Prestation médicale'}</td><td>1</td><td class="ar">${fmtMontant(f.montant)}</td></tr>
-  </tbody>
-</table>
-<div class="totals">
-  <div class="tbox">
-    <div class="trow"><span>Sous-total HT</span><span>${fmtMontant(f.montant)}</span></div>
-    <div class="trow"><span>TVA (0%)</span><span>0 CFA</span></div>
-    <div class="trow tot"><span>TOTAL TTC</span><span>${fmtMontant(f.montant)}</span></div>
+
+  <div class="body">
+    <div class="info-grid">
+      <div class="info-box">
+        <div class="info-box-lbl">Facturé à</div>
+        <div class="info-box-val">👤 ${f.patient || 'N/A'}</div>
+        <div class="info-box-sub">Patient — ${clinicFull}</div>
+      </div>
+      <div class="info-box">
+        <div class="info-box-lbl">Informations facture</div>
+        <div class="info-box-val" style="font-family:monospace;font-size:11pt">${f.numero}</div>
+        <div class="info-box-sub">Émise le ${fmtDate(f.date)}</div>
+        <div class="info-box-sub">Échéance : <strong style="color:${f.echeance && new Date(f.echeance)<new Date()&&f.statut!=='paye'?'#DC2626':'inherit'}">${fmtDate(f.echeance) || '—'}</strong></div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>Prestation / Service</th><th>Quantité</th><th>P.U.</th><th class="ar">Montant</th></tr></thead>
+      <tbody>
+        <tr><td>${f.service || 'Prestation médicale'}</td><td>1</td><td>${fmtMontant(f.montant)}</td><td class="ar">${fmtMontant(f.montant)}</td></tr>
+      </tbody>
+    </table>
+
+    <div class="totals-wrap">
+      <div class="totals-box">
+        <div class="t-row"><span>Sous-total HT</span><span>${fmtMontant(f.montant)}</span></div>
+        <div class="t-row"><span>Taxes (0%)</span><span>0 CFA</span></div>
+        <div class="t-row total"><span>TOTAL TTC</span><span>${fmtMontant(f.montant)}</span></div>
+      </div>
+    </div>
+
+    ${f.statut !== 'paye' ? `<div class="pay-note">
+      💳 <strong>Mode de règlement acceptés :</strong> Espèces · Mobile Money · Virement bancaire · Assurance maladie<br>
+      Merci de régler avant le <strong>${fmtDate(f.echeance) || 'la date d\'échéance'}</strong>. En cas de question, contactez le service comptabilité.
+    </div>` : `<div class="pay-note" style="background:#ECFDF5;border-color:#059669;border-left-color:#059669;color:#065F46">
+      ✅ <strong>Cette facture a été entièrement réglée.</strong> Merci pour votre confiance.
+    </div>`}
+  </div>
+
+  <div class="inv-footer">
+    <strong>${clinicFull}</strong> — Souanké, Sangha-Mbaéré, République du Congo<br>
+    Document officiel généré automatiquement · Toute question : comptabilite@${CLINIC_NAME.toLowerCase().replace(/\s/g,'')}.cg
   </div>
 </div>
-<footer>Clinique Canadienne de Souanké — Souanké, Sangha-Mbaéré<br>
-Document généré automatiquement. Pour toute question : service comptabilité.</footer>
+<script>window.onload=()=>{window.print()}</script>
 </body></html>`);
   win.document.close();
-  win.onload = () => { win.focus(); win.print(); };
+};
+
+// ── Téléchargement PDF via jsPDF ─────────────────────────────
+const downloadInvoicePDF = (f) => {
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+  const dateStr = new Date().toLocaleDateString('fr-FR');
+
+  // ── Bandeau header navy ──
+  doc.setFillColor(11,30,59);
+  doc.rect(0,0,W,38,'F');
+  doc.setFillColor(14,165,160);
+  doc.rect(0,38,W,2,'F');
+
+  // Nom clinique
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(255,255,255);
+  doc.text(`🏥 ${clinicFull}`, 14, 14);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(180,200,230);
+  doc.text('BP 123, Souanké, Sangha-Mbaéré, Congo  ·  clinique@souanke.cg', 14, 22);
+  doc.text(`Tél : +236 XX XX XX XX`, 14, 29);
+
+  // FACTURE titre + numéro (droite)
+  doc.setFont('helvetica','bold'); doc.setFontSize(22); doc.setTextColor(14,165,160);
+  doc.text('FACTURE', W-14, 16, { align:'right' });
+  doc.setFontSize(9); doc.setTextColor(200,220,255); doc.setFont('helvetica','normal');
+  doc.text(f.numero, W-14, 24, { align:'right' });
+  doc.text(dateStr, W-14, 31, { align:'right' });
+
+  // ── Statut badge ──
+  const statusColor = f.statut==='paye' ? [5,150,105] : f.statut==='partiellement_paye' ? [217,119,6] : [220,38,38];
+  const statusLabel = f.statut==='paye' ? 'PAYÉE' : f.statut==='partiellement_paye' ? 'PART. PAYÉE' : 'NON PAYÉE';
+  doc.setFillColor(...statusColor);
+  doc.roundedRect(14,46,36,8,2,2,'F');
+  doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255);
+  doc.text(statusLabel, 32, 51.5, { align:'center' });
+
+  // ── Blocs info ──
+  doc.setDrawColor(226,234,244); doc.setLineWidth(0.3);
+  // Bloc patient
+  doc.setFillColor(248,250,253); doc.roundedRect(14,58,85,28,3,3,'F');
+  doc.rect(14,58,85,28,'S');
+  doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(107,122,153);
+  doc.text('FACTURÉ À', 18, 65);
+  doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(11,30,59);
+  doc.text(f.patient || 'N/A', 18, 73);
+  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(107,122,153);
+  doc.text(`Patient — ${clinicFull}`, 18, 80);
+  // Bloc détails
+  doc.setFillColor(248,250,253); doc.roundedRect(105,58,91,28,3,3,'F');
+  doc.rect(105,58,91,28,'S');
+  doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(107,122,153);
+  doc.text('DÉTAILS FACTURE', 109, 65);
+  doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(11,30,59);
+  doc.text(`N° ${f.numero}`, 109, 72);
+  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(107,122,153);
+  doc.text(`Émise le : ${fmtDate(f.date)}`, 109, 79);
+  doc.text(`Échéance : ${fmtDate(f.echeance) || '—'}`, 109, 84.5);
+
+  // ── Tableau prestations ──
+  autoTable(doc, {
+    startY: 95,
+    margin: { left:14, right:14 },
+    head:[['Prestation / Service','Quantité','Prix unitaire','Montant TTC']],
+    body:[[ f.service || 'Prestation médicale', '1', fmtMontant(f.montant), fmtMontant(f.montant) ]],
+    headStyles:{ fillColor:[11,30,59], textColor:255, fontStyle:'bold', fontSize:9, halign:'left' },
+    bodyStyles:{ fontSize:10, textColor:[30,30,50], cellPadding:5 },
+    columnStyles:{ 0:{cellWidth:85}, 1:{halign:'center',cellWidth:20}, 2:{halign:'right',cellWidth:40}, 3:{halign:'right',cellWidth:40,fontStyle:'bold'} },
+    alternateRowStyles:{ fillColor:[248,250,253] },
+  });
+
+  const endY = doc.lastAutoTable.finalY;
+
+  // ── Totaux ──
+  doc.setFillColor(248,250,253); doc.rect(W-86,endY+6,72,24,'F');
+  doc.setDrawColor(226,234,244); doc.rect(W-86,endY+6,72,24,'S');
+  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(107,122,153);
+  doc.text('Sous-total HT :', W-82, endY+14);
+  doc.text('Taxes (0%) :', W-82, endY+20);
+  doc.setFontSize(8.5); doc.setFont('helvetica','bold'); doc.setTextColor(11,30,59);
+  doc.text(fmtMontant(f.montant), W-16, endY+14, { align:'right' });
+  doc.text('0 CFA', W-16, endY+20, { align:'right' });
+
+  // Ligne totale colorée
+  doc.setFillColor(11,30,59); doc.rect(W-86,endY+30,72,12,'F');
+  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255);
+  doc.text('TOTAL TTC', W-82, endY+38);
+  doc.setTextColor(14,165,160);
+  doc.text(fmtMontant(f.montant), W-16, endY+38, { align:'right' });
+
+  // ── Note paiement ──
+  const noteY = endY + 50;
+  if (f.statut !== 'paye') {
+    doc.setFillColor(240,253,252); doc.roundedRect(14,noteY,W-28,14,3,3,'F');
+    doc.setDrawColor(14,165,160); doc.setLineWidth(0.5); doc.line(14,noteY,14,noteY+14);
+    doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(13,148,136);
+    doc.text('Règlement accepté : Espèces · Mobile Money · Virement · Assurance', 18, noteY+6);
+    doc.text(`Merci de régler avant le ${fmtDate(f.echeance) || "la date d'échéance"}.`, 18, noteY+11);
+  } else {
+    doc.setFillColor(236,253,245); doc.roundedRect(14,noteY,W-28,12,3,3,'F');
+    doc.setDrawColor(5,150,105); doc.setLineWidth(0.5); doc.line(14,noteY,14,noteY+12);
+    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
+    doc.text('✓  Facture entièrement réglée — Merci pour votre confiance.', 18, noteY+7.5);
+  }
+
+  // ── Footer ──
+  doc.setFillColor(248,250,253);
+  doc.rect(0,H-18,W,18,'F');
+  doc.setFontSize(7.5); doc.setFont('helvetica','normal'); doc.setTextColor(150,150,160);
+  doc.text(`${clinicFull} — Souanké, Sangha-Mbaéré, République du Congo`, W/2, H-10, { align:'center' });
+  doc.text('Document officiel · Usage interne et comptable', W/2, H-5, { align:'center' });
+  doc.setTextColor(107,122,153);
+  doc.text(dateStr, 14, H-10);
+  doc.text(`Page 1/1`, W-14, H-10, { align:'right' });
+
+  doc.save(`facture-${f.numero}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
 const shareWhatsApp = (f) => {
-  const msg = `🏥 *Clinique Canadienne de Souanké*\n\n📋 *FACTURE N° ${f.numero}*\n\n👤 Patient : ${f.patient}\n💼 Service : ${f.service}\n💰 Montant : ${fmtMontant(f.montant)}\n📅 Date : ${fmtDate(f.date)}\n⏰ Échéance : ${fmtDate(f.echeance)}\n✅ Statut : ${f.statut === 'paye' ? 'Payée' : f.statut === 'partiellement_paye' ? 'Partiellement payée' : 'Non payée'}\n\nMerci de régler votre facture dans les délais impartis.\n📞 Contact : +236 XX XX XX XX`;
+  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+  const msg = `🏥 *${clinicFull}*\n\n📋 *FACTURE N° ${f.numero}*\n\n👤 Patient : ${f.patient}\n💼 Service : ${f.service}\n💰 Montant : ${fmtMontant(f.montant)}\n📅 Date : ${fmtDate(f.date)}\n⏰ Échéance : ${fmtDate(f.echeance)}\n✅ Statut : ${f.statut === 'paye' ? 'Payée ✓' : f.statut === 'partiellement_paye' ? 'Partiellement payée ⚠' : 'Non payée ✗'}\n\nModes de paiement : Espèces · Mobile Money · Virement · Assurance\n\n📞 Contact : +236 XX XX XX XX`;
   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
 };
 
 const shareEmail = (f) => {
-  const subject = `Facture N° ${f.numero} — Clinique Canadienne de Souanké`;
-  const body = `Bonjour,\n\nVeuillez trouver ci-dessous votre facture.\n\nN° Facture : ${f.numero}\nPatient : ${f.patient}\nPrestation : ${f.service}\nMontant : ${fmtMontant(f.montant)}\nDate d'émission : ${fmtDate(f.date)}\nDate d'échéance : ${fmtDate(f.echeance)}\nStatut : ${f.statut === 'paye' ? 'Payée' : 'Non payée'}\n\nCordialement,\nService Comptabilité\nClinique Canadienne de Souanké`;
+  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+  const subject = `Facture N° ${f.numero} — ${clinicFull}`;
+  const statutTxt = f.statut === 'paye' ? 'Payée' : f.statut === 'partiellement_paye' ? 'Partiellement payée' : 'Non payée';
+  const body = `Bonjour,\n\nVeuillez trouver ci-dessous votre facture de la ${clinicFull}.\n\nN° Facture  : ${f.numero}\nPatient     : ${f.patient}\nPrestation  : ${f.service}\nMontant     : ${fmtMontant(f.montant)}\nDate émise  : ${fmtDate(f.date)}\nÉchéance    : ${fmtDate(f.echeance)}\nStatut      : ${statutTxt}\n\nPour toute question, contactez notre service comptabilité.\n\nCordialement,\nService Comptabilité — ${clinicFull}\nTél : +236 XX XX XX XX`;
   window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
 };
 
@@ -572,8 +733,25 @@ export default function Finance() {
   const montantImpaye  = facturesImpayees.reduce((s, f) => s + safeNum(f.montant), 0);
   const creanceAssur   = assurances.filter(a => a.statut !== "rembourse").reduce((s, a) => s + safeNum(a.en_attente), 0);
   const totalSalaires  = salaires.reduce((s, sl) => s + safeNum(sl.net), 0);
-  const soldeCaisse    = 485000; // Demo
+  const soldeCaisse    = kpis.solde_caisse || 0;
   const tauxRecouvrement = totalRevenus > 0 ? Math.round(((totalRevenus - montantImpaye) / totalRevenus) * 100) : 0;
+
+  // ── Agrégations par mois (depuis les données réelles) ────────
+  const revByMonth = Array(12).fill(0);
+  revenus.forEach(r => { const m = r.date ? new Date(r.date).getMonth() : -1; if (m >= 0) revByMonth[m] += Number(r.montant||0); });
+  const depByMonth = Array(12).fill(0);
+  depenses.forEach(d => { const m = d.date ? new Date(d.date).getMonth() : -1; if (m >= 0) depByMonth[m] += Number(d.montant||0); });
+  const benefByMonth = revByMonth.map((r, i) => r - depByMonth[i]);
+
+  // ── Agrégations par service (depuis les données réelles) ─────
+  const SERVICE_KEYS   = ["Consultation","Laboratoire","Chirurgie","Imagerie","Hospitalisation","Pharmacie","Maternité","Urgences"];
+  const SERVICE_SHORT  = ["Consultation","Labo","Chirurgie","Imagerie","Hospit.","Pharmacie","Maternité","Urgences"];
+  const SERVICE_COLORS = ["#0EA5A0","#7C3AED","#DC2626","#059669","#1B4F9E","#D97706","#CA8A04","#6B7A99"];
+  const revByService   = SERVICE_KEYS.map(s => revenus.filter(r => r.service === s).reduce((sum,r) => sum + Number(r.montant||0), 0));
+
+  // ── Encaissements par mode (depuis paiements réels) ──────────
+  const encByMode = { especes:0, mobile_money:0, virement:0, assurance:0, carte:0 };
+  paiements.forEach(p => { const m = p.mode || 'especes'; if (m in encByMode) encByMode[m] += Number(p.montant||0); });
 
   // ── Add revenu ───────────────────────────────────────────
   const addRevenu = async (e) => {
@@ -717,6 +895,89 @@ export default function Finance() {
   // ── Mois labels ──────────────────────────────────────────
   const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
+  // ── Export PDF ───────────────────────────────────────────────
+  const exportFinancePDF = () => {
+    const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+    doc.setFillColor(11,30,59); doc.rect(0,0,W,24,'F');
+    doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont('helvetica','bold');
+    doc.text(`RAPPORT FINANCIER — ${CLINIC_NAME.toUpperCase()}`, W/2, 10, { align:'center' });
+    doc.setFontSize(8.5); doc.setFont('helvetica','normal');
+    doc.text(`${CLINIC_NAME} ${CLINIC_SUBTITLE} · Généré le ${dateStr}`, W/2, 17, { align:'center' });
+    autoTable(doc, {
+      startY:30, margin:{left:14,right:14},
+      head:[['Indicateur','Valeur','Indicateur','Valeur']],
+      body:[
+        ['Revenus totaux', `${totalRevenus.toLocaleString('fr-FR')} CFA`, 'Dépenses totales', `${totalDepenses.toLocaleString('fr-FR')} CFA`],
+        ['Bénéfice net', `${beneficeNet.toLocaleString('fr-FR')} CFA`, 'Taux recouvrement', `${tauxRecouvrement}%`],
+        ['Factures impayées', facturesImpayees.length, 'Montant impayé', `${montantImpaye.toLocaleString('fr-FR')} CFA`],
+        ['Créances assurances', `${creanceAssur.toLocaleString('fr-FR')} CFA`, 'Masse salariale', `${totalSalaires.toLocaleString('fr-FR')} CFA`],
+      ],
+      headStyles:{ fillColor:[11,30,59], textColor:255, fontStyle:'bold', fontSize:9 },
+      bodyStyles:{ fontSize:9 }, alternateRowStyles:{ fillColor:[240,248,255] },
+      columnStyles:{ 0:{fontStyle:'bold'}, 2:{fontStyle:'bold'} },
+    });
+    if (revenus.length > 0) {
+      const y = doc.lastAutoTable.finalY + 10;
+      doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(11,30,59);
+      doc.text('Journal des revenus', 14, y);
+      autoTable(doc, {
+        startY: y+4, margin:{left:14,right:14},
+        head:[['Date','Référence','Patient','Service','Montant','Mode']],
+        body: revenus.map(r => [fmtDate(r.date), r.reference||'—', r.patient||'—', r.service||'—', `${Number(r.montant||0).toLocaleString('fr-FR')} CFA`, r.mode||'—']),
+        headStyles:{ fillColor:[5,150,105], textColor:255, fontSize:8 },
+        bodyStyles:{ fontSize:8 },
+      });
+    }
+    if (factures.length > 0) {
+      const y2 = doc.lastAutoTable.finalY + 10;
+      doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(11,30,59);
+      doc.text('Factures', 14, y2);
+      autoTable(doc, {
+        startY: y2+4, margin:{left:14,right:14},
+        head:[['Numéro','Date','Patient','Service','Montant','Statut']],
+        body: factures.map(f => [f.numero||'—', fmtDate(f.date), f.patient||'—', f.service||'—', `${Number(f.montant||0).toLocaleString('fr-FR')} CFA`, f.statut||'—']),
+        headStyles:{ fillColor:[27,79,158], textColor:255, fontSize:8 },
+        bodyStyles:{ fontSize:8 },
+        didParseCell: (d) => { if (d.section==='body' && d.column.index===5 && d.cell.raw==='paye') d.cell.styles.textColor=[5,150,105]; if (d.section==='body' && d.column.index===5 && d.cell.raw==='non_paye') d.cell.styles.textColor=[220,38,38]; },
+      });
+    }
+    const n = doc.internal.getNumberOfPages();
+    for (let i=1;i<=n;i++) { doc.setPage(i); const H=doc.internal.pageSize.getHeight(); doc.setFontSize(7); doc.setTextColor(150,150,150); doc.text(`Page ${i}/${n}`, W/2, H-4, {align:'center'}); doc.text(dateStr, W-14, H-4, {align:'right'}); }
+    doc.save(`finance-${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('📄 PDF exporté');
+  };
+
+  const exportFinanceExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const revData = [['Date','Référence','Patient','Service','Montant CFA','Mode','Statut'],
+      ...revenus.map(r=>[fmtDate(r.date),r.reference||'',r.patient||'',r.service||'',Number(r.montant||0),r.mode||'',r.statut||''])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(revData), 'Revenus');
+    const factData = [['Numéro','Date','Patient','Service','Montant CFA','Échéance','Statut'],
+      ...factures.map(f=>[f.numero||'',fmtDate(f.date),f.patient||'',f.service||'',Number(f.montant||0),fmtDate(f.echeance),f.statut||''])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(factData), 'Factures');
+    const payData = [['Référence','Date','Patient','Facture','Montant CFA','Mode'],
+      ...paiements.map(p=>[p.reference||'',fmtDate(p.date),p.patient||'',p.facture||'',Number(p.montant||0),p.mode||''])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(payData), 'Paiements');
+    const kpiData = [['KPI','Valeur'],['Revenus totaux',totalRevenus],['Dépenses totales',totalDepenses],['Bénéfice net',beneficeNet],['Factures impayées',facturesImpayees.length],['Montant impayé',montantImpaye],['Taux recouvrement %',tauxRecouvrement]];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kpiData), 'KPIs');
+    XLSX.writeFile(wb, `finance-${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('📊 Excel exporté (4 feuilles)');
+  };
+
+  const exportFinanceCSV = () => {
+    const esc = v => `"${String(v??'').replace(/"/g,'""')}"`;
+    const rows = [['Date','Référence','Patient','Service','Montant CFA','Mode','Statut'],
+      ...revenus.map(r=>[fmtDate(r.date),r.reference||'',r.patient||'',r.service||'',Number(r.montant||0),r.mode||'',r.statut||''])];
+    const csv = '﻿' + rows.map(r=>r.map(esc).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    a.download = `finance-revenus-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    toast.success('📋 CSV exporté');
+  };
+
   // ═══════════════════════════════════════════════════════════
   return (
     <>
@@ -733,7 +994,7 @@ export default function Finance() {
               <div>
                 <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Module Finance</div>
                 <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>
-                  Clinique Canadienne de Souanké ·
+                  {CLINIC_NAME} {CLINIC_SUBTITLE} ·
                   <span style={{ color:"#A7F3D0", fontWeight:700 }}> {fmtMontant(totalRevenus)} de revenus ce mois</span>
                   {montantImpaye > 0 && <span style={{ color:"#FCA5A5", fontWeight:700 }}> · {fmtMontant(montantImpaye)} impayés</span>}
                 </div>
@@ -830,8 +1091,9 @@ export default function Finance() {
                     <LineChart
                       labels={MOIS}
                       datasets={[
-                        { label:"Revenus", data:[580000,620000,490000,710000,680000,845000,0,0,0,0,0,0], borderColor:"#059669", pointBackgroundColor:"#059669" },
-                        { label:"Dépenses", data:[420000,450000,380000,510000,490000,492000,0,0,0,0,0,0], borderColor:"#DC2626", pointBackgroundColor:"#DC2626" },
+                        { label:"Revenus", data:revByMonth, borderColor:"#059669", pointBackgroundColor:"#059669" },
+                        { label:"Dépenses", data:depByMonth, borderColor:"#DC2626", pointBackgroundColor:"#DC2626" },
+                        { label:"Bénéfice", data:benefByMonth, borderColor:"#0EA5A0", pointBackgroundColor:"#0EA5A0" },
                       ]}
                       height={200}
                     />
@@ -841,9 +1103,9 @@ export default function Finance() {
                   <div className="fin-card-hdr"><div><h3>Revenus par service</h3><p>{fmtMontant(totalRevenus)}</p></div></div>
                   <div style={{ padding:20 }}>
                     <DoughnutChart
-                      labels={["Consultation","Labo","Chirurgie","Imagerie","Hospit.","Pharmacie"]}
-                      data={[420000, 285000, 670000, 195000, 540000, 380000]}
-                      colors={["#0EA5A0","#7C3AED","#DC2626","#059669","#1B4F9E","#D97706"]}
+                      labels={SERVICE_SHORT}
+                      data={revByService}
+                      colors={SERVICE_COLORS}
                       height={190}
                     />
                   </div>
@@ -911,26 +1173,25 @@ export default function Finance() {
                   <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>Total : <strong style={{ color:"var(--fg)" }}>{fmtMontant(totalRevenus)}</strong></div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  <button className="fbtn fbtn-ghost fbtn-sm" onClick={() => toast.success("📊 Export en cours...")}>{I.dl} Exporter</button>
+                  <button className="fbtn fbtn-ghost fbtn-sm" onClick={exportFinanceExcel}>{I.dl} Exporter</button>
                   <button className="fbtn fbtn-teal" onClick={() => { setFormRevenu(EMPTY_REVENU); setModalRevenu(true); }}>
                     {I.plus} Enregistrer revenu
                   </button>
                 </div>
               </div>
 
-              {/* Stats revenus par service */}
+              {/* Stats revenus par service — données réelles */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:12, marginBottom:20 }}>
-                {[
-                  ["Consultation", 420000, "#0EA5A0"], ["Laboratoire", 285000, "#7C3AED"],
-                  ["Chirurgie", 670000, "#DC2626"], ["Imagerie", 195000, "#059669"],
-                  ["Hospitalisation", 540000, "#1B4F9E"], ["Pharmacie", 380000, "#D97706"],
-                  ["Maternité", 310000, "#CA8A04"], ["Urgences", 175000, "#6B7A99"],
-                ].map(([lbl, val, col]) => (
-                  <div key={lbl} style={{ background:"#fff", border:"1.5px solid var(--cbr)", borderRadius:14, padding:"12px 14px", borderTop:`3px solid ${col}` }}>
-                    <div style={{ fontSize:15, fontWeight:800, color:"var(--fn)" }}>{fmtMontant(val).replace(" CFA", "")}</div>
-                    <div style={{ fontSize:10, fontWeight:600, color:"var(--cm)", marginTop:2 }}>{lbl} <span style={{ fontSize:9 }}>CFA</span></div>
-                  </div>
-                ))}
+                {SERVICE_KEYS.map((lbl, i) => {
+                  const val = revByService[i];
+                  const col = SERVICE_COLORS[i];
+                  return (
+                    <div key={lbl} style={{ background:"#fff", border:"1.5px solid var(--cbr)", borderRadius:14, padding:"12px 14px", borderTop:`3px solid ${col}` }}>
+                      <div style={{ fontSize:15, fontWeight:800, color:"var(--fn)" }}>{val > 0 ? fmtMontant(val).replace(" CFA","") : "0"}</div>
+                      <div style={{ fontSize:10, fontWeight:600, color:"var(--cm)", marginTop:2 }}>{lbl} <span style={{ fontSize:9 }}>CFA</span></div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="fin-card">
@@ -1110,14 +1371,15 @@ export default function Finance() {
                   <div className="fin-card-hdr"><h3>📊 Encaissements par mode</h3></div>
                   <div style={{ padding:18, display:"flex", flexDirection:"column", gap:10 }}>
                     {[
-                      ["💵 Espèces", 65000, "#059669"],
-                      ["📱 Mobile Money", 35000, "#0EA5A0"],
-                      ["🏦 Virement", 0, "#1B4F9E"],
-                      ["🛡️ Assurance", 20000, "#7C3AED"],
+                      ["💵 Espèces",      encByMode.especes,      "#059669"],
+                      ["📱 Mobile Money", encByMode.mobile_money, "#0EA5A0"],
+                      ["🏦 Virement",     encByMode.virement,     "#1B4F9E"],
+                      ["🛡️ Assurance",    encByMode.assurance,    "#7C3AED"],
+                      ["💳 Carte",        encByMode.carte,        "#D97706"],
                     ].map(([lbl, val, col]) => (
                       <div key={lbl} style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                         <span style={{ fontSize:12, color:"var(--cm)" }}>{lbl}</span>
-                        <strong style={{ color:col, fontSize:13 }}>{fmtMontant(val)}</strong>
+                        <strong style={{ color: val > 0 ? col : "var(--cm)", fontSize:13 }}>{val > 0 ? fmtMontant(val) : "—"}</strong>
                       </div>
                     ))}
                   </div>
@@ -1238,7 +1500,8 @@ export default function Finance() {
                                     {I.check} Payer
                                   </button>
                                 )}
-                                <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} onClick={() => toast.success("📄 Facture imprimée")}>{I.print}</button>
+                                <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} title="Imprimer" onClick={() => printInvoice(f)}>{I.print}</button>
+                                <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} title="Télécharger PDF" onClick={() => downloadInvoicePDF(f)}>📥</button>
                               </div>
                             </td>
                           </tr>
@@ -1613,16 +1876,16 @@ export default function Finance() {
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr"><h3>{I.trend} Bénéfice net mensuel</h3></div>
                   <div style={{ padding:20 }}>
-                    <BarChart labels={MOIS.slice(0,6)} data={[160000,170000,110000,200000,190000,353000]} color="#059669" height={180} />
+                    <BarChart labels={MOIS} data={benefByMonth} color="#059669" height={180} />
                   </div>
                 </div>
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr"><h3>📊 Répartition revenus</h3></div>
                   <div style={{ padding:20 }}>
                     <DoughnutChart
-                      labels={["Consultation","Chirurgie","Hospit.","Labo","Pharmacie","Imagerie"]}
-                      data={[420000,670000,540000,285000,380000,195000]}
-                      colors={["#0EA5A0","#DC2626","#1B4F9E","#7C3AED","#D97706","#059669"]}
+                      labels={SERVICE_SHORT}
+                      data={revByService}
+                      colors={SERVICE_COLORS}
                       height={200}
                     />
                   </div>
@@ -1649,8 +1912,8 @@ export default function Finance() {
                       <div style={{ fontSize:11, color:"var(--cm)" }}>{desc}</div>
                       <div style={{ fontSize:10, color:"var(--ft)", fontWeight:600 }}>📅 {periode}</div>
                       <div style={{ display:"flex", gap:6, marginTop:"auto" }}>
-                        <button className="fbtn fbtn-ghost fbtn-sm" style={{ flex:1, fontSize:11 }} onClick={() => toast.success(`📄 Génération : ${titre}...`)}>{I.dl} PDF</button>
-                        <button className="fbtn fbtn-ghost fbtn-sm" style={{ flex:1, fontSize:11 }} onClick={() => toast.success(`📊 Export Excel : ${titre}...`)}>📊 Excel</button>
+                        <button className="fbtn fbtn-ghost fbtn-sm" style={{ flex:1, fontSize:11 }} onClick={exportFinancePDF}>{I.dl} PDF</button>
+                        <button className="fbtn fbtn-ghost fbtn-sm" style={{ flex:1, fontSize:11 }} onClick={exportFinanceExcel}>📊 Excel</button>
                       </div>
                     </div>
                   ))}
@@ -1894,22 +2157,39 @@ export default function Finance() {
         </Modal>
 
         {/* ═══ MODAL : FACTURE DETAIL ═══ */}
-        <Modal open={modalFactureDetail} onClose={() => setModalFactureDetail(false)} title="🧾 Détail facture" maxWidth={560}>
+        <Modal open={modalFactureDetail} onClose={() => setModalFactureDetail(false)} title="🧾 Détail facture" maxWidth={580}>
           {selectedFacture && (() => {
             const sc = STATUT_FACT[selectedFacture.statut] || { cls:"gray", label: selectedFacture.statut };
+            const isOverdue = selectedFacture.echeance && new Date(selectedFacture.echeance) < new Date() && selectedFacture.statut !== "paye" && selectedFacture.statut !== "annule";
             return (
               <div>
                 {/* En-tête colorée */}
-                <div style={{ background:"linear-gradient(135deg,#0B1E3B,#1B4F9E)", borderRadius:14, padding:"18px 20px", marginBottom:16, color:"#fff" }}>
+                <div style={{ background:"linear-gradient(135deg,#0B1E3B 0%,#1B4F9E 100%)", borderRadius:14, padding:"18px 20px", marginBottom:16, color:"#fff" }}>
+                  <div style={{ fontSize:10, fontWeight:600, color:"rgba(255,255,255,.45)", letterSpacing:1, marginBottom:8, textTransform:"uppercase" }}>
+                    🏥 {CLINIC_NAME} {CLINIC_SUBTITLE}
+                  </div>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:8 }}>
                     <div>
-                      <div style={{ fontFamily:"monospace", fontSize:13, fontWeight:700, color:"rgba(255,255,255,.6)", marginBottom:6 }}>{selectedFacture.numero}</div>
-                      <div style={{ fontSize:22, fontWeight:800, letterSpacing:-1 }}>{fmtMontant(selectedFacture.montant)}</div>
-                      <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:5 }}>{selectedFacture.service} · {fmtDate(selectedFacture.date)}</div>
+                      <div style={{ fontFamily:"monospace", fontSize:14, fontWeight:700, color:"rgba(255,255,255,.65)", marginBottom:4 }}>{selectedFacture.numero}</div>
+                      <div style={{ fontSize:26, fontWeight:800, letterSpacing:-1, color:"#fff" }}>{fmtMontant(selectedFacture.montant)}</div>
+                      <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:6 }}>
+                        {selectedFacture.service} &nbsp;·&nbsp; émise le {fmtDate(selectedFacture.date)}
+                      </div>
                     </div>
-                    <span className={`fbdg ${sc.cls}`} style={{ alignSelf:"flex-start", marginTop:4 }}>{sc.label}</span>
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
+                      <span className={`fbdg ${sc.cls}`}>{sc.label}</span>
+                      {isOverdue && <span style={{ background:"#DC2626", color:"#fff", borderRadius:99, fontSize:9, fontWeight:700, padding:"2px 8px", letterSpacing:.3 }}>EN RETARD</span>}
+                    </div>
                   </div>
                 </div>
+
+                {/* Alerte retard */}
+                {isOverdue && (
+                  <div style={{ background:"#FEF2F2", border:"1.5px solid #FCA5A5", borderLeft:"4px solid #DC2626", borderRadius:10, padding:"10px 14px", marginBottom:12, fontSize:12, color:"#DC2626", display:"flex", alignItems:"center", gap:8 }}>
+                    <span>⚠️</span>
+                    <span>Cette facture est <strong>en retard</strong> depuis le {fmtDate(selectedFacture.echeance)}. Pensez à relancer le patient.</span>
+                  </div>
+                )}
 
                 {/* Infos */}
                 <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10, marginBottom:16 }}>
@@ -1919,16 +2199,29 @@ export default function Finance() {
                     ["Date facture", fmtDate(selectedFacture.date)],
                     ["Échéance",     fmtDate(selectedFacture.echeance)],
                   ].map(([lbl,val]) => (
-                    <div key={lbl} style={{ background:"#F8FAFD", borderRadius:10, padding:"10px 12px" }}>
-                      <div style={{ fontSize:10, fontWeight:600, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.4 }}>{lbl}</div>
+                    <div key={lbl} style={{ background:"#F8FAFD", border:"1px solid #E2EAF4", borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ fontSize:10, fontWeight:600, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5 }}>{lbl}</div>
                       <div style={{ fontSize:13, fontWeight:600, color:"var(--fn)", marginTop:3 }}>{val || "—"}</div>
                     </div>
                   ))}
                 </div>
 
+                {/* Détail montant */}
+                <div style={{ background:"#F8FAFD", border:"1px solid #E2EAF4", borderRadius:10, padding:"12px 14px", marginBottom:16 }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>Récapitulatif</div>
+                  {[["Sous-total HT", fmtMontant(selectedFacture.montant)], ["Taxes (0%)", "0 CFA"]].map(([lbl,val]) => (
+                    <div key={lbl} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid #EEF4FF", fontSize:12, color:"var(--cm)" }}>
+                      <span>{lbl}</span><span>{val}</span>
+                    </div>
+                  ))}
+                  <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0 0", fontSize:14, fontWeight:800, color:"var(--fn)" }}>
+                    <span>Total TTC</span><span style={{ color:"var(--ft)" }}>{fmtMontant(selectedFacture.montant)}</span>
+                  </div>
+                </div>
+
                 {/* Statut */}
-                <div style={{ marginBottom:16 }}>
-                  <label className="flbl">Statut de paiement</label>
+                <div style={{ marginBottom:14 }}>
+                  <label className="flbl">Modifier le statut de paiement</label>
                   <select className="finp" value={selectedFacture.statut} onChange={e => { updateStatutFacture(selectedFacture._id, e.target.value); setSelectedFacture(f => ({...f, statut:e.target.value})); }}>
                     <option value="non_paye">❌ Non payée</option>
                     <option value="paye">✅ Payée</option>
@@ -1944,9 +2237,12 @@ export default function Finance() {
                 </div>
 
                 {/* Actions */}
-                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
                   <button className="fbtn fbtn-teal" onClick={() => printInvoice(selectedFacture)}>
-                    {I.print} Imprimer / PDF
+                    {I.print} Imprimer
+                  </button>
+                  <button className="fbtn fbtn-primary" style={{ background:"#1B4F9E", borderColor:"#1B4F9E" }} onClick={() => downloadInvoicePDF(selectedFacture)}>
+                    📥 Télécharger PDF
                   </button>
                   <button className="fbtn fbtn-green" style={{ background:"#25D366", borderColor:"#25D366", color:"#fff" }} onClick={() => shareWhatsApp(selectedFacture)}>
                     📱 WhatsApp
@@ -1955,7 +2251,7 @@ export default function Finance() {
                     📧 Email
                   </button>
                   {selectedFacture.statut !== "paye" && (
-                    <button className="fbtn fbtn-primary" style={{ marginLeft:"auto" }} onClick={() => { updateStatutFacture(selectedFacture._id, "paye"); setSelectedFacture(f => ({...f, statut:"paye"})); }}>
+                    <button className="fbtn fbtn-success" style={{ marginLeft:"auto" }} onClick={() => { updateStatutFacture(selectedFacture._id, "paye"); setSelectedFacture(f => ({...f, statut:"paye"})); }}>
                       {I.check} Marquer payée
                     </button>
                   )}
@@ -2138,8 +2434,8 @@ export default function Finance() {
             <div>
               <label className="flbl">Format</label>
               <div style={{ display:"flex", gap:10 }}>
-                {[["pdf","📄","PDF"],["excel","📊","Excel"],["csv","📋","CSV"]].map(([val,icon,lbl]) => (
-                  <div key={val} style={{ flex:1, padding:"12px 8px", border:"2px solid var(--cbr)", borderRadius:12, cursor:"pointer", textAlign:"center" }} onClick={() => toast.success(`⬇️ Export ${lbl} lancé...`)}>
+                {[["pdf","📄","PDF",exportFinancePDF],["excel","📊","Excel",exportFinanceExcel],["csv","📋","CSV",exportFinanceCSV]].map(([val,icon,lbl,fn]) => (
+                  <div key={val} style={{ flex:1, padding:"12px 8px", border:"2px solid var(--cbr)", borderRadius:12, cursor:"pointer", textAlign:"center" }} onClick={() => { fn(); setModalExport(false); }}>
                     <div style={{ fontSize:22 }}>{icon}</div>
                     <div style={{ fontSize:12, fontWeight:600, color:"var(--fn)", marginTop:4 }}>{lbl}</div>
                   </div>

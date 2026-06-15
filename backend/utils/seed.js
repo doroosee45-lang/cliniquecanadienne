@@ -25,6 +25,11 @@ const Hospitalization = require('../models/Hospitalization');
 const Prescription  = require('../models/Prescription');
 
 const seed = async () => {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌  REFUS : le seed est interdit en production (NODE_ENV=production).');
+    process.exit(1);
+  }
+
   const uri = process.env.MONGO_URI;
   console.log(`\n🔌 Connexion à : ${uri?.substring(0, 40)}...`);
   await mongoose.connect(uri);
@@ -61,7 +66,11 @@ const seed = async () => {
   // ════════════════════════════════════════════════════════════════════════
   // 2. UTILISATEURS
   // ════════════════════════════════════════════════════════════════════════
-  const PWD = 'medisync123';
+  const PWD = process.env.SEED_PASSWORD;
+  if (!PWD) {
+    console.error('❌  SEED_PASSWORD non défini dans .env — ajoutez SEED_PASSWORD=... et relancez.');
+    process.exit(1);
+  }
   const users = await Promise.all([
     // Super Admin
     User.create({ email:'oseedoro@gmail.com',              password:PWD, nom:'Doroosee',   prenom:'Osee',        role:'superadmin',     telephone:'+242 06 000 0001', statut:'actif' }),

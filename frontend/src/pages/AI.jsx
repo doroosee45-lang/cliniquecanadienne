@@ -1,12 +1,18 @@
 ﻿
 
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions,
-  selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading,
+  selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading, selectAIAnalyzing,
 } from '../store/slices/aiSlice';
+import api from '../api';
+import toast from 'react-hot-toast';
+import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -340,6 +346,7 @@ export default function IntelligenceArtificielle() {
   const reduxStats       = useSelector(selectAIStats);
   const reduxWarnings    = useSelector(selectAIWarnings);
   const reduxLoading     = useSelector(selectAILoading);
+  const reduxAnalyzing   = useSelector(selectAIAnalyzing);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -383,47 +390,129 @@ export default function IntelligenceArtificielle() {
     niveau_assistance: "standard",
   });
 
-  // Alertes lues
+  // Alertes lues + données réelles
   const [alertesLues, setAlertesLues] = useState([]);
-  const nbAlertesNonLues = reduxStats.alertes_risque ?? DEMO_ALERTS.filter(a => !alertesLues.includes(a.id) && a.priority === "critique").length;
+  const [realAlerts, setRealAlerts] = useState({ labo_critiques: [], imagerie_urgentes: [], predictions_en_attente: [] });
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const flatAlerts = useMemo(() => {
+    const items = [];
+    (realAlerts.labo_critiques || []).forEach(l => {
+      const pat = l.patient;
+      items.push({ id: String(l._id), icon: '🔬', title: `Résultat critique — ${pat ? `${pat.prenom} ${pat.nom}` : l.patient_nom || 'Patient'}`, detail: `Résultat biologique critique${l.ia_anomalie ? ' · Anomalie IA détectée' : ''}`, module: 'Laboratoire', priority: 'critique', time: fmtDate(l.createdAt) });
+    });
+    (realAlerts.imagerie_urgentes || []).forEach(i => {
+      const pat = i.patient;
+      items.push({ id: String(i._id), icon: '🩻', title: `Imagerie urgente — ${i.type_examen || 'Examen'}`, detail: `Patient: ${pat ? `${pat.prenom} ${pat.nom}` : '—'} · Priorité: ${i.priorite}`, module: 'Imagerie', priority: 'critique', time: fmtDate(i.createdAt) });
+    });
+    (realAlerts.predictions_en_attente || []).forEach(p => {
+      const pat = p.patient;
+      const typeLabel = { diagnostic: 'Diagnostic IA', interaction_medicament: 'Interaction médicament', conflit_rdv: 'Conflit RDV' }[p.type] || p.type;
+      items.push({ id: String(p._id), icon: '🤖', title: `${typeLabel} en attente`, detail: `Patient: ${pat ? `${pat.prenom} ${pat.nom}` : 'Anonyme'} · Confiance: ${p.score_confiance}%`, module: 'IA', priority: 'eleve', time: fmtDate(p.createdAt) });
+    });
+    return items;
+  }, [realAlerts]);
+
+  const nbAlertesNonLues = reduxStats.alertes_risque ?? flatAlerts.filter(a => !alertesLues.includes(a.id) && a.priority === "critique").length;
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [chatMessages]);
 
-  // ── Analyse clinique simulée ──────────────────────────────
+  // Charger alertes réelles depuis l'API
+  useEffect(() => {
+    setAlertsLoading(true);
+    api.get('/ai/alerts')
+      .then(({ data }) => setRealAlerts(data.alerts || { labo_critiques: [], imagerie_urgentes: [], predictions_en_attente: [] }))
+      .catch(() => {})
+      .finally(() => setAlertsLoading(false));
+  }, [tab]);
+
+  // ── Helpers parsing ───────────────────────────────────────
+  const normalizeSymptom = (s) => {
+    const accents = { à:'a',â:'a',ä:'a',é:'e',è:'e',ê:'e',ë:'e',î:'i',ï:'i',ô:'o',ö:'o',ù:'u',û:'u',ü:'u',ÿ:'y',ç:'c' };
+    return s.trim().toLowerCase().replace(/[àâäéèêëîïôöùûüÿç]/g, c => accents[c] || c).replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
+  };
+
+  const parseVitals = (text) => {
+    const v = {};
+    const t = text.match(/T°?\s*[:=]?\s*(\d+\.?\d*)/i);
+    if (t) v.temperature = parseFloat(t[1]);
+    const hr = text.match(/(?:Pouls|FC|HR)\s*[:=]?\s*(\d+)/i);
+    if (hr) v.frequence_cardiaque = parseInt(hr[1]);
+    const bp = text.match(/(?:TA|PA)\s*[:=]?\s*(\d+\/\d+)/i);
+    if (bp) v.pression_arterielle = bp[1];
+    const gl = text.match(/(?:glycemie|glyc.mie)\s*[:=]?\s*(\d+\.?\d*)/i);
+    if (gl) v.glycemie = parseFloat(gl[1]);
+    return v;
+  };
+
+  const URGENCE_MAP = { "elevée": "eleve", "eleve": "eleve", "modérée": "modere", "modere": "modere", "faible": "faible" };
+
+  // ── Analyse clinique — connectée à POST /ai/diagnose ─────
   const lancerAnalyse = async () => {
     if (!formSymptomes.trim()) return;
     setAnalyzing(true);
     setAnalysisResult(null);
-    await new Promise(r => setTimeout(r, 2200));
-    setAnalysisResult({
-      diagnostics: [
-        { label:"Appendicite aiguë", proba:82, gravite:"eleve" },
-        { label:"Colique hépatique", proba:61, gravite:"modere" },
-        { label:"Gastroentérite aiguë", proba:44, gravite:"faible" },
-      ],
-      examens: ["NFS + CRP en urgence","Échographie abdominale","Bilan hépatique complet","ECBU"],
-      gravite: "eleve",
-      orientation: "Chirurgie ou Urgences",
-      note: "Ces suggestions sont indicatives. La décision clinique appartient au médecin.",
-    });
-    setAnalyzing(false);
+    try {
+      const symptoms = formSymptomes.split(/[,;\n]+/).map(normalizeSymptom).filter(Boolean);
+      const vitals = parseVitals(formSignesVitaux + ' ' + formBioResults);
+      const result = await dispatch(runDiagnosis({ symptoms, vitals })).unwrap();
+      const { suggestions = [], risks = {}, vitalAlerts = [] } = result;
+      const mapUrgence = (u) => URGENCE_MAP[u] || "faible";
+      const highestGravite = suggestions.length > 0 ? mapUrgence(suggestions[0].urgence) : "faible";
+      const orientation = risks.cardiovasculaire > 70 ? "Cardiologie / Urgences" :
+        risks.diagnostic > 70 ? "Urgences" : risks.diabetique > 60 ? "Endocrinologie" : "Consultation médicale";
+      setAnalysisResult({
+        diagnostics: suggestions.map(s => ({ label: s.condition, proba: s.probabilite, gravite: mapUrgence(s.urgence) })),
+        examens: vitalAlerts.length > 0
+          ? vitalAlerts.map(va => `Surveiller ${va.champ} (${va.valeur}) — ${va.message}`)
+          : ["Bilan biologique complet", "Consultation médicale approfondie"],
+        gravite: highestGravite,
+        orientation,
+        note: "Ces suggestions sont indicatives. La décision clinique appartient toujours au médecin.",
+        risks,
+        vitalAlerts,
+      });
+      dispatch(fetchAIStats());
+    } catch (err) {
+      toast.error(typeof err === 'string' ? err : "Erreur lors de l'analyse IA");
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
-  // ── Vérification ordonnance simulée ──────────────────────
+  // ── Vérification ordonnance — connectée à POST /ai/interactions ─
   const [ordoResult, setOrdoResult] = useState(null);
   const [ordoLoading, setOrdoLoading] = useState(false);
   const verifierOrdonnance = async () => {
     if (!formMedicament.trim()) return;
     setOrdoLoading(true); setOrdoResult(null);
-    await new Promise(r => setTimeout(r, 1800));
-    const hasAllergie = formAllergiesPatient.toLowerCase().includes("pénicilline") && formMedicament.toLowerCase().includes("amoxicilline");
-    setOrdoResult({
-      ok: !hasAllergie,
-      interactions: hasAllergie ? [{ med1:"Amoxicilline", med2:"Allergie Pénicilline", risque:"CONTRE-INDICATION ABSOLUE", gravite:"critique" }] : [],
-      posologie: "500 mg - 1 g × 3/j pendant 7-10 jours",
-      alternatives: hasAllergie ? ["Azithromycine 500 mg/j × 3j", "Clarithromycine 500 mg × 2/j"] : [],
-    });
-    setOrdoLoading(false);
+    try {
+      const meds = [
+        ...formMedicament.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean),
+        ...formAllergiesPatient.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean),
+      ];
+      const warnings = await dispatch(checkDrugInteractions(meds)).unwrap();
+      const ok = warnings.length === 0;
+      const allergyWarn = warnings.filter(w => w.description?.includes('ALLERGIE'));
+      setOrdoResult({
+        ok,
+        interactions: warnings.map(w => ({
+          med1: w.medicaments[0] || '—',
+          med2: w.medicaments.slice(1).join(' + ') || '—',
+          risque: w.description,
+          gravite: w.risque,
+        })),
+        posologie: ok ? "Posologie standard — cf. prescription médicale" : "⚠ Revoir la prescription avec le médecin prescripteur",
+        alternatives: allergyWarn.length > 0
+          ? ["Consulter le médecin pour une alternative adaptée", "Vérifier les antécédents allergiques complets"]
+          : [],
+      });
+    } catch (err) {
+      toast.error(typeof err === 'string' ? err : "Erreur lors de la vérification");
+    } finally {
+      setOrdoLoading(false);
+    }
   };
 
   // ── Chat ──────────────────────────────────────────────────
@@ -455,6 +544,36 @@ export default function IntelligenceArtificielle() {
     setChatLoading(false);
   };
 
+  // ── Export journal IA (PDF) ───────────────────────────────
+  const exportHistoriqueIA = useCallback(() => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    doc.setFillColor(11, 30, 59);
+    doc.rect(0, 0, W, 28, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+    doc.text('Journal des Analyses IA', 14, 11);
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.text(`${CLINIC_NAME} ${CLINIC_SUBTITLE}`, 14, 18);
+    doc.text(`Exporté le ${new Date().toLocaleDateString('fr-FR')}`, W - 14, 18, { align: 'right' });
+    autoTable(doc, {
+      startY: 32,
+      head: [["Date", "Utilisateur", "Type d'analyse", "Patient", "Score", "Statut"]],
+      body: reduxPredictions.map(p => {
+        const pat = p.patient;
+        const patName = pat ? `${pat.prenom || ''} ${pat.nom || ''}`.trim() || 'Anonyme' : 'Anonyme';
+        const typeLabel = { diagnostic: 'Analyse diagnostique', interaction_medicament: 'Interaction médicament', conflit_rdv: 'Conflit RDV' }[p.type] || p.type;
+        const score = p.resultat?.suggestions?.[0]?.probabilite ?? p.score_confiance ?? 0;
+        const tracte = p.traite_par ? `${p.traite_par.prenom || ''} ${p.traite_par.nom || ''}`.trim() : '—';
+        return [fmtDate(p.createdAt), tracte, typeLabel, patName, `${score}%`, p.statut === 'traite' ? 'Validé' : 'En attente'];
+      }),
+      styles: { fontSize: 9, cellPadding: 4 },
+      headStyles: { fillColor: [14, 165, 160], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 255] },
+    });
+    doc.save(`journal-ia-${new Date().toISOString().split('T')[0]}.pdf`);
+  }, [reduxPredictions]);
+
   const SECTIONS = [
     { id:"assistant",     label:"🩺 Assistant médical" },
     { id:"patient",       label:"👤 Analyse patient" },
@@ -464,7 +583,7 @@ export default function IntelligenceArtificielle() {
     { id:"rdv",           label:"📅 Rendez-vous" },
     { id:"administratif", label:"📋 Administratif" },
     { id:"finance",       label:"💰 Finance IA" },
-    { id:"alertes",       label:`🔔 Alertes (${DEMO_ALERTS.filter(a=>a.priority==="critique").length})`, warn:true },
+    { id:"alertes",       label:`🔔 Alertes (${reduxStats.alertes_risque ?? flatAlerts.length})`, warn:true },
     { id:"chat",          label:"💬 Chat IA" },
     { id:"knowledge",     label:"📚 Base de connaissances" },
     { id:"historique",    label:"📊 Historique" },
@@ -494,7 +613,7 @@ export default function IntelligenceArtificielle() {
                 <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Intelligence Artificielle</div>
                 <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2, display:"flex", alignItems:"center", gap:6 }}>
                   <span style={{ width:7, height:7, borderRadius:"50%", background:"#4ADE80", display:"inline-block", boxShadow:"0 0 0 3px rgba(74,222,128,.3)", animation:"iaP 2s infinite" }}/>
-                  IA active · Clinique Canadienne de Souanké
+                  IA active · {CLINIC_NAME} {CLINIC_SUBTITLE}
                 </div>
               </div>
             </div>
@@ -725,6 +844,9 @@ export default function IntelligenceArtificielle() {
                           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
                             <div>
                               <div style={{ fontSize:12, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>Diagnostics possibles</div>
+                              {analysisResult.diagnostics.length === 0 && (
+                                <div style={{ textAlign:"center", padding:"16px 0", color:"var(--cm)", fontSize:12 }}>Aucun diagnostic correspondant trouvé — vérifiez les termes saisis (ex: fievre, nausees, toux…)</div>
+                              )}
                               {analysisResult.diagnostics.map((d,i) => {
                                 const gc = GRAVITE_CFG[d.gravite] || { cls:"gray" };
                                 const col = GRAVITE_COLORS[d.gravite] || "#9CA3AF";
@@ -763,6 +885,14 @@ export default function IntelligenceArtificielle() {
                                 <div style={{ fontSize:12, fontWeight:700, color:"var(--cn)", marginTop:4 }}>{analysisResult.orientation}</div>
                               </div>
                             </div>
+                            {analysisResult.vitalAlerts?.length > 0 && (
+                              <div style={{ background:"#FEF2F2", border:"1.5px solid #FECACA", borderRadius:12, padding:12 }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:"#B91C1C", marginBottom:6 }}>⚠ Alertes constantes vitales</div>
+                                {analysisResult.vitalAlerts.map((va,i) => (
+                                  <div key={i} style={{ fontSize:12, color:"#DC2626", marginBottom:2 }}>• {va.champ} {va.valeur} — {va.message}</div>
+                                ))}
+                              </div>
+                            )}
                             <div style={{ fontSize:11, color:"var(--cm)", fontStyle:"italic", textAlign:"center" }}>{analysisResult.note}</div>
                           </div>
                         )}
@@ -1073,11 +1203,15 @@ export default function IntelligenceArtificielle() {
                 {section === "alertes" && (
                   <div>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Centre d'alertes intelligentes <span style={{ fontSize:13, fontWeight:400, color:"var(--cm)" }}>({DEMO_ALERTS.length} alertes)</span></div>
-                      <button className="ibtn ibtn-ghost ibtn-sm" onClick={() => setAlertesLues(DEMO_ALERTS.map(a=>a.id))}>✓ Tout marquer comme lu</button>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Centre d'alertes intelligentes <span style={{ fontSize:13, fontWeight:400, color:"var(--cm)" }}>({flatAlerts.length} alertes)</span></div>
+                      <button className="ibtn ibtn-ghost ibtn-sm" onClick={() => setAlertesLues(flatAlerts.map(a=>a.id))}>✓ Tout marquer comme lu</button>
                     </div>
+                    {alertsLoading && <div style={{ textAlign:"center", padding:30, color:"var(--cm)" }}>Chargement des alertes…</div>}
+                    {!alertsLoading && flatAlerts.length === 0 && (
+                      <div style={{ textAlign:"center", padding:40, color:"var(--cm)" }}><div style={{ fontSize:32, marginBottom:12, opacity:.4 }}>🔔</div><div style={{ fontSize:13 }}>Aucune alerte active pour le moment</div></div>
+                    )}
                     {["critique","eleve","modere","faible"].map(niveau => {
-                      const items = DEMO_ALERTS.filter(a => a.priority === niveau);
+                      const items = flatAlerts.filter(a => a.priority === niveau);
                       if (!items.length) return null;
                       const cfg = { critique:{cls:"red",label:"🔴 Critiques",bg:"#FEF2F2",border:"#FECACA"}, eleve:{cls:"orange",label:"🟠 Élevées",bg:"#FFF7ED",border:"#FED7AA"}, modere:{cls:"yellow",label:"🟡 Modérées",bg:"#FEFCE8",border:"#FDE68A"}, faible:{cls:"green",label:"🟢 Informatives",bg:"#ECFDF5",border:"#A7F3D0"} }[niveau];
                       return (
@@ -1095,7 +1229,7 @@ export default function IntelligenceArtificielle() {
                                 <div style={{ fontSize:12, color:"var(--cm)", marginTop:4 }}>{a.detail}</div>
                                 <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>{a.time}</div>
                               </div>
-                              <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:10, flexShrink:0 }} onClick={() => setAlertesLues(p => [...p, a.id])}>
+                                      <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:10, flexShrink:0 }} onClick={() => setAlertesLues(p => [...p, a.id])}>
                                 {I.check} Lu
                               </button>
                             </div>
@@ -1195,26 +1329,34 @@ export default function IntelligenceArtificielle() {
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
                 <div>
                   <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>🔔 Centre d'alertes intelligentes</div>
-                  <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>{DEMO_ALERTS.length} alertes · {nbAlertesNonLues} critique(s) non traitée(s)</div>
+                  <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>{flatAlerts.length} alertes · {nbAlertesNonLues} critique(s) non traitée(s)</div>
                 </div>
-                <button className="ibtn ibtn-ghost ibtn-sm" onClick={() => setAlertesLues(DEMO_ALERTS.map(a=>a.id))}>✓ Tout marquer comme lu</button>
+                <button className="ibtn ibtn-ghost ibtn-sm" onClick={() => setAlertesLues(flatAlerts.map(a=>a.id))}>✓ Tout marquer comme lu</button>
               </div>
               {/* Stats alertes */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12, marginBottom:24 }}>
                 {[
-                  ["🔴","Critiques",  DEMO_ALERTS.filter(a=>a.priority==="critique").length, "red"],
-                  ["🟠","Élevées",    DEMO_ALERTS.filter(a=>a.priority==="eleve").length, "orange"],
-                  ["🟡","Modérées",   DEMO_ALERTS.filter(a=>a.priority==="modere").length, "yellow"],
-                  ["🟢","Informatives",DEMO_ALERTS.filter(a=>a.priority==="faible").length, "green"],
+                  ["🔴","Critiques",   flatAlerts.filter(a=>a.priority==="critique").length, "red"],
+                  ["🟠","Élevées",     flatAlerts.filter(a=>a.priority==="eleve").length, "orange"],
+                  ["🟡","Modérées",    flatAlerts.filter(a=>a.priority==="modere").length, "yellow"],
+                  ["🟢","Informatives",flatAlerts.filter(a=>a.priority==="faible").length, "green"],
                 ].map(([ico,lbl,nb,cls]) => (
                   <div key={lbl} className={`ia-kpi ${cls==="yellow"?"orange":cls} fu`}>
                     <div style={{ fontSize:24, marginBottom:6 }}>{ico}</div>
-                    <div className="kpi-val">{nb}</div>
+                    <div className="kpi-val">{alertsLoading ? "…" : nb}</div>
                     <div className="kpi-lbl">{lbl}</div>
                   </div>
                 ))}
               </div>
-              {DEMO_ALERTS.map(a => {
+              {alertsLoading && <div style={{ textAlign:"center", padding:30, color:"var(--cm)" }}>Chargement des alertes…</div>}
+              {!alertsLoading && flatAlerts.length === 0 && (
+                <div style={{ textAlign:"center", padding:50, color:"var(--cm)" }}>
+                  <div style={{ fontSize:36, marginBottom:12, opacity:.4 }}>✅</div>
+                  <div style={{ fontSize:14, fontWeight:600 }}>Aucune alerte active</div>
+                  <div style={{ fontSize:12, marginTop:6 }}>Tous les modules fonctionnent normalement</div>
+                </div>
+              )}
+              {flatAlerts.map(a => {
                 const cfg = { critique:{bg:"#FEF2F2",border:"#FECACA",col:"#DC2626"}, eleve:{bg:"#FFF7ED",border:"#FED7AA",col:"#D97706"}, modere:{bg:"#FEFCE8",border:"#FDE68A",col:"#CA8A04"}, faible:{bg:"#ECFDF5",border:"#A7F3D0",col:"#059669"} }[a.priority] || {bg:"#F9FAFB",border:"var(--cbr)",col:"#6B7280"};
                 return (
                   <div key={a.id} style={{ background:alertesLues.includes(a.id)?"#F9FAFB":cfg.bg, border:`1.5px solid ${alertesLues.includes(a.id)?"var(--cbr)":cfg.border}`, borderLeft:`4px solid ${alertesLues.includes(a.id)?"var(--cbr)":cfg.col}`, borderRadius:14, padding:"14px 18px", marginBottom:10, display:"flex", alignItems:"flex-start", gap:12, opacity:alertesLues.includes(a.id)?.5:1, transition:"all .2s" }}>
@@ -1228,7 +1370,7 @@ export default function IntelligenceArtificielle() {
                       <div style={{ fontSize:12, color:"var(--cm)", marginTop:4 }}>{a.detail}</div>
                       <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>{a.time}</div>
                     </div>
-                    <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:10, flexShrink:0 }} onClick={() => setAlertesLues(p=>[...p,a.id])}>
+                    <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:10, flexShrink:0 }} onClick={() => setAlertesLues(p => [...p, a.id])}>
                       {I.check} Traité
                     </button>
                   </div>
@@ -1246,28 +1388,32 @@ export default function IntelligenceArtificielle() {
                   <table className="ia-tbl">
                     <thead><tr><th>Date & Heure</th><th>Utilisateur</th><th>Action IA</th><th>Patient</th><th>Résultat</th><th>Validé</th></tr></thead>
                     <tbody>
-                      {DEMO_ANALYSES_IA.map(a => (
-                        <tr key={a.id}>
-                          <td style={{ fontSize:12, fontFamily:"monospace", color:"var(--cb)" }}>{a.date}</td>
-                          <td style={{ fontSize:12 }}>{a.user}</td>
-                          <td>
-                            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                              {I.iaS}
-                              <span style={{ fontSize:12, fontWeight:600 }}>{a.action}</span>
-                            </div>
-                          </td>
-                          <td style={{ fontSize:12, color:"var(--cm)" }}>{a.patient}</td>
-                          <td style={{ fontSize:12, color:"var(--cm)" }}>{a.resultat}</td>
-                          <td>
-                            <Badge cls={a.valide?"green":"orange"}>{a.valide?"✅ Validé":"⏳ En attente"}</Badge>
-                          </td>
-                        </tr>
-                      ))}
+                      {reduxLoading && <tr><td colSpan={6} style={{ textAlign:"center", padding:24, color:"var(--cm)" }}>Chargement…</td></tr>}
+                      {!reduxLoading && reduxPredictions.length === 0 && (
+                        <tr><td colSpan={6} style={{ textAlign:"center", padding:30, color:"var(--cm)" }}>Aucune analyse IA enregistrée</td></tr>
+                      )}
+                      {reduxPredictions.map(p => {
+                        const pat = p.patient;
+                        const patName = pat ? `${pat.prenom || ''} ${pat.nom || ''}`.trim() || 'Anonyme' : 'Anonyme';
+                        const typeLabel = { diagnostic:"Analyse diagnostique", interaction_medicament:"Interaction médicament", conflit_rdv:"Conflit RDV" }[p.type] || p.type;
+                        const score = p.resultat?.suggestions?.[0]?.probabilite ?? p.score_confiance ?? 0;
+                        const tracte = p.traite_par ? `${p.traite_par.prenom || ''} ${p.traite_par.nom || ''}`.trim() : '—';
+                        return (
+                          <tr key={p._id}>
+                            <td style={{ fontSize:12, fontFamily:"monospace", color:"var(--cb)" }}>{fmtDate(p.createdAt)}</td>
+                            <td style={{ fontSize:12 }}>{tracte}</td>
+                            <td><div style={{ display:"flex", alignItems:"center", gap:6 }}>{I.iaS}<span style={{ fontSize:12, fontWeight:600 }}>{typeLabel}</span></div></td>
+                            <td style={{ fontSize:12, color:"var(--cm)" }}>{patName}</td>
+                            <td style={{ fontSize:12, color:"var(--cm)" }}>Confiance {score}%</td>
+                            <td><Badge cls={p.statut === 'traite' ? "green" : "orange"}>{p.statut === 'traite' ? "✅ Validé" : "⏳ En attente"}</Badge></td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
                 <div style={{ padding:"10px 20px", borderTop:"1.5px solid var(--cbr)", display:"flex", gap:8 }}>
-                  <button className="ibtn ibtn-ghost ibtn-sm">{I.dl} Exporter journal IA</button>
+                  <button className="ibtn ibtn-ghost ibtn-sm" onClick={exportHistoriqueIA} disabled={reduxPredictions.length === 0}>{I.dl} Exporter journal IA (PDF)</button>
                 </div>
               </div>
             </div>
@@ -1387,7 +1533,16 @@ export default function IntelligenceArtificielle() {
                   <div className="al-ia" style={{ marginTop:8 }}>
                     <div style={{ fontSize:12, color:"#1E40AF" }}>🔒 Toutes les analyses IA sont tracées et archivées conformément aux normes RGPD et aux exigences médicales.</div>
                   </div>
-                  <button className="ibtn ibtn-teal ibtn-sm" style={{ marginTop:4 }}>{I.check} Enregistrer les paramètres</button>
+                  <button className="ibtn ibtn-teal ibtn-sm" style={{ marginTop:4 }} disabled={savingSettings} onClick={async () => {
+                    setSavingSettings(true);
+                    try {
+                      await api.put('/ai/settings', settings).catch(() => {});
+                      localStorage.setItem('ai_settings', JSON.stringify(settings));
+                      toast.success('✅ Paramètres IA enregistrés');
+                    } finally { setSavingSettings(false); }
+                  }}>
+                    {savingSettings ? <><span className="spin" style={{ display:"inline-block" }}>{I.iaS}</span> Enregistrement…</> : <>{I.check} Enregistrer les paramètres</>}
+                  </button>
                 </div>
               </div>
             </div>

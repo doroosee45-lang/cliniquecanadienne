@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchPrescriptions,
@@ -335,6 +336,7 @@ function BarChart({ labels, data, color="#1B4F9E", height=200 }) {
 // ─── MAIN ────────────────────────────────────────────────────
 export default function Ordonnances() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const reduxOrdonnances = useSelector(selectPrescriptions);
   const reduxTotal = useSelector(selectPrescriptionsTotal);
 
@@ -384,6 +386,7 @@ export default function Ordonnances() {
     patient_nom:     rx.patient ? `${rx.patient.prenom || ''} ${rx.patient.nom || ''}`.trim() : (rx.patient_nom || '—'),
     patient_dob:     rx.patient?.date_naissance || rx.patient_dob || '',
     patient_id:      rx.patient?._id || rx.patient_id || '',
+    patient_dossier: rx.patient?.numero_dossier || rx.patient_dossier || '',
     medecin:         rx.medecin ? `Dr. ${rx.medecin.prenom || ''} ${rx.medecin.nom || ''}`.trim() : (rx.medecin || '—'),
     specialite:      rx.medecin?.specialite || rx.specialite || '',
     diagnostic:      rx.diagnostic || rx.motif || '—',
@@ -757,7 +760,8 @@ export default function Ordonnances() {
                               {ord.ia_interactions && <div><span className="inter-badge modere">🤖 Interaction</span></div>}
                             </td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--on)" }}>{ord.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--on)", cursor: ord.patient_id ? 'pointer' : 'default', textDecoration: ord.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => ord.patient_id && navigate(`/patients/${ord.patient_id}`)} title={ord.patient_id ? "Ouvrir le dossier patient" : ""}>{ord.patient_nom}</div>
+                              {ord.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{ord.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--om)" }}>{ageCalc(ord.patient_dob)} · {ord.poids}kg</div>
                             </td>
                             <td style={{ fontSize:12, color:"var(--om)" }}>{ord.medecin}</td>
@@ -830,7 +834,8 @@ export default function Ordonnances() {
                               {ord.ia_interactions && <div style={{ marginTop:2 }}><span className="inter-badge modere">🤖 Interaction</span></div>}
                             </td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--on)" }}>{ord.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--on)", cursor: ord.patient_id ? 'pointer' : 'default', textDecoration: ord.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => ord.patient_id && navigate(`/patients/${ord.patient_id}`)} title={ord.patient_id ? "Ouvrir le dossier patient" : ""}>{ord.patient_nom}</div>
+                              {ord.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{ord.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--om)" }}>{ageCalc(ord.patient_dob)} · {ord.poids}kg
                                 {ord.allergies?.length > 0 && <span style={{ color:"var(--or)", marginLeft:4 }}>⚠ Allergie</span>}
                               </div>

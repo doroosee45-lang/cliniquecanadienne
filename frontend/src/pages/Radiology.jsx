@@ -2,6 +2,7 @@
 
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchRadiologyExams,
@@ -338,6 +339,7 @@ const EMPTY_FACT = { reduction:0, assurance:0 };
 // ─── MAIN COMPONENT ────────────────────────────────────────
 export default function Imagerie() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const reduxExamens = useSelector(selectRadiologyExams);
   const reduxTotal = useSelector(selectRadiologyTotal);
 
@@ -682,7 +684,8 @@ export default function Imagerie() {
                           <tr key={e._id} style={{ background: e.priorite==="tres_urgente" ? "#FFF8F8" : "" }}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--cb)", fontSize:12 }}>{e.numero}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--cn)" }}>{e.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--cn)", cursor: e.patient ? 'pointer' : 'default', textDecoration: e.patient ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => e.patient && navigate(`/patients/${e.patient}`)} title={e.patient ? "Ouvrir le dossier patient" : ""}>{e.patient_nom}</div>
+                              {e.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{e.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(e.patient_dob)}</div>
                             </td>
                             <td>
@@ -757,7 +760,8 @@ export default function Imagerie() {
                           <tr key={e._id} style={{ background: e.priorite==="tres_urgente" ? "#FFF8F8" : "" }}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--cb)", fontSize:12 }}>{e.numero}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--cn)" }}>{e.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--cn)", cursor: e.patient ? 'pointer' : 'default', textDecoration: e.patient ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => e.patient && navigate(`/patients/${e.patient}`)} title={e.patient ? "Ouvrir le dossier patient" : ""}>{e.patient_nom}</div>
+                              {e.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{e.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(e.patient_dob)} · {e.sexe ? e.sexe.charAt(0).toUpperCase()+e.sexe.slice(1) : "—"}</div>
                             </td>
                             <td>

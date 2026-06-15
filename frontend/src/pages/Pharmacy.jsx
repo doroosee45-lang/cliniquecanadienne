@@ -1365,6 +1365,9 @@ import {
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -1488,6 +1491,10 @@ const CSS = `
 .fu { animation:fadeUp .35s ease both; }
 /* Print */
 @media print { .ph-top,.pbtn,.pmov { display:none!important; } }
+/* Photo overlay on grid cards */
+.ph-photo-wrap { cursor:pointer; }
+.ph-photo-overlay { position:absolute; inset:0; background:rgba(11,30,59,.55); display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; font-size:12px; font-weight:700; gap:6px; opacity:0; transition:opacity .2s; border-radius:0; }
+.ph-photo-wrap:hover .ph-photo-overlay { opacity:1; }
 
 /* ─── Grilles responsives ─── */
 .ph-g2   { display:grid; grid-template-columns:2fr 1fr; gap:20px; }
@@ -1613,6 +1620,39 @@ const I = {
 };
 
 // ─── Sub-components ─────────────────────────────────────────
+function PhotoPicker({ preview, currentUrl, inputRef, onChange, onRemove }) {
+  const src = preview || currentUrl || null;
+  return (
+    <div style={{ gridColumn:'1/-1', display:'flex', alignItems:'center', gap:16, padding:16, background:'#F8FAFF', borderRadius:14, border:'1.5px solid #EEF4FF', marginBottom:4 }}>
+      <div onClick={() => inputRef.current?.click()}
+        style={{ width:110, height:110, borderRadius:14, overflow:'hidden', background:'linear-gradient(135deg,#EEF4FF,#DBEAFE)', border:'2px dashed #BFDBFE', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        {src
+          ? <img src={src} alt="Aperçu" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          : <span style={{ fontSize:42 }}>💊</span>
+        }
+      </div>
+      <div style={{ flex:1 }}>
+        <div style={{ fontWeight:700, color:'var(--pn)', fontSize:13, marginBottom:3 }}>Photo du médicament</div>
+        <div style={{ fontSize:11, color:'var(--pm)', marginBottom:10 }}>JPG · PNG · WebP — max 5 Mo · Taille recommandée : 400×400px</div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <button type="button" onClick={() => inputRef.current?.click()}
+            style={{ padding:'7px 14px', background:'#EFF6FF', color:'#1B4F9E', border:'1.5px solid #BFDBFE', borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:12 }}>
+            📷 Choisir une photo
+          </button>
+          {src && (
+            <button type="button" onClick={onRemove}
+              style={{ padding:'7px 14px', background:'#FEF2F2', color:'#991B1B', border:'1.5px solid #FECACA', borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:12 }}>
+              🗑️ Retirer
+            </button>
+          )}
+        </div>
+        {preview && <div style={{ fontSize:11, color:'var(--pg)', marginTop:6, fontWeight:600 }}>✅ Photo prête à l'envoi</div>}
+      </div>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display:'none' }} onChange={onChange} />
+    </div>
+  );
+}
+
 function Modal({ open, onClose, title, children, wide, narrow }) {
   useEffect(() => {
     const h = (e) => e.key === "Escape" && onClose();
@@ -1709,6 +1749,12 @@ export default function Pharmacie() {
   const [filterCat, setFilterCat] = useState("");
   const [filterSt, setFilterSt]   = useState("");
   const [currentMed, setCurrentMed] = useState(null);
+  const [viewMode, setViewMode]   = useState("grid");
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const photoInputRef = useRef(null);
+  const [gridPhotoMedId, setGridPhotoMedId] = useState(null);
+  const gridPhotoRef = useRef(null);
 
   // Modals
   const [modalAdd,  setModalAdd]  = useState(false);
@@ -1807,6 +1853,36 @@ export default function Pharmacie() {
   useEffect(() => { loadMeds(); loadStats(); loadMvts(); loadCommandes(); loadFournisseurs(); }, [loadMeds, loadStats, loadMvts, loadCommandes, loadFournisseurs]);
   useRealtimeRefresh(loadMeds);
 
+  // ── Upload photo médicament ────────────────────────────────
+  const uploadMedPhotoFn = async (medId) => {
+    if (!photoFile || !medId) return;
+    try {
+      const fd = new FormData();
+      fd.append('photo', photoFile);
+      const { data } = await api.post(`/pharmacy/${medId}/photo`, fd, { headers:{ 'Content-Type':'multipart/form-data' } });
+      setMeds(prev => prev.map(m => m._id === medId ? { ...m, photo: data.photo } : m));
+    } catch { /* non-critique */ }
+    finally { setPhotoFile(null); setPhotoPreview(null); }
+  };
+
+  // ── Upload photo directement depuis la carte grille ────────
+  const handleGridPhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !gridPhotoMedId) return;
+    const medId = gridPhotoMedId;
+    setGridPhotoMedId(null);
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      const { data } = await api.post(`/pharmacy/${medId}/photo`, fd, { headers:{ 'Content-Type':'multipart/form-data' } });
+      setMeds(prev => prev.map(m => m._id === medId ? { ...m, photo: data.photo } : m));
+      toast.success('Photo mise à jour');
+    } catch {
+      toast.error('Erreur lors du chargement de la photo');
+    }
+  };
+
   // ── CRUD médicament ────────────────────────────────────────
   const createMed = async (e) => {
     e.preventDefault();
@@ -1829,9 +1905,10 @@ export default function Pharmacie() {
     };
     try {
       const { data } = await api.post("/pharmacy", payload);
-      toast.success("✅ Médicament ajouté au catalogue");
       const newMed = normalizeMed(data.medication || { ...payload, _id: Date.now().toString() });
       setMeds(prev => [newMed, ...prev]);
+      await uploadMedPhotoFn(newMed._id);
+      toast.success("✅ Médicament ajouté au catalogue");
       setModalAdd(false);
       setFormMed(EMPTY_MED);
       loadStats();
@@ -1841,7 +1918,7 @@ export default function Pharmacie() {
       toast.success("✅ Médicament ajouté (local)");
       setModalAdd(false);
       setFormMed(EMPTY_MED);
-    } finally { setSaving(false); }
+    } finally { setSaving(false); setPhotoFile(null); setPhotoPreview(null); }
   };
 
   const updateMed = async (e) => {
@@ -1864,14 +1941,15 @@ export default function Pharmacie() {
     };
     try {
       const { data } = await api.put(`/pharmacy/${currentMed._id}`, payload);
-      toast.success("✅ Médicament mis à jour");
       setMeds(prev => prev.map(m => m._id===currentMed._id ? normalizeMed({ ...m, ...payload, ...(data.medication||{}) }) : m));
+      await uploadMedPhotoFn(currentMed._id);
+      toast.success("✅ Médicament mis à jour");
       setModalEdit(false);
     } catch {
       setMeds(prev => prev.map(m => m._id===currentMed._id ? normalizeMed({ ...m, ...payload }) : m));
       toast.success("✅ Mis à jour (local)");
       setModalEdit(false);
-    } finally { setSaving(false); }
+    } finally { setSaving(false); setPhotoFile(null); setPhotoPreview(null); }
   };
 
   const deleteMed = async (id) => {
@@ -2071,10 +2149,381 @@ ${lignes}
     return matchSearch && matchCat && matchSt;
   });
 
+  // ─── Export inventaire PDF ──────────────────────────────────
+  const exportInventairePDF = () => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+    const timeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    // ── Bandeau header bleu
+    doc.setFillColor(27, 79, 158);
+    doc.rect(0, 0, W, 24, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`RAPPORT D'INVENTAIRE — PHARMACIE`, W / 2, 10, { align: 'center' });
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${CLINIC_NAME} ${CLINIC_SUBTITLE} · Gestion des stocks`, W / 2, 17, { align: 'center' });
+
+    // ── Sous-titre & infos
+    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(9);
+    doc.text(`Généré le ${dateStr} à ${timeStr}`, 14, 30);
+    doc.text(`Total : ${meds.length} référence(s)  ·  Ruptures : ${kpis.ruptures}  ·  Stock bas : ${kpis.bas}  ·  Périmés : ${kpis.expires}`, 14, 36);
+    doc.text(`Valeur estimée du stock : ${fmtCFA(kpis.valeur_stock)}`, 14, 42);
+
+    // ── Tableau
+    const rows = meds.map(m => {
+      const st = stockSt(m.stock_quantite, m.stock_minimum);
+      const ps = perempSt(m.date_expiration);
+      return [
+        m.code || '—',
+        (m.nom_commercial || '—') + (m.dosage ? `\n${m.dosage}` : ''),
+        m.dci || '—',
+        m.categorie || '—',
+        m.forme || '—',
+        m.lot || '—',
+        String(m.stock_quantite ?? 0),
+        String(m.stock_minimum ?? 0),
+        stockLbl(st),
+        fmtDate(m.date_expiration),
+        ps === 'ok' ? 'OK' : perempLbl(ps),
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 48,
+      head: [['Code', 'Médicament', 'DCI', 'Catégorie', 'Forme', 'N° Lot', 'Stock\nactuel', 'Stock\nmin.', 'Statut\nstock', 'Expiration', 'État\nexpir.']],
+      body: rows,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [27, 79, 158],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8,
+        halign: 'center',
+        cellPadding: 3,
+      },
+      bodyStyles: { fontSize: 8, textColor: [30, 30, 30], cellPadding: 2.5 },
+      alternateRowStyles: { fillColor: [245, 248, 255] },
+      columnStyles: {
+        0:  { cellWidth: 18, halign: 'center', font: 'courier' },
+        1:  { cellWidth: 50 },
+        2:  { cellWidth: 30 },
+        3:  { cellWidth: 28 },
+        4:  { cellWidth: 20 },
+        5:  { cellWidth: 22, halign: 'center', font: 'courier' },
+        6:  { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
+        7:  { cellWidth: 16, halign: 'center' },
+        8:  { cellWidth: 22, halign: 'center' },
+        9:  { cellWidth: 22, halign: 'center' },
+        10: { cellWidth: 22, halign: 'center' },
+      },
+      willDrawCell: (data) => {
+        if (data.section !== 'body') return;
+        const m = meds[data.row.index];
+        if (!m) return;
+        const st = stockSt(m.stock_quantite, m.stock_minimum);
+        const ps = perempSt(m.date_expiration);
+        if (ps === 'perime') {
+          data.cell.styles.fillColor = [254, 226, 226];
+        } else if (st === 'rupture') {
+          data.cell.styles.fillColor = [254, 226, 226];
+        } else if (st === 'critique') {
+          data.cell.styles.fillColor = [255, 237, 213];
+        } else if (st === 'bas') {
+          data.cell.styles.fillColor = [254, 252, 232];
+        }
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    // ── Pied de page par page
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      const H = doc.internal.pageSize.getHeight();
+      doc.setFillColor(248, 250, 255);
+      doc.rect(0, H - 10, W, 10, 'F');
+      doc.setFontSize(7.5);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Page ${i} / ${pageCount}`, W / 2, H - 4, { align: 'center' });
+      doc.text('Document confidentiel — Usage interne uniquement', 14, H - 4);
+      doc.text(dateStr, W - 14, H - 4, { align: 'right' });
+    }
+
+    const filename = `inventaire-pharmacie-${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(filename);
+    toast.success(`📄 PDF exporté : ${filename}`);
+  };
+
+  // ─── Helper header/footer PDF ───────────────────────────────
+  const pdfHeader = (doc, titre, sousTitre) => {
+    const W = doc.internal.pageSize.getWidth();
+    doc.setFillColor(27, 79, 158);
+    doc.rect(0, 0, W, 24, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(titre, W / 2, 10, { align: 'center' });
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(sousTitre || `${CLINIC_NAME} ${CLINIC_SUBTITLE} · Pharmacie`, W / 2, 17, { align: 'center' });
+    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(8.5);
+    doc.text(
+      `Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}`,
+      14, 30
+    );
+    return 35;
+  };
+
+  const pdfFooter = (doc) => {
+    const W = doc.internal.pageSize.getWidth();
+    const n = doc.internal.getNumberOfPages();
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+    for (let i = 1; i <= n; i++) {
+      doc.setPage(i);
+      const H = doc.internal.pageSize.getHeight();
+      doc.setFillColor(248, 250, 255);
+      doc.rect(0, H - 10, W, 10, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(150, 150, 150);
+      doc.text('Document confidentiel — Usage interne', 14, H - 3.5);
+      doc.text(`Page ${i} / ${n}`, W / 2, H - 3.5, { align: 'center' });
+      doc.text(dateStr, W - 14, H - 3.5, { align: 'right' });
+    }
+  };
+
+  // ─── Exports rapports ───────────────────────────────────────
+  const exportRapportPDF = (type) => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const today = new Date().toISOString().split('T')[0];
+    let startY, rows, head, filename;
+
+    if (type === 'stock') {
+      // ── Rapport stock actuel ──────────────────────────────
+      startY = pdfHeader(doc, 'RAPPORT — STOCK ACTUEL', `${meds.length} médicament(s) · Valeur : ${fmtCFA(kpis.valeur_stock)}`);
+      head = [['Code','Médicament','DCI','Catégorie','Forme','Stock\nactuel','Stock\nmin.','Statut','Prix vente','Valeur stock']];
+      rows = meds.map(m => {
+        const st = stockSt(m.stock_quantite, m.stock_minimum);
+        return [
+          m.code || '—', m.nom_commercial, m.dci || '—', m.categorie || '—', m.forme || '—',
+          String(m.stock_quantite ?? 0), String(m.stock_minimum ?? 0),
+          stockLbl(st), fmtCFA(m.prix_vente), fmtCFA((m.stock_quantite ?? 0) * (m.prix_vente ?? 0)),
+        ];
+      });
+      autoTable(doc, {
+        startY, head, body: rows, theme: 'grid',
+        headStyles: { fillColor:[27,79,158], textColor:255, fontStyle:'bold', fontSize:8, halign:'center' },
+        bodyStyles: { fontSize:7.5, textColor:[30,30,30] },
+        alternateRowStyles: { fillColor:[245,248,255] },
+        columnStyles: { 0:{cellWidth:18,halign:'center'}, 5:{cellWidth:16,halign:'center'}, 6:{cellWidth:16,halign:'center'}, 7:{cellWidth:22,halign:'center'}, 8:{cellWidth:24,halign:'right'}, 9:{cellWidth:28,halign:'right'} },
+        willDrawCell: (d) => {
+          if (d.section !== 'body') return;
+          const m = meds[d.row.index];
+          if (!m) return;
+          const st = stockSt(m.stock_quantite, m.stock_minimum);
+          if (st === 'rupture') d.cell.styles.fillColor = [254,226,226];
+          else if (st === 'critique') d.cell.styles.fillColor = [255,237,213];
+          else if (st === 'bas') d.cell.styles.fillColor = [254,252,232];
+        },
+        margin: { left:14, right:14 },
+      });
+      filename = `rapport-stock-${today}.pdf`;
+
+    } else if (type === 'expires') {
+      // ── Produits expirés ──────────────────────────────────
+      const expired = meds.filter(m => perempSt(m.date_expiration) === 'perime');
+      startY = pdfHeader(doc, 'RAPPORT — PRODUITS EXPIRÉS', `${expired.length} lot(s) périmé(s) à retirer`);
+      head = [['Code','Médicament','DCI','N° Lot','Emplacement','Stock','Date expiration','Valeur perdue']];
+      rows = expired.map(m => [
+        m.code || '—', m.nom_commercial, m.dci || '—', m.lot || '—', m.emplacement || '—',
+        String(m.stock_quantite ?? 0), fmtDate(m.date_expiration),
+        fmtCFA((m.stock_quantite ?? 0) * (m.prix_vente ?? 0)),
+      ]);
+      autoTable(doc, {
+        startY, head, body: rows, theme: 'grid',
+        headStyles: { fillColor:[185,28,28], textColor:255, fontStyle:'bold', fontSize:9, halign:'center' },
+        bodyStyles: { fontSize:8, textColor:[30,30,30], fillColor:[254,242,242] },
+        alternateRowStyles: { fillColor:[254,226,226] },
+        margin: { left:14, right:14 },
+      });
+      if (rows.length === 0) {
+        doc.setFontSize(11); doc.setTextColor(34,197,94);
+        doc.text('✓ Aucun produit périmé en stock.', 14, startY + 10);
+      }
+      filename = `rapport-expires-${today}.pdf`;
+
+    } else if (type === 'peremption') {
+      // ── Proches expiration ────────────────────────────────
+      const soon = meds.filter(m => ['imminent','proche'].includes(perempSt(m.date_expiration)));
+      startY = pdfHeader(doc, 'RAPPORT — PROCHES EXPIRATION (< 90 j)', `${soon.length} produit(s) à surveiller`);
+      head = [['Code','Médicament','DCI','N° Lot','Stock','Date expiration','Jours restants','Alerte']];
+      rows = soon.map(m => {
+        const days = Math.ceil((new Date(m.date_expiration) - Date.now()) / 86400000);
+        const ps = perempSt(m.date_expiration);
+        return [
+          m.code || '—', m.nom_commercial, m.dci || '—', m.lot || '—',
+          String(m.stock_quantite ?? 0), fmtDate(m.date_expiration),
+          `${days} j`, ps === 'imminent' ? '< 30 jours !' : '< 90 jours',
+        ];
+      });
+      autoTable(doc, {
+        startY, head, body: rows, theme: 'grid',
+        headStyles: { fillColor:[217,119,6], textColor:255, fontStyle:'bold', fontSize:9, halign:'center' },
+        bodyStyles: { fontSize:8, textColor:[30,30,30] },
+        willDrawCell: (d) => {
+          if (d.section !== 'body') return;
+          const m = soon[d.row.index];
+          if (!m) return;
+          if (perempSt(m.date_expiration) === 'imminent') d.cell.styles.fillColor = [255,237,213];
+          else d.cell.styles.fillColor = [254,252,232];
+        },
+        margin: { left:14, right:14 },
+      });
+      filename = `rapport-peremption-${today}.pdf`;
+
+    } else if (type === 'consommation') {
+      // ── Consommation mensuelle ────────────────────────────
+      startY = pdfHeader(doc, 'RAPPORT — CONSOMMATION MENSUELLE', `${mvts.length} mouvement(s) enregistré(s)`);
+      head = [['Date','Médicament','Type mouvement','Quantité','Référence']];
+      rows = mvts.map(mv => {
+        const mc = MVT_CFG[mv.type] || { label: mv.type, sign: '' };
+        return [
+          fmtDate(mv.date || mv.created_at),
+          mv.medicament_nom || '—',
+          `${mc.sign}  ${mc.label}`,
+          `${mc.sign}${mv.quantite}`,
+          mv.reference || '—',
+        ];
+      });
+      autoTable(doc, {
+        startY, head, body: rows, theme: 'grid',
+        headStyles: { fillColor:[6,148,162], textColor:255, fontStyle:'bold', fontSize:9, halign:'center' },
+        bodyStyles: { fontSize:8, textColor:[30,30,30] },
+        alternateRowStyles: { fillColor:[240,253,252] },
+        margin: { left:14, right:14 },
+      });
+      filename = `rapport-consommation-${today}.pdf`;
+
+    } else if (type === 'ventes') {
+      // ── Ventes / dispensations ────────────────────────────
+      const ventes = mvts.filter(mv => ['sortie','dispensation'].includes(mv.type));
+      startY = pdfHeader(doc, 'RAPPORT — VENTES & DISPENSATIONS', `${ventes.length} opération(s)`);
+      head = [['Date','Médicament','Type','Quantité','Référence','Patient']];
+      rows = ventes.map(mv => [
+        fmtDate(mv.date || mv.created_at),
+        mv.medicament_nom || '—',
+        mv.type === 'dispensation' ? 'Dispensation' : 'Vente',
+        String(mv.quantite),
+        mv.reference || '—',
+        mv.patient || '—',
+      ]);
+      autoTable(doc, {
+        startY, head, body: rows, theme: 'grid',
+        headStyles: { fillColor:[4,120,87], textColor:255, fontStyle:'bold', fontSize:9, halign:'center' },
+        bodyStyles: { fontSize:8, textColor:[30,30,30] },
+        alternateRowStyles: { fillColor:[236,253,245] },
+        margin: { left:14, right:14 },
+      });
+      filename = `rapport-ventes-${today}.pdf`;
+
+    } else if (type === 'approvisionnements') {
+      // ── Approvisionnements ────────────────────────────────
+      startY = pdfHeader(doc, 'RAPPORT — APPROVISIONNEMENTS', `${cmds.length} commande(s)`);
+      head = [['N° Commande','Fournisseur','Date','Statut','Nb lignes','Montant total']];
+      rows = cmds.length > 0 ? cmds.map(c => [
+        c.numero || '—', c.fournisseur || '—', fmtDate(c.date || c.date_creation),
+        c.statut || '—', String(c.nb_lignes || c.lignes?.length || '—'), fmtCFA(c.montant_total),
+      ]) : [['—','Aucune commande enregistrée','—','—','—','—']];
+      autoTable(doc, {
+        startY, head, body: rows, theme: 'grid',
+        headStyles: { fillColor:[67,56,202], textColor:255, fontStyle:'bold', fontSize:9, halign:'center' },
+        bodyStyles: { fontSize:8, textColor:[30,30,30] },
+        alternateRowStyles: { fillColor:[245,243,255] },
+        margin: { left:14, right:14 },
+      });
+      filename = `rapport-approvisionnements-${today}.pdf`;
+
+    } else if (type === 'top-ventes') {
+      // ── Top médicaments vendus ────────────────────────────
+      const comptage = {};
+      mvts.forEach(mv => {
+        if (['sortie','dispensation'].includes(mv.type)) {
+          const k = mv.medicament_nom || 'Inconnu';
+          comptage[k] = (comptage[k] || 0) + (mv.quantite || 1);
+        }
+      });
+      const classement = Object.entries(comptage).sort((a,b)=>b[1]-a[1]);
+      startY = pdfHeader(doc, 'RAPPORT — MÉDICAMENTS LES PLUS VENDUS', `Classement basé sur ${mvts.length} mouvements`);
+      head = [['Rang','Médicament','Quantité dispensée','% du total']];
+      const totalQty = classement.reduce((s,[,q])=>s+q,0)||1;
+      rows = classement.map(([nom,qty],i) => [
+        String(i+1), nom, String(qty), `${Math.round(qty/totalQty*100)} %`,
+      ]);
+      if (rows.length === 0) rows = [['—','Aucune donnée disponible','—','—']];
+      autoTable(doc, {
+        startY, head, body: rows, theme: 'grid',
+        headStyles: { fillColor:[124,58,237], textColor:255, fontStyle:'bold', fontSize:9, halign:'center' },
+        bodyStyles: { fontSize:9, textColor:[30,30,30] },
+        alternateRowStyles: { fillColor:[250,245,255] },
+        columnStyles: { 0:{cellWidth:16,halign:'center'}, 2:{cellWidth:40,halign:'center'}, 3:{cellWidth:30,halign:'center'} },
+        willDrawCell: (d) => {
+          if (d.section === 'body' && d.row.index < 3) {
+            d.cell.styles.fontStyle = 'bold';
+            if (d.row.index === 0) d.cell.styles.fillColor = [254,249,195];
+          }
+        },
+        margin: { left:14, right:14 },
+      });
+      filename = `rapport-top-ventes-${today}.pdf`;
+
+    } else if (type === 'audit') {
+      // ── Audit pharmacie ───────────────────────────────────
+      startY = pdfHeader(doc, 'RAPPORT — AUDIT PHARMACIE', `Journal de traçabilité · ${mvts.length} opération(s)`);
+      head = [['Date','Médicament','Type opération','Quantité','Stock avant','Stock après','Référence','Pharmacien']];
+      rows = mvts.map(mv => {
+        const mc = MVT_CFG[mv.type] || { label: mv.type, sign: '' };
+        return [
+          fmtDate(mv.date || mv.created_at),
+          mv.medicament_nom || '—',
+          mc.label,
+          `${mc.sign}${mv.quantite}`,
+          mv.stock_avant != null ? String(mv.stock_avant) : '—',
+          mv.stock_apres != null ? String(mv.stock_apres) : '—',
+          mv.reference || '—',
+          mv.pharmacien || '—',
+        ];
+      });
+      autoTable(doc, {
+        startY, head, body: rows, theme: 'grid',
+        headStyles: { fillColor:[15,23,42], textColor:255, fontStyle:'bold', fontSize:8, halign:'center' },
+        bodyStyles: { fontSize:7.5, textColor:[30,30,30] },
+        alternateRowStyles: { fillColor:[248,250,252] },
+        margin: { left:14, right:14 },
+      });
+      filename = `rapport-audit-${today}.pdf`;
+
+    } else {
+      // ── Rapport global (bouton PDF du header) ─────────────
+      exportInventairePDF();
+      return;
+    }
+
+    pdfFooter(doc);
+    doc.save(filename);
+    toast.success(`📄 ${filename}`);
+  };
+
   // ═══════════════════════════════════════════════════════════
   return (
     <>
       <style>{CSS}</style>
+      {/* Input caché pour upload photo depuis la grille */}
+      <input ref={gridPhotoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display:'none' }} onChange={handleGridPhotoChange} />
       <div className="ph">
 
         {/* ── TOPBAR ── */}
@@ -2350,22 +2799,106 @@ ${lignes}
                     <option value="ok">OK</option>
                     <option value="expire">Périmé</option>
                   </select>
-                  <button className="pbtn pbtn-primary" onClick={() => { setFormMed(EMPTY_MED); setModalAdd(true); }}>{I.plus} Ajouter</button>
+                  <button className="pbtn pbtn-primary" onClick={() => { setFormMed(EMPTY_MED); setPhotoFile(null); setPhotoPreview(null); setModalAdd(true); }}>{I.plus} Ajouter</button>
+                  {/* Toggle vue */}
+                  <div style={{ display:'flex', border:'1.5px solid #E2EAF4', borderRadius:8, overflow:'hidden' }}>
+                    <button onClick={() => setViewMode('grid')} style={{ padding:'6px 14px', background:viewMode==='grid'?'#1B4F9E':'#fff', color:viewMode==='grid'?'#fff':'#6B7A99', border:'none', cursor:'pointer', fontSize:12, fontWeight:700 }}>⊞ Grille</button>
+                    <button onClick={() => setViewMode('table')} style={{ padding:'6px 14px', background:viewMode==='table'?'#1B4F9E':'#fff', color:viewMode==='table'?'#fff':'#6B7A99', border:'none', cursor:'pointer', fontSize:12, fontWeight:700 }}>≡ Tableau</button>
+                  </div>
                 </div>
               </div>
+
+              {/* ── VUE GRILLE ── */}
+              {viewMode === 'grid' && (
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(230px,1fr))', gap:18 }}>
+                  {loading ? (
+                    <div style={{ gridColumn:'1/-1', padding:60, textAlign:'center', color:'var(--pm)' }}>Chargement...</div>
+                  ) : filteredMeds.length === 0 ? (
+                    <div style={{ gridColumn:'1/-1', padding:60, textAlign:'center', color:'var(--pm)' }}>{search?`Aucun résultat pour "${search}"`:"Aucun médicament"}</div>
+                  ) : filteredMeds.map(m => {
+                    const st  = stockSt(m.stock_quantite, m.stock_minimum);
+                    const ps  = perempSt(m.date_expiration);
+                    const pct = m.stock_minimum>0 ? Math.min(100,Math.round(m.stock_quantite/m.stock_minimum*100)) : 100;
+                    return (
+                      <div key={m._id} style={{ background:'#fff', borderRadius:18, border:'1.5px solid var(--pbr)', boxShadow:'var(--sh)', overflow:'hidden', display:'flex', flexDirection:'column', transition:'box-shadow .2s' }}
+                        onMouseEnter={e=>e.currentTarget.style.boxShadow='var(--shm)'} onMouseLeave={e=>e.currentTarget.style.boxShadow='var(--sh)'}>
+                        {/* Photo */}
+                        <div className="ph-photo-wrap" style={{ height:190, background: m.photo?'transparent':'linear-gradient(135deg,#EEF4FF 0%,#DBEAFE 100%)', display:'flex', alignItems:'center', justifyContent:'center', position:'relative', overflow:'hidden', flexShrink:0 }}
+                          onClick={() => { setGridPhotoMedId(m._id); gridPhotoRef.current?.click(); }}>
+                          {m.photo
+                            ? <img src={m.photo} alt={m.nom_commercial} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                            : <span style={{ fontSize:64, opacity:.6 }}>💊</span>
+                          }
+                          <div style={{ position:'absolute', top:8, left:8, display:'flex', flexDirection:'column', gap:4 }}>
+                            <Badge cls={stockBdg(st)}>{stockLbl(st)}</Badge>
+                            {m.ordonnance && <span style={{ fontSize:10, background:'rgba(254,242,242,.95)', color:'var(--pr)', border:'1px solid #FECACA', borderRadius:4, padding:'1px 6px', fontWeight:800 }}>Rx</span>}
+                          </div>
+                          {ps !== 'ok' && <div style={{ position:'absolute', bottom:0, left:0, right:0, background:'rgba(234,179,8,.9)', color:'#fff', fontSize:10, fontWeight:700, textAlign:'center', padding:'3px 0' }}>{perempLbl(ps)} · {fmtDate(m.date_expiration)}</div>}
+                          <div className="ph-photo-overlay">
+                            <span style={{ fontSize:28 }}>📷</span>
+                            <span>{m.photo ? 'Changer la photo' : 'Ajouter une photo'}</span>
+                          </div>
+                        </div>
+                        {/* Infos */}
+                        <div style={{ padding:'14px 16px', flex:1, display:'flex', flexDirection:'column', gap:7 }}>
+                          <div style={{ fontWeight:800, color:'var(--pn)', fontSize:14, lineHeight:1.25 }}>{m.nom_commercial}</div>
+                          {m.dci && <div style={{ fontSize:12, color:'var(--pm)', fontStyle:'italic' }}>{m.dci} {m.dosage && `· ${m.dosage}`}</div>}
+                          <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+                            {m.categorie && <Badge cls="blue">{m.categorie}</Badge>}
+                            {m.forme     && <Badge cls="gray">{m.forme}</Badge>}
+                          </div>
+                          <div style={{ marginTop:4 }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}>
+                              <span style={{ color:'var(--pm)', fontWeight:600 }}>Stock</span>
+                              <span style={{ fontWeight:900, color:stockColor(st), fontSize:16 }}>{m.stock_quantite}<span style={{ fontWeight:400, color:'var(--pm)', fontSize:11 }}>/{m.stock_minimum}</span></span>
+                            </div>
+                            <Prog pct={pct} color={stockColor(st)} h={8} />
+                          </div>
+                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginTop:2 }}>
+                            <span style={{ color:'var(--pm)' }}>Prix vente</span>
+                            <span style={{ fontWeight:700, color:'var(--pn)' }}>{fmtCFA(m.prix_vente)}</span>
+                          </div>
+                        </div>
+                        {/* Actions */}
+                        <div style={{ padding:'10px 14px', borderTop:'1.5px solid var(--pbr)', display:'flex', gap:6 }}>
+                          <button className="pbtn pbtn-ghost pbtn-sm" style={{ flex:1, fontSize:11 }}
+                            onClick={() => { setCurrentMed(m); setFormMed({...m}); setPhotoFile(null); setPhotoPreview(null); setModalEdit(true); }}>
+                            {I.edit} Modifier
+                          </button>
+                          <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} title="Mouvement stock"
+                            onClick={() => { setFormMvt({...EMPTY_MVT,medicament_id:m._id}); setModalMvt(true); }}>⚡</button>
+                          <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:11 }} title="Supprimer"
+                            onClick={() => deleteMed(m._id)}>{I.trash}</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ── VUE TABLEAU ── */}
+              {viewMode === 'table' && (
               <div className="ph-card">
                 <div className="ph-tbl-wrap">
                   <table className="ph-tbl" style={{ minWidth:1000 }}>
-                    <thead><tr><th>Code</th><th>Médicament</th><th>DCI</th><th>Catégorie</th><th>Forme</th><th>Stock</th><th>Niveau</th><th>Prix vente</th><th>Expiration</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Photo</th><th>Code</th><th>Médicament</th><th>DCI</th><th>Catégorie</th><th>Forme</th><th>Stock</th><th>Niveau</th><th>Prix vente</th><th>Expiration</th><th>Actions</th></tr></thead>
                     <tbody>
                       {loading ? (
-                        <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--pm)" }}>Chargement...</td></tr>
+                        <tr><td colSpan={11} style={{ padding:40, textAlign:"center", color:"var(--pm)" }}>Chargement...</td></tr>
                       ) : filteredMeds.map(m => {
                         const st  = stockSt(m.stock_quantite,m.stock_minimum);
                         const ps  = perempSt(m.date_expiration);
                         const pct = m.stock_minimum>0?Math.min(100,Math.round(m.stock_quantite/m.stock_minimum*100)):100;
                         return (
                           <tr key={m._id} style={{ background:st==="rupture"?"#FFF8F8":ps==="perime"?"#FFFBF0":"" }}>
+                            <td style={{ padding:'6px 10px' }}>
+                              <div style={{ width:64, height:64, borderRadius:10, overflow:'hidden', background:'linear-gradient(135deg,#EEF4FF,#DBEAFE)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                {m.photo
+                                  ? <img src={m.photo} alt={m.nom_commercial} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                                  : <span style={{ fontSize:28 }}>💊</span>
+                                }
+                              </div>
+                            </td>
                             <td style={{ fontFamily:"monospace", fontSize:11, fontWeight:700, color:"var(--pb)" }}>{m.code}</td>
                             <td>
                               <div style={{ fontWeight:700, color:"var(--pn)" }}>{m.nom_commercial}</div>
@@ -2390,7 +2923,7 @@ ${lignes}
                             </td>
                             <td>
                               <div style={{ display:"flex", gap:4 }}>
-                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrentMed(m); setFormMed({...m}); setModalEdit(true); }}>{I.edit}</button>
+                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrentMed(m); setFormMed({...m}); setPhotoFile(null); setPhotoPreview(null); setModalEdit(true); }}>{I.edit}</button>
                                 <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} onClick={() => { setFormMvt({...EMPTY_MVT,medicament_id:m._id}); setModalMvt(true); }}>⚡</button>
                                 <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:10 }} onClick={() => deleteMed(m._id)}>{I.trash}</button>
                               </div>
@@ -2399,7 +2932,7 @@ ${lignes}
                         );
                       })}
                       {!loading && filteredMeds.length===0 && (
-                        <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--pm)" }}>
+                        <tr><td colSpan={11} style={{ padding:40, textAlign:"center", color:"var(--pm)" }}>
                           {search?`Aucun résultat pour "${search}"`:"Aucun médicament"}
                         </td></tr>
                       )}
@@ -2407,6 +2940,7 @@ ${lignes}
                   </table>
                 </div>
               </div>
+              )}
             </div>
           )}
 
@@ -2688,7 +3222,7 @@ ${lignes}
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <button className="pbtn pbtn-teal" onClick={() => setModalInv(true)}>{I.inv} Démarrer inventaire</button>
-                  <button className="pbtn pbtn-ghost" onClick={() => toast.success("📄 Export Excel inventaire")}>{I.dl} Exporter</button>
+                  <button className="pbtn pbtn-ghost" onClick={exportInventairePDF}>{I.dl} Exporter PDF</button>
                 </div>
               </div>
 
@@ -2736,7 +3270,7 @@ ${lignes}
                 </div>
                 <div style={{ padding:"14px 20px", borderTop:"1.5px solid var(--pbr)", display:"flex", gap:10 }}>
                   <button className="pbtn pbtn-teal" onClick={() => toast.success("✅ Inventaire validé et enregistré")}>{I.save} Valider l'inventaire</button>
-                  <button className="pbtn pbtn-ghost" onClick={() => toast.success("📊 Export inventaire généré")}>{I.dl} Export PDF/Excel</button>
+                  <button className="pbtn pbtn-ghost" onClick={exportInventairePDF}>{I.dl} Export PDF</button>
                 </div>
               </div>
             </div>
@@ -2772,17 +3306,25 @@ ${lignes}
                 <div className="ph-card-hdr">
                   <div><h3>📋 Rapports disponibles</h3></div>
                   <div style={{ display:"flex", gap:8 }}>
-                    <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📄 PDF généré")}>{I.dl} PDF</button>
-                    <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📊 Excel généré")}>📊 Excel</button>
+                    <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => exportRapportPDF('global')}>{I.dl} PDF global</button>
                   </div>
                 </div>
                 <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:12 }}>
-                  {[["📊","Stock actuel","État complet de l'inventaire"],["⏰","Produits expirés","Lots périmés à retirer"],["📅","Proches expiration","Alerte péremption < 90j"],["📈","Consommation mensuelle","Mouvements du mois"],["💰","Ventes","Chiffre d'affaires détaillé"],["📦","Approvisionnements","Historique des commandes"],["🔬","Médicaments + vendus","Classement des ventes"],["📋","Audit pharmacie","Journal des opérations"]].map(([ico,titre,desc])=>(
+                  {[
+                    ["📊","Stock actuel","État complet de l'inventaire","stock"],
+                    ["⏰","Produits expirés","Lots périmés à retirer","expires"],
+                    ["📅","Proches expiration","Alerte péremption < 90j","peremption"],
+                    ["📈","Consommation mensuelle","Mouvements du mois","consommation"],
+                    ["💰","Ventes","Chiffre d'affaires détaillé","ventes"],
+                    ["📦","Approvisionnements","Historique des commandes","approvisionnements"],
+                    ["🔬","Médicaments + vendus","Classement des ventes","top-ventes"],
+                    ["📋","Audit pharmacie","Journal des opérations","audit"],
+                  ].map(([ico,titre,desc,type])=>(
                     <div key={titre} style={{ background:"var(--ps)", border:"1.5px solid var(--pbr)", borderRadius:14, padding:16, display:"flex", flexDirection:"column", gap:8 }}>
                       <div style={{ fontSize:24 }}>{ico}</div>
                       <div style={{ fontWeight:700, color:"var(--pn)", fontSize:13 }}>{titre}</div>
                       <div style={{ fontSize:11, color:"var(--pm)" }}>{desc}</div>
-                      <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11, marginTop:"auto" }} onClick={() => toast.success(`📄 Génération rapport : ${titre}...`)}>{I.dl} Générer</button>
+                      <button className="pbtn pbtn-primary pbtn-sm" style={{ fontSize:11, marginTop:"auto" }} onClick={() => exportRapportPDF(type)}>{I.dl} Générer PDF</button>
                     </div>
                   ))}
                 </div>
@@ -2848,9 +3390,16 @@ ${lignes}
         </div>
 
         {/* ═══ MODAL : AJOUTER MÉDICAMENT ═══ */}
-        <Modal open={modalAdd} onClose={() => setModalAdd(false)} title={<>{I.plus} Ajouter un médicament au catalogue</>} wide>
+        <Modal open={modalAdd} onClose={() => { setModalAdd(false); setPhotoFile(null); setPhotoPreview(null); }} title={<>{I.plus} Ajouter un médicament au catalogue</>} wide>
           <form onSubmit={createMed}>
             <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
+              <PhotoPicker
+                preview={photoPreview}
+                currentUrl={null}
+                inputRef={photoInputRef}
+                onChange={e => { const f=e.target.files?.[0]; if(f){setPhotoFile(f);setPhotoPreview(URL.createObjectURL(f));} }}
+                onRemove={() => { setPhotoFile(null); setPhotoPreview(null); }}
+              />
               <div>
                 <label className="plbl">Code médicament</label>
                 <input className="pinp" value={formMed.code} onChange={e=>setFormMed(f=>({...f,code:e.target.value}))} placeholder="MED-XXX" />
@@ -2936,9 +3485,16 @@ ${lignes}
         </Modal>
 
         {/* ═══ MODAL : MODIFIER MÉDICAMENT ═══ */}
-        <Modal open={modalEdit} onClose={() => setModalEdit(false)} title={<>{I.edit} Modifier — {currentMed?.nom_commercial}</>} wide>
+        <Modal open={modalEdit} onClose={() => { setModalEdit(false); setPhotoFile(null); setPhotoPreview(null); }} title={<>{I.edit} Modifier — {currentMed?.nom_commercial}</>} wide>
           <form onSubmit={updateMed}>
             <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
+              <PhotoPicker
+                preview={photoPreview}
+                currentUrl={formMed.photo || null}
+                inputRef={photoInputRef}
+                onChange={e => { const f=e.target.files?.[0]; if(f){setPhotoFile(f);setPhotoPreview(URL.createObjectURL(f));} }}
+                onRemove={() => { setPhotoFile(null); setPhotoPreview(null); setFormMed(fm=>({...fm,photo:''})); }}
+              />
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="plbl">Nom commercial *</label>
                 <input className="pinp" required value={formMed.nom_commercial} onChange={e=>setFormMed(f=>({...f,nom_commercial:e.target.value}))} />

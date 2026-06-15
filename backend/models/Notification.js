@@ -3,7 +3,7 @@ const { Schema } = mongoose;
 
 const NotificationSchema = new Schema({
   destinataire: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  type: { type: String, enum: ['info','warning','critical','success','ai_alert','rappel'], default: 'info' },
+  type: { type: String, enum: ['info','warning','critical','success','ai_alert','rappel','alert'], default: 'info' },
   titre: { type: String, required: true },
   message: { type: String, required: true },
   lien: String,

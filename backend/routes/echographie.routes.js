@@ -2,7 +2,7 @@ const router = require('express').Router();
 const c      = require('../controllers/echographieController');
 const { protect, authorize } = require('../middleware/auth');
 
-const CAN = ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme'];
+const CAN = ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'radiologue', 'sage_femme'];
 
 router.get('/stats',         protect, authorize(...CAN), c.getStats);
 router.get('/',              protect, authorize(...CAN), c.getAll);

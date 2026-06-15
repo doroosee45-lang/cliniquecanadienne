@@ -130,6 +130,16 @@ exports.update = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+exports.uploadPhoto = async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'Aucun fichier fourni.' });
+    const url = `/uploads/medications/${req.file.filename}`;
+    const med = await Medication.findByIdAndUpdate(req.params.id, { photo: url }, { new: true });
+    if (!med) return res.status(404).json({ message: 'Médicament introuvable.' });
+    res.json({ success: true, photo: url, medication: med });
+  } catch (err) { next(err); }
+};
+
 exports.mouvement = async (req, res, next) => {
   try {
     const { type, quantite, reference, notes } = req.body;

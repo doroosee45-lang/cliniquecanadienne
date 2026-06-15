@@ -1,12 +1,16 @@
 ﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchAnalyticsReport, fetchFinancialReport, fetchPatientStats,
-  selectAnalyticsChartData, selectFinancialData, selectPatientStats, selectAnalyticsLoading,
+  fetchAnalyticsReport, fetchFinancialReport, fetchPatientStats, fetchKpis,
+  selectAnalyticsChartData, selectFinancialData, selectPatientStats,
+  selectAnalyticsLoading, selectAnalyticsKpi, selectAnalyticsKpiLoading,
 } from '../store/slices/analyticsSlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -308,31 +312,8 @@ export default function Analytics() {
   const reduxChartData    = useSelector(selectAnalyticsChartData);
   const reduxFinancialData= useSelector(selectFinancialData);
   const reduxLoading      = useSelector(selectAnalyticsLoading);
-
-  useEffect(() => {
-    dispatch(fetchAnalyticsReport({ type: 'global', period: '30d' }));
-    dispatch(fetchFinancialReport({ period: '30d' }));
-    dispatch(fetchPatientStats({ period: '30d' }));
-  }, [dispatch]);
-
-  // ── Données graphiques depuis Redux (remplacent les DEMO vides) ──
-  const charts          = reduxChartData || {};
-  // eslint-disable-next-line no-shadow
-  const DEMO_CONSULT_LINE = charts.consultations_par_mois || { labels: [], datasets: [] };
-  // eslint-disable-next-line no-shadow
-  const DEMO_REVENUS_BAR  = charts.revenus_par_service    || { labels: [], data: [], colors: [] };
-  // eslint-disable-next-line no-shadow
-  const DEMO_GENDER       = charts.repartition_genre      || { labels: [], data: [], colors: [] };
-  // eslint-disable-next-line no-shadow
-  const DEMO_PATHOLOGIES  = charts.top_pathologies        || [];
-  // eslint-disable-next-line no-shadow
-  const DEMO_MEDECINS     = charts.top_medecins           || [];
-  // eslint-disable-next-line no-shadow
-  const DEMO_ALERTES_MED  = charts.alertes_medicales      || [];
-  // eslint-disable-next-line no-shadow
-  const DEMO_ALERTES_ADM  = charts.alertes_admin          || [];
-  // eslint-disable-next-line no-shadow
-  const DEMO_PERF         = charts.perf_indicateurs       || [];
+  const reduxKpi          = useSelector(selectAnalyticsKpi);
+  const reduxKpiLoading   = useSelector(selectAnalyticsKpiLoading);
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
@@ -341,27 +322,94 @@ export default function Analytics() {
   const [periode, setPeriode]   = useState("mois");
   const [filterService, setFilterSvc]  = useState("");
   const [filterMedecin, setFilterMed]  = useState("");
-  const [loading, setLoading]   = useState(false);
-  const [kpi, setKpi]           = useState(DEMO_KPI);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  // Simulation refresh
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data } = await api.get(`/analytics/stats?periode=${periode}&service=${filterService}&medecin=${filterMedecin}`);
-      setKpi(data.kpi || DEMO_KPI);
-    } catch {
-      // Légère variation démo
-      setKpi(prev => ({ ...prev, patients_nouveaux: prev.patients_nouveaux + Math.floor(Math.random()*3)-1 }));
-    } finally {
-      setLoading(false);
-      setLastUpdate(new Date());
-    }
-  }, [periode, filterService, filterMedecin]);
+  // ── Chargement de toutes les données selon la période ──────
+  const loadAll = useCallback(() => {
+    dispatch(fetchKpis({ periode }));
+    dispatch(fetchAnalyticsReport({ type: 'global', periode }));
+    dispatch(fetchFinancialReport({ periode }));
+    dispatch(fetchPatientStats({ periode }));
+    setLastUpdate(new Date());
+  }, [dispatch, periode]);
 
-  useEffect(() => { refresh(); }, [refresh]);
-  useRealtimeRefresh(refresh);
+  useEffect(() => { loadAll(); }, [loadAll]);
+  useRealtimeRefresh(loadAll);
+
+  // ── KPIs (viennent du Redux store) ────────────────────────
+  const kpi = reduxKpi || {};
+
+  // ── Données graphiques depuis Redux ───────────────────────
+  const charts            = reduxChartData || {};
+  const DEMO_CONSULT_LINE = charts.consultations_par_mois || { labels: [], datasets: [] };
+  const DEMO_REVENUS_BAR  = charts.revenus_par_service    || { labels: [], data: [], colors: [] };
+  const DEMO_GENDER       = charts.repartition_genre      || { labels: [], data: [], colors: [] };
+  const DEMO_PHARMA_DONUT = charts.pharma_statut          || { labels: [], data: [], colors: [] };
+  const DEMO_PATHOLOGIES  = charts.top_pathologies        || [];
+  const DEMO_MEDECINS     = charts.top_medecins           || [];
+  const DEMO_ALERTES_MED  = charts.alertes_medicales      || [];
+  const DEMO_ALERTES_ADM  = charts.alertes_admin          || [];
+  const DEMO_PERF         = charts.perf_indicateurs       || [];
+
+  // ── Export PDF ─────────────────────────────────────────────
+  const exportAnalyticsPDF = () => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+    const timeStr = new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+
+    doc.setFillColor(11, 30, 59);
+    doc.rect(0, 0, W, 24, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(14); doc.setFont('helvetica','bold');
+    doc.text(`RAPPORT ANALYTICS — ${CLINIC_NAME.toUpperCase()}`, W/2, 10, { align:'center' });
+    doc.setFontSize(8.5); doc.setFont('helvetica','normal');
+    doc.text(`${CLINIC_NAME} ${CLINIC_SUBTITLE} · Généré le ${dateStr} à ${timeStr}`, W/2, 17, { align:'center' });
+
+    doc.setTextColor(60,60,60); doc.setFontSize(8.5);
+    doc.text(`Période : ${periode} · Dernière mise à jour : ${lastUpdate.toLocaleTimeString('fr-FR')}`, 14, 30);
+
+    const kpiRows = [
+      ['Patients total', kpi.patients_total??0, 'Patients nouveaux', kpi.patients_nouveaux??0],
+      ['Consultations', kpi.consultations_total??0, 'Terminées', kpi.consultations_terminees??0],
+      ['Labo demandes', kpi.labo_demandes??0, 'Labo réalisés', kpi.labo_realises??0],
+      ['Hospitalisations', kpi.hospit_admissions??0, 'Taux occupation', `${kpi.taux_occupation??0}%`],
+      ['Chirurgies', kpi.chirurgie_programmees??0, 'Réalisées', kpi.chirurgie_realisees??0],
+      ['Urgences (période)', kpi.urgences_periode??0, 'Urgences critiques', kpi.urgences_critiques??0],
+      ['Maternité grossesses', kpi.maternite_grossesses??0, 'Accouchements', kpi.maternite_accouchements??0],
+      ['Pédiatrie consultations', kpi.pediatrie_periode??0, 'Échographies', kpi.echographie_periode??0],
+      ['Prescriptions', kpi.prescriptions_periode??0, 'Pharmacie ruptures', kpi.pharma_ruptures??0],
+      ['CA total', `${(kpi.ca_total??0).toLocaleString('fr-FR')} CFA`, 'Bénéfice', `${(kpi.benefice??0).toLocaleString('fr-FR')} CFA`],
+      ['Médecins actifs', kpi.rh_medecins??0, 'Infirmiers', kpi.rh_infirmiers??0],
+    ];
+
+    autoTable(doc, {
+      startY: 36,
+      head: [['Indicateur', 'Valeur', 'Indicateur', 'Valeur']],
+      body: kpiRows,
+      theme: 'grid',
+      headStyles: { fillColor:[11,30,59], textColor:255, fontStyle:'bold', fontSize:9, halign:'center' },
+      bodyStyles: { fontSize:9, textColor:[30,30,30] },
+      alternateRowStyles: { fillColor:[240,248,255] },
+      columnStyles: { 0:{fontStyle:'bold'}, 2:{fontStyle:'bold'} },
+      margin: { left:14, right:14 },
+    });
+
+    const n = doc.internal.getNumberOfPages();
+    for (let i=1; i<=n; i++) {
+      doc.setPage(i); const H = doc.internal.pageSize.getHeight();
+      doc.setFillColor(248,250,255); doc.rect(0,H-10,W,10,'F');
+      doc.setFontSize(7); doc.setTextColor(150,150,150);
+      doc.text('Document confidentiel — Usage interne', 14, H-3.5);
+      doc.text(`Page ${i}/${n}`, W/2, H-3.5, { align:'center' });
+      doc.text(dateStr, W-14, H-3.5, { align:'right' });
+    }
+    const filename = `analytics-${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(filename);
+    toast.success(`📄 PDF exporté : ${filename}`);
+  };
+
+  const loading = reduxLoading || reduxKpiLoading;
 
   const periodes = [
     { key:"aujourd_hui", label:"Aujourd'hui" },
@@ -393,13 +441,13 @@ export default function Analytics() {
               </div>
             </div>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="abtn abtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)", fontSize:12 }} onClick={refresh} title="Actualiser">
+              <button className="abtn abtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)", fontSize:12 }} onClick={loadAll} title="Actualiser">
                 {I.refresh} Actualiser
               </button>
               <button className="abtn abtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)", fontSize:12 }} onClick={() => window.print()}>
                 {I.print} Imprimer
               </button>
-              <button className="abtn abtn-teal" style={{ fontSize:12 }} onClick={() => toast.success("📄 PDF exporté — Rapport Analytics")}>
+              <button className="abtn abtn-teal" style={{ fontSize:12 }} onClick={exportAnalyticsPDF}>
                 {I.dl} Export PDF
               </button>
             </div>
@@ -580,9 +628,51 @@ export default function Analytics() {
                   { color:"green",  icon:I.money, label:"Chiffre d'affaires",  val:fmtNum(kpi.ca_total)+" CFA",    sub:`${periode==="mois"?"Ce mois":"Cette période"}`, trend:12.5, up:true },
                   { color:"blue",   icon:I.money, label:"Dépenses totales",     val:fmtNum(kpi.depenses)+" CFA",    sub:"Charges opérationnelles",      trend:3.2,  up:true },
                   { color:"teal",   icon:I.money, label:"Bénéfice net",         val:fmtNum(kpi.benefice)+" CFA",    sub:`Marge ${beneficePct}%`,        trend:18.7, up:true },
-                  { color:"red",    icon:I.money, label:"Factures impayées",    val:fmtNum(kpi.factures_impayees)+" CFA", sub:"23 factures",             urgent:true },
+                  { color:"red",    icon:I.money, label:"Factures impayées", val:fmtNum(kpi.factures_impayees)+" CFA", sub:`${kpi.factures_impayees>0?kpi.factures_impayees+" facture(s)":"Aucune"}`, urgent:kpi.factures_impayees>0 },
                 ].map((k,i) => (
                   <KpiCard key={i} color={k.color} icon={k.icon} value={k.val} label={k.label} sub={k.sub} trend={k.trend} trendUp={k.up} urgent={k.urgent} />
+                ))}
+              </div>
+
+              {/* ── MODULES CLINIQUES ── */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:14, marginBottom:24 }}>
+                {[
+                  { titre:"🚨 Urgences",      color:"#DC2626", bg:"#FEF2F2", items:[
+                    ["Période",   kpi.urgences_periode??0], ["Critiques", kpi.urgences_critiques??0], ["Total",  kpi.urgences_total??0],
+                  ]},
+                  { titre:"🤰 Maternité",     color:"#EC4899", bg:"#FDF2F8", items:[
+                    ["Grossesses",kpi.maternite_grossesses??0], ["Accouchements", kpi.maternite_accouchements??0],
+                  ]},
+                  { titre:"👶 Pédiatrie",     color:"#0EA5A0", bg:"#F0FDFC", items:[
+                    ["Période",   kpi.pediatrie_periode??0], ["Total",  kpi.pediatrie_total??0],
+                  ]},
+                  { titre:"🔬 Échographie",   color:"#7C3AED", bg:"#F5F3FF", items:[
+                    ["Période",   kpi.echographie_periode??0], ["Total", kpi.echographie_total??0],
+                  ]},
+                  { titre:"💊 Pharmacie",     color:"#059669", bg:"#ECFDF5", items:[
+                    ["Médicaments",kpi.pharma_total??0], ["Ruptures", kpi.pharma_ruptures??0], ["Critique", kpi.pharma_critiques??0],
+                  ]},
+                  { titre:"📋 Prescriptions", color:"#1B4F9E", bg:"#EFF6FF", items:[
+                    ["Période",   kpi.prescriptions_periode??0], ["Total", kpi.prescriptions_total??0],
+                  ]},
+                  { titre:"👔 RH",            color:"#D97706", bg:"#FFFBEB", items:[
+                    ["Médecins",  kpi.rh_medecins??0], ["Infirmiers", kpi.rh_infirmiers??0], ["Total", kpi.rh_personnel??0],
+                  ]},
+                  { titre:"🗄️ Archives",      color:"#6B7A99", bg:"#F8FAFF", items:[
+                    ["Archivés",  kpi.archives_total??0],
+                  ]},
+                ].map(({ titre, color, bg, items }) => (
+                  <div key={titre} style={{ background:bg, border:`1.5px solid ${color}22`, borderRadius:16, padding:"14px 18px" }}>
+                    <div style={{ fontSize:13, fontWeight:700, color, marginBottom:10 }}>{titre}</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:14 }}>
+                      {items.map(([lbl, val]) => (
+                        <div key={lbl} style={{ minWidth:80 }}>
+                          <div style={{ fontSize:22, fontWeight:800, color, letterSpacing:-1 }}>{fmtNum(val)}</div>
+                          <div style={{ fontSize:10.5, color:"var(--am)", fontWeight:600 }}>{lbl}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
 
@@ -730,19 +820,11 @@ export default function Analytics() {
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
                 {/* Évolution mensuelle */}
                 <div className="anl-card fu">
-                  <div className="anl-card-hdr"><div><h3>{I.trend} Évolution mensuelle</h3><p>Consultations sur 12 mois</p></div></div>
+                  <div className="anl-card-hdr"><div><h3>{I.trend} Évolution mensuelle</h3><p>Activité multi-services sur la période</p></div></div>
                   <div style={{ padding:20 }}>
                     <LineChart
-                      labels={MOIS}
-                      datasets={[{
-                        label:"Consultations",
-                        data:[420,510,480,562,620,580,440,320,500,610,560,680],
-                        borderColor:"#0EA5A0", backgroundColor:"rgba(14,165,160,.1)", tension:.4, fill:true, pointRadius:4, pointBackgroundColor:"#0EA5A0",
-                      },{
-                        label:"Hospitalisations",
-                        data:[65,78,70,82,90,75,62,48,71,88,80,96],
-                        borderColor:"#D97706", backgroundColor:"rgba(215,119,6,.06)", tension:.4, fill:true, borderDash:[5,5], pointRadius:3, pointBackgroundColor:"#D97706",
-                      }]}
+                      labels={DEMO_CONSULT_LINE.labels}
+                      datasets={DEMO_CONSULT_LINE.datasets}
                       height={200}
                     />
                   </div>
@@ -816,7 +898,7 @@ export default function Analytics() {
                   { color:"green",  icon:I.money, label:"Chiffre d'affaires",  val:fmtCFA(kpi.ca_total),          trend:12.5, up:true,  sub:"vs période précédente" },
                   { color:"orange", icon:I.money, label:"Dépenses totales",     val:fmtCFA(kpi.depenses),          trend:3.2,  up:true,  sub:"Charges opérationnelles" },
                   { color:"teal",   icon:I.money, label:"Bénéfice net",         val:fmtCFA(kpi.benefice),          trend:18.7, up:true,  sub:`Marge nette : ${beneficePct}%` },
-                  { color:"red",    icon:I.money, label:"Factures impayées",    val:fmtCFA(kpi.factures_impayees), trend:5.1,  up:true,  sub:"23 factures en attente", urgent:true },
+                  { color:"red",    icon:I.money, label:"Factures impayées",    val:fmtCFA(kpi.factures_impayees), trend:5.1,  up:true,  sub:`${kpi.factures_impayees>0?kpi.factures_impayees+" facture(s) en attente":"Aucune impayée"}`, urgent:kpi.factures_impayees>0 },
                 ].map((k,i) => (
                   <KpiCard key={i} color={k.color} icon={k.icon} value={k.val} label={k.label} sub={k.sub} trend={k.trend} trendUp={k.up} urgent={k.urgent} />
                 ))}
@@ -843,7 +925,7 @@ export default function Analytics() {
                 </div>
 
                 <div className="anl-card fu">
-                  <div className="anl-card-hdr"><div><h3>Répartition du CA</h3></div></div>
+                  <div className="anl-card-hdr"><div><h3>Répartition du CA par service</h3></div></div>
                   <div style={{ padding:20 }}>
                     <DonutChart
                       labels={DEMO_REVENUS_BAR.labels}
@@ -852,6 +934,20 @@ export default function Analytics() {
                       height={200}
                     />
                   </div>
+                  {DEMO_PHARMA_DONUT.data?.length > 0 && (
+                    <>
+                      <div style={{ borderTop:"1px solid #EEF4FF", margin:"0 16px" }} />
+                      <div className="anl-card-hdr" style={{ borderBottom:"none" }}><h3>💊 Stock pharmacie</h3></div>
+                      <div style={{ padding:"0 20px 20px" }}>
+                        <DonutChart
+                          labels={DEMO_PHARMA_DONUT.labels}
+                          data={DEMO_PHARMA_DONUT.data}
+                          colors={DEMO_PHARMA_DONUT.colors}
+                          height={160}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 

@@ -2,6 +2,7 @@
 const router   = require('express').Router();
 const pharmaC  = require('../controllers/pharmacy.controller');
 const { protect, authorize } = require('../middleware/auth');
+const { uploadMedPhoto }   = require('../middleware/upload');
 
 const CAN_MANAGE = ['superadmin','adminclinique','pharmacien'];
 
@@ -30,6 +31,7 @@ router.get('/',                                 protect,                        
 router.post('/',                                protect, authorize(...CAN_MANAGE),    pharmaC.create);
 router.get('/:id',                              protect,                              pharmaC.getOne);
 router.put('/:id',                              protect, authorize(...CAN_MANAGE),    pharmaC.update);
+router.post('/:id/photo',                       protect, authorize(...CAN_MANAGE),    uploadMedPhoto.single('photo'), pharmaC.uploadPhoto);
 router.post('/:id/mouvement',                   protect, authorize(...CAN_MANAGE),    pharmaC.mouvement);
 
 module.exports = router;

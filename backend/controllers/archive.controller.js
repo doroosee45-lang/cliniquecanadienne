@@ -1,5 +1,6 @@
 const ArchiveEntry    = require('../models/ArchiveEntry');
 const Patient         = require('../models/Patient');
+const { emitDashboardUpdate } = require('../utils/socket');
 const Consultation    = require('../models/Consultation');
 const Hospitalization = require('../models/Hospitalization');
 const LabResult       = require('../models/LabResult');
@@ -229,6 +230,7 @@ exports.create = async (req, res, next) => {
       archive_par:    req.user?._id,
       date_archivage: new Date(),
     });
+    emitDashboardUpdate();
     await logAction({
       utilisateur: req.user?._id, action: 'ARCHIVE_CREATION', module: 'archive',
       entite_id: archive._id, ip: req.ip, message: `Archive créée : ${titre}`,
@@ -255,6 +257,7 @@ exports.restore = async (req, res, next) => {
       await Patient.findByIdAndUpdate(archive.source_id, { statut: 'actif' });
     }
 
+    emitDashboardUpdate();
     await logAction({
       utilisateur: req.user?._id, action: 'ARCHIVE_RESTAURATION', module: 'archive',
       entite_id: archive._id, ip: req.ip,

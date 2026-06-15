@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import {
@@ -38,19 +39,19 @@ const CSS = `
   --sh:0 1px 3px rgba(11,30,59,.08); --shm:0 4px 16px rgba(11,30,59,.10); --shl:0 12px 40px rgba(11,30,59,.14);
 }
 /* Topbar */
-.mat-top { background:linear-gradient(135deg,#1a0a2e 0%,#2d1b5e 40%,#1B4F9E 80%, var(--apk2) 100%); padding:20px 24px 0; position:relative; overflow:hidden; }
-.mat-top::before { content:''; position:absolute; top:-60px; right:-60px; width:260px; height:260px; background:radial-gradient(circle,rgba(236,72,153,.22) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
+.mat-top { background:linear-gradient(135deg,var(--an) 0%,var(--an2) 55%,#1B4F9E 100%); padding:20px 24px 0; position:relative; overflow:hidden; }
+.mat-top::before { content:''; position:absolute; top:-60px; right:-60px; width:260px; height:260px; background:radial-gradient(circle,rgba(14,165,160,.22) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
 .mat-top::after  { content:''; position:absolute; bottom:-80px; left:30%; width:200px; height:200px; background:radial-gradient(circle,rgba(27,79,158,.15) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
 /* Tabs */
 .mat-tabs { display:flex; gap:2px; margin-top:16px; overflow-x:auto; scrollbar-width:none; }
 .mat-tabs::-webkit-scrollbar { display:none; }
 .mat-tab { display:flex; align-items:center; gap:7px; padding:10px 16px 12px; font-size:12px; font-weight:600; color:rgba(255,255,255,.55); border:none; background:none; cursor:pointer; border-radius:10px 10px 0 0; transition:all .2s; white-space:nowrap; font-family:'Poppins',sans-serif; }
 .mat-tab:hover { color:rgba(255,255,255,.88); background:rgba(255,255,255,.08); }
-.mat-tab.active { color:var(--an); background:var(--as); box-shadow:0 -2px 0 var(--apk) inset; }
+.mat-tab.active { color:var(--an); background:var(--as); box-shadow:0 -2px 0 var(--at) inset; }
 /* Cards */
 .mat-card { background:#fff; border:1.5px solid var(--abr); border-radius:18px; box-shadow:var(--sh); overflow:hidden; transition:box-shadow .2s; }
 .mat-card:hover { box-shadow:var(--shm); }
-.mat-card-hdr { padding:14px 20px; border-bottom:1.5px solid var(--abr); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(to right,rgba(252,231,243,.5),transparent); }
+.mat-card-hdr { padding:14px 20px; border-bottom:1.5px solid var(--abr); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(to right,rgba(238,244,255,.6),transparent); }
 .mat-card-hdr h3 { font-size:14px; font-weight:700; color:var(--an); margin:0; display:flex; align-items:center; gap:8px; }
 .mat-card-hdr p  { font-size:11px; color:var(--am); margin:2px 0 0; }
 /* KPI */
@@ -105,11 +106,11 @@ const CSS = `
 .mbtn-danger { background:var(--ar); color:#fff; } .mbtn-danger:hover { background:#B91C1C; transform:translateY(-1px); }
 /* Table */
 .mat-tbl { width:100%; border-collapse:collapse; }
-.mat-tbl thead tr { background:linear-gradient(to right,#FDF2F8,#EEF4FF); }
+.mat-tbl thead tr { background:linear-gradient(to right,#F8FAFD,#EEF4FF); }
 .mat-tbl th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700; color:var(--am); text-transform:uppercase; letter-spacing:.6px; border-bottom:1.5px solid var(--abr); white-space:nowrap; }
 .mat-tbl td { padding:11px 14px; font-size:13px; border-bottom:1px solid #F3F7FF; vertical-align:middle; }
 .mat-tbl tbody tr:last-child td { border-bottom:none; }
-.mat-tbl tbody tr:hover { background:#FDF8FD; }
+.mat-tbl tbody tr:hover { background:#F8FAFD; }
 /* Alert boxes */
 .al-danger { background:linear-gradient(135deg,#FEF2F2,#FEE2E2); border:1.5px solid #FECACA; border-left:4px solid var(--ar); border-radius:14px; padding:14px 18px; }
 .al-warn   { background:linear-gradient(135deg,#FFFBEB,#FEF3C7); border:1.5px solid #FDE68A; border-left:4px solid var(--ao); border-radius:14px; padding:14px 18px; }
@@ -118,22 +119,22 @@ const CSS = `
 /* Modal */
 .mat-overlay { position:fixed; inset:0; background:rgba(11,30,59,.55); z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px); }
 .mat-modal { background:#fff; border-radius:20px; width:100%; max-width:640px; max-height:90vh; overflow-y:auto; box-shadow:var(--shl); }
-.mat-modal-hdr { padding:20px 24px 16px; border-bottom:1.5px solid var(--abr); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:#fff; z-index:1; border-radius:20px 20px 0 0; background:linear-gradient(135deg,#FDF2F8,#fff); }
+.mat-modal-hdr { padding:20px 24px 16px; border-bottom:1.5px solid var(--abr); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:#fff; z-index:1; border-radius:20px 20px 0 0; background:linear-gradient(135deg,#EEF4FF,#fff); }
 .mat-modal-hdr h2 { font-size:17px; font-weight:800; color:var(--an); margin:0; }
 .mat-modal-body { padding:20px 24px; }
 /* Form */
 .mat-field { margin-bottom:16px; }
 .mat-label { font-size:12px; font-weight:700; color:var(--am); margin-bottom:6px; display:block; text-transform:uppercase; letter-spacing:.4px; }
 .mat-input { width:100%; padding:10px 14px; border:1.5px solid var(--abr); border-radius:10px; font-size:13px; font-family:'Poppins',sans-serif; color:var(--an); background:#F8FAFD; outline:none; transition:border-color .2s; }
-.mat-input:focus { border-color:var(--apk); background:#fff; }
+.mat-input:focus { border-color:var(--at); background:#fff; }
 .mat-select { width:100%; padding:10px 14px; border:1.5px solid var(--abr); border-radius:10px; font-size:13px; font-family:'Poppins',sans-serif; color:var(--an); background:#F8FAFD; outline:none; cursor:pointer; }
-.mat-select:focus { border-color:var(--apk); }
+.mat-select:focus { border-color:var(--at); }
 .mat-g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 /* Filter */
 .filter-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:16px 0 20px; }
 .filter-btn { padding:7px 16px; border-radius:99px; font-size:12px; font-weight:600; border:1.5px solid var(--abr); background:white; color:var(--am); cursor:pointer; transition:all .2s; font-family:'Poppins',sans-serif; white-space:nowrap; }
-.filter-btn:hover { border-color:var(--apk); color:var(--apk); }
-.filter-btn.active { background:var(--apk); color:white; border-color:var(--apk); }
+.filter-btn:hover { border-color:var(--at); color:var(--at); }
+.filter-btn.active { background:var(--at); color:white; border-color:var(--at); }
 /* Section label */
 .sec-label { font-size:13px; font-weight:700; color:var(--am); text-transform:uppercase; letter-spacing:.6px; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
 /* Partogramme cell */
@@ -457,6 +458,7 @@ function KpiCard({ color, icon, value, label, sub, urgent }) {
 
 // ─── MAIN ────────────────────────────────────────────────────
 export default function Maternite() {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const stats        = useSelector(selectMaterniteStats);
   const grossesses   = useSelector(selectGrossesses);
@@ -617,7 +619,8 @@ export default function Maternite() {
                       <div key={i} style={{background:"#FDF8FD",borderRadius:14,padding:14,border:"1.5px solid #F9A8D4"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                           <div>
-                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)"}}>{p.patient_prenom} {p.patient_nom}</div>
+                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)",cursor:p.patient_id?._id?"pointer":"default",textDecoration:p.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>p.patient_id?._id&&navigate(`/patients/${p.patient_id._id}`)}>{p.patient_prenom} {p.patient_nom}</div>
+                            {p.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,display:"inline-block",marginBottom:4}}>{p.patient_id.numero_dossier}</span>}
                             <div style={{fontSize:11,color:"var(--am)"}}>Entrée : {fmtDate(p.salle_travail?.date_admission)}</div>
                           </div>
                           <Badge cls="red">En travail</Badge>
@@ -652,7 +655,8 @@ export default function Maternite() {
                       <div key={i} className={r.niveau_risque==="eleve"?"al-danger":"al-warn"}>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                           <div>
-                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)"}}>{r.patient_prenom} {r.patient_nom}</div>
+                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)",cursor:r.patient_id?._id?"pointer":"default",textDecoration:r.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>r.patient_id?._id&&navigate(`/patients/${r.patient_id._id}`)}>{r.patient_prenom} {r.patient_nom}</div>
+                            {r.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,display:"inline-block",marginBottom:4}}>{r.patient_id.numero_dossier}</span>}
                             <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap"}}>
                               {(r.facteurs_risque||[]).slice(0,3).map(f=><Badge key={f} cls={r.niveau_risque==="eleve"?"red":"orange"}>{f}</Badge>)}
                             </div>
@@ -721,7 +725,7 @@ export default function Maternite() {
                         ) : grossessesFiltrees.map(p=>(
                           <tr key={p._id}>
                             <td><span style={{fontWeight:700,color:"var(--apk)"}}>{p.numero||p._id?.slice(-6)}</span></td>
-                            <td><div style={{fontWeight:600,color:"var(--an)"}}>{p.patient_prenom} {p.patient_nom}</div></td>
+                            <td><div style={{fontWeight:600,color:"var(--an)",cursor:p.patient_id?._id?"pointer":"default",textDecoration:p.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>p.patient_id?._id&&navigate(`/patients/${p.patient_id._id}`)}>{p.patient_prenom} {p.patient_nom}</div>{p.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,display:"inline-block",marginTop:2}}>{p.patient_id.numero_dossier}</span>}</td>
                             <td style={{fontSize:12}}>{p.telephone||"—"}</td>
                             <td style={{fontWeight:600,color:"var(--ab)"}}>{fmtDate(p.dpa)}</td>
                             <td><Badge cls="purple">{agSemaines(p.ddr)}</Badge></td>
@@ -769,7 +773,7 @@ export default function Maternite() {
                       <div key={`${i}-${j}`} style={{background:"#F8FAFD",borderRadius:14,padding:14,border:"1.5px solid var(--abr)"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
                           <div>
-                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)"}}>{g.patient_prenom} {g.patient_nom} — <span style={{color:"var(--apk)"}}>CPN n°{g.cpns.length}</span></div>
+                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)"}}><span style={{cursor:g.patient_id?._id?"pointer":"default",textDecoration:g.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>g.patient_id?._id&&navigate(`/patients/${g.patient_id._id}`)}>{g.patient_prenom} {g.patient_nom}</span>{g.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,marginLeft:6}}>{g.patient_id.numero_dossier}</span>} — <span style={{color:"var(--apk)"}}>CPN n°{g.cpns.length}</span></div>
                             <div style={{fontSize:11,color:"var(--am)"}}>{fmtDate(cpn.date)} · {cpn.medecin||g.medecin_responsable||"—"}</div>
                           </div>
                           <Badge cls="green">Enregistrée</Badge>
@@ -867,7 +871,7 @@ export default function Maternite() {
                   <div key={r._id} className={`mat-card fu d${Math.min(i+1,6)}`}>
                     <div className="mat-card-hdr">
                       <div>
-                        <h3>{r.patient_prenom} {r.patient_nom}</h3>
+                        <h3><span style={{cursor:r.patient_id?._id?"pointer":"default",textDecoration:r.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>r.patient_id?._id&&navigate(`/patients/${r.patient_id._id}`)}>{r.patient_prenom} {r.patient_nom}</span>{r.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,marginLeft:8}}>{r.patient_id.numero_dossier}</span>}</h3>
                         <p>DPA : {fmtDate(r.dpa)} · {r.medecin_responsable||"—"}</p>
                       </div>
                       <Badge cls={risqueBadge(r.niveau_risque)}>Risque {risqueLabel(r.niveau_risque)}</Badge>
@@ -918,7 +922,7 @@ export default function Maternite() {
                   <div key={p._id} className="mat-card fu">
                     <div className="mat-card-hdr">
                       <div>
-                        <h3>🏥 {p.patient_prenom} {p.patient_nom}</h3>
+                        <h3>🏥 <span style={{cursor:p.patient_id?._id?"pointer":"default",textDecoration:p.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>p.patient_id?._id&&navigate(`/patients/${p.patient_id._id}`)}>{p.patient_prenom} {p.patient_nom}</span>{p.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,marginLeft:8}}>{p.patient_id.numero_dossier}</span>}</h3>
                         <p>Admission : {fmtDate(p.salle_travail?.date_admission)} · Membranes : {p.salle_travail?.rupture_membranes?"Rompues":"Intactes"}</p>
                       </div>
                       <Badge cls="red">En travail</Badge>
@@ -1094,7 +1098,7 @@ export default function Maternite() {
                             return (
                               <div key={i} style={{background:"#F8FAFD",borderRadius:12,padding:12,border:"1.5px solid var(--abr)"}}>
                                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                                  <div style={{fontWeight:700,fontSize:13,color:"var(--an)"}}>{m.patient_prenom} {m.patient_nom}</div>
+                                  <div style={{fontWeight:700,fontSize:13,color:"var(--an)",cursor:m.patient_id?._id?"pointer":"default",textDecoration:m.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>m.patient_id?._id&&navigate(`/patients/${m.patient_id._id}`)}>{m.patient_prenom} {m.patient_nom}{m.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,marginLeft:6}}>{m.patient_id.numero_dossier}</span>}</div>
                                   <Badge cls={dernier?"green":"orange"}>{dernier?"Consultée":"À consulter"}</Badge>
                                 </div>
                                 {dernier && (
@@ -1178,7 +1182,7 @@ export default function Maternite() {
                   <div style={{ display:"flex", alignItems:"center", gap:14 }}>
                     <div style={{ width:54, height:54, borderRadius:14, background:"#FDF2F8", border:"2px solid var(--apk)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>🤰</div>
                     <div>
-                      <div style={{ fontSize:17, fontWeight:800, color:"var(--an)" }}>{grossesseDossier.patient_prenom} {grossesseDossier.patient_nom}</div>
+                      <div style={{ fontSize:17, fontWeight:800, color:"var(--an)", cursor:grossesseDossier.patient_id?._id?"pointer":"default", textDecoration:grossesseDossier.patient_id?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>grossesseDossier.patient_id?._id&&navigate(`/patients/${grossesseDossier.patient_id._id}`)}>{grossesseDossier.patient_prenom} {grossesseDossier.patient_nom}{grossesseDossier.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,marginLeft:8}}>{grossesseDossier.patient_id.numero_dossier}</span>}</div>
                       <div style={{ fontSize:12, color:"var(--am)", marginTop:3 }}>
                         {grossesseDossier.numero||grossesseDossier._id?.slice(-6)} · {agSemaines(grossesseDossier.ddr)} · DPA : {fmtDate(grossesseDossier.dpa)}
                       </div>

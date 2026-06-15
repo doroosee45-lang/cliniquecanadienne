@@ -3,6 +3,7 @@
 
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchHospitalizations, fetchRooms, createHospitalization, updateHospitalization,
@@ -249,6 +250,8 @@ const normalizeHosp = h => ({
   patient_nom: h.patient
     ? `${h.patient.prenom || ''} ${h.patient.nom || ''}`.trim()
     : (h.patient_nom || '—'),
+  patient_id:      h.patient?._id || h.patient_id || '',
+  patient_dossier: h.patient?.numero_dossier || h.patient_dossier || '',
   patient_dob:     h.patient?.date_naissance || h.patient_dob || '',
   chambre_label:   h.chambre?.numero || h.chambre_num || (typeof h.chambre === 'string' ? h.chambre : '') || '',
   lit_label:       h.lit_numero || h.lit || '',
@@ -377,6 +380,7 @@ function DoughnutChart({ labels, data, colors, height = 180 }) {
 // ═══════════════════════════════════════════════════════════
 export default function Hospitalisation() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => {
@@ -852,7 +856,8 @@ export default function Hospitalisation() {
                             <tr key={d._id} style={{ background: d.statut === "attente" ? "#FEF9E7" : d.statut === "observation" ? "#EBF5FB" : "" }}>
                               <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--hb)", fontSize:12 }}>{d.numero}</span></td>
                               <td>
-                                <div style={{ fontWeight:600, color:"var(--hn)" }}>{d.patient_nom}</div>
+                                <div style={{ fontWeight:600, color:"var(--hn)", cursor: d.patient_id ? 'pointer' : 'default', textDecoration: d.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id && navigate(`/patients/${d.patient_id}`)} title={d.patient_id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
+                                {d.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{d.patient_dossier}</span>}
                                 <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(d.patient_dob)} · {d.patient_gs || "—"}</div>
                               </td>
                               <td>
@@ -925,7 +930,8 @@ export default function Hospitalisation() {
                           <tr key={d._id} style={{ background: d.statut === "attente" ? "#FEF9E7" : "" }}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--hb)", fontSize:12 }}>{d.numero}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--hn)" }}>{d.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--hn)", cursor: d.patient_id ? 'pointer' : 'default', textDecoration: d.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id && navigate(`/patients/${d.patient_id}`)} title={d.patient_id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
+                              {d.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{d.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(d.patient_dob)} · {d.patient_gs || "—"}</div>
                             </td>
                             <td style={{ fontSize:12, color:"var(--cm)" }}>{d.service_label || "—"}</td>

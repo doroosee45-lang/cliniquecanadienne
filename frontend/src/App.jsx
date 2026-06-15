@@ -245,6 +245,7 @@ import Analytics        from './pages/Analytics';
 
 // ─── Portail Patient ──────────────────────────────────────────────────────────
 import Portal           from './pages/Portal';
+import { Toaster }      from 'react-hot-toast';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,15 +272,24 @@ const FullPageSpinner = () => (
 
 // Raccourcis pour les rôles fréquents
 const ROLES = {
-  superadmin  : ['superadmin'],
-  admin       : ['superadmin', 'adminclinique'],
-  medical     : ['superadmin', 'medecin', 'infirmier'],
-  medecin     : ['superadmin', 'medecin'],
-  pharmacie   : ['superadmin', 'adminclinique', 'pharmacien', 'medecin'],
-  consultation: ['superadmin', 'medecin', 'infirmier'],
-  finance     : ['superadmin', 'adminclinique', 'comptable'],
-  hospitalisation: ['superadmin', 'adminclinique', 'medecin', 'infirmier'],
-  prescription: ['superadmin', 'medecin', 'pharmacien', 'infirmier'],
+  superadmin      : ['superadmin'],
+  admin           : ['superadmin', 'adminclinique'],
+  medical         : ['superadmin', 'medecin', 'infirmier'],
+  medecin         : ['superadmin', 'medecin'],
+  pharmacie       : ['superadmin', 'adminclinique', 'pharmacien', 'medecin'],
+  consultation    : ['superadmin', 'medecin', 'infirmier'],
+  finance         : ['superadmin', 'adminclinique', 'comptable'],
+  hospitalisation : ['superadmin', 'adminclinique', 'medecin', 'infirmier'],
+  chirurgie       : ['superadmin', 'adminclinique', 'medecin', 'infirmier'],
+  blocoperatoire  : ['superadmin', 'adminclinique', 'medecin', 'infirmier'],
+  prescription    : ['superadmin', 'medecin', 'pharmacien', 'infirmier'],
+  // ── Spécialités & Paraclinique ─────────────────────────────────────────────
+  maternite       : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme'],
+  pediatrie       : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme'],
+  urgences        : ['superadmin', 'adminclinique', 'medecin', 'infirmier'],
+  laboratoire     : ['superadmin', 'adminclinique', 'medecin', 'laborantin'],
+  imagerie        : ['superadmin', 'adminclinique', 'medecin', 'radiologue'],
+  echographie     : ['superadmin', 'adminclinique', 'medecin', 'radiologue', 'infirmier'],
 };
 
 // Composant raccourci pour éviter la répétition
@@ -328,18 +338,18 @@ const AppRoutes = () => {
 
         {/* ── Hospitalisation & Chirurgie ──────────────────────────────── */}
         <Route path="hospitalization" element={<Guard roles={ROLES.hospitalisation}><Hospitalization /></Guard>} />
-        <Route path="chirurgie"       element={<Chirurgie />} />
-        <Route path="blocoperatoire"  element={<Blocoperatoire />} />
+        <Route path="chirurgie"       element={<Guard roles={ROLES.chirurgie}><Chirurgie /></Guard>} />
+        <Route path="blocoperatoire"  element={<Guard roles={ROLES.blocoperatoire}><Blocoperatoire /></Guard>} />
 
         {/* ── Urgences & Spécialités ───────────────────────────────────── */}
-        <Route path="urgences"   element={<Urgences />} />
-        <Route path="pediatrie"  element={<Pediatrie />} />
-        <Route path="maternite"  element={<Maternite />} />
+        <Route path="urgences"   element={<Guard roles={ROLES.urgences}><Urgences /></Guard>} />
+        <Route path="pediatrie"  element={<Guard roles={ROLES.pediatrie}><Pediatrie /></Guard>} />
+        <Route path="maternite"  element={<Guard roles={ROLES.maternite}><Maternite /></Guard>} />
 
         {/* ── Paraclinique ─────────────────────────────────────────────── */}
-        <Route path="laboratory"   element={<Laboratory />} />
-        <Route path="radiology"    element={<Radiology />} />
-        <Route path="echographie"  element={<Echographie />} />
+        <Route path="laboratory"   element={<Guard roles={ROLES.laboratoire}><Laboratory /></Guard>} />
+        <Route path="radiology"    element={<Guard roles={ROLES.imagerie}><Radiology /></Guard>} />
+        <Route path="echographie"  element={<Guard roles={ROLES.echographie}><Echographie /></Guard>} />
 
         {/* ── Pharmacie ────────────────────────────────────────────────── */}
         <Route path="pharmacy" element={<Guard roles={ROLES.pharmacie}><Pharmacy /></Guard>} />
@@ -381,6 +391,7 @@ export default function App() {
     <AuthProvider>
       <SocketProvider>
         <AppRoutes />
+        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       </SocketProvider>
     </AuthProvider>
   );

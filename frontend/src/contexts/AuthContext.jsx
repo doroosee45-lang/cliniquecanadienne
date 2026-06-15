@@ -96,29 +96,18 @@ export const AuthProvider = ({ children }) => {
   // Vérification au montage
   useEffect(() => { fetchMe(); }, [fetchMe]);
 
-  /**
-   * login — connexion email/mot de passe classique.
-   * Stocke le token en sessionStorage comme fallback au cookie httpOnly.
-   */
   const login = async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
-    if (data.token) {
-      sessionStorage.setItem('ms_token', data.token);
-    }
     setUser(data.user);
     return data.user;
   };
 
-  /**
-   * logout — déconnexion propre.
-   */
   const logout = async () => {
     try {
       await api.post('/auth/logout');
     } catch {
       // Ignorer les erreurs réseau lors du logout
     } finally {
-      sessionStorage.removeItem('ms_token');
       setUser(null);
     }
   };

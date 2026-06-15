@@ -45,6 +45,7 @@ exports.getDossiers = async (req, res) => {
     }
 
     const dossiers = await DossierChirurgical.find(filter)
+      .populate('patient_id', 'nom prenom numero_dossier')
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(parseInt(limit));

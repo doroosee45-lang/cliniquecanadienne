@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const path   = require('path');
+const fs     = require('fs');
 const bcrypt = require('bcryptjs');
 const Patient = require('../models/Patient');
 const User    = require('../models/User');
@@ -6,17 +8,21 @@ const { logAction, paginate, createNotification } = require('../utils/helpers');
 const { sendActivationEmail } = require('../utils/mail');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
-// Génère un mot de passe temporaire : 8 car. avec maj, min, chiffre
 const generateTempPassword = () => {
   const upper  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const lower  = 'abcdefghijklmnopqrstuvwxyz';
   const digits = '0123456789';
   const all    = upper + lower + digits;
-  let pwd = upper[Math.floor(Math.random() * 26)]
-          + lower[Math.floor(Math.random() * 26)]
-          + digits[Math.floor(Math.random() * 10)];
-  for (let i = 3; i < 8; i++) pwd += all[Math.floor(Math.random() * all.length)];
-  return pwd.split('').sort(() => Math.random() - 0.5).join('');
+  const ri     = (max) => crypto.randomInt(max);
+  let pwd = upper[ri(26)] + lower[ri(26)] + digits[ri(10)];
+  for (let i = 3; i < 8; i++) pwd += all[ri(all.length)];
+  // Fisher-Yates shuffle avec CSPRNG
+  const arr = pwd.split('');
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.join('');
 };
 
 // ── GET ALL ──────────────────────────────────────────────────────────────────
@@ -56,9 +62,10 @@ exports.create = async (req, res, next) => {
       existing = await Patient.findOne({ email: req.body.email.toLowerCase().trim() });
     }
     if (!existing && req.body.nom && req.body.prenom && req.body.date_naissance) {
+      const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       existing = await Patient.findOne({
-        nom:            { $regex: new RegExp(`^${req.body.nom.trim()}$`, 'i') },
-        prenom:         { $regex: new RegExp(`^${req.body.prenom.trim()}$`, 'i') },
+        nom:            { $regex: new RegExp(`^${escRe(req.body.nom.trim())}$`, 'i') },
+        prenom:         { $regex: new RegExp(`^${escRe(req.body.prenom.trim())}$`, 'i') },
         date_naissance: new Date(req.body.date_naissance),
       });
     }
@@ -151,10 +158,11 @@ exports.create = async (req, res, next) => {
     emitDashboardUpdate();
 
     res.status(201).json({
-      success:       true,
+      success:           true,
       patient,
-      email_envoye:  emailEnvoye,
-      message:       emailEnvoye
+      email_envoye:      emailEnvoye,
+      mot_de_passe_temp: motDePasseClair,
+      message:           emailEnvoye
         ? `Dossier créé avec succès. Un email d'activation a été envoyé à ${patient.email}.`
         : `Dossier créé. Email d'activation non envoyé (SMTP non configuré).`,
     });
@@ -208,6 +216,38 @@ exports.activate = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── ACTIVATE DIRECT (admin, sans email) ──────────────────────────────────────
+exports.activateAdmin = async (req, res, next) => {
+  try {
+    const patient = await Patient.findById(req.params.id);
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+
+    patient.actif                   = true;
+    patient.statut                  = 'actif';
+    patient.token_activation        = undefined;
+    patient.token_activation_expire = undefined;
+    await patient.save();
+
+    if (patient.email) {
+      await User.findOneAndUpdate(
+        { email: patient.email, role: 'patient' },
+        { statut: 'actif' }
+      );
+    }
+
+    await logAction({
+      utilisateur: req.user._id,
+      action:      'ACTIVATE_ADMIN',
+      module:      'patients',
+      entite_id:   patient._id,
+      ip:          req.ip,
+      message:     `Compte patient activé manuellement : ${patient.nom} ${patient.prenom} (${patient.numero_dossier}) par ${req.user.prenom} ${req.user.nom}`,
+    });
+
+    res.json({ success: true, patient, message: 'Compte patient activé directement.' });
+  } catch (err) { next(err); }
+};
+
 // ── UPDATE ───────────────────────────────────────────────────────────────────
 exports.update = async (req, res, next) => {
   try {
@@ -234,14 +274,36 @@ exports.search = async (req, res, next) => {
   try {
     const { q } = req.query;
     if (!q || q.length < 2) return res.json({ success: true, patients: [] });
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const patients = await Patient.find({
       $or: [
-        { nom:            { $regex: q, $options: 'i' } },
-        { prenom:         { $regex: q, $options: 'i' } },
-        { numero_dossier: { $regex: q, $options: 'i' } },
-        { telephone:      { $regex: q, $options: 'i' } },
+        { nom:            { $regex: escaped, $options: 'i' } },
+        { prenom:         { $regex: escaped, $options: 'i' } },
+        { numero_dossier: { $regex: escaped, $options: 'i' } },
+        { telephone:      { $regex: escaped, $options: 'i' } },
       ],
     }).limit(10).select('nom prenom numero_dossier telephone date_naissance actif');
     res.json({ success: true, patients });
+  } catch (err) { next(err); }
+};
+
+// ── UPLOAD PHOTO ──────────────────────────────────────────────────────────────
+exports.uploadPhoto = async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier reçu.' });
+
+    const patient = await Patient.findById(req.params.id);
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+
+    // Supprimer l'ancienne photo du disque si elle est hébergée sur le serveur
+    if (patient.photo?.startsWith('/uploads/')) {
+      const old = path.join(__dirname, '..', patient.photo);
+      if (fs.existsSync(old)) fs.unlinkSync(old);
+    }
+
+    patient.photo = `/uploads/patients/${req.file.filename}`;
+    await patient.save();
+
+    res.json({ success: true, photo: patient.photo, patient });
   } catch (err) { next(err); }
 };

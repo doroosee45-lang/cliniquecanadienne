@@ -9,6 +9,10 @@ import {
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -279,6 +283,139 @@ const I = {
   archive: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></svg>,
 };
 
+// ── Export PDF d'un événement ─────────────────────────────────
+const exportEventPDF = (ev) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+  const riskColors = { critique: [220,38,38], eleve: [217,119,6], moyen: [202,138,4], faible: [5,150,105] };
+  const rc = riskColors[ev.risque] || [107,122,153];
+
+  // Bandeau header
+  doc.setFillColor(11,30,59); doc.rect(0,0,W,30,'F');
+  doc.setFillColor(14,165,160); doc.rect(0,30,W,2,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(255,255,255);
+  doc.text(`${clinicFull}`, 14, 12);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(180,200,230);
+  doc.text("Journal d'Audit — Rapport d'événement", 14, 20);
+  doc.text(new Date().toLocaleString('fr-FR'), 14, 27);
+  doc.setFillColor(...rc); doc.roundedRect(W-58,7,44,15,2.5,2.5,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(255,255,255);
+  doc.text(`RISQUE ${(ev.risque||'N/A').toUpperCase()}`, W-36, 15.5, { align:'center' });
+
+  // Titre événement
+  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(11,30,59);
+  doc.text((ev.action||'').replace(/_/g,' ').toUpperCase(), 14, 44);
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(107,122,153);
+  doc.text(ev.description || '—', 14, 52, { maxWidth: W-28 });
+
+  // Tableau infos
+  autoTable(doc, {
+    startY: 62,
+    margin: { left:14, right:14 },
+    head: [['Champ','Valeur']],
+    body: [
+      ['ID Événement', `EVT-${ev._id}`],
+      ['Date & Heure', fmtDT(ev.date)],
+      ['Utilisateur', ev.utilisateur],
+      ['Rôle', ev.role],
+      ['Email', ev.email || '—'],
+      ['Adresse IP', ev.ip],
+      ['Module', (ev.module||'').replace(/_/g,' ')],
+      ['Action', (ev.action||'').replace(/_/g,' ')],
+      ['Appareil', ev.device || '—'],
+      ['Résultat', ev.resultat || '—'],
+    ],
+    headStyles:{ fillColor:[11,30,59], textColor:255, fontStyle:'bold', fontSize:9 },
+    bodyStyles:{ fontSize:10, textColor:[30,30,50], cellPadding:4 },
+    columnStyles:{ 0:{ fontStyle:'bold', cellWidth:55, textColor:[107,122,153] }, 1:{ cellWidth:120 } },
+    alternateRowStyles:{ fillColor:[248,250,253] },
+  });
+
+  // Données modifiées
+  const endY = doc.lastAutoTable.finalY + 8;
+  if (ev.ancienne_val || ev.nouvelle_val) {
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(11,30,59);
+    doc.text('Données modifiées', 14, endY);
+    if (ev.ancienne_val) {
+      doc.setFillColor(254,242,242); doc.roundedRect(14,endY+5,W-28,18,2,2,'F');
+      doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(220,38,38);
+      doc.text('ANCIENNE VALEUR', 18, endY+11);
+      doc.setFont('helvetica','normal'); doc.setTextColor(30,30,50);
+      doc.text(ev.ancienne_val.substring(0,180), 18, endY+17, { maxWidth:W-36 });
+    }
+    if (ev.nouvelle_val) {
+      const nY = endY + (ev.ancienne_val ? 28 : 5);
+      doc.setFillColor(236,253,245); doc.roundedRect(14,nY,W-28,18,2,2,'F');
+      doc.setFontSize(7.5); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
+      doc.text('NOUVELLE VALEUR', 18, nY+6);
+      doc.setFont('helvetica','normal'); doc.setTextColor(30,30,50);
+      doc.text(ev.nouvelle_val.substring(0,180), 18, nY+12, { maxWidth:W-36 });
+    }
+  }
+
+  // Footer
+  doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(150);
+  doc.text(`${clinicFull} — Document confidentiel · Généré le ${new Date().toLocaleString('fr-FR')}`, 14, H-6);
+
+  doc.save(`audit-evt-${ev._id}-${new Date().toISOString().slice(0,10)}.pdf`);
+};
+
+// ── Impression HTML d'un événement ────────────────────────────
+const printEvent = (ev) => {
+  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+  const riskCols = { critique:'#DC2626', eleve:'#D97706', moyen:'#CA8A04', faible:'#059669' };
+  const col = riskCols[ev.risque] || '#6B7A99';
+  const win = window.open('', '_blank', 'width=720,height=900');
+  if (!win) return;
+  const infos = [
+    ['ID Événement', `EVT-${ev._id}`], ['Date & Heure', fmtDT(ev.date)],
+    ['Utilisateur', ev.utilisateur], ['Rôle', ev.role],
+    ['Email', ev.email||'—'], ['Adresse IP', ev.ip],
+    ['Module', (ev.module||'').replace(/_/g,' ')], ['Résultat', ev.resultat||'—'],
+  ];
+  win.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>Événement Audit — ${clinicFull}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif}
+body{background:#f5f7fa}.page{max-width:700px;margin:0 auto;background:#fff}
+.hdr{background:linear-gradient(135deg,#0B1E3B,#1B4F9E);padding:22px 28px;color:#fff;display:flex;justify-content:space-between;align-items:flex-start}
+.clinic{font-size:13pt;font-weight:800}.clinic-sub{font-size:8pt;color:rgba(255,255,255,.5);margin-top:5px}
+.risk-badge{background:${col};color:#fff;padding:5px 14px;border-radius:99px;font-size:8.5pt;font-weight:700;white-space:nowrap}
+.accent{background:#0EA5A0;height:3px}.body{padding:24px 28px}
+.ev-title{font-size:18pt;font-weight:800;color:#0B1E3B;margin-bottom:4px}
+.ev-desc{font-size:10.5pt;color:#6B7A99;margin-bottom:20px;line-height:1.5}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+.ib{background:#F8FAFD;border:1px solid #E2EAF4;border-radius:8px;padding:10px 13px}
+.ib-lbl{font-size:8pt;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.ib-val{font-size:11.5pt;font-weight:700;color:#0B1E3B}
+.diff-box{border-radius:8px;padding:10px 13px;margin-bottom:10px}
+.footer{background:#F8FAFD;border-top:2px solid #E2EAF4;padding:12px 28px;text-align:center;font-size:7.5pt;color:#9CA3AF}
+@media print{body{background:#fff}.page{box-shadow:none}}
+</style></head><body>
+<div class="page">
+  <div class="hdr">
+    <div><div class="clinic">🏥 ${clinicFull}</div><div class="clinic-sub">Journal d'Audit — Rapport d'événement</div></div>
+    <div class="risk-badge">RISQUE ${(ev.risque||'N/A').toUpperCase()}</div>
+  </div>
+  <div class="accent"></div>
+  <div class="body">
+    <div class="ev-title">${(ev.action||'').replace(/_/g,' ').toUpperCase()}</div>
+    <div class="ev-desc">${ev.description||'—'}</div>
+    <div class="info-grid">
+      ${infos.map(([l,v])=>`<div class="ib"><div class="ib-lbl">${l}</div><div class="ib-val">${v||'—'}</div></div>`).join('')}
+    </div>
+    ${ev.ancienne_val ? `<div class="diff-box" style="background:#FEF2F2;border:1px solid #FECACA"><div style="font-size:8pt;font-weight:700;color:#DC2626;margin-bottom:5px">ANCIENNE VALEUR</div><div style="font-size:9.5pt;color:#1a1a2e;font-family:monospace;word-break:break-all">${ev.ancienne_val}</div></div>` : ''}
+    ${ev.nouvelle_val ? `<div class="diff-box" style="background:#ECFDF5;border:1px solid #A7F3D0"><div style="font-size:8pt;font-weight:700;color:#059669;margin-bottom:5px">NOUVELLE VALEUR</div><div style="font-size:9.5pt;color:#1a1a2e;font-family:monospace;word-break:break-all">${ev.nouvelle_val}</div></div>` : ''}
+  </div>
+  <div class="footer">${clinicFull} — Document confidentiel · ${new Date().toLocaleString('fr-FR')}</div>
+</div>
+<script>window.onload=()=>{window.print()}</script>
+</body></html>`);
+  win.document.close();
+};
+
 // ─── Bar Chart ────────────────────────────────────────────────
 function BarChart({ labels, data, color = "#1B4F9E", height = 160 }) {
   const ref = useRef(null);
@@ -419,7 +556,7 @@ export default function JournalAudit() {
       if (filterModule) p.set("module", filterModule);
       if (filterAction) p.set("action", filterAction);
       if (filterRisque) p.set("risque", filterRisque);
-      if (filterUser) p.set("user", filterUser);
+      if (filterUser) p.set("utilisateur", filterUser);
       if (filterIp) p.set("ip", filterIp);
       if (filterDateDeb) p.set("date_deb", filterDateDeb);
       if (filterDateFin) p.set("date_fin", filterDateFin);
@@ -494,6 +631,133 @@ export default function JournalAudit() {
   const clotureAlerte = (id) => {
     setSuspects(prev => prev.map(s => s._id === id ? { ...s, statut: "cloture" } : s));
     toast.success("✅ Alerte clôturée");
+  };
+
+  const [archiveDuree, setArchiveDuree] = useState("1an");
+
+  // ── Helpers export ────────────────────────────────────────
+  const getExportEvents = useCallback((form) => {
+    const now = new Date();
+    let data = [...events];
+    if (form.periode === 'jour') {
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      data = data.filter(e => new Date(e.date) >= today);
+    } else if (form.periode === 'semaine') {
+      data = data.filter(e => new Date(e.date) >= new Date(now - 7*24*3600*1000));
+    } else if (form.periode === 'mois') {
+      data = data.filter(e => new Date(e.date) >= new Date(now.getFullYear(), now.getMonth(), 1));
+    } else if (form.periode === 'trimestre') {
+      data = data.filter(e => new Date(e.date) >= new Date(now - 90*24*3600*1000));
+    } else if (form.periode === 'annee') {
+      data = data.filter(e => new Date(e.date) >= new Date(now.getFullYear(), 0, 1));
+    } else if (form.periode === 'custom') {
+      if (filterDateDeb) data = data.filter(e => new Date(e.date) >= new Date(filterDateDeb));
+      if (filterDateFin) data = data.filter(e => new Date(e.date) <= new Date(filterDateFin + 'T23:59:59'));
+    }
+    if (form.risque) data = data.filter(e => e.risque === form.risque);
+    return data;
+  }, [events, filterDateDeb, filterDateFin]);
+
+  const exportAuditPDF = useCallback(() => {
+    const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+    const data = getExportEvents(exportForm);
+    const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const now = new Date().toLocaleString('fr-FR');
+    doc.setFillColor(11,30,59); doc.rect(0,0,W,26,'F');
+    doc.setFillColor(14,165,160); doc.rect(0,26,W,2,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(255,255,255);
+    doc.text(`🏥 ${clinicFull}`, 14, 10);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(180,200,230);
+    doc.text(`Journal d'Audit — Export du ${now}`, 14, 18);
+    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(14,165,160);
+    doc.text("JOURNAL D'AUDIT", W-14, 12, { align:'right' });
+    doc.setFontSize(8.5); doc.setTextColor(180,200,230); doc.setFont('helvetica','normal');
+    doc.text(`${data.length} événement(s)`, W-14, 20, { align:'right' });
+    autoTable(doc, {
+      startY: 35,
+      margin: { left:12, right:12 },
+      head:[['Date & Heure','Utilisateur','Rôle','Module','Action','Description','IP','Risque','Résultat']],
+      body: data.map(e => [
+        fmtDT(e.date), e.utilisateur, e.role,
+        (e.module||'').replace(/_/g,' '), (e.action||'').replace(/_/g,' '),
+        (e.description||'').substring(0,55), e.ip, e.risque, e.resultat,
+      ]),
+      headStyles:{ fillColor:[11,30,59], textColor:255, fontStyle:'bold', fontSize:7.5 },
+      bodyStyles:{ fontSize:7, textColor:[30,30,50], cellPadding:2.5 },
+      columnStyles:{ 0:{cellWidth:28}, 1:{cellWidth:26}, 2:{cellWidth:18}, 3:{cellWidth:20}, 4:{cellWidth:20}, 5:{cellWidth:58}, 6:{cellWidth:22}, 7:{cellWidth:16}, 8:{cellWidth:16} },
+      alternateRowStyles:{ fillColor:[248,250,253] },
+      didParseCell: ({ section, column, cell }) => {
+        if (section==='body' && column.index===7) {
+          const cols = { critique:[220,38,38], eleve:[217,119,6], moyen:[202,138,4], faible:[5,150,105] };
+          if (cols[cell.raw]) cell.styles.textColor = cols[cell.raw];
+          cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+    doc.setFontSize(7); doc.setTextColor(150); doc.setFont('helvetica','normal');
+    doc.text(`${clinicFull} — Journal d'Audit confidentiel — ${now}`, 12, H-5);
+    doc.save(`journal-audit-${new Date().toISOString().slice(0,10)}.pdf`);
+    toast.success('📄 Export PDF téléchargé');
+  }, [getExportEvents, exportForm]);
+
+  const exportAuditExcel = useCallback(() => {
+    const data = getExportEvents(exportForm);
+    const rows = data.map(e => ({
+      'Date': fmtDT(e.date), 'Utilisateur': e.utilisateur, 'Rôle': e.role,
+      'Email': e.email, 'Module': (e.module||'').replace(/_/g,' '),
+      'Action': (e.action||'').replace(/_/g,' '), 'Description': e.description,
+      'Adresse IP': e.ip, 'Appareil': e.device, 'Risque': e.risque, 'Résultat': e.resultat,
+    }));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [22,22,14,26,18,22,55,18,30,12,10].map(w => ({ wch:w }));
+    XLSX.utils.book_append_sheet(wb, ws, "Journal d'Audit");
+    const statsRows = [
+      { Indicateur:'Total événements', Valeur: data.length },
+      { Indicateur:'Connexions réussies', Valeur: data.filter(e=>e.action==='connexion').length },
+      { Indicateur:'Échecs connexion', Valeur: data.filter(e=>e.action==='echec_connexion').length },
+      { Indicateur:'Modifications', Valeur: data.filter(e=>e.action==='modification').length },
+      { Indicateur:'Suppressions', Valeur: data.filter(e=>e.action==='suppression').length },
+      { Indicateur:'Alertes critiques', Valeur: data.filter(e=>e.risque==='critique').length },
+      { Indicateur:'Alertes élevées', Valeur: data.filter(e=>e.risque==='eleve').length },
+    ];
+    const ws2 = XLSX.utils.json_to_sheet(statsRows);
+    ws2['!cols'] = [{ wch:32 }, { wch:12 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Résumé');
+    XLSX.writeFile(wb, `journal-audit-${new Date().toISOString().slice(0,10)}.xlsx`);
+    toast.success('📊 Export Excel téléchargé');
+  }, [getExportEvents, exportForm]);
+
+  const exportAuditCSV = useCallback(() => {
+    const data = getExportEvents(exportForm);
+    const BOM = '﻿';
+    const header = 'Date;Utilisateur;Rôle;Email;Module;Action;Description;IP;Risque;Résultat\n';
+    const rows = data.map(e =>
+      [fmtDT(e.date), e.utilisateur, e.role, e.email,
+       (e.module||'').replace(/_/g,' '), (e.action||'').replace(/_/g,' '),
+       (e.description||'').replace(/;/g,','), e.ip, e.risque, e.resultat].join(';')
+    ).join('\n');
+    const blob = new Blob([BOM + header + rows], { type:'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `journal-audit-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    toast.success('📋 Export CSV téléchargé');
+  }, [getExportEvents, exportForm]);
+
+  const handleArchive = async () => {
+    setModalArchive(false);
+    const tid = toast.loading("🗄️ Archivage en cours...");
+    try {
+      const { data } = await api.post('/audit/archive', { duree: archiveDuree });
+      toast.dismiss(tid);
+      toast.success(`✅ Archivage traité — ${data.count || 0} entrée(s) archivable(s)`);
+    } catch {
+      toast.dismiss(tid);
+      toast.error("Erreur lors de l'archivage");
+    }
   };
 
   // ═══════════════════════════════════════════════════════════
@@ -1275,14 +1539,22 @@ export default function JournalAudit() {
                 </div>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button className="abtn abtn-ghost abtn-sm" onClick={() => window.print()}>
+                  <button className="abtn abtn-ghost abtn-sm" onClick={() => printEvent(selectedEvent)}>
                     {I.print} Imprimer
                   </button>
-                  <button className="abtn abtn-teal abtn-sm" onClick={() => { toast.success("📄 Rapport exporté en PDF"); setModalEvent(false); }}>
-                    {I.dl} Exporter PDF
+                  <button className="abtn abtn-teal abtn-sm" onClick={() => { exportEventPDF(selectedEvent); setModalEvent(false); }}>
+                    {I.dl} Télécharger PDF
                   </button>
                   {selectedEvent.risque === "critique" && (
-                    <button className="abtn abtn-danger abtn-sm" onClick={() => { toast.success("🚨 Alerte créée et admin notifié"); setModalEvent(false); }}>
+                    <button className="abtn abtn-danger abtn-sm" onClick={() => {
+                      setSuspects(prev => [...prev, {
+                        _id: `alerte_${selectedEvent._id}`, type: 'Activité critique signalée',
+                        utilisateur: selectedEvent.utilisateur, description: selectedEvent.description,
+                        date: new Date().toISOString(), severite:'critique', risque:'critique', statut:'ouvert',
+                      }]);
+                      toast.success("🚨 Alerte créée — onglet Activités suspectes mis à jour");
+                      setModalEvent(false); setTab("suspects");
+                    }}>
                       🚨 Créer alerte
                     </button>
                   )}
@@ -1354,7 +1626,12 @@ export default function JournalAudit() {
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="abtn abtn-ghost" onClick={() => setModalExport(false)}>Annuler</button>
-              <button className="abtn abtn-teal" style={{ marginLeft: "auto" }} onClick={() => { toast.success(`✅ Export ${exportForm.format.toUpperCase()} lancé — Téléchargement en cours...`); setModalExport(false); }}>
+              <button className="abtn abtn-teal" style={{ marginLeft: "auto" }} onClick={() => {
+                if (exportForm.format === 'pdf') exportAuditPDF();
+                else if (exportForm.format === 'excel') exportAuditExcel();
+                else exportAuditCSV();
+                setModalExport(false);
+              }}>
                 {I.dl} Exporter maintenant
               </button>
             </div>
@@ -1371,17 +1648,17 @@ export default function JournalAudit() {
               </div>
             </div>
             <div>
-              <label className="albl">Durée de conservation</label>
-              <select className="ainp">
+              <label className="albl">Durée de conservation avant archivage</label>
+              <select className="ainp" value={archiveDuree} onChange={e => setArchiveDuree(e.target.value)}>
                 <option value="1an">1 an (politique actuelle)</option>
                 <option value="3ans">3 ans</option>
                 <option value="5ans">5 ans</option>
-                <option value="illimite">Conservation illimitée</option>
+                <option value="illimite">Conservation illimitée (aucun archivage)</option>
               </select>
             </div>
             {[
-              ["Logs à archiver", "7 842 entrées (avant le 01/06/2025)"],
-              ["Taille estimée archive", "~18 MB compressé"],
+              ["Total logs actifs", `${events.length} entrée(s) chargée(s)`],
+              ["Politique sélectionnée", archiveDuree === '1an' ? '> 12 mois archivés' : archiveDuree === '3ans' ? '> 36 mois archivés' : archiveDuree === '5ans' ? '> 60 mois archivés' : 'Aucun archivage'],
               ["Destination", "Serveur backup local + Cloud"],
               ["Durée estimée", "2-5 minutes"],
             ].map(([lbl, val]) => (
@@ -1390,9 +1667,14 @@ export default function JournalAudit() {
                 <strong style={{ color: "var(--an)" }}>{val}</strong>
               </div>
             ))}
+            {archiveDuree === 'illimite' && (
+              <div className="al-ia" style={{ fontSize: 12 }}>
+                ℹ️ <strong>Conservation illimitée sélectionnée</strong> — Aucun log ne sera archivé.
+              </div>
+            )}
             <div style={{ display: "flex", gap: 10 }}>
               <button className="abtn abtn-ghost" onClick={() => setModalArchive(false)}>Annuler</button>
-              <button className="abtn abtn-primary" style={{ marginLeft: "auto" }} onClick={() => { toast.loading("🗄️ Archivage en cours...", { duration: 2000 }); setTimeout(() => toast.success("✅ Archivage terminé — 7 842 entrées archivées"), 2000); setModalArchive(false); }}>
+              <button className="abtn abtn-primary" style={{ marginLeft: "auto" }} onClick={handleArchive} disabled={archiveDuree === 'illimite'}>
                 {I.archive} Lancer l'archivage
               </button>
             </div>

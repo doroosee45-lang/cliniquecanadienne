@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const Staff = require('../models/Staff');
 const User = require('../models/User');
 const { logAction, paginate } = require('../utils/helpers');
@@ -83,7 +84,7 @@ exports.create = async (req, res, next) => {
         try {
           user = await User.create({
             email: email.toLowerCase(),
-            password: `Clinique${Math.random().toString(36).slice(-6)}!`,
+            password: `Clinique${crypto.randomBytes(4).toString('hex')}!`,
             nom: nom || '',
             prenom: prenom || '',
             role: roleMap[poste] || 'infirmier',

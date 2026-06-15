@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import {
@@ -61,14 +62,14 @@ const CSS = `
   --triage-vert:#1E8449;    --triage-vert-bg:#EAFAF1;    --triage-vert-bd:#A9DFBF;
   --triage-bleu:#1A5276;    --triage-bleu-bg:#EBF5FB;    --triage-bleu-bd:#AED6F1;
 }
-.urg-top { background:linear-gradient(135deg,#3D0A0A 0%,#1A0F0F 50%,#6B1A1A 100%); padding:20px 24px 0; position:relative; overflow:hidden; }
-.urg-top::before { content:''; position:absolute; top:-60px; right:-60px; width:240px; height:240px; background:radial-gradient(circle,rgba(192,57,43,.25) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
-.urg-top::after  { content:''; position:absolute; bottom:-30px; left:40%; width:180px; height:180px; background:radial-gradient(circle,rgba(214,137,16,.2) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
+.urg-top { background:linear-gradient(135deg,var(--un) 0%,var(--un2) 55%,#1A5276 100%); padding:20px 24px 0; position:relative; overflow:hidden; }
+.urg-top::before { content:''; position:absolute; top:-60px; right:-60px; width:240px; height:240px; background:radial-gradient(circle,rgba(23,165,137,.18) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
+.urg-top::after  { content:''; position:absolute; bottom:-30px; left:40%; width:180px; height:180px; background:radial-gradient(circle,rgba(26,82,118,.25) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
 .urg-tabs { display:flex; gap:2px; margin-top:16px; overflow-x:auto; scrollbar-width:none; }
 .urg-tabs::-webkit-scrollbar { display:none; }
 .urg-tab { display:flex; align-items:center; gap:7px; padding:10px 18px 12px; font-size:12.5px; font-weight:600; color:rgba(255,255,255,.5); border:none; background:none; cursor:pointer; border-radius:10px 10px 0 0; transition:all .2s; white-space:nowrap; font-family:'Poppins',sans-serif; }
 .urg-tab:hover { color:rgba(255,255,255,.85); background:rgba(255,255,255,.08); }
-.urg-tab.active { color:var(--un); background:var(--ucs); box-shadow:0 -2px 0 var(--ur) inset; }
+.urg-tab.active { color:var(--un); background:var(--ucs); box-shadow:0 -2px 0 var(--ut) inset; }
 .urg-tab-badge { background:var(--ur); color:#fff; font-size:10px; font-weight:700; padding:1px 6px; border-radius:99px; animation:urgP 2s infinite; }
 .urg-tab-badge.orange { background:var(--uo); }
 @keyframes urgP { 0%,100%{opacity:1} 50%{opacity:.4} }
@@ -153,7 +154,7 @@ const CSS = `
 /* Form */
 .ulbl { font-size:12px; font-weight:600; color:var(--ucm); margin-bottom:6px; display:block; }
 .uinp { width:100%; padding:9px 13px; border-radius:10px; border:1.5px solid var(--ucr); background:#FAFCFF; font-size:13px; color:var(--un); font-family:'Poppins',sans-serif; transition:border-color .2s,box-shadow .2s; outline:none; }
-.uinp:focus { border-color:var(--ur); box-shadow:0 0 0 3px rgba(192,57,43,.12); }
+.uinp:focus { border-color:var(--ut); box-shadow:0 0 0 3px rgba(23,165,137,.12); }
 
 /* Section nav */
 .sec-nav-urg { display:flex; gap:6px; flex-wrap:wrap; padding:14px 20px; background:linear-gradient(to right,#F4F9FD,#EAF4FB); border-bottom:1.5px solid var(--ucr); border-radius:18px 18px 0 0; }
@@ -179,7 +180,7 @@ const CSS = `
 .uov { position:fixed; inset:0; z-index:500; background:rgba(10,22,40,.6); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; padding:20px; }
 .uov-box { background:#fff; border-radius:20px; box-shadow:var(--ushl); width:100%; max-width:760px; max-height:92vh; overflow-y:auto; animation:urgSlide .25s ease; }
 @keyframes urgSlide { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
-.uov-hdr { padding:18px 24px; border-bottom:1.5px solid var(--ucr); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(135deg,#FDEDEC,#FAF0EF); position:sticky; top:0; z-index:2; border-radius:20px 20px 0 0; }
+.uov-hdr { padding:18px 24px; border-bottom:1.5px solid var(--ucr); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(135deg,#EBF5FB,#F4F9FD); position:sticky; top:0; z-index:2; border-radius:20px 20px 0 0; }
 .uov-hdr h3 { font-size:16px; font-weight:700; color:var(--un); margin:0; display:flex; align-items:center; gap:10px; }
 .uov-cls { width:32px; height:32px; border-radius:8px; background:#F4F9FD; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--ucm); font-size:18px; transition:all .2s; font-family:'Poppins',sans-serif; }
 .uov-cls:hover { background:#FDEDEC; color:var(--ur); }
@@ -331,6 +332,8 @@ const normalizeUrgence = (u) => ({
   patient_nom: u.patient
     ? `${u.patient.prenom || ""} ${u.patient.nom || ""}`.trim()
     : u.patient_nom || "—",
+  patient_id:      u.patient?._id || u.patient_id || "",
+  patient_dossier: u.patient?.numero_dossier || u.patient_dossier || "",
   patient_dob: u.patient?.date_naissance || u.patient_dob || "",
   medecin_label: u.medecin_responsable
     ? `${u.medecin_responsable.prenom || ""} ${u.medecin_responsable.nom || ""}`.trim()
@@ -450,6 +453,7 @@ function TriagePill({ niveau, pulse }) {
 // ══════════════════════════════════════════════════════════════
 export default function Urgences() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   // ── Redux state ────────────────────────────────────────────
   const kpis          = useSelector(selectUrgencesKpis);
@@ -747,6 +751,7 @@ export default function Urgences() {
                                   <TriagePill niveau={niv} pulse={niv === "rouge"} />
                                   <div>
                                     <div style={{ fontWeight: 700, color: "var(--un)", fontSize: 13 }}>{u.patient_nom}</div>
+                                    {u.patient_dossier && <span onClick={e => { e.stopPropagation(); u.patient_id && navigate(`/patients/${u.patient_id}`); }} style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 5px', borderRadius:4, display:'inline-block', cursor: u.patient_id ? 'pointer' : 'default', marginBottom:2 }}>{u.patient_dossier}</span>}
                                     <div style={{ fontSize: 11, color: "var(--ucm)" }}>{u.motif || "—"} · {ageCalc(u.patient_dob)}</div>
                                   </div>
                                 </div>
@@ -839,7 +844,8 @@ export default function Urgences() {
                             <tr key={u._id} style={{ background: u.niveau_triage === "rouge" ? "#FFF5F5" : u.niveau_triage === "orange" ? "#FFFBF0" : "" }}>
                               <td><span style={{ fontFamily: "monospace", fontWeight: 700, color: "var(--ur)", fontSize: 12 }}>{u.numero}</span></td>
                               <td>
-                                <div style={{ fontWeight: 600, color: "var(--un)" }}>{u.patient_nom}</div>
+                                <div style={{ fontWeight: 600, color: "var(--un)", cursor: u.patient_id ? 'pointer' : 'default', textDecoration: u.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => u.patient_id && navigate(`/patients/${u.patient_id}`)} title={u.patient_id ? "Ouvrir le dossier patient" : ""}>{u.patient_nom}</div>
+                                {u.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{u.patient_dossier}</span>}
                                 <div style={{ fontSize: 11, color: "var(--ucm)" }}>{ageCalc(u.patient_dob)} · {u.patient_sexe || "—"}</div>
                               </td>
                               <td style={{ fontSize: 12, color: "var(--ucm)", maxWidth: 140 }}>{u.motif || "—"}</td>
@@ -919,7 +925,8 @@ export default function Urgences() {
                           <tr key={u._id} style={{ background: u.niveau_triage === "rouge" && u.statut !== "sorti" ? "#FFF5F5" : "" }}>
                             <td><span style={{ fontFamily: "monospace", fontWeight: 700, color: "var(--ur)", fontSize: 12 }}>{u.numero}</span></td>
                             <td>
-                              <div style={{ fontWeight: 600, color: "var(--un)" }}>{u.patient_nom}</div>
+                              <div style={{ fontWeight: 600, color: "var(--un)", cursor: u.patient_id ? 'pointer' : 'default', textDecoration: u.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => u.patient_id && navigate(`/patients/${u.patient_id}`)} title={u.patient_id ? "Ouvrir le dossier patient" : ""}>{u.patient_nom}</div>
+                              {u.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{u.patient_dossier}</span>}
                               <div style={{ fontSize: 11, color: "var(--ucm)" }}>{ageCalc(u.patient_dob)}</div>
                             </td>
                             <td style={{ fontSize: 12, maxWidth: 130 }}>{u.motif || "—"}</td>

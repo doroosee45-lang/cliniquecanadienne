@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchLabResults, fetchCriticalResults,
@@ -417,6 +418,7 @@ const EMPTY_RESULTAT_FORM = {
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function Laboratoire() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const reduxAnalyses = useSelector(selectLabResults);
   const reduxCritical = useSelector(selectCriticalLabResults);
   const reduxTotal = useSelector(selectLabTotal);
@@ -755,7 +757,8 @@ export default function Laboratoire() {
                                 {hasCritique && <div><Badge cls="critical">⚡ Critique</Badge></div>}
                               </td>
                               <td>
-                                <div style={{ fontWeight:600, color:"var(--ln)" }}>{a.patient_nom}</div>
+                                <div style={{ fontWeight:600, color:"var(--ln)", cursor: a.patient ? 'pointer' : 'default', textDecoration: a.patient ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => a.patient && navigate(`/patients/${a.patient}`)} title={a.patient ? "Ouvrir le dossier patient" : ""}>{a.patient_nom}</div>
+                                {a.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginTop:2 }}>{a.patient_dossier}</span>}
                                 <div style={{ fontSize:11, color:"var(--lm)" }}>{a.service_demandeur}</div>
                               </td>
                               <td>
@@ -863,8 +866,9 @@ export default function Laboratoire() {
                               {!hasCritique && hasAnormal && <div><Badge cls="orange">⚠ Anormal</Badge></div>}
                             </td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--ln)" }}>{a.patient_nom}</div>
-                              <div style={{ fontSize:11, color:"var(--lm)" }}>{a.patient_dossier} · {a.sexe?.charAt(0).toUpperCase()}{a.sexe?.slice(1)}</div>
+                              <div style={{ fontWeight:600, color:"var(--ln)", cursor: a.patient ? 'pointer' : 'default', textDecoration: a.patient ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => a.patient && navigate(`/patients/${a.patient}`)} title={a.patient ? "Ouvrir le dossier patient" : ""}>{a.patient_nom}</div>
+                              {a.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{a.patient_dossier}</span>}
+                              <div style={{ fontSize:11, color:"var(--lm)" }}>{a.sexe?.charAt(0).toUpperCase()}{a.sexe?.slice(1) || "—"}</div>
                             </td>
                             <td>
                               <div style={{ fontSize:11.5, color:"var(--lm)", maxWidth:180 }}>

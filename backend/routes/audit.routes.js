@@ -9,5 +9,6 @@ router.get('/',            protect, authorize(...ADMIN), auditC.getAll);
 router.get('/connexions',  protect, authorize(...ADMIN), auditC.getConnexions);
 router.get('/suspects',    protect, authorize(...ADMIN), auditC.getSuspects);
 router.get('/stats',       protect, authorize(...ADMIN), auditC.getStats);
+router.post('/archive',    protect, authorize(...ADMIN), auditC.archiveLogs);
 
 module.exports = router;

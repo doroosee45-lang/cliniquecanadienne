@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import {
@@ -36,18 +37,18 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
 .ped * { font-family:'Poppins',sans-serif; box-sizing:border-box; }
 :root {
-  --pn:#0B2818; --pn2:#0F3D22;
-  --pg:#059669; --pg2:#047857;
-  --pb:#0EA5E9; --pb2:#0284C7;
+  --pn:#0B1E3B; --pn2:#132744;
+  --pg:#0EA5A0; --pg2:#0D9490;
+  --pb:#1B4F9E; --pb2:#154396;
   --pr:#DC2626; --po:#D97706;
   --pp:#7C3AED; --pk:#EC4899;
   --pyr:#F59E0B;
-  --pbr:#D1FAE5; --pm:#4B7A62; --pl:#ECFDF5; --ps:#F0FDF4;
-  --sh:0 1px 3px rgba(5,150,105,.08); --shm:0 4px 16px rgba(5,150,105,.12); --shl:0 12px 40px rgba(5,150,105,.16);
+  --pbr:#E2EAF4; --pm:#6B7A99; --pl:#EEF4FF; --ps:#F8FAFD;
+  --sh:0 1px 3px rgba(11,30,59,.08); --shm:0 4px 16px rgba(11,30,59,.10); --shl:0 12px 40px rgba(11,30,59,.14);
 }
-.ped-top { background:linear-gradient(135deg,#0B2818 0%,#0F3D22 45%,#059669 85%,#0EA5E9 100%); padding:20px 24px 0; position:relative; overflow:hidden; }
-.ped-top::before { content:''; position:absolute; top:-60px; right:-60px; width:280px; height:280px; background:radial-gradient(circle,rgba(14,165,233,.20) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
-.ped-top::after  { content:''; position:absolute; bottom:-80px; left:25%; width:220px; height:220px; background:radial-gradient(circle,rgba(5,150,105,.15) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
+.ped-top { background:linear-gradient(135deg,var(--pn) 0%,var(--pn2) 55%,#1B4F9E 100%); padding:20px 24px 0; position:relative; overflow:hidden; }
+.ped-top::before { content:''; position:absolute; top:-60px; right:-60px; width:280px; height:280px; background:radial-gradient(circle,rgba(14,165,160,.22) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
+.ped-top::after  { content:''; position:absolute; bottom:-80px; left:25%; width:220px; height:220px; background:radial-gradient(circle,rgba(27,79,158,.15) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
 .ped-tabs { display:flex; gap:2px; margin-top:16px; overflow-x:auto; scrollbar-width:none; }
 .ped-tabs::-webkit-scrollbar { display:none; }
 .ped-tab { display:flex; align-items:center; gap:6px; padding:10px 15px 12px; font-size:12px; font-weight:600; color:rgba(255,255,255,.55); border:none; background:none; cursor:pointer; border-radius:10px 10px 0 0; transition:all .2s; white-space:nowrap; font-family:'Poppins',sans-serif; }
@@ -55,7 +56,7 @@ const CSS = `
 .ped-tab.active { color:var(--pn); background:var(--ps); box-shadow:0 -2px 0 var(--pg) inset; }
 .ped-card { background:#fff; border:1.5px solid var(--pbr); border-radius:18px; box-shadow:var(--sh); overflow:hidden; transition:box-shadow .2s; }
 .ped-card:hover { box-shadow:var(--shm); }
-.ped-card-hdr { padding:14px 20px; border-bottom:1.5px solid var(--pbr); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(to right,rgba(236,253,245,.7),transparent); flex-wrap:wrap; gap:8px; }
+.ped-card-hdr { padding:14px 20px; border-bottom:1.5px solid var(--pbr); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(to right,rgba(238,244,255,.6),transparent); flex-wrap:wrap; gap:8px; }
 .ped-card-hdr h3 { font-size:14px; font-weight:700; color:var(--pn); margin:0; display:flex; align-items:center; gap:8px; }
 .ped-card-hdr p  { font-size:11px; color:var(--pm); margin:2px 0 0; }
 .ped-kpi { background:#fff; border:1.5px solid var(--pbr); border-radius:18px; padding:18px 20px; box-shadow:var(--sh); position:relative; overflow:hidden; transition:all .25s; cursor:default; }
@@ -78,10 +79,10 @@ const CSS = `
 .pkpi-sub { font-size:11px; color:#9CA3AF; margin-top:3px; }
 .pkpi-dot { position:absolute; top:14px; right:14px; width:8px; height:8px; border-radius:50%; background:var(--pr); animation:pedP 2s infinite; }
 @keyframes pedP { 0%,100%{opacity:1} 50%{opacity:.3} }
-.pmini { background:#F0FDF4; border:1.5px solid var(--pbr); border-radius:12px; padding:12px 14px; }
+.pmini { background:#F8FAFD; border:1.5px solid var(--pbr); border-radius:12px; padding:12px 14px; }
 .pmini-val { font-size:20px; font-weight:800; color:var(--pn); letter-spacing:-1px; }
 .pmini-lbl { font-size:11px; font-weight:600; color:var(--pm); margin-top:2px; }
-.ped-prog { background:#D1FAE5; border-radius:99px; overflow:hidden; }
+.ped-prog { background:#EEF4FF; border-radius:99px; overflow:hidden; }
 .ped-prog-f { border-radius:99px; transition:width .8s cubic-bezier(.34,1.56,.64,1); }
 .pbdg { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:600; white-space:nowrap; }
 .pbdg.green  { background:#ECFDF5; color:var(--pg); border:1px solid #6EE7B7; }
@@ -100,25 +101,25 @@ const CSS = `
 .pbtn-danger { background:var(--pr); color:#fff; } .pbtn-danger:hover { background:#B91C1C; transform:translateY(-1px); }
 .pbtn-sm { padding:6px 13px; font-size:12px; }
 .ped-tbl { width:100%; border-collapse:collapse; }
-.ped-tbl thead tr { background:linear-gradient(to right,#F0FDF4,#E0F2FE); }
+.ped-tbl thead tr { background:linear-gradient(to right,#F8FAFD,#EEF4FF); }
 .ped-tbl th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700; color:var(--pm); text-transform:uppercase; letter-spacing:.6px; border-bottom:1.5px solid var(--pbr); white-space:nowrap; }
-.ped-tbl td { padding:11px 14px; font-size:13px; border-bottom:1px solid #F0FDF4; vertical-align:middle; }
+.ped-tbl td { padding:11px 14px; font-size:13px; border-bottom:1px solid #EEF4FF; vertical-align:middle; }
 .ped-tbl tbody tr:last-child td { border-bottom:none; }
-.ped-tbl tbody tr:hover { background:#F7FEF9; }
+.ped-tbl tbody tr:hover { background:#F8FAFD; }
 .al-danger { background:linear-gradient(135deg,#FEF2F2,#FEE2E2); border:1.5px solid #FECACA; border-left:4px solid var(--pr); border-radius:14px; padding:14px 18px; }
 .al-warn   { background:linear-gradient(135deg,#FFFBEB,#FEF3C7); border:1.5px solid #FDE68A; border-left:4px solid var(--po); border-radius:14px; padding:14px 18px; }
-.al-green  { background:linear-gradient(135deg,#ECFDF5,#D1FAE5); border:1.5px solid #6EE7B7; border-left:4px solid var(--pg); border-radius:14px; padding:14px 18px; }
-.al-blue   { background:linear-gradient(135deg,#EFF6FF,#DBEAFE); border:1.5px solid #93C5FD; border-left:4px solid var(--pb); border-radius:14px; padding:14px 18px; }
-.ped-overlay { position:fixed; inset:0; background:rgba(11,40,24,.55); z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px); }
+.al-green  { background:linear-gradient(135deg,#F0FDFC,#CCFBF1); border:1.5px solid #99F6E4; border-left:4px solid var(--pg); border-radius:14px; padding:14px 18px; }
+.al-blue   { background:linear-gradient(135deg,#EEF4FF,#DBEAFE); border:1.5px solid #93C5FD; border-left:4px solid var(--pb); border-radius:14px; padding:14px 18px; }
+.ped-overlay { position:fixed; inset:0; background:rgba(11,30,59,.55); z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px); }
 .ped-modal { background:#fff; border-radius:20px; width:100%; max-width:660px; max-height:90vh; overflow-y:auto; box-shadow:var(--shl); }
-.ped-modal-hdr { padding:20px 24px 16px; border-bottom:1.5px solid var(--pbr); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:1; border-radius:20px 20px 0 0; background:linear-gradient(135deg,#F0FDF4,#fff); }
+.ped-modal-hdr { padding:20px 24px 16px; border-bottom:1.5px solid var(--pbr); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:1; border-radius:20px 20px 0 0; background:linear-gradient(135deg,#EEF4FF,#fff); }
 .ped-modal-hdr h2 { font-size:17px; font-weight:800; color:var(--pn); margin:0; }
 .ped-modal-body { padding:20px 24px; }
 .pfield { margin-bottom:16px; }
 .plabel { font-size:12px; font-weight:700; color:var(--pm); margin-bottom:6px; display:block; text-transform:uppercase; letter-spacing:.4px; }
-.pinput { width:100%; padding:10px 14px; border:1.5px solid var(--pbr); border-radius:10px; font-size:13px; font-family:'Poppins',sans-serif; color:var(--pn); background:#F0FDF4; outline:none; transition:border-color .2s; }
+.pinput { width:100%; padding:10px 14px; border:1.5px solid var(--pbr); border-radius:10px; font-size:13px; font-family:'Poppins',sans-serif; color:var(--pn); background:#F8FAFD; outline:none; transition:border-color .2s; }
 .pinput:focus { border-color:var(--pg); background:#fff; }
-.pselect { width:100%; padding:10px 14px; border:1.5px solid var(--pbr); border-radius:10px; font-size:13px; font-family:'Poppins',sans-serif; color:var(--pn); background:#F0FDF4; outline:none; cursor:pointer; }
+.pselect { width:100%; padding:10px 14px; border:1.5px solid var(--pbr); border-radius:10px; font-size:13px; font-family:'Poppins',sans-serif; color:var(--pn); background:#F8FAFD; outline:none; cursor:pointer; }
 .pselect:focus { border-color:var(--pg); }
 .pg2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .pg3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
@@ -467,6 +468,7 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
 
 // ─── MAIN ────────────────────────────────────────────────────
 export default function Pediatrie() {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const stats         = useSelector(selectPediatrieStats);
   const repartitionAge= useSelector(selectRepartitionAge);
@@ -669,7 +671,7 @@ export default function Pediatrie() {
                         <div key={u._id} className={u.gravite==="critique"?"al-danger":u.gravite==="grave"?"al-warn":"al-blue"}>
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:6 }}>
                             <div>
-                              <div style={{ fontSize:14, fontWeight:700, color:"var(--pn)" }}>{nom} <span style={{ fontSize:12, color:"var(--pm)", fontWeight:500 }}>({age})</span></div>
+                              <div style={{ fontSize:14, fontWeight:700, color:"var(--pn)", cursor:child?.patient_id?._id?"pointer":"default", textDecoration:child?.patient_id?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>child?.patient_id?._id&&navigate(`/patients/${child.patient_id._id}`)}>{nom} <span style={{ fontSize:12, color:"var(--pm)", fontWeight:500 }}>({age})</span>{child?.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,marginLeft:6}}>{child.patient_id.numero_dossier}</span>}</div>
                               <div style={{ fontSize:12, color:"var(--pm)", marginTop:2 }}>🚑 {u.motif}</div>
                               <div style={{ fontSize:11, color:"var(--pm)", marginTop:2 }}>⏰ {fmtDate(u.date)}</div>
                             </div>
@@ -721,7 +723,7 @@ export default function Pediatrie() {
                         ) : enfantsFiltres.map(e => (
                           <tr key={e._id}>
                             <td><span style={{ fontWeight:700, color:"var(--pg)" }}>{e.numero||e._id?.slice(-6)}</span></td>
-                            <td><div style={{ fontWeight:600, color:"var(--pn)" }}>{e.prenom} {e.nom}</div></td>
+                            <td><div style={{ fontWeight:600, color:"var(--pn)", cursor:e.patient_id?._id?"pointer":"default", textDecoration:e.patient_id?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>e.patient_id?._id&&navigate(`/patients/${e.patient_id._id}`)} title={e.patient_id?._id?"Ouvrir le dossier patient":""}>{e.prenom} {e.nom}</div>{e.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,display:"inline-block",marginTop:2}}>{e.patient_id.numero_dossier}</span>}</td>
                             <td>{ageTexte(e.date_naissance)}</td>
                             <td><Badge cls={e.sexe==="F"?"pink":"blue"}>{e.sexe==="F"?"👧 Fille":"👦 Garçon"}</Badge></td>
                             <td style={{ fontSize:12, color:"var(--pm)" }}>{e.parent_nom||"—"}</td>
@@ -780,7 +782,7 @@ export default function Pediatrie() {
                         <div key={c._id} style={{ background:"#F0FDF4", borderRadius:14, padding:14, border:"1.5px solid var(--pbr)" }}>
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8, marginBottom:10 }}>
                             <div>
-                              <div style={{ fontSize:14, fontWeight:700, color:"var(--pn)" }}>{nom} <span style={{ fontSize:12, color:"var(--pm)", fontWeight:500 }}>({age})</span></div>
+                              <div style={{ fontSize:14, fontWeight:700, color:"var(--pn)", cursor:child?.patient_id?._id?"pointer":"default", textDecoration:child?.patient_id?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>child?.patient_id?._id&&navigate(`/patients/${child.patient_id._id}`)}>{nom} <span style={{ fontSize:12, color:"var(--pm)", fontWeight:500 }}>({age})</span>{child?.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,marginLeft:6}}>{child.patient_id.numero_dossier}</span>}</div>
                               <div style={{ fontSize:11, color:"var(--pm)" }}>{fmtDate(c.date)} · {c.medecin||"—"}</div>
                             </div>
                             <div style={{ display:"flex", gap:6 }}>
@@ -1116,7 +1118,7 @@ export default function Pediatrie() {
                     <div key={u._id} className="ped-card fu">
                       <div className="ped-card-hdr">
                         <div>
-                          <h3>🚨 {nom} <span style={{ fontSize:13, fontWeight:500, color:"var(--pm)" }}>({age})</span></h3>
+                          <h3>🚨 <span style={{cursor:child?.patient_id?._id?"pointer":"default",textDecoration:child?.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>child?.patient_id?._id&&navigate(`/patients/${child.patient_id._id}`)}>{nom}</span> <span style={{ fontSize:13, fontWeight:500, color:"var(--pm)" }}>({age})</span>{child?.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,marginLeft:6}}>{child.patient_id.numero_dossier}</span>}</h3>
                           <p>Enregistré : {fmtDate(u.date)}</p>
                         </div>
                         <Badge cls={u.gravite==="critique"?"red":u.gravite==="grave"?"orange":"yellow"}>{graviteLabel(u.gravite)}</Badge>

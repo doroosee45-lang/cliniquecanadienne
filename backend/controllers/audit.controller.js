@@ -186,6 +186,19 @@ exports.getSuspects = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// POST /audit/archive — comptage + archivage des anciens logs
+exports.archiveLogs = async (req, res, next) => {
+  try {
+    const { duree = '1an' } = req.body;
+    const monthsMap = { '1an': 12, '3ans': 36, '5ans': 60, 'illimite': 0 };
+    const months = monthsMap[duree] ?? 12;
+    if (months === 0) return res.json({ success: true, count: 0, message: 'Conservation illimitée — aucune entrée archivée.' });
+    const cutoff = new Date(Date.now() - months * 30 * 24 * 3600 * 1000);
+    const count = await AuditLog.countDocuments({ createdAt: { $lt: cutoff } });
+    res.json({ success: true, count, cutoff, message: `${count} entrée(s) archivable(s) avant le ${cutoff.toLocaleDateString('fr-FR')}` });
+  } catch (err) { next(err); }
+};
+
 // GET /audit/stats — statistiques agrégées
 exports.getStats = async (req, res, next) => {
   try {

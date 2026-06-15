@@ -7,6 +7,10 @@ import {
 } from '../store/slices/hrSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -397,6 +401,13 @@ export default function RessourcesHumaines() {
   }, [dispatch]);
   useRealtimeRefresh(refreshHR);
 
+  // Fermer le menu export en cliquant dehors
+  useEffect(() => {
+    const fn = () => setExportMenu(false);
+    document.addEventListener('click', fn);
+    return () => document.removeEventListener('click', fn);
+  }, []);
+
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
 
@@ -416,6 +427,7 @@ export default function RessourcesHumaines() {
   const [filterStatut, setFilterStatut]   = useState("");
   const [saving, setSaving]               = useState(false);
   const [page, setPage]                   = useState(1);
+  const [exportMenu, setExportMenu]       = useState(false);
 
   // Modals
   const [modalEmp,        setModalEmp]        = useState(false);
@@ -592,6 +604,385 @@ export default function RessourcesHumaines() {
     refuse:     { cls:"red",    label:"Refusé" },
   };
 
+  // ─── Export helpers ──────────────────────────────────────────
+  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+  const todayStr = new Date().toLocaleDateString('fr-FR');
+  const dateSlug = new Date().toISOString().split('T')[0];
+
+  const pdfHeader = (doc, title) => {
+    const W = doc.internal.pageSize.getWidth();
+    doc.setFillColor(11, 30, 59);
+    doc.rect(0, 0, W, 28, 'F');
+    doc.setFillColor(14, 165, 160);
+    doc.rect(0, 28, W, 3, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+    doc.text(title, 14, 12);
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.text(clinicFull, 14, 20);
+    doc.text(`Exporté le ${todayStr}`, W - 14, 20, { align: 'right' });
+    doc.setTextColor(0, 0, 0);
+  };
+
+  // ── 1. Export liste des employés ──────────────────────────────
+  const exportEmployesPDF = useCallback(() => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    pdfHeader(doc, 'Registre du Personnel');
+    autoTable(doc, {
+      startY: 35,
+      head: [['Matricule', 'Prénom Nom', 'Poste', 'Département', 'Contrat', 'Statut', 'Date embauche', 'Salaire base']],
+      body: employes.map(e => [
+        e.matricule || '—',
+        `${e.prenom} ${e.nom}`,
+        POSTE_COLORS[e.poste]?.label || e.poste,
+        e.departement || '—',
+        CONTRAT_CFG[e.contrat]?.label || e.contrat || '—',
+        STATUT_EMP[e.statut]?.label || e.statut || '—',
+        fmtDate(e.date_embauche),
+        e.salaire_base ? `${e.salaire_base.toLocaleString('fr-FR')} FCFA` : '—',
+      ]),
+      styles: { fontSize: 8.5, cellPadding: 3.5 },
+      headStyles: { fillColor: [14, 165, 160], textColor: 255, fontStyle: 'bold', fontSize: 8 },
+      alternateRowStyles: { fillColor: [248, 250, 255] },
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.column.index === 5) {
+          const v = data.cell.raw;
+          if (v === 'Actif') data.cell.styles.textColor = [5, 150, 105];
+          else if (v === 'En congé') data.cell.styles.textColor = [217, 119, 6];
+          else if (v === 'Inactif') data.cell.styles.textColor = [107, 114, 128];
+          else if (v === 'Maladie' || v === 'Suspendu') data.cell.styles.textColor = [220, 38, 38];
+        }
+      },
+    });
+    const finalY = doc.lastAutoTable.finalY + 8;
+    doc.setFontSize(9); doc.setTextColor(107, 114, 128);
+    doc.text(`Total : ${employes.length} employé(s) · Masse salariale brute : ${masseSalariale.toLocaleString('fr-FR')} FCFA`, 14, finalY);
+    doc.save(`personnel-${dateSlug}.pdf`);
+  }, [employes]);
+
+  const exportEmployesExcel = useCallback(() => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Matricule', 'Prénom', 'Nom', 'Poste', 'Département', 'Service', 'Contrat', 'Date embauche', 'Statut', 'Téléphone', 'Email', 'Salaire base', 'Ancienneté'],
+      ...employes.map(e => [
+        e.matricule || '', e.prenom, e.nom,
+        POSTE_COLORS[e.poste]?.label || e.poste,
+        e.departement || '', e.service || '',
+        CONTRAT_CFG[e.contrat]?.label || e.contrat || '',
+        fmtDate(e.date_embauche),
+        STATUT_EMP[e.statut]?.label || e.statut || '',
+        e.telephone || '', e.email || '',
+        e.salaire_base || 0,
+        anciennete(e.date_embauche),
+      ]),
+    ]);
+    ws['!cols'] = [10,12,12,16,16,14,10,14,12,14,22,14,12].map(w => ({ wch: w }));
+    const wsSummary = XLSX.utils.aoa_to_sheet([
+      ['Indicateur', 'Valeur'],
+      ['Total employés', employes.length],
+      ['Employés actifs', actifs],
+      ['En congé', enConge],
+      ['Médecins', medecins],
+      ['Infirmiers', infirmiers],
+      ['Masse salariale brute', `${masseSalariale.toLocaleString('fr-FR')} FCFA`],
+      ['Net estimé (80.2%)', `${Math.round(masseSalariale * 0.802).toLocaleString('fr-FR')} FCFA`],
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Personnel');
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Résumé');
+    XLSX.writeFile(wb, `personnel-${dateSlug}.xlsx`);
+  }, [employes]);
+
+  const exportEmployesCSV = useCallback(() => {
+    const rows = [
+      ['Matricule', 'Prénom', 'Nom', 'Poste', 'Département', 'Contrat', 'Date embauche', 'Statut', 'Salaire base'].join(';'),
+      ...employes.map(e => [
+        e.matricule || '', e.prenom, e.nom,
+        POSTE_COLORS[e.poste]?.label || e.poste,
+        e.departement || '',
+        CONTRAT_CFG[e.contrat]?.label || e.contrat || '',
+        fmtDate(e.date_embauche),
+        STATUT_EMP[e.statut]?.label || e.statut || '',
+        e.salaire_base || 0,
+      ].join(';')),
+    ];
+    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `personnel-${dateSlug}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }, [employes]);
+
+  // ── 2. Export congés ──────────────────────────────────────────
+  const exportCongesPDF = useCallback(() => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    pdfHeader(doc, 'Rapport des Congés');
+    autoTable(doc, {
+      startY: 35,
+      head: [['Employé', 'Type de congé', 'Date début', 'Date fin', 'Nb jours', 'Statut']],
+      body: conges.map(c => [
+        c.employe_nom || '—',
+        CONGE_CFG[c.type]?.label || c.type || '—',
+        fmtDate(c.date_debut),
+        fmtDate(c.date_fin),
+        c.nb_jours || '—',
+        CONGE_STATUT[c.statut]?.label || c.statut || '—',
+      ]),
+      styles: { fontSize: 9, cellPadding: 4 },
+      headStyles: { fillColor: [14, 165, 160], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 255] },
+    });
+    doc.save(`conges-${dateSlug}.pdf`);
+  }, [conges]);
+
+  // ── 3. Export salarial PDF ────────────────────────────────────
+  const exportSalairesPDF = useCallback(() => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    pdfHeader(doc, `Rapport Salarial — ${new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`);
+    autoTable(doc, {
+      startY: 35,
+      head: [['Matricule', 'Employé', 'Poste', 'Salaire base', 'Prime (10%)', 'Transport', 'Brut', 'Retenues (19.8%)', 'Net']],
+      body: employes.map(e => {
+        const base = e.salaire_base || 0;
+        const prime = Math.round(base * 0.1);
+        const transport = 25000;
+        const brut = base + prime + transport;
+        const retenues = Math.round(brut * 0.198);
+        const net = brut - retenues;
+        return [
+          e.matricule || '—',
+          `${e.prenom} ${e.nom}`,
+          POSTE_COLORS[e.poste]?.label || e.poste,
+          base.toLocaleString('fr-FR'),
+          prime.toLocaleString('fr-FR'),
+          transport.toLocaleString('fr-FR'),
+          brut.toLocaleString('fr-FR'),
+          retenues.toLocaleString('fr-FR'),
+          net.toLocaleString('fr-FR'),
+        ];
+      }),
+      styles: { fontSize: 8.5, cellPadding: 3.5 },
+      headStyles: { fillColor: [11, 30, 59], textColor: 255, fontStyle: 'bold', fontSize: 8 },
+      alternateRowStyles: { fillColor: [248, 250, 255] },
+      foot: [[
+        '', 'TOTAL', '',
+        masseSalariale.toLocaleString('fr-FR'),
+        Math.round(masseSalariale * 0.1).toLocaleString('fr-FR'),
+        (employes.length * 25000).toLocaleString('fr-FR'),
+        (masseSalariale + Math.round(masseSalariale * 0.1) + employes.length * 25000).toLocaleString('fr-FR'),
+        Math.round((masseSalariale + Math.round(masseSalariale * 0.1) + employes.length * 25000) * 0.198).toLocaleString('fr-FR'),
+        Math.round((masseSalariale + Math.round(masseSalariale * 0.1) + employes.length * 25000) * 0.802).toLocaleString('fr-FR'),
+      ]],
+      footStyles: { fillColor: [11, 30, 59], textColor: 255, fontStyle: 'bold' },
+    });
+    doc.save(`salaires-${dateSlug}.pdf`);
+  }, [employes, masseSalariale]);
+
+  const exportSalairesExcel = useCallback(() => {
+    const rows = employes.map(e => {
+      const base = e.salaire_base || 0;
+      const prime = Math.round(base * 0.1);
+      const transport = 25000;
+      const brut = base + prime + transport;
+      const retenues = Math.round(brut * 0.198);
+      const net = brut - retenues;
+      return { Matricule: e.matricule || '', Employé: `${e.prenom} ${e.nom}`, Poste: POSTE_COLORS[e.poste]?.label || e.poste, 'Salaire base': base, 'Prime': prime, 'Transport': transport, 'Brut': brut, 'Retenues': retenues, 'Net': net };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [10,20,16,14,12,12,14,14,14].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Salaires');
+    XLSX.writeFile(wb, `salaires-${dateSlug}.xlsx`);
+  }, [employes]);
+
+  // ── 4. Bulletin de paie individuel ───────────────────────────
+  const exportBulletinPDF = useCallback((e) => {
+    const base = e.salaire_base || 0;
+    const prime = Math.round(base * 0.1);
+    const transport = 25000;
+    const brut = base + prime + transport;
+    const cnss = Math.round(brut * 0.082);
+    const irpp = Math.round(brut * 0.09);
+    const autres = Math.round(brut * 0.026);
+    const net = brut - cnss - irpp - autres;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    // Header
+    doc.setFillColor(11, 30, 59); doc.rect(0, 0, W, 32, 'F');
+    doc.setFillColor(14, 165, 160); doc.rect(0, 32, W, 3, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+    doc.text('BULLETIN DE PAIE', W / 2, 13, { align: 'center' });
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.text(clinicFull, W / 2, 21, { align: 'center' });
+    doc.text(`${new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`, W / 2, 27, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+    // Info blocs
+    doc.setFillColor(238, 244, 255); doc.rect(10, 40, 85, 34, 'F');
+    doc.setFillColor(248, 250, 253); doc.rect(105, 40, 85, 34, 'F');
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(107, 114, 128);
+    doc.text('EMPLOYÉ', 14, 47); doc.text('EMPLOYEUR', 109, 47);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(11, 30, 59);
+    doc.setFontSize(9);
+    doc.text(`${e.prenom} ${e.nom}`, 14, 54);
+    doc.text(`Poste : ${POSTE_COLORS[e.poste]?.label || e.poste}`, 14, 60);
+    doc.text(`Matricule : ${e.matricule || '—'}`, 14, 66);
+    doc.text(`Embauche : ${fmtDate(e.date_embauche)}`, 14, 72);
+    doc.text(clinicFull, 109, 54);
+    doc.text('Souanké, Congo', 109, 60);
+    doc.text(`Date émission : ${todayStr}`, 109, 66);
+    // Table
+    autoTable(doc, {
+      startY: 82,
+      head: [['Libellé', 'Base', 'Gain', 'Retenue']],
+      body: [
+        ['Salaire de base', `${base.toLocaleString('fr-FR')} FCFA`, `${base.toLocaleString('fr-FR')}`, ''],
+        ['Prime de rendement (10%)', '', `${prime.toLocaleString('fr-FR')}`, ''],
+        ['Indemnité de transport', '', `${transport.toLocaleString('fr-FR')}`, ''],
+        ['CNSS (8.2%)', `${brut.toLocaleString('fr-FR')} FCFA`, '', `${cnss.toLocaleString('fr-FR')}`],
+        ['IRPP (9%)', '', '', `${irpp.toLocaleString('fr-FR')}`],
+        ['Autres retenues (2.6%)', '', '', `${autres.toLocaleString('fr-FR')}`],
+      ],
+      styles: { fontSize: 9, cellPadding: 4 },
+      headStyles: { fillColor: [11, 30, 59], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 255] },
+    });
+    const y = doc.lastAutoTable.finalY + 8;
+    // Totals
+    doc.setFillColor(11, 30, 59); doc.rect(10, y, W - 20, 12, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+    doc.text('NET À PAYER', 14, y + 8);
+    doc.text(`${net.toLocaleString('fr-FR')} FCFA`, W - 14, y + 8, { align: 'right' });
+    doc.setFontSize(8); doc.setTextColor(107, 114, 128); doc.setFont('helvetica', 'italic');
+    doc.text('Ce bulletin est un document confidentiel.', W / 2, y + 22, { align: 'center' });
+    doc.save(`bulletin-${e.matricule || e.nom}-${dateSlug}.pdf`);
+  }, [employes]);
+
+  // ── 5. Export évaluations PDF ─────────────────────────────────
+  const exportEvaluationsPDF = useCallback(() => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    pdfHeader(doc, 'Rapport des Évaluations du Personnel');
+    autoTable(doc, {
+      startY: 35,
+      head: [['Employé', 'Période', 'Ponctualité', 'Qualité', 'Productivité', 'Discipline', 'Relation patient', 'Note globale']],
+      body: evaluations.map(ev => [
+        ev.employe_nom || '—', ev.periode || '—',
+        `${ev.ponctualite}/5`, `${ev.qualite}/5`, `${ev.productivite}/5`,
+        `${ev.discipline}/5`, `${ev.relation_patient}/5`, `${ev.note_globale}/5`,
+      ]),
+      styles: { fontSize: 9, cellPadding: 4 },
+      headStyles: { fillColor: [124, 58, 237], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 255] },
+    });
+    doc.save(`evaluations-${dateSlug}.pdf`);
+  }, [evaluations]);
+
+  // ── 6. Export candidatures PDF ───────────────────────────────
+  const exportCandidaturesPDF = useCallback(() => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    pdfHeader(doc, 'Rapport Recrutement — Candidatures');
+    autoTable(doc, {
+      startY: 35,
+      head: [['Candidat', 'Poste', 'Expérience', 'Diplôme', 'Email', 'Téléphone', 'Date dépôt', 'Statut']],
+      body: candidatures.map(c => [
+        c.nom || '—', POSTE_COLORS[c.poste]?.label || c.poste,
+        c.experience || '—', c.diplome || '—', c.email || '—', c.telephone || '—',
+        fmtDate(c.date_depot), CANDIDAT_CFG[c.statut]?.label || c.statut || '—',
+      ]),
+      styles: { fontSize: 8.5, cellPadding: 3.5 },
+      headStyles: { fillColor: [27, 79, 158], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 255] },
+    });
+    doc.save(`recrutement-${dateSlug}.pdf`);
+  }, [candidatures]);
+
+  // ── 7. Rapport complet RH PDF ─────────────────────────────────
+  const exportRapportRH_PDF = useCallback((titre, type) => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    pdfHeader(doc, titre);
+    if (type === 'effectif') {
+      autoTable(doc, {
+        startY: 35,
+        head: [['Poste', 'Nombre', '% effectif']],
+        body: Object.entries(POSTE_COLORS).map(([key, cfg]) => {
+          const nb = employes.filter(e => e.poste === key).length;
+          const pct = employes.length > 0 ? Math.round(nb / employes.length * 100) : 0;
+          return [cfg.label, nb, `${pct}%`];
+        }).filter(([, nb]) => nb > 0),
+        styles: { fontSize: 10, cellPadding: 5 },
+        headStyles: { fillColor: [14, 165, 160], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 255] },
+      });
+    } else if (type === 'conges') {
+      exportCongesPDF(); return;
+    } else if (type === 'salaires') {
+      exportSalairesPDF(); return;
+    } else if (type === 'evaluations') {
+      exportEvaluationsPDF(); return;
+    } else if (type === 'recrutement') {
+      exportCandidaturesPDF(); return;
+    } else {
+      autoTable(doc, {
+        startY: 35,
+        head: [['Indicateur', 'Valeur']],
+        body: [
+          ['Total employés', employes.length],
+          ['Employés actifs', actifs],
+          ['En congé', enConge],
+          ['Médecins', medecins],
+          ['Infirmiers', infirmiers],
+          ['Masse salariale brute', `${masseSalariale.toLocaleString('fr-FR')} FCFA`],
+          ['Net estimé (80.2%)', `${Math.round(masseSalariale * 0.802).toLocaleString('fr-FR')} FCFA`],
+          ['Candidatures en cours', candidatures.length],
+          ['Congés en attente', congesAttente],
+          ['Formations planifiées', formations.length],
+          ['Sanctions', sanctions.length],
+        ],
+        styles: { fontSize: 10, cellPadding: 5 },
+        headStyles: { fillColor: [11, 30, 59], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 255] },
+      });
+    }
+    doc.save(`rh-${type}-${dateSlug}.pdf`);
+  }, [employes, conges, evaluations, candidatures, formations, sanctions, actifs, enConge, medecins, infirmiers, masseSalariale, congesAttente]);
+
+  // ── 8. Export rapport complet Excel ──────────────────────────
+  const exportRapportRH_Excel = useCallback(() => {
+    const wb = XLSX.utils.book_new();
+    // Feuille 1 : Personnel
+    const wsPersonnel = XLSX.utils.aoa_to_sheet([
+      ['Matricule','Prénom','Nom','Poste','Département','Contrat','Statut','Date embauche','Salaire base','Ancienneté'],
+      ...employes.map(e => [e.matricule||'',e.prenom,e.nom,POSTE_COLORS[e.poste]?.label||e.poste,e.departement||'',CONTRAT_CFG[e.contrat]?.label||e.contrat||'',STATUT_EMP[e.statut]?.label||e.statut||'',fmtDate(e.date_embauche),e.salaire_base||0,anciennete(e.date_embauche)]),
+    ]);
+    // Feuille 2 : Salaires
+    const wsSalaires = XLSX.utils.aoa_to_sheet([
+      ['Matricule','Employé','Poste','Base','Prime','Transport','Brut','Retenues','Net'],
+      ...employes.map(e => {
+        const b=e.salaire_base||0, p=Math.round(b*.1), t=25000, br=b+p+t, r=Math.round(br*.198), n=br-r;
+        return [e.matricule||'',`${e.prenom} ${e.nom}`,POSTE_COLORS[e.poste]?.label||e.poste,b,p,t,br,r,n];
+      }),
+    ]);
+    // Feuille 3 : Congés
+    const wsConges = XLSX.utils.aoa_to_sheet([
+      ['Employé','Type','Début','Fin','Nb jours','Statut'],
+      ...conges.map(c=>[c.employe_nom||'—',CONGE_CFG[c.type]?.label||c.type||'—',fmtDate(c.date_debut),fmtDate(c.date_fin),c.nb_jours||'—',CONGE_STATUT[c.statut]?.label||c.statut||'—']),
+    ]);
+    // Feuille 4 : Résumé
+    const wsResume = XLSX.utils.aoa_to_sheet([
+      ['Indicateur','Valeur'],
+      ['Total employés', employes.length],
+      ['Actifs', actifs], ['En congé', enConge],
+      ['Médecins', medecins], ['Infirmiers', infirmiers],
+      ['Masse salariale brute', masseSalariale],
+      ['Net estimé', Math.round(masseSalariale * 0.802)],
+      ['Candidatures', candidatures.length],
+      ['Formations', formations.length], ['Sanctions', sanctions.length],
+    ]);
+    XLSX.utils.book_append_sheet(wb, wsPersonnel, 'Personnel');
+    XLSX.utils.book_append_sheet(wb, wsSalaires, 'Salaires');
+    XLSX.utils.book_append_sheet(wb, wsConges, 'Congés');
+    XLSX.utils.book_append_sheet(wb, wsResume, 'Résumé');
+    XLSX.writeFile(wb, `rapport-rh-${dateSlug}.xlsx`);
+  }, [employes, conges, candidatures, formations, sanctions, actifs, enConge, medecins, infirmiers, masseSalariale]);
+
   // ═══════════════════════════════════════════════════════════
   return (
     <>
@@ -607,16 +998,33 @@ export default function RessourcesHumaines() {
               </div>
               <div>
                 <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Ressources Humaines</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>{total} employés · Clinique Canadienne de Souanké</div>
+                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>{total} employés · {CLINIC_NAME} {CLINIC_SUBTITLE}</div>
               </div>
             </div>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               <button className="rbtn rbtn-teal" onClick={() => { setFormEmp(EMPTY_EMP); setModalEmp(true); }}>
                 {I.plus} Nouvel employé
               </button>
-              <button className="rbtn rbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => window.print()}>
-                {I.print} Exporter
-              </button>
+              <div style={{ position:"relative" }}>
+                <button className="rbtn rbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={(e) => { e.stopPropagation(); setExportMenu(m => !m); }}>
+                  {I.dl} Exporter ▾
+                </button>
+                {exportMenu && (
+                  <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#fff", border:"1.5px solid var(--rbr)", borderRadius:12, boxShadow:"0 8px 30px rgba(11,30,59,.18)", zIndex:300, minWidth:200, padding:"6px 0" }} onClick={e => e.stopPropagation()}>
+                    {[
+                      ["📄 PDF — Liste des employés",  () => { exportEmployesPDF();      setExportMenu(false); }],
+                      ["📊 Excel — Rapport complet",   () => { exportRapportRH_Excel();  setExportMenu(false); }],
+                      ["📋 CSV — Liste des employés",  () => { exportEmployesCSV();       setExportMenu(false); }],
+                      ["💰 PDF — Rapport salarial",    () => { exportSalairesPDF();       setExportMenu(false); }],
+                    ].map(([label, fn]) => (
+                      <button key={label} onClick={fn} style={{ display:"block", width:"100%", padding:"9px 16px", textAlign:"left", background:"none", border:"none", fontSize:13, color:"var(--rn)", cursor:"pointer", fontFamily:"'Poppins',sans-serif", fontWeight:500 }}
+                        onMouseOver={e => e.currentTarget.style.background="#EEF4FF"} onMouseOut={e => e.currentTarget.style.background="none"}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1079,8 +1487,8 @@ export default function RessourcesHumaines() {
                                 <span style={{ fontSize:22, fontWeight:800, color:"var(--rb)" }}>{net.toLocaleString("fr-FR")} FCFA</span>
                               </div>
                               <div style={{ display:"flex", gap:10 }}>
-                                <button className="rbtn rbtn-teal rbtn-sm">{I.dl} Bulletin de paie</button>
-                                <button className="rbtn rbtn-ghost rbtn-sm">{I.print} Imprimer</button>
+                                <button className="rbtn rbtn-teal rbtn-sm" onClick={() => currentEmp && exportBulletinPDF(currentEmp)}>{I.dl} Bulletin de paie</button>
+                                <button className="rbtn rbtn-ghost rbtn-sm" onClick={() => currentEmp && exportEmployesPDF()}>{I.print} Fiche employé</button>
                               </div>
                             </>
                           );
@@ -1232,7 +1640,7 @@ export default function RessourcesHumaines() {
           {/* ══ ORGANIGRAMME ══ */}
           {tab === "org" && (
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Organigramme — Clinique Canadienne de Souanké</div>
+              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Organigramme — {CLINIC_NAME} {CLINIC_SUBTITLE}</div>
               <div className="rh-card fu" style={{ padding:30, overflowX:"auto" }}>
                 <div style={{ minWidth:700, display:"flex", flexDirection:"column", alignItems:"center", gap:0 }}>
                   {/* Direction */}
@@ -1512,8 +1920,8 @@ export default function RessourcesHumaines() {
                   <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>Masse salariale : <strong>{masseSalariale.toLocaleString("fr-FR")} FCFA</strong></div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  <button className="rbtn rbtn-teal">{I.dl} Virement groupé</button>
-                  <button className="rbtn rbtn-ghost">{I.print} Éditer bulletins</button>
+                  <button className="rbtn rbtn-teal" onClick={exportSalairesExcel}>{I.dl} Export Excel</button>
+                  <button className="rbtn rbtn-ghost" onClick={exportSalairesPDF}>{I.print} PDF salarial</button>
                 </div>
               </div>
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)", gap:14, marginBottom:20 }}>
@@ -1553,7 +1961,7 @@ export default function RessourcesHumaines() {
                             <td style={{ fontSize:12, color:"var(--rr)" }}>-{retenues.toLocaleString("fr-FR")}</td>
                             <td style={{ fontSize:13, fontWeight:800, color:"var(--rb)" }}>{net.toLocaleString("fr-FR")}</td>
                             <td><Badge cls="green">✅ Payé</Badge></td>
-                            <td><button className="rbtn rbtn-ghost rbtn-sm" style={{ fontSize:11 }} onClick={() => toast.success(`📄 Bulletin généré — ${e.prenom} ${e.nom}`)}>{I.dl} Bulletin</button></td>
+                            <td><button className="rbtn rbtn-ghost rbtn-sm" style={{ fontSize:11 }} onClick={() => exportBulletinPDF(e)}>{I.dl} Bulletin</button></td>
                           </tr>
                         );
                       })}
@@ -1761,22 +2169,22 @@ export default function RessourcesHumaines() {
               <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Rapports RH</div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:16, marginBottom:24 }}>
                 {[
-                  ["👥","Effectif du personnel",   "Tableau des ressources humaines par poste et département"],
-                  ["📅","Présences & Absences",    "Récapitulatif mensuel des présences, retards et absences"],
-                  ["🏖️","Rapport de congés",       "Soldes, prises et historique des congés par employé"],
-                  ["💰","Rapport salarial",        "Masse salariale, primes et retenues — vue détaillée"],
-                  ["⭐","Rapport d'évaluations",   "Synthèse des performances et recommandations"],
-                  ["📋","Rapport disciplinaire",   "Incidents et mesures disciplinaires prises"],
-                  ["🏥","Santé au travail",        "Visites médicales, aptitudes et accidents de travail"],
-                  ["🎓","Rapport formations",      "Formations dispensées, participants et certifications"],
-                ].map(([icon,title,desc]) => (
+                  ["👥","Effectif du personnel",   "Tableau des ressources humaines par poste et département",  () => exportRapportRH_PDF("Effectif du Personnel", "effectif"), () => exportEmployesExcel()],
+                  ["📅","Présences & Absences",    "Récapitulatif mensuel des présences, retards et absences",  () => exportRapportRH_PDF("Présences & Absences", "presences"), () => exportRapportRH_Excel()],
+                  ["🏖️","Rapport de congés",       "Soldes, prises et historique des congés par employé",       () => exportCongesPDF(), () => exportRapportRH_Excel()],
+                  ["💰","Rapport salarial",        "Masse salariale, primes et retenues — vue détaillée",       () => exportSalairesPDF(), () => exportSalairesExcel()],
+                  ["⭐","Rapport d'évaluations",   "Synthèse des performances et recommandations",              () => exportEvaluationsPDF(), () => exportRapportRH_Excel()],
+                  ["📋","Rapport disciplinaire",   "Incidents et mesures disciplinaires prises",                () => exportRapportRH_PDF("Rapport Disciplinaire", "discipline"), () => exportRapportRH_Excel()],
+                  ["🏥","Santé au travail",        "Visites médicales, aptitudes et accidents de travail",      () => exportRapportRH_PDF("Santé au Travail", "sante"), () => exportRapportRH_Excel()],
+                  ["🎓","Rapport formations",      "Formations dispensées, participants et certifications",     () => exportRapportRH_PDF("Rapport Formations", "formations"), () => exportRapportRH_Excel()],
+                ].map(([icon,title,desc,onPDF,onExcel]) => (
                   <div key={title} style={{ background:"#fff", border:"1.5px solid var(--rbr)", borderRadius:16, padding:20, display:"flex", flexDirection:"column", gap:10, boxShadow:"var(--sh)", transition:"all .2s" }} onMouseOver={e=>e.currentTarget.style.boxShadow="var(--shm)"} onMouseOut={e=>e.currentTarget.style.boxShadow="var(--sh)"}>
                     <div style={{ fontSize:28 }}>{icon}</div>
                     <div style={{ fontWeight:700, color:"var(--rn)", fontSize:14 }}>{title}</div>
                     <div style={{ fontSize:11, color:"var(--rm)", flex:1 }}>{desc}</div>
                     <div style={{ display:"flex", gap:6 }}>
-                      <button className="rbtn rbtn-teal rbtn-sm" style={{ flex:1 }} onClick={() => toast.success(`📊 Génération : ${title}...`)}>{I.dl} PDF</button>
-                      <button className="rbtn rbtn-ghost rbtn-sm" onClick={() => toast.success("📊 Export Excel...")}>{I.trend} Excel</button>
+                      <button className="rbtn rbtn-teal rbtn-sm" style={{ flex:1 }} onClick={onPDF}>{I.dl} PDF</button>
+                      <button className="rbtn rbtn-ghost rbtn-sm" onClick={onExcel}>{I.trend} Excel</button>
                     </div>
                   </div>
                 ))}

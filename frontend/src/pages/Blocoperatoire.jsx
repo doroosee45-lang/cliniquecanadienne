@@ -3,6 +3,7 @@
 
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchBlocPlanning, fetchSalles,
@@ -286,7 +287,8 @@ const normalizeInterv = (d) => {
     patient_gs:        d.groupe_sanguin || pat?.groupe_sanguin || "—",
     patient_sexe:      d.sexe || null,
     patient_poids:     null,
-    patient_dossier:   d.numero || "—",
+    patient_id:        pat?._id || (typeof d.patient_id === 'string' ? d.patient_id : '') || '',
+    patient_dossier:   pat?.numero_dossier || d.patient_dossier || '',
     patient_allergies: d.allergies || null,
     chirurgien:        d.chirurgien_nom || (d.chirurgien_id && typeof d.chirurgien_id === 'object'
                          ? `Dr. ${d.chirurgien_id.prenom} ${d.chirurgien_id.nom}` : null),
@@ -422,6 +424,7 @@ function DoughnutChart({ labels, data, colors, height = 200 }) {
 // ═══════════════════════════════════════════════════════════
 export default function BlocOperatoire() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const reduxPlanning = useSelector(selectBlocPlanning);
   const reduxSalles = useSelector(selectSalles);
   const reduxStats = useSelector(selectBlocStats);
@@ -711,7 +714,8 @@ export default function BlocOperatoire() {
                           <tr key={d._id} style={{ background: d.statut === "en_cours" ? "#E8F8F5" : d.niveau_urgence === "extreme_urgence" ? "#FEF9E7" : "" }}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--bb)", fontSize:12 }}>{d.numero}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--bn)" }}>{d.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--bn)", cursor: d.patient_id ? 'pointer' : 'default', textDecoration: d.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id && navigate(`/patients/${d.patient_id}`)} title={d.patient_id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
+                              {d.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{d.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(d.patient_dob)} · {d.patient_gs || "—"}</div>
                             </td>
                             <td>
@@ -864,7 +868,8 @@ export default function BlocOperatoire() {
                           <tr key={d._id} style={{ background: d.statut === "en_cours" ? "#E8F8F5" : d.niveau_urgence === "extreme_urgence" && d.statut !== "terminee" ? "#FEF9E7" : "" }}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--bb)", fontSize:12 }}>{d.numero}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--bn)" }}>{d.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--bn)", cursor: d.patient_id ? 'pointer' : 'default', textDecoration: d.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id && navigate(`/patients/${d.patient_id}`)} title={d.patient_id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
+                              {d.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{d.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(d.patient_dob)} · {d.patient_gs || "—"}</div>
                               {d.patient_allergies && <div style={{ fontSize:10, color:"var(--br)" }}>⚠ {d.patient_allergies}</div>}
                             </td>

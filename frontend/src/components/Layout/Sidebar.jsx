@@ -228,6 +228,7 @@ const ROLE_CONFIG = {
   adminclinique:  { icon: '🏥', color: '#8b5cf6', label: 'Admin Clinique' },
   medecin:        { icon: '👨‍⚕️', color: '#3b82f6', label: 'Médecin' },
   infirmier:      { icon: '💉', color: '#06b6d4', label: 'Infirmier' },
+  sage_femme:     { icon: '🤰', color: '#ec4899', label: 'Sage-femme' },
   laborantin:     { icon: '🔬', color: '#22c55e', label: 'Laborantin' },
   radiologue:     { icon: '🩻', color: '#6366f1', label: 'Radiologue' },
   pharmacien:     { icon: '💊', color: '#f97316', label: 'Pharmacien' },
@@ -267,8 +268,8 @@ const NAV_SECTIONS = [
     label: 'Spécialités',
     items: [
       { to: '/urgences',       label: 'Urgences',        icon: '🚨', roles: withAdmins('medecin','infirmier') },
-      { to: '/pediatrie',      label: 'Pédiatrie',       icon: '👶', roles: withAdmins('medecin','infirmier') },
-      { to: '/maternite',      label: 'Maternité',       icon: '🤱', roles: withAdmins('medecin','infirmier') },
+      { to: '/pediatrie',      label: 'Pédiatrie',       icon: '👶', roles: withAdmins('medecin','infirmier','sage_femme') },
+      { to: '/maternite',      label: 'Maternité',       icon: '🤱', roles: withAdmins('medecin','infirmier','sage_femme') },
       { to: '/chirurgie',      label: 'Chirurgie',       icon: '🔪', roles: withAdmins('medecin') },
       { to: '/blocoperatoire', label: 'Bloc Opératoire', icon: '🏥', roles: withAdmins('medecin') },
     ],
@@ -279,7 +280,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/laboratory',  label: 'Laboratoire', icon: '🔬', roles: withAdmins('medecin','laborantin') },
       { to: '/radiology',   label: 'Imagerie',    icon: '🩻', roles: withAdmins('medecin','radiologue') },
-      { to: '/echographie', label: 'Échographie', icon: '📡', roles: withAdmins('medecin','radiologue') },
+      { to: '/echographie', label: 'Échographie', icon: '📡', roles: withAdmins('medecin','radiologue','infirmier') },
       { to: '/pharmacy',    label: 'Pharmacie',   icon: '💊', roles: withAdmins('pharmacien','medecin') },
     ],
   },

@@ -2,6 +2,7 @@ const Pregnancy = require('../models/Pregnancy');
 const Delivery  = require('../models/Delivery');
 const Newborn   = require('../models/Newborn');
 const Patient   = require('../models/Patient');
+const { emitDashboardUpdate } = require('../utils/socket');
 
 // ── Stats / KPIs ─────────────────────────────────────────────────────────────
 exports.getStats = async (req, res) => {
@@ -63,6 +64,7 @@ exports.getAll = async (req, res) => {
     ];
     const total      = await Pregnancy.countDocuments(filter);
     const grossesses = await Pregnancy.find(filter)
+      .populate('patient_id', 'nom prenom numero_dossier')
       .sort('-createdAt')
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit));
@@ -106,6 +108,7 @@ exports.create = async (req, res) => {
     else if (facteurs_risque && facteurs_risque.length > 0) body.niveau_risque = 'modere';
 
     const g = await Pregnancy.create(body);
+    emitDashboardUpdate();
     res.status(201).json({ success: true, grossesse: g });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -188,6 +191,7 @@ exports.createDelivery = async (req, res) => {
       }
     }
     const acc = await Delivery.create(body);
+    emitDashboardUpdate();
     res.status(201).json({ success: true, accouchement: acc });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -214,6 +218,7 @@ exports.createNewborn = async (req, res) => {
       { vaccin: 'Hépatite B naissance', date: new Date(), dose: '0,5ml intramusculaire' },
     ];
     const nb = await Newborn.create(body);
+    emitDashboardUpdate();
     res.status(201).json({ success: true, nouveau_ne: nb });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

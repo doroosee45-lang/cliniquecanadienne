@@ -48,7 +48,7 @@ exports.getPlanning = async (req, res, next) => {
 
     const [planning, total] = await Promise.all([
       DossierChirurgical.find(filter)
-        .populate('patient_id',   'nom prenom date_naissance groupe_sanguin')
+        .populate('patient_id',   'nom prenom date_naissance groupe_sanguin numero_dossier')
         .populate('chirurgien_id','nom prenom specialite')
         .sort({ date_intervention_prev: 1, created_at: -1 })
         .skip(skip).limit(parseInt(limit))

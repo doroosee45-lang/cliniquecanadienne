@@ -2,6 +2,7 @@
 
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import api from '../api';
 import toast from 'react-hot-toast';
@@ -790,6 +791,7 @@ const isSameDayCons = (a, b) => {
 
 export default function Consultation() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const reduxConsultations = useSelector(selectConsultations);
   const reduxTotal         = useSelector(selectConsultationsTotal);
   const reduxVitals        = useSelector(selectVitals);
@@ -1190,8 +1192,9 @@ export default function Consultation() {
                                     </>
                                   : '—'}
                               </td>
-                              <td style={{ padding:'11px 14px', fontWeight:600, fontSize:13, color:'var(--cn)' }}>
-                                {c.patient ? `${c.patient.prenom || ''} ${c.patient.nom || ''}`.trim() : '—'}
+                              <td style={{ padding:'11px 14px' }}>
+                                <div style={{ fontWeight:600, fontSize:13, color:'var(--cn)', cursor: c.patient?._id ? 'pointer' : 'default', textDecoration: c.patient?._id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => c.patient?._id && navigate(`/patients/${c.patient._id}`)} title={c.patient?._id ? "Ouvrir le dossier patient" : ""}>{c.patient ? `${c.patient.prenom || ''} ${c.patient.nom || ''}`.trim() : '—'}</div>
+                                {c.patient?.numero_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginTop:2 }}>{c.patient.numero_dossier}</span>}
                               </td>
                               <td style={{ padding:'11px 14px', fontSize:12, color:'var(--cn)', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                                 {c.diagnostic || c.motif || <span style={{ color:'var(--cm)' }}>—</span>}

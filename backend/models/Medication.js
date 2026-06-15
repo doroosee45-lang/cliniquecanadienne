@@ -28,6 +28,7 @@ const MedicationSchema = new mongoose.Schema({
   mouvements: [MouvementSchema],
   interactions: [String],
   ordonnance_requise: { type: Boolean, default: false },
+  photo:              { type: String,  default: null },
 }, { timestamps: true });
 
 MedicationSchema.index({ nom_commercial: 'text', dci: 'text' });

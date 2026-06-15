@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import {
@@ -160,6 +161,102 @@ const CSS = `
 
 /* Metric card */
 .metric-row { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:10px; background:#F8FAFD; border:1.5px solid var(--cbr); margin-bottom:8px; }
+
+/* ── Photos patient ─────────────────────────────────────────────────────────── */
+
+/* Miniature dans la liste/tableau */
+.pat-photo-thumb {
+  width:100%; height:100%;
+  object-fit:cover; display:block;
+  border-radius:10px;
+}
+.pat-photo-cell {
+  width:48px; height:48px; border-radius:10px;
+  background:#EEF4FF; overflow:hidden; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px;
+  border:2px solid #E2EAF4;
+  box-shadow:0 1px 4px rgba(11,30,59,.10);
+}
+
+/* Photo dans le header du dossier patient */
+.pat-photo-hdr {
+  width:100px; height:100px;
+  border-radius:20px;
+  object-fit:cover;
+  border:3px solid rgba(255,255,255,.45);
+  box-shadow:0 4px 20px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.12);
+  cursor:pointer;
+  transition:transform .22s ease, box-shadow .22s ease;
+  flex-shrink:0;
+  display:block;
+}
+.pat-photo-hdr:hover {
+  transform:scale(1.07);
+  box-shadow:0 8px 32px rgba(0,0,0,.5), 0 0 0 3px rgba(14,165,160,.5);
+}
+.pat-photo-hdr-placeholder {
+  width:100px; height:100px; border-radius:20px;
+  background:rgba(255,255,255,.15);
+  border:2px solid rgba(255,255,255,.25);
+  display:flex; align-items:center; justify-content:center;
+  font-size:42px; flex-shrink:0;
+}
+
+/* Zone d'upload dans le formulaire */
+.pat-upload-zone {
+  position:relative; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:10px;
+  border:2px dashed var(--cbr); border-radius:16px;
+  padding:20px 16px; cursor:pointer;
+  transition:border-color .2s, background .2s;
+  background:#F8FAFD; min-height:160px;
+}
+.pat-upload-zone:hover { border-color:var(--ct); background:#F0FDFC; }
+.pat-upload-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+.pat-upload-preview {
+  width:130px; height:130px;
+  border-radius:16px;
+  object-fit:cover;
+  border:3px solid var(--ct);
+  box-shadow:0 4px 16px rgba(14,165,160,.25);
+  display:block;
+}
+
+/* Lightbox plein écran */
+.pat-lightbox {
+  position:fixed; inset:0;
+  background:rgba(5,10,20,.92);
+  z-index:9999;
+  display:flex; align-items:center; justify-content:center;
+  animation:lbIn .18s ease;
+}
+@keyframes lbIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
+.pat-lightbox img {
+  max-width:90vw; max-height:90vh;
+  border-radius:18px;
+  object-fit:contain;
+  box-shadow:0 32px 100px rgba(0,0,0,.8);
+  border:2px solid rgba(255,255,255,.1);
+}
+.pat-lightbox-close {
+  position:fixed; top:18px; right:22px;
+  width:46px; height:46px; border-radius:50%;
+  background:rgba(255,255,255,.12);
+  border:2px solid rgba(255,255,255,.28);
+  color:#fff; font-size:20px; font-weight:700;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:background .2s, transform .15s;
+  z-index:10000;
+}
+.pat-lightbox-close:hover { background:rgba(255,255,255,.25); transform:scale(1.08); }
+.pat-lightbox-name {
+  position:fixed; bottom:26px; left:50%; transform:translateX(-50%);
+  color:rgba(255,255,255,.85); font-size:14px; font-weight:600;
+  background:rgba(0,0,0,.55); padding:8px 22px; border-radius:99px;
+  backdrop-filter:blur(6px);
+  white-space:nowrap;
+}
 `;
 
 // ─── SVG Icons ────────────────────────────────────────────────
@@ -321,6 +418,8 @@ export default function Patient() {
   const [modalNouv, setModalNouv] = useState(false);
   const [modalRdv, setModalRdv] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [patientSaving, setPatientSaving] = useState(false);
+  const [credsModal, setCredsModal] = useState(null); // { patient, email, password, emailEnvoye }
 
   // ── Patient-specific data (loaded on demand)
   const PD_INIT = { loading: false, consultations: [], rdvs: [], labResults: [], imaging: [], hospitalisations: [], chirurgie: [], prescriptions: [], invoices: [], auditLogs: [] };
@@ -342,6 +441,9 @@ export default function Patient() {
   const [formError,   setFormError]   = useState("");
   const [formSuccess, setFormSuccess] = useState("");
   const [patientExistant, setPatientExistant] = useState(null);
+  const [photoFile,    setPhotoFile]    = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoLightbox, setPhotoLightbox] = useState(null);
 
   useEffect(() => {
     dispatch(fetchPatients({ page: 1, limit: 100, search, statut: filterStatut }));
@@ -436,6 +538,41 @@ export default function Patient() {
     setTab("dossier");
   };
 
+  const handleToggleActifPanel = async () => {
+    if (!currentPatient) return;
+    const newActif = !currentPatient.actif;
+    setPatientSaving(true);
+    try {
+      const { data: res } = await api.put(`/patients/${currentPatient._id}`, {
+        actif: newActif,
+        statut: newActif ? 'actif' : 'inactif',
+      });
+      setCurrentPatient(res.patient);
+      dispatch(fetchPatients({ page: 1, limit: 100 }));
+      toast.success(newActif ? '✅ Patient activé' : '🔒 Patient désactivé');
+    } catch {
+      toast.error('Erreur lors de la mise à jour du statut');
+    } finally {
+      setPatientSaving(false);
+    }
+  };
+
+  const handleDeletePanel = async () => {
+    if (!currentPatient) return;
+    if (!window.confirm(`Supprimer définitivement le dossier de ${currentPatient.prenom} ${currentPatient.nom} ?\nCette action est irréversible.`)) return;
+    setPatientSaving(true);
+    try {
+      await api.delete(`/patients/${currentPatient._id}`);
+      toast.success('Patient supprimé');
+      dispatch(fetchPatients({ page: 1, limit: 100 }));
+      setCurrentPatient(null);
+      setTab('liste');
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Erreur lors de la suppression');
+      setPatientSaving(false);
+    }
+  };
+
   const kpis = {
     total: patients.length,
     actifs: patients.filter(p => p.statut === "actif").length,
@@ -468,7 +605,11 @@ export default function Patient() {
   ];
 
   // ─── Helpers formulaire ───────────────────────────────────────
-  const resetForm = () => { setFormPatient(FORM_INIT); setFormError(""); setFormSuccess(""); setPatientExistant(null); };
+  const resetForm = () => {
+    setFormPatient(FORM_INIT); setFormError(""); setFormSuccess(""); setPatientExistant(null);
+    setPhotoFile(null);
+    if (photoPreview) { URL.revokeObjectURL(photoPreview); setPhotoPreview(null); }
+  };
 
   const addAssurance = () => {
     if (formPatient.assurances.length < 2)
@@ -497,9 +638,27 @@ export default function Patient() {
           : [],
       };
       const result = await dispatch(createPatient(payload)).unwrap();
-      setFormSuccess(result.message || "Dossier créé avec succès.");
+
+      // Upload de la photo si sélectionnée
+      if (photoFile && result.patient?._id) {
+        try {
+          const fd = new FormData();
+          fd.append('photo', photoFile);
+          await api.post(`/patients/${result.patient._id}/photo`, fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+        } catch { /* photo non critique, on continue */ }
+      }
+
       dispatch(fetchPatients({ page: 1, limit: 100 }));
-      setTimeout(() => { setModalNouv(false); resetForm(); }, 3500);
+      setModalNouv(false);
+      resetForm();
+      setCredsModal({
+        patient:     result.patient,
+        email:       result.patient?.email || '',
+        password:    result.mot_de_passe_temp || '',
+        emailEnvoye: result.email_envoye,
+      });
     } catch (errData) {
       if (errData?.redirect === 'update') {
         setPatientExistant(errData);
@@ -601,9 +760,11 @@ export default function Patient() {
                           <tr key={p._id} style={{ background:p.allergies ? "#FFFBF8":"" }}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--cb)", fontSize:12 }}>{p.numero_dossier || p.numero}</span></td>
                             <td>
-                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                <div style={{ width:32, height:32, borderRadius:8, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
-                                  {SEXE_ICON[p.sexe] || "👤"}
+                              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                <div className="pat-photo-cell">
+                                  {p.photo
+                                    ? <img src={p.photo} alt="" className="pat-photo-thumb" />
+                                    : <span>{SEXE_ICON[p.sexe] || "👤"}</span>}
                                 </div>
                                 <div>
                                   <div style={{ fontWeight:700, color:"var(--cn)" }}>{p.prenom} {p.nom}</div>
@@ -676,9 +837,18 @@ export default function Patient() {
               <div style={{ background:"linear-gradient(135deg,#0B1E3B,#132744)", borderRadius:18, padding:"20px 24px", marginBottom:20, color:"#fff" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-                    <div style={{ width:64, height:64, borderRadius:16, background:"rgba(255,255,255,.15)", border:"2px solid rgba(255,255,255,.25)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:32, flexShrink:0 }}>
-                      {currentPatient.sexe === "femme" ? "👩" : "👨"}
-                    </div>
+                    {currentPatient.photo
+                      ? <img
+                          src={currentPatient.photo}
+                          alt={`${currentPatient.prenom} ${currentPatient.nom}`}
+                          className="pat-photo-hdr"
+                          onClick={() => setPhotoLightbox({ url: currentPatient.photo, name: `${currentPatient.prenom} ${currentPatient.nom}` })}
+                          title="Cliquer pour agrandir la photo"
+                        />
+                      : <div className="pat-photo-hdr-placeholder">
+                          {currentPatient.sexe === "F" || currentPatient.sexe === "femme" ? "👩" : "👨"}
+                        </div>
+                    }
                     <div>
                       <div style={{ fontSize:20, fontWeight:700 }}>{currentPatient.prenom} {currentPatient.nom}</div>
                       <div style={{ fontSize:12, color:"rgba(255,255,255,.65)", marginTop:2 }}>
@@ -713,6 +883,22 @@ export default function Patient() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* ── Actions patient ───────────────────────────────────────── */}
+              <div style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:10, marginBottom:14 }}>
+                <button onClick={() => navigate(`/patients/${currentPatient._id}`)}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 18px', background:'linear-gradient(135deg,#EFF6FF,#DBEAFE)', color:'#1B4F9E', border:'1.5px solid #BFDBFE', borderRadius:10, cursor:'pointer', fontWeight:700, fontSize:13 }}>
+                  ✏️ Modifier
+                </button>
+                <button onClick={handleToggleActifPanel} disabled={patientSaving}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 18px', background: currentPatient.actif ? 'linear-gradient(135deg,#FFF7ED,#FEE2C8)' : 'linear-gradient(135deg,#F0FDF4,#DCFCE7)', color: currentPatient.actif ? '#9A3412' : '#166534', border:`1.5px solid ${currentPatient.actif ? '#FED7AA' : '#BBF7D0'}`, borderRadius:10, cursor: patientSaving ? 'not-allowed' : 'pointer', fontWeight:700, fontSize:13, opacity: patientSaving ? 0.5 : 1 }}>
+                  {currentPatient.actif ? '🔒 Désactiver' : '✅ Activer'}
+                </button>
+                <button onClick={handleDeletePanel} disabled={patientSaving}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 18px', background:'linear-gradient(135deg,#FEF2F2,#FEE2E2)', color:'#991B1B', border:'1.5px solid #FECACA', borderRadius:10, cursor:'pointer', fontWeight:700, fontSize:13, marginLeft:'auto', opacity: patientSaving ? 0.5 : 1 }}>
+                  🗑️ Supprimer
+                </button>
               </div>
 
               {/* Section nav */}
@@ -886,7 +1072,7 @@ export default function Patient() {
                             )}
                           </div>
                         </div>
-                        <button className="pbtn pbtn-teal" style={{ marginTop:8 }} onClick={() => navigate(`/patients`)}>{I.edit} Modifier les informations</button>
+                        <button className="pbtn pbtn-teal" style={{ marginTop:8 }} onClick={() => navigate(`/patients/${currentPatient._id}`)}>{I.edit} Voir le dossier complet</button>
                       </div>
                     </div>
                   </div>
@@ -1384,8 +1570,42 @@ export default function Patient() {
                 </select>
               </div>
               <div>
-                <label className="plbl">Photo (URL ou chemin)</label>
-                <input className="pinp" placeholder="https://... ou laisser vide" value={formPatient.photo} onChange={e => setFormPatient(f => ({...f,photo:e.target.value}))} />
+                <label className="plbl">Photo du patient</label>
+                <div className="pat-upload-zone">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={e => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      if (photoPreview) URL.revokeObjectURL(photoPreview);
+                      setPhotoFile(file);
+                      setPhotoPreview(URL.createObjectURL(file));
+                    }}
+                  />
+                  {photoPreview ? (
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, pointerEvents:"none" }}>
+                      <img src={photoPreview} alt="preview" className="pat-upload-preview" />
+                      <div style={{ fontSize:11, color:"var(--ct)", fontWeight:600 }}>Photo sélectionnée ✓</div>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign:"center", pointerEvents:"none" }}>
+                      <div style={{ fontSize:40, marginBottom:8 }}>📷</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:"var(--ct)" }}>Cliquer pour ajouter une photo</div>
+                      <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>JPG · PNG · WebP — max 5 Mo</div>
+                    </div>
+                  )}
+                </div>
+                {photoFile && (
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:8, padding:"6px 12px", background:"#F0FDFC", borderRadius:8, border:"1px solid #99F6E4" }}>
+                    <span style={{ fontSize:12, color:"var(--ct)", fontWeight:600 }}>📎 {photoFile.name}</span>
+                    <button type="button"
+                      style={{ fontSize:12, color:"var(--cr)", background:"none", border:"none", cursor:"pointer", fontWeight:600 }}
+                      onClick={e => { e.stopPropagation(); if (photoPreview) URL.revokeObjectURL(photoPreview); setPhotoFile(null); setPhotoPreview(null); }}>
+                      ✕ Retirer
+                    </button>
+                  </div>
+                )}
               </div>
               <div style={{ gridColumn:"1/-1", display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr", gap:10 }}>
                 <div>
@@ -1575,6 +1795,131 @@ export default function Patient() {
         </Modal>
 
       </div>
+
+      {/* ═══ LIGHTBOX PHOTO ═══ */}
+      {photoLightbox && (
+        <div className="pat-lightbox" onClick={() => setPhotoLightbox(null)}>
+          <button className="pat-lightbox-close" onClick={() => setPhotoLightbox(null)}>✕</button>
+          <img
+            src={photoLightbox.url}
+            alt={photoLightbox.name}
+            onClick={e => e.stopPropagation()}
+          />
+          {photoLightbox.name && (
+            <div className="pat-lightbox-name">{photoLightbox.name}</div>
+          )}
+        </div>
+      )}
+
+      {/* ── Modal Identifiants Patient ─────────────────────────────────────── */}
+      {credsModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(11,30,59,.6)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={() => setCredsModal(null)}>
+          <div style={{ background:'#fff', borderRadius:20, width:'100%', maxWidth:480, boxShadow:'0 24px 64px rgba(11,30,59,.25)', overflow:'hidden' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{ background:'linear-gradient(135deg,#0B1E3B,#1B4F9E)', padding:'20px 24px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div>
+                <div style={{ color:'#fff', fontWeight:800, fontSize:16 }}>✅ Dossier créé</div>
+                <div style={{ color:'rgba(255,255,255,.65)', fontSize:12, marginTop:3 }}>
+                  {credsModal.patient?.prenom} {credsModal.patient?.nom} · {credsModal.patient?.numero_dossier}
+                </div>
+              </div>
+              <button onClick={() => setCredsModal(null)} style={{ background:'rgba(255,255,255,.15)', border:'none', color:'#fff', borderRadius:8, width:32, height:32, cursor:'pointer', fontSize:20, display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+            </div>
+
+            <div style={{ padding:24, display:'flex', flexDirection:'column', gap:16 }}>
+
+              {/* Statut email */}
+              <div style={{ background: credsModal.emailEnvoye ? '#F0FDF4' : '#FFF7ED', border:`1.5px solid ${credsModal.emailEnvoye ? '#BBF7D0' : '#FED7AA'}`, borderRadius:12, padding:'12px 16px', fontSize:13, color: credsModal.emailEnvoye ? '#166534' : '#9A3412', fontWeight:600 }}>
+                {credsModal.emailEnvoye
+                  ? `📧 Email d'activation envoyé à ${credsModal.email}`
+                  : '⚠️ Email non envoyé (SMTP non configuré) — utilisez les identifiants ci-dessous'}
+              </div>
+
+              {/* Identifiants */}
+              {credsModal.email && (
+                <div style={{ background:'#F8FAFF', border:'1.5px solid #EEF4FF', borderRadius:14, padding:18, display:'flex', flexDirection:'column', gap:14 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'#6B7A99', textTransform:'uppercase', letterSpacing:.5 }}>Identifiants de connexion</div>
+
+                  {/* Email */}
+                  <div>
+                    <div style={{ fontSize:11, color:'#6B7A99', marginBottom:4 }}>Email</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <code style={{ flex:1, background:'#EFF6FF', padding:'8px 12px', borderRadius:8, fontSize:13, fontWeight:600, color:'#1B4F9E', border:'1px solid #BFDBFE' }}>
+                        {credsModal.email}
+                      </code>
+                      <button onClick={() => { navigator.clipboard.writeText(credsModal.email); toast.success('Email copié !'); }}
+                        style={{ padding:'8px 12px', background:'#EFF6FF', color:'#1B4F9E', border:'1px solid #BFDBFE', borderRadius:8, cursor:'pointer', fontSize:12, fontWeight:700, whiteSpace:'nowrap' }}>
+                        📋 Copier
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mot de passe */}
+                  {credsModal.password && (
+                    <div>
+                      <div style={{ fontSize:11, color:'#6B7A99', marginBottom:4 }}>Mot de passe temporaire</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <code style={{ flex:1, background:'#EFF6FF', padding:'8px 12px', borderRadius:8, fontSize:15, fontWeight:800, color:'#1B4F9E', border:'1px solid #BFDBFE', letterSpacing:2 }}>
+                          {credsModal.password}
+                        </code>
+                        <button onClick={() => { navigator.clipboard.writeText(credsModal.password); toast.success('Mot de passe copié !'); }}
+                          style={{ padding:'8px 12px', background:'#EFF6FF', color:'#1B4F9E', border:'1px solid #BFDBFE', borderRadius:8, cursor:'pointer', fontSize:12, fontWeight:700, whiteSpace:'nowrap' }}>
+                          📋 Copier
+                        </button>
+                      </div>
+                      <div style={{ fontSize:11, color:'#9CA3AF', marginTop:6 }}>⚠️ Le patient devra changer ce mot de passe à la première connexion.</div>
+                    </div>
+                  )}
+
+                  {/* Copier tout */}
+                  <button onClick={() => {
+                    navigator.clipboard.writeText(`Email : ${credsModal.email}\nMot de passe : ${credsModal.password}`);
+                    toast.success('Identifiants copiés !');
+                  }} style={{ padding:'9px 16px', background:'linear-gradient(135deg,#0B1E3B,#1B4F9E)', color:'#fff', border:'none', borderRadius:10, cursor:'pointer', fontWeight:700, fontSize:13 }}>
+                    📋 Copier les deux identifiants
+                  </button>
+                </div>
+              )}
+
+              {/* Bouton Activer maintenant */}
+              {credsModal.patient && !credsModal.patient.actif && (
+                <button
+                  disabled={patientSaving}
+                  onClick={async () => {
+                    setPatientSaving(true);
+                    try {
+                      const { data } = await api.put(`/patients/${credsModal.patient._id}/activate-admin`);
+                      toast.success('✅ Compte activé — le patient peut se connecter maintenant');
+                      setCredsModal(c => ({ ...c, patient: data.patient }));
+                      dispatch(fetchPatients({ page: 1, limit: 100 }));
+                    } catch (e) {
+                      toast.error(e.response?.data?.message || 'Erreur lors de l\'activation');
+                    } finally {
+                      setPatientSaving(false);
+                    }
+                  }}
+                  style={{ padding:'10px 20px', background:'linear-gradient(135deg,#059669,#10B981)', color:'#fff', border:'none', borderRadius:10, cursor: patientSaving ? 'not-allowed' : 'pointer', fontWeight:700, fontSize:14, opacity: patientSaving ? 0.6 : 1, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                  {patientSaving ? '⏳ Activation...' : '⚡ Activer maintenant (sans email)'}
+                </button>
+              )}
+              {credsModal.patient?.actif && (
+                <div style={{ background:'#F0FDF4', border:'1.5px solid #BBF7D0', borderRadius:10, padding:'10px 16px', fontSize:13, fontWeight:700, color:'#166534', textAlign:'center' }}>
+                  ✅ Compte déjà actif — connexion possible
+                </div>
+              )}
+
+            </div>
+
+            <div style={{ padding:'14px 24px', borderTop:'1.5px solid #EEF4FF', display:'flex', justifyContent:'flex-end' }}>
+              <button onClick={() => setCredsModal(null)} style={{ padding:'8px 24px', background:'#F8FAFD', border:'1.5px solid #E2EAF4', borderRadius:10, color:'#374151', fontWeight:600, fontSize:13, cursor:'pointer' }}>Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </>
   );
 }

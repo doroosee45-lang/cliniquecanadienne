@@ -1,5 +1,6 @@
 const Child                  = require('../models/Child');
 const PediatricConsultation  = require('../models/PediatricConsultation');
+const { emitDashboardUpdate } = require('../utils/socket');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function ageEnAns(ddn) {
@@ -103,6 +104,7 @@ exports.getAll = async (req, res) => {
 
     const total   = await Child.countDocuments(filter);
     const enfants = await Child.find(filter)
+      .populate('patient_id', 'nom prenom numero_dossier')
       .sort('-createdAt')
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit));
@@ -125,6 +127,7 @@ exports.create = async (req, res) => {
     const body = { ...req.body, created_by: req.user._id };
     if (body.date_naissance) body.date_naissance = new Date(body.date_naissance);
     const child = await Child.create(body);
+    emitDashboardUpdate();
     res.status(201).json({ success: true, enfant: child });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -133,6 +136,7 @@ exports.update = async (req, res) => {
   try {
     const child = await Child.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
+    emitDashboardUpdate();
     res.json({ success: true, enfant: child });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

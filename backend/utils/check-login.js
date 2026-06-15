@@ -6,10 +6,15 @@ require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const User = require('../models/User');
 
-const EMAIL    = 'oseedoro@gmail.com';
-const PASSWORD = 'medisync123';
+const EMAIL    = process.env.CHECK_EMAIL    || 'oseedoro@gmail.com';
+const PASSWORD = process.env.SEED_PASSWORD;
 
 async function check() {
+  if (!PASSWORD) {
+    console.error('❌  SEED_PASSWORD non défini dans .env — impossible de tester le login.');
+    process.exit(1);
+  }
+
   console.log('\n══════════════════════════════════════');
   console.log('  DIAGNOSTIC LOGIN LOCAL');
   console.log('══════════════════════════════════════');

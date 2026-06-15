@@ -18,7 +18,10 @@ const errorHandler   = require('./middleware/errorHandler');
 const routes         = require('./routes');
 const { setIO }      = require('./utils/socket');
 
-connectDB();
+connectDB().catch(err => {
+  console.error('Connexion MongoDB échouée au démarrage:', err.message);
+  process.exit(1);
+});
 
 const app        = express();
 const httpServer = http.createServer(app);
@@ -140,8 +143,9 @@ app.use(hpp());
 // Logging
 if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
 
-// Static uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static uploads — protégé par JWT (les fichiers médicaux ne sont pas publics)
+const { protect: protectUploads } = require('./middleware/auth');
+app.use('/uploads', protectUploads, express.static(path.join(__dirname, 'uploads')));
 
 // Health check
 app.get('/api/health', (req, res) => {

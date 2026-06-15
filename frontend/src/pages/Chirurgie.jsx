@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchSurgeries, createSurgery, updateSurgery,
@@ -325,6 +326,7 @@ const EMPTY_COMPLIC = { type_complication: "infection", date_survenue: "", descr
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function Chirurgie() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const reduxSurgeries = useSelector(selectSurgeries);
   const reduxTotal = useSelector(selectChirurgieTotal);
   const reduxStats = useSelector(selectChirurgieStats);
@@ -689,7 +691,8 @@ export default function Chirurgie() {
                           <tr key={d._id}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--cb)", fontSize:12 }}>{d.numero}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--cn)" }}>{d.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--cn)", cursor: d.patient_id?._id ? 'pointer' : 'default', textDecoration: d.patient_id?._id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id?._id && navigate(`/patients/${d.patient_id._id}`)} title={d.patient_id?._id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
+                              {d.patient_id?.numero_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{d.patient_id.numero_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(d.date_naissance)} · {d.sexe ? d.sexe.charAt(0).toUpperCase() + d.sexe.slice(1) : "—"}</div>
                             </td>
                             <td style={{ fontSize:12, color:"var(--cm)", maxWidth:160 }}><div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{d.diagnostic_chirurgical || "—"}</div></td>
@@ -764,7 +767,8 @@ export default function Chirurgie() {
                               {d.nb_complications > 0 && <div><Badge cls="red" style={{ fontSize:9, padding:"1px 6px" }}>⚠ {d.nb_complications} compl.</Badge></div>}
                             </td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--cn)" }}>{d.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--cn)", cursor: d.patient_id?._id ? 'pointer' : 'default', textDecoration: d.patient_id?._id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id?._id && navigate(`/patients/${d.patient_id._id}`)} title={d.patient_id?._id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
+                              {d.patient_id?.numero_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{d.patient_id.numero_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(d.date_naissance)} · {d.groupe_sanguin || ""}</div>
                             </td>
                             <td style={{ maxWidth:160 }}><div style={{ fontSize:12.5, color:"var(--cn)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{d.diagnostic_chirurgical || "—"}</div></td>

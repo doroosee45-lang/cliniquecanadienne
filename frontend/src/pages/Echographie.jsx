@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   fetchEchographieStats, fetchDemandes, createDemande,
@@ -551,7 +552,7 @@ function Dashboard({ demandes }) {
                 return (
                   <tr key={d.id}>
                     <td style={{ fontFamily:"monospace", fontSize:12, fontWeight:700, color:"var(--cb)" }}>{d.numero}</td>
-                    <td style={{ fontWeight:600, color:"var(--cn)" }}>{d.patient}</td>
+                    <td><div style={{ fontWeight:600, color:"var(--cn)", cursor:d.patient_ref?._id?"pointer":"default", textDecoration:d.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient_ref?._id&&navigate(`/patients/${d.patient_ref._id}`)}>{d.patient}</div>{d.dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,display:"inline-block",marginTop:2}}>{d.dossier}</span>}</td>
                     <td>
                       {(() => { const t=TYPES_ECHO.find(t=>t.label===d.type); return t ? <span style={{ color:t.color, fontWeight:600, fontSize:12 }}>{t.icon} {d.type}</span> : d.type; })()}
                     </td>
@@ -630,8 +631,8 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
                   <tr key={d.id}>
                     <td style={{ fontFamily:"monospace", fontSize:12, fontWeight:700, color:"var(--cb)" }}>{d.numero}</td>
                     <td>
-                      <div style={{ fontWeight:700, color:"var(--cn)", fontSize:13 }}>{d.patient}</div>
-                      <div style={{ fontSize:11, color:"var(--cm)" }}>{d.age} ans · {d.sexe==="F"?"👩":"👨"} · {d.dossier}</div>
+                      <div style={{ fontWeight:700, color:"var(--cn)", fontSize:13, cursor:d.patient_ref?._id?"pointer":"default", textDecoration:d.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient_ref?._id&&navigate(`/patients/${d.patient_ref._id}`)}>{d.patient}</div>
+                      <div style={{ fontSize:11, color:"var(--cm)" }}>{d.age} ans · {d.sexe==="F"?"👩":"👨"}{d.dossier&&<span style={{fontFamily:"monospace",fontWeight:700,color:"#1B4F9E",marginLeft:6}}>· {d.dossier}</span>}</div>
                     </td>
                     <td>
                       {te && <span style={{ color:te.color, fontWeight:700, fontSize:13 }}>{te.icon} {d.type}</span>}
@@ -870,7 +871,7 @@ function Realisation({ demandes }) {
               {selDem.sexe==="F"?"👩":"👨"}
             </div>
             <div style={{ flex:1, position:"relative" }}>
-              <div style={{ fontSize:20, fontWeight:800, color:"#fff" }}>{selDem.patient}</div>
+              <div style={{ fontSize:20, fontWeight:800, color:"#fff", cursor:selDem.patient_ref?._id?"pointer":"default", textDecoration:selDem.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:3 }} onClick={()=>selDem.patient_ref?._id&&navigate(`/patients/${selDem.patient_ref._id}`)}>{selDem.patient}</div>
               <div style={{ fontSize:12, color:"rgba(255,255,255,.65)", marginTop:4, display:"flex", gap:16, flexWrap:"wrap" }}>
                 <span>🎂 {selDem.age} ans</span>
                 <span>📋 {selDem.dossier}</span>
@@ -1289,7 +1290,7 @@ function Facturation({ demandes }) {
                 const acte = d.type==="Cardiaque"?ACTES[3]:d.type==="Doppler"?ACTES[2]:(d.type==="Gynécologique"||d.type==="Obstétricale")?ACTES[1]:ACTES[0];
                 return (
                   <tr key={d.id}>
-                    <td style={{ fontWeight:600, color:"var(--cn)" }}>{d.patient}</td>
+                    <td><div style={{ fontWeight:600, color:"var(--cn)", cursor:d.patient_ref?._id?"pointer":"default", textDecoration:d.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient_ref?._id&&navigate(`/patients/${d.patient_ref._id}`)}>{d.patient}</div>{d.dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,display:"inline-block",marginTop:2}}>{d.dossier}</span>}</td>
                     <td><span style={{ fontSize:12 }}>{TYPES_ECHO.find(t=>t.label===d.type)?.icon} {d.type}</span></td>
                     <td style={{ fontSize:12, color:"var(--cm)" }}>{acte.label}</td>
                     <td style={{ fontWeight:700, color:"var(--cb)" }}>{acte.prix.toLocaleString("fr-FR")} F</td>
@@ -1499,6 +1500,7 @@ function NouvelleDemandeModal({ open, onClose, onAdd }) {
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function Echographie() {
+  const navigate  = useNavigate();
   const dispatch  = useDispatch();
   const demandes  = useSelector(selectDemandesList);
   const [mainTab, setMainTab] = useState("dashboard");
@@ -1586,7 +1588,8 @@ export default function Echographie() {
               <div style={{ display:"flex", flexWrap:"wrap", gap:10, justifyContent:"center" }}>
                 {demandes.filter(d=>d.rapport_statut==="valide").map(d=>(
                   <div key={d.id} style={{ background:"#F0FDFC", border:"1.5px solid #99F6E4", borderRadius:14, padding:"14px 18px", minWidth:220, textAlign:"left" }}>
-                    <div style={{ fontWeight:700, color:"var(--cn)" }}>{d.patient}</div>
+                    <div style={{ fontWeight:700, color:"var(--cn)", cursor:d.patient_ref?._id?"pointer":"default", textDecoration:d.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient_ref?._id&&navigate(`/patients/${d.patient_ref._id}`)}>{d.patient}</div>
+                    {d.dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,display:"inline-block",marginBottom:4}}>{d.dossier}</span>}
                     <div style={{ fontSize:12, color:"var(--cm)", margin:"4px 0" }}>{TYPES_ECHO.find(t=>t.label===d.type)?.icon} {d.type}</div>
                     <span className="cbdg green">✅ Validé</span>
                     <div style={{ display:"flex", gap:6, marginTop:10 }}>
