@@ -175,58 +175,42 @@ export default function ClinicLanding() {
   return (
     <div style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", color: COLORS.gray900, overflowX: "hidden", background: COLORS.white }}>
       <style>{`
+        /* ── Navbar mobile ── */
+        .home-desktop-nav     { display: flex; align-items: center; gap: 6px; }
+        .home-desktop-actions { display: flex; align-items: center; gap: 8px; }
+        .home-hamburger       { display: none !important; }
+
+        @media (max-width: 768px) {
+          .home-desktop-nav     { display: none !important; }
+          .home-desktop-actions { display: none !important; }
+          .home-hamburger       { display: flex !important; }
+        }
+
+        /* ── Hero mobile ── */
         @media (max-width: 768px) {
           .hero-section {
             min-height: auto !important;
             align-items: flex-start !important;
             padding-top: 84px !important;
           }
-
           .hero-grid {
             grid-template-columns: 1fr !important;
             gap: 28px !important;
             padding: 28px 20px 42px !important;
           }
-
-          .hero-copy {
-            text-align: center;
-          }
-
-          .hero-copy p {
-            margin-left: auto;
-            margin-right: auto;
-          }
-
-          .hero-actions {
-            justify-content: center;
-          }
-
-          .hero-actions button,
-          .hero-actions a {
-            width: 100%;
-            justify-content: center;
-          }
-
-          .hero-stats {
-            justify-content: center;
-            gap: 18px !important;
-            margin-top: 32px !important;
-          }
-
-          .hero-image {
-            order: -1;
-          }
-
+          .hero-copy { text-align: center; }
+          .hero-copy p { margin-left: auto; margin-right: auto; }
+          .hero-actions { justify-content: center; }
+          .hero-actions button, .hero-actions a { width: 100%; justify-content: center; }
+          .hero-stats { justify-content: center; gap: 18px !important; margin-top: 32px !important; }
+          .hero-image { order: -1; }
           .hero-image-card {
             width: 100% !important;
             max-width: 340px !important;
             height: 280px !important;
             border-radius: 24px !important;
           }
-
-          .hero-floating {
-            display: none !important;
-          }
+          .hero-floating { display: none !important; }
         }
       `}</style>
 
@@ -247,176 +231,44 @@ export default function ClinicLanding() {
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            {/* Desktop links */}
-            <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              {navLinks.map(link => (
-                <span
-                  key={link}
-                  style={style.navLink}
-                  onClick={() => scrollTo(link.toLowerCase().replace(/\s/g, "-").replace("à", "a"))}
-                  onMouseEnter={e => e.target.style.color = COLORS.primary}
-                  onMouseLeave={e => e.target.style.color = COLORS.gray700}
-                  className="home-navlink"
-                >
-                  {link}
-                </span>
-              ))}
-            </div>
-
-            {/* Mobile hamburger */}
-            <button
-              type="button"
-              aria-label="Open menu"
-              className="hamburger"
-              onClick={() => {
-                const el = document.getElementById("mobile-nav");
-                if (!el) return;
-                const isOpen = el.getAttribute("data-open") === "true";
-                el.setAttribute("data-open", isOpen ? "false" : "true");
-              }}
-              style={{
-                display: "none",
-                background: "transparent",
-                border: `1.5px solid ${COLORS.primary}`,
-                color: COLORS.primary,
-                borderRadius: 14,
-                padding: "8px 12px",
-                fontWeight: 900,
-                cursor: "pointer",
-                lineHeight: 1,
-              }}
-            >
-              ☰
-            </button>
-
-            {/* Sidebar menu (mobile) */}
-            <div
-              id="mobile-nav"
-              data-open="false"
-              className="mobile-nav"
-              style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                bottom: 0,
-                width: 280,
-                background: "rgba(255,255,255,0.98)",
-                boxShadow: "6px 0 28px rgba(0,0,0,0.18)",
-                padding: "80px 16px 16px",
-                transform: "translateX(-100%)",
-                transition: "transform 0.25s ease",
-                zIndex: 2000,
-                overflowY: "auto",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <div style={{ fontWeight: 900, color: COLORS.primary }}>MediCare</div>
-                <button
-                  type="button"
-                  aria-label="Close menu"
-                  onClick={() => {
-                    const el = document.getElementById("mobile-nav");
-                    if (el) el.setAttribute("data-open", "false");
-                  }}
-                  style={{
-                    background: "transparent",
-                    border: `1.5px solid ${COLORS.primary}`,
-                    color: COLORS.primary,
-                    borderRadius: 12,
-                    padding: "6px 10px",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-
-              {navLinks.map(link => (
-                <div key={link} style={{ marginBottom: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      scrollTo(link.toLowerCase().replace(/\s/g, "-").replace("à", "a"));
-                      const el = document.getElementById("mobile-nav");
-                      if (el) el.setAttribute("data-open", "false");
-                    }}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      background: "transparent",
-                      border: "none",
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      cursor: "pointer",
-                      fontWeight: 800,
-                      color: COLORS.gray900,
-                      fontSize: 14,
-                    }}
-                  >
-                    {link}
-                  </button>
-                </div>
-              ))}
-
-              <div style={{ marginTop: 18, fontSize: 12, color: COLORS.gray600, lineHeight: 1.6 }}>
-                📞 Urgence: +216 00 000 000
-              </div>
-            </div>
-
-            {/* Overlay */}
-            <div
-              className="mobile-overlay"
-              onClick={() => {
-                const el = document.getElementById("mobile-nav");
-                if (el) el.setAttribute("data-open", "false");
-              }}
-              style={{
-                display: "none",
-                position: "fixed",
-                inset: 0,
-                background: "rgba(0,0,0,0.35)",
-                zIndex: 1900,
-              }}
-            />
+          {/* Liens de navigation — desktop uniquement */}
+          <div className="home-desktop-nav">
+            {navLinks.map(link => (
+              <span
+                key={link}
+                style={style.navLink}
+                onClick={() => scrollTo(link.toLowerCase().replace(/\s/g, "-").replace("à", "a"))}
+                onMouseEnter={e => e.target.style.color = COLORS.primary}
+                onMouseLeave={e => e.target.style.color = COLORS.gray700}
+              >
+                {link}
+              </span>
+            ))}
           </div>
 
-
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {/* Sélecteur de langue */}
-
-            {/* Urgence — lien téléphonique natif */}
-            <a
-              href="tel:+21600000000"
-              style={{ color: COLORS.danger, fontSize: "13px", fontWeight: "700", textDecoration: "none", display: "flex", alignItems: "center", gap: "4px" }}
-            >
+          {/* Actions droite — desktop uniquement */}
+          <div className="home-desktop-actions">
+            <a href="tel:+21600000000" style={{ color: COLORS.danger, fontSize: "13px", fontWeight: "700", textDecoration: "none", display: "flex", alignItems: "center", gap: "4px" }}>
               📞 Urgence
             </a>
-            
-
-            {/* Commencer */}
-            <Link
-              to="/login"
-              style={{ ...style.btn, background: COLORS.primary, color: COLORS.white, padding: "7px 16px" }}
-            >
+            <Link to="/login" style={{ ...style.btn, background: COLORS.primary, color: COLORS.white, padding: "7px 16px" }}>
               🚀 Commencer
             </Link>
           </div>
 
+          {/* Hamburger — mobile uniquement */}
           <button
             type="button"
-            className="mobile-menu-toggle lg:hidden"
-            onClick={() => setMobileMenuOpen(v => !v)}
-            aria-label="Ouvrir le menu"
+            aria-label={mobileMenuOpen ? "Fermer le menu" : "Ouvrir le menu"}
             aria-expanded={mobileMenuOpen}
-            style={{ width: "42px", height: "42px", borderRadius: "12px", border: `1px solid ${COLORS.accent}`, background: COLORS.white, color: COLORS.primary, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 16px rgba(21,101,192,0.08)" }}
+            className="home-hamburger"
+            onClick={() => setMobileMenuOpen(v => !v)}
+            style={{ width: "42px", height: "42px", borderRadius: "12px", border: `1.5px solid ${COLORS.primary}`, background: COLORS.white, color: COLORS.primary, alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 12px rgba(21,101,192,0.10)", transition: "background 0.2s" }}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 6h16" />
-              <path d="M4 12h16" />
-              <path d="M4 18h16" />
-            </svg>
+            {mobileMenuOpen
+              ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18" /><path d="M6 6l12 12" /></svg>
+              : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" /></svg>
+            }
           </button>
         </div>
 
