@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
 import api from '../../api';
@@ -95,13 +95,27 @@ export default function Header({ title, onMenuToggle }) {
   return (
     <>
       <header className="bg-white border-b border-gray-100 px-4 lg:px-6 py-3 flex items-center justify-between sticky top-0 z-40">
-        {/* Hamburger + Title */}
+        {/* Hamburger + Clinic brand + Title */}
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <button onClick={onMenuToggle} className="lg:hidden w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center hover:bg-gray-100">
             <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
+
+          {/* Clinic logo — lien vers la page d'accueil */}
+          <Link to="/home" style={{ textDecoration: 'none' }} className="flex items-center gap-2 group flex-shrink-0" title="Retour à l'accueil">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-opacity group-hover:opacity-75" style={{ background: '#2563eb' }}>
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </div>
+            <div className="hidden sm:block">
+              <div className="text-gray-900 font-bold text-sm leading-tight group-hover:text-blue-600 transition-colors">Clinique Canadienne</div>
+              <div className="text-blue-500 text-xs leading-none">de Souanké</div>
+            </div>
+          </Link>
+
           <div className="min-w-0">
             <h1 className="text-lg font-bold text-gray-900 truncate">{title}</h1>
             <p className="text-gray-400 text-xs hidden sm:block flex items-center gap-2">

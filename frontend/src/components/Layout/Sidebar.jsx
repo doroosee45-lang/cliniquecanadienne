@@ -218,7 +218,7 @@
 
 
 
-import { NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -352,9 +352,9 @@ export default function Sidebar({ isOpen, onClose }) {
 
         {/* ── Logo ─────────────────────────────────────────────────────────── */}
         <div className="p-5 border-b border-white/10 flex-shrink-0">
-          <div className="flex items-center gap-3">
+          <Link to="/home" style={{ textDecoration: 'none' }} className="flex items-center gap-3 group" title="Retour à l'accueil">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-opacity group-hover:opacity-75"
               style={{ background: '#2563eb' }}
             >
               <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -363,10 +363,10 @@ export default function Sidebar({ isOpen, onClose }) {
               </svg>
             </div>
             <div>
-              <div className="text-white font-bold text-sm leading-tight">Clinique canadienne</div>
+              <div className="text-white font-bold text-sm leading-tight group-hover:text-blue-200 transition-colors">Clinique canadienne</div>
               <div className="text-blue-400 text-xs">de Souanké</div>
             </div>
-          </div>
+          </Link>
         </div>
 
         {/* ── Utilisateur connecté ──────────────────────────────────────────── */}
