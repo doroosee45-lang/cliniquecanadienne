@@ -3,6 +3,10 @@ const User = require('../models/User');
 const { logAction, sendTokenCookie } = require('../utils/helpers');
 const { sendPasswordResetEmail } = require('../utils/mail');
 
+// T3.4 — verrouillage de compte après échecs répétés.
+const MAX_TENTATIVES   = 5;
+const VERROUILLAGE_MS  = 15 * 60 * 1000; // 15 min — aligné sur la fenêtre du rate-limiter réseau existant
+
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -10,14 +14,34 @@ exports.login = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Email et mot de passe requis.' });
 
     const user = await User.findOne({ email }).select('+password');
+
+    // Verrou actif : refuse même avec le bon mot de passe, sans le vérifier.
+    if (user?.verrouille_jusqu_a && user.verrouille_jusqu_a > new Date()) {
+      await logAction({ utilisateur: user._id, action: 'LOGIN_ECHEC', module: 'auth', ip: req.ip, message: `Tentative sur compte verrouillé: ${email}`, statut: 'echec' });
+      return res.status(423).json({
+        success: false,
+        message: `Compte temporairement verrouillé après ${MAX_TENTATIVES} échecs. Réessayez après ${user.verrouille_jusqu_a.toLocaleTimeString('fr-FR')}.`,
+      });
+    }
+
     if (!user || !(await user.matchPassword(password))) {
+      if (user) {
+        user.tentatives_echouees = (user.tentatives_echouees || 0) + 1;
+        if (user.tentatives_echouees >= MAX_TENTATIVES) {
+          user.verrouille_jusqu_a = new Date(Date.now() + VERROUILLAGE_MS);
+        }
+        await user.save({ validateBeforeSave: false });
+      }
       await logAction({ action: 'LOGIN_ECHEC', module: 'auth', ip: req.ip, message: `Tentative échouée: ${email}`, statut: 'echec' });
       return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect.' });
     }
     if (user.statut !== 'actif')
       return res.status(403).json({ success: false, message: 'Compte inactif ou suspendu. Contactez l\'administrateur.' });
 
-    user.derniere_connexion = new Date();
+    // Connexion réussie : remet le compteur d'échecs à zéro.
+    user.tentatives_echouees = 0;
+    user.verrouille_jusqu_a  = null;
+    user.derniere_connexion  = new Date();
     await user.save({ validateBeforeSave: false });
 
     await logAction({ utilisateur: user._id, action: 'LOGIN', module: 'auth', ip: req.ip, ua: req.headers['user-agent'], message: `Connexion de ${user.email}` });
@@ -84,6 +108,10 @@ exports.resetPassword = async (req, res, next) => {
     user.must_change_password  = false;
     user.reset_password_token  = undefined;
     user.reset_password_expire = undefined;
+    // Une réinitialisation par lien e-mail prouve l'identité du titulaire —
+    // lève un éventuel verrou T3.4 en cours.
+    user.tentatives_echouees   = 0;
+    user.verrouille_jusqu_a    = null;
     await user.save();
 
     await logAction({ utilisateur: user._id, action: 'RESET_PASSWORD', module: 'auth', ip: req.ip, message: `Mot de passe réinitialisé: ${user.email}` });

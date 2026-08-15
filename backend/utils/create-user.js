@@ -26,7 +26,9 @@ const run = async () => {
     return;
   }
 
-  const password = process.env.CREATE_USER_PASSWORD || crypto.randomBytes(9).toString('base64url');
+  // Suffixe fixe garantissant la complexité minimale (T3.4 : majuscule +
+  // chiffre) — base64url seul ne le garantit pas de façon déterministe.
+  const password = process.env.CREATE_USER_PASSWORD || `${crypto.randomBytes(9).toString('base64url')}A1`;
 
   const user = await User.create({
     email,
