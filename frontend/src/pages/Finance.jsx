@@ -13,6 +13,9 @@ import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Wallet, Download, Banknote, Plus } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 import * as XLSX from 'xlsx';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
@@ -984,37 +987,32 @@ export default function Finance() {
       <style>{CSS}</style>
       <div className="fin">
 
-        {/* ── TOPBAR ── */}
-        <div className="fin-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.money}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Module Finance</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>
-                  {CLINIC_NAME} {CLINIC_SUBTITLE} ·
-                  <span style={{ color:"#A7F3D0", fontWeight:700 }}> {fmtMontant(totalRevenus)} de revenus ce mois</span>
-                  {montantImpaye > 0 && <span style={{ color:"#FCA5A5", fontWeight:700 }}> · {fmtMontant(montantImpaye)} impayés</span>}
-                </div>
-              </div>
+        {/* ── HERO ── */}
+        <Hero
+          icon={Wallet}
+          title="Module Finance"
+          dateLabel={
+            <>
+              {CLINIC_NAME} {CLINIC_SUBTITLE} ·
+              <span style={{ color:"#A7F3D0", fontWeight:700 }}> {fmtMontant(totalRevenus)} de revenus ce mois</span>
+              {montantImpaye > 0 && <span style={{ color:"#FCA5A5", fontWeight:700 }}> · {fmtMontant(montantImpaye)} impayés</span>}
+            </>
+          }
+          right={
+            <div className="no-print flex items-center gap-2 flex-wrap">
+              <button className="hero-btn-ghost" onClick={() => setModalExport(true)}>
+                <Download size={14} /> Exporter
+              </button>
+              <button className="hero-btn-ghost" onClick={() => setModalCaisse(true)}>
+                <Banknote size={14} /> Opération caisse
+              </button>
+              <Button icon={Plus} onClick={() => setModalFacture(true)}>Nouvelle facture</Button>
             </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }} className="no-print">
-              <button className="fbtn fbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => setModalExport(true)}>
-                {I.dl} Exporter
-              </button>
-              <button className="fbtn fbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => setModalCaisse(true)}>
-                {I.cash} Opération caisse
-              </button>
-              <button className="fbtn fbtn-teal" onClick={() => setModalFacture(true)}>
-                {I.plus} Nouvelle facture
-              </button>
-            </div>
-          </div>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard",    icon:I.grid,   label:"Tableau de bord", labelM:"Dash." },
               { key:"revenus",      icon:I.trend,  label:"Revenus",         labelM:"Revenus" },
@@ -1029,18 +1027,17 @@ export default function Finance() {
               { key:"rapports",     icon:I.chart,  label:"Rapports",        labelM:"Rapports" },
             ];
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`fin-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'6px 2px 7px',fontSize:'9px',gap:'2px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'6px 2px 7px',fontSize:'9px',gap:'2px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'13px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
-                    {(t.badge??0)>0&&<span className="fin-tab-badge">{t.badge}</span>}
+                    {(t.badge??0)>0&&<span className="tab-bar-item-count">{t.badge}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>

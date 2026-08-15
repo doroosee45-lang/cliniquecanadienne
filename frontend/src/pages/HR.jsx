@@ -10,6 +10,9 @@ import toast from "react-hot-toast";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { Briefcase, Plus, Download } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── Chart.js loader ─────────────────────────────────────────
@@ -989,35 +992,26 @@ export default function RessourcesHumaines() {
       <style>{CSS}</style>
       <div className="rh">
 
-        {/* ── TOPBAR ── */}
-        <div className="rh-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.users}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Ressources Humaines</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>{total} employés · {CLINIC_NAME} {CLINIC_SUBTITLE}</div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="rbtn rbtn-teal" onClick={() => { setFormEmp(EMPTY_EMP); setModalEmp(true); }}>
-                {I.plus} Nouvel employé
-              </button>
+        {/* ── HERO ── */}
+        <Hero
+          icon={Briefcase}
+          title="Ressources Humaines"
+          dateLabel={`${total} employés · ${CLINIC_NAME} ${CLINIC_SUBTITLE}`}
+          right={
+            <>
               <div style={{ position:"relative" }}>
-                <button className="rbtn rbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={(e) => { e.stopPropagation(); setExportMenu(m => !m); }}>
-                  {I.dl} Exporter ▾
+                <button className="hero-btn-ghost" onClick={(e) => { e.stopPropagation(); setExportMenu(m => !m); }}>
+                  <Download size={14} /> Exporter ▾
                 </button>
                 {exportMenu && (
-                  <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#fff", border:"1.5px solid var(--rbr)", borderRadius:12, boxShadow:"0 8px 30px rgba(11,30,59,.18)", zIndex:300, minWidth:200, padding:"6px 0" }} onClick={e => e.stopPropagation()}>
+                  <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#fff", border:"1.5px solid var(--border)", borderRadius:12, boxShadow:"0 8px 30px rgba(11,30,59,.18)", zIndex:300, minWidth:200, padding:"6px 0" }} onClick={e => e.stopPropagation()}>
                     {[
                       ["📄 PDF — Liste des employés",  () => { exportEmployesPDF();      setExportMenu(false); }],
                       ["📊 Excel — Rapport complet",   () => { exportRapportRH_Excel();  setExportMenu(false); }],
                       ["📋 CSV — Liste des employés",  () => { exportEmployesCSV();       setExportMenu(false); }],
                       ["💰 PDF — Rapport salarial",    () => { exportSalairesPDF();       setExportMenu(false); }],
                     ].map(([label, fn]) => (
-                      <button key={label} onClick={fn} style={{ display:"block", width:"100%", padding:"9px 16px", textAlign:"left", background:"none", border:"none", fontSize:13, color:"var(--rn)", cursor:"pointer", fontFamily:"'Poppins',sans-serif", fontWeight:500 }}
+                      <button key={label} onClick={fn} style={{ display:"block", width:"100%", padding:"9px 16px", textAlign:"left", background:"none", border:"none", fontSize:13, color:"var(--ink)", cursor:"pointer", fontFamily:"'Poppins',sans-serif", fontWeight:500 }}
                         onMouseOver={e => e.currentTarget.style.background="#EEF4FF"} onMouseOut={e => e.currentTarget.style.background="none"}>
                         {label}
                       </button>
@@ -1025,11 +1019,13 @@ export default function RessourcesHumaines() {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
+              <Button icon={Plus} onClick={() => { setFormEmp(EMPTY_EMP); setModalEmp(true); }}>Nouvel employé</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard",   icon:I.grid,     label:"Tableau de bord",   labelM:"Dashboard" },
               { key:"employes",    icon:I.user,     label:"Employés",           labelM:"Employés" },
@@ -1048,18 +1044,17 @@ export default function RessourcesHumaines() {
               { key:"rapports",    icon:I.report,   label:"Rapports",           labelM:"Rapports" },
             ].filter(t=>!t.disabled);
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`rh-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'6px 2px 7px',fontSize:'9px',gap:'2px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'6px 2px 7px',fontSize:'9px',gap:'2px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'13px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
-                    {t.key==="conges"&&congesAttente>0&&<span className="rh-tab-badge">{congesAttente}</span>}
+                    {t.key==="conges"&&congesAttente>0&&<span className="tab-bar-item-count">{congesAttente}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         <div style={{ padding: isMobile ? 14 : 24 }}>
 
