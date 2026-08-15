@@ -1,6 +1,16 @@
 // controllers/googleAuth.controller.js
 const User = require('../models/User');
 const { sendTokenCookie } = require('../utils/helpers');
+const { OAuth2Client } = require('google-auth-library');
+
+// T3.2 — google-auth-library était déclarée en dépendance mais jamais
+// utilisée : le contrôleur appelait directement l'endpoint userinfo avec le
+// access_token reçu du frontend, ce qui valide bien l'authenticité du jeton
+// (Google renvoie 401 si invalide) mais jamais son AUDIENCE — un access_token
+// Google valide émis pour n'importe quelle autre application tierce était
+// donc accepté ici aussi (risque de confused deputy). getTokenInfo() utilise
+// l'endpoint officiel de vérification de jeton et permet de vérifier `aud`.
+const oauthClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 /**
  * POST /api/auth/google
@@ -14,7 +24,20 @@ const googleLogin = async (req, res) => {
       return res.status(400).json({ success: false, message: 'access_token manquant.' });
     }
 
-    // ── 1. Récupérer le profil Google ─────────────────────────────────────
+    // ── 1. Vérification officielle du jeton (signature/émetteur/expiration,
+    //      via l'endpoint Google dédié) puis contrôle de l'audience ─────────
+    let tokenInfo;
+    try {
+      tokenInfo = await oauthClient.getTokenInfo(access_token);
+    } catch (err) {
+      return res.status(401).json({ success: false, message: 'Token Google invalide ou expiré.' });
+    }
+    if (process.env.GOOGLE_CLIENT_ID && tokenInfo.aud !== process.env.GOOGLE_CLIENT_ID) {
+      return res.status(401).json({ success: false, message: 'Token Google invalide (audience incorrecte).' });
+    }
+
+    // ── 2. Récupérer le profil Google (nom/prénom/photo — non fournis par
+    //      la vérification du jeton) ────────────────────────────────────────
     const googleRes = await fetch(
       `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${access_token}`
     );
@@ -29,7 +52,7 @@ const googleLogin = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email Google non disponible.' });
     }
 
-    // ── 2. Upsert ─────────────────────────────────────────────────────────
+    // ── 3. Upsert ─────────────────────────────────────────────────────────
     let user = await User.findOne({ email: profile.email });
 
     if (!user) {
@@ -53,11 +76,11 @@ const googleLogin = async (req, res) => {
       }
     }
 
-    // ── 3. Mise à jour dernière connexion ──────────────────────────────────
+    // ── 4. Mise à jour dernière connexion ──────────────────────────────────
     user.derniere_connexion = new Date();
     await user.save();
 
-    // ── 4. Cookie httpOnly + réponse — même helper que le login classique,
+    // ── 5. Cookie httpOnly + réponse — même helper que le login classique,
     //      pour un comportement (sameSite/secure/forme du payload) identique
     //      quel que soit le mode de connexion. Le JWT n'est jamais renvoyé
     //      dans le corps de la réponse (cf. correction Socket.IO).
