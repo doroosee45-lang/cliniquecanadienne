@@ -3,7 +3,10 @@ import { RefreshCw } from 'lucide-react';
 export default function Hero({
   icon: Icon,
   roleColor = 'var(--accent)',
-  eyebrow = 'Bienvenue,',
+  eyebrow = null, // pas de texte par défaut : "Bienvenue," n'a de sens que
+                   // pour un vrai bandeau d'accueil personnel (Dashboard) —
+                   // toutes les autres pages sont des titres de module et
+                   // doivent le passer explicitement si elles en veulent un.
   title,
   badge,        // { icon, label } — pilule de rôle ; omise si non fournie
   dateLabel,
