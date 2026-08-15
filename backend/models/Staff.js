@@ -41,8 +41,9 @@ const StaffSchema = new Schema({
 
 StaffSchema.pre('save', async function(next) {
   if (this.isNew && !this.matricule) {
-    const count = await mongoose.model('Staff').countDocuments();
-    this.matricule = `STAF-${String(count + 1).padStart(4, '0')}`;
+    const { nextSequence } = require('../utils/counter');
+    const seq = await nextSequence('staff');
+    this.matricule = `STAF-${String(seq).padStart(4, '0')}`;
   }
   next();
 });

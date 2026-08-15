@@ -157,11 +157,15 @@ exports.create = async (req, res, next) => {
     emitActivity({ module: 'patients', action: 'Nouveau patient', detail: `${patient.prenom} ${patient.nom} (${patient.numero_dossier})`, icon: '👤', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
 
+    // Le mot de passe temporaire en clair n'est renvoyé au front que si
+    // l'email d'activation n'a pas pu être envoyé — sinon il transiterait
+    // inutilement dans la réponse HTTP (logs, outils réseau) alors que le
+    // canal de distribution prévu (email) a déjà fait son travail.
     res.status(201).json({
       success:           true,
       patient,
       email_envoye:      emailEnvoye,
-      mot_de_passe_temp: motDePasseClair,
+      mot_de_passe_temp: emailEnvoye ? undefined : motDePasseClair,
       message:           emailEnvoye
         ? `Dossier créé avec succès. Un email d'activation a été envoyé à ${patient.email}.`
         : `Dossier créé. Email d'activation non envoyé (SMTP non configuré).`,
@@ -262,8 +266,49 @@ exports.update = async (req, res, next) => {
 // ── DELETE ───────────────────────────────────────────────────────────────────
 exports.remove = async (req, res, next) => {
   try {
-    const patient = await Patient.findByIdAndDelete(req.params.id);
+    const patient = await Patient.findById(req.params.id);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+
+    // Un dossier patient possédant le moindre historique clinique/financier
+    // ne doit jamais être supprimé physiquement : obligation de conservation
+    // du dossier médical, et ça laisserait des références orphelines dans
+    // rendez-vous/consultations/hospitalisations/factures/ordonnances. On
+    // désactive le dossier à la place (statut='inactif', actif=false).
+    const [Appointment, Consultation, Hospitalization, Invoice, Prescription] = [
+      require('../models/Appointment'), require('../models/Consultation'),
+      require('../models/Hospitalization'), require('../models/Invoice'), require('../models/Prescription'),
+    ];
+    const [nbRdv, nbConsult, nbHosp, nbFact, nbRx] = await Promise.all([
+      Appointment.countDocuments({ patient: patient._id }),
+      Consultation.countDocuments({ patient: patient._id }),
+      Hospitalization.countDocuments({ patient: patient._id }),
+      Invoice.countDocuments({ patient: patient._id }),
+      Prescription.countDocuments({ patient: patient._id }),
+    ]);
+    const hasHistory = (nbRdv + nbConsult + nbHosp + nbFact + nbRx) > 0;
+
+    if (hasHistory) {
+      patient.actif  = false;
+      patient.statut = 'inactif';
+      await patient.save();
+      // Le compte portail associé ne doit plus pouvoir se connecter.
+      if (patient.email) {
+        await User.findOneAndUpdate({ email: patient.email, role: 'patient' }, { statut: 'inactif' });
+      }
+      await logAction({ utilisateur: req.user._id, action: 'DEACTIVATE', module: 'patients', entite_id: patient._id, ip: req.ip, message: `Désactivation (historique existant) : ${patient.nom} ${patient.prenom}` });
+      return res.json({
+        success: true,
+        deactivated: true,
+        message: 'Ce patient a un historique clinique ou financier — le dossier a été désactivé plutôt que supprimé, pour préserver l\'intégrité des données.',
+      });
+    }
+
+    // Aucun historique : suppression réelle possible. On nettoie aussi le
+    // compte User "patient" lié pour ne pas laisser un compte orphelin.
+    await Patient.findByIdAndDelete(patient._id);
+    if (patient.email) {
+      await User.deleteOne({ email: patient.email, role: 'patient' });
+    }
     await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'patients', entite_id: req.params.id, ip: req.ip, message: `Suppression : ${patient.nom} ${patient.prenom}` });
     res.json({ success: true, message: 'Patient supprimé.' });
   } catch (err) { next(err); }

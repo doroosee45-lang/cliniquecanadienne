@@ -84,8 +84,17 @@ exports.create = async (req, res, next) => {
 
     body.montant_ht      = body.lignes?.reduce((s, l) => s + (Number(l.prix_unitaire) * (l.quantite || 1)), 0) || montantDirect;
     body.montant_ttc     = body.montant_ht * (1 + (body.tva || 0) / 100);
-    body.montant_restant = body.statut === 'payee' ? 0 : body.montant_ttc;
-    if (body.statut === 'payee') body.montant_paye = body.montant_ttc;
+
+    // montant_paye / montant_restant / statut sont recalculés automatiquement
+    // par le hook pre('save') du modèle à partir de `paiements[]` — les fixer
+    // ici directement (comme avant) produit un document désynchronisé dès que
+    // ce tableau est vide : le hook écrase montant_paye à 0 en le recalculant
+    // depuis `paiements`, mais ne touche au statut que si ce recalcul déclenche
+    // ses propres conditions — résultat : statut='payee' avec montant_paye=0
+    // et montant_restant=montant_ttc. On enregistre donc un vrai paiement.
+    if (body.statut === 'payee' && !(body.paiements?.length)) {
+      body.paiements = [{ montant: body.montant_ttc, mode: 'especes', enregistre_par: req.user._id }];
+    }
 
     const days = body.date_echeance ? Math.round((new Date(body.date_echeance) - Date.now()) / 86400000) : 30;
     body.score_risque = days < 7 ? 80 : days < 14 ? 50 : 20;
@@ -108,6 +117,8 @@ exports.addPayment = async (req, res, next) => {
     const { montant, mode, reference } = req.body;
     const invoice = await Invoice.findById(req.params.id);
     if (!invoice) return res.status(404).json({ success: false, message: 'Facture introuvable.' });
+    if (!(Number(montant) > 0))
+      return res.status(400).json({ success: false, message: 'Le montant du paiement doit être positif.' });
     if (montant > invoice.montant_restant)
       return res.status(400).json({ success: false, message: 'Montant supérieur au solde restant.' });
 

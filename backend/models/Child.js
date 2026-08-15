@@ -36,7 +36,7 @@ const MaladieChronSchema = new mongoose.Schema({
 }, { _id: true, timestamps: true });
 
 const ChildSchema = new mongoose.Schema({
-  numero:          String,
+  numero:          { type: String, unique: true, sparse: true },
   patient_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' },
 
   nom:             { type: String, required: true },
@@ -73,9 +73,10 @@ const ChildSchema = new mongoose.Schema({
 
 ChildSchema.pre('save', async function (next) {
   if (!this.numero) {
+    const { nextSequence } = require('../utils/counter');
     const year = new Date().getFullYear();
-    const count = await mongoose.model('Child').countDocuments({ numero: new RegExp(`^PED-${year}-`) });
-    this.numero = `PED-${year}-${String(count + 1).padStart(4, '0')}`;
+    const seq = await nextSequence(`child-${year}`);
+    this.numero = `PED-${year}-${String(seq).padStart(4, '0')}`;
   }
   next();
 });

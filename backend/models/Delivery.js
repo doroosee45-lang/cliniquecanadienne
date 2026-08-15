@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const DeliverySchema = new mongoose.Schema({
-  numero:            String,
+  numero:            { type: String, unique: true, sparse: true },
   grossesse_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'Pregnancy' },
   patient_id:        { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' },
   patient_nom:       String,
@@ -24,9 +24,10 @@ const DeliverySchema = new mongoose.Schema({
 
 DeliverySchema.pre('save', async function (next) {
   if (!this.numero) {
+    const { nextSequence } = require('../utils/counter');
     const year = new Date().getFullYear();
-    const count = await mongoose.model('Delivery').countDocuments({ numero: new RegExp(`^ACC-${year}-`) });
-    this.numero = `ACC-${year}-${String(count + 1).padStart(4, '0')}`;
+    const seq = await nextSequence(`delivery-${year}`);
+    this.numero = `ACC-${year}-${String(seq).padStart(4, '0')}`;
   }
   next();
 });

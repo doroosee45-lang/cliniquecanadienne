@@ -53,9 +53,10 @@ const PatientSchema = new Schema({
 
 PatientSchema.pre('save', async function (next) {
   if (this.isNew) {
+    const { nextSequence } = require('../utils/counter');
     const year = new Date().getFullYear();
-    const count = await mongoose.model('Patient').countDocuments();
-    this.numero_dossier = `CLIN-${year}-${String(count + 1).padStart(5, '0')}`;
+    const seq = await nextSequence(`patient-${year}`);
+    this.numero_dossier = `CLIN-${year}-${String(seq).padStart(5, '0')}`;
   }
   next();
 });

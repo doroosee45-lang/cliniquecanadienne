@@ -29,9 +29,10 @@ const PrescriptionSchema = new Schema({
 
 PrescriptionSchema.pre('save', async function(next) {
   if (this.isNew) {
+    const { nextSequence } = require('../utils/counter');
     const year = new Date().getFullYear();
-    const count = await mongoose.model('Prescription').countDocuments();
-    this.numero_rx = `RX-${year}-${String(count + 1).padStart(5, '0')}`;
+    const seq = await nextSequence(`prescription-${year}`);
+    this.numero_rx = `RX-${year}-${String(seq).padStart(5, '0')}`;
     this.date_expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   }
   next();

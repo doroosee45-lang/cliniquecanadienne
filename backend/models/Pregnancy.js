@@ -50,7 +50,7 @@ const PostnatalSchema = new mongoose.Schema({
 }, { timestamps: true, _id: true });
 
 const PregnancySchema = new mongoose.Schema({
-  numero:                  String,
+  numero:                  { type: String, unique: true, sparse: true },
   patient_id:              { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' },
   patient_nom:             String,
   patient_prenom:          String,
@@ -108,9 +108,10 @@ const PregnancySchema = new mongoose.Schema({
 
 PregnancySchema.pre('save', async function (next) {
   if (!this.numero) {
+    const { nextSequence } = require('../utils/counter');
     const year = new Date().getFullYear();
-    const count = await mongoose.model('Pregnancy').countDocuments({ numero: new RegExp(`^MAT-${year}-`) });
-    this.numero = `MAT-${year}-${String(count + 1).padStart(4, '0')}`;
+    const seq = await nextSequence(`pregnancy-${year}`);
+    this.numero = `MAT-${year}-${String(seq).padStart(4, '0')}`;
   }
   if (this.ddr && !this.dpa) {
     const dpa = new Date(this.ddr);

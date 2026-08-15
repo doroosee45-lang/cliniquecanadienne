@@ -3,7 +3,7 @@ const { Schema } = mongoose;
 
 const PaiementSchema = new Schema({
   date: { type: Date, default: Date.now },
-  montant: { type: Number, required: true },
+  montant: { type: Number, required: true, min: [0.01, 'Le montant d\'un paiement doit être positif.'] },
   mode: { type: String, enum: ['especes','carte','mobile_money','virement','cheque'] },
   reference: String,
   enregistre_par: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -40,9 +40,10 @@ const InvoiceSchema = new Schema({
 
 InvoiceSchema.pre('save', async function(next) {
   if (this.isNew) {
+    const { nextSequence } = require('../utils/counter');
     const year = new Date().getFullYear();
-    const count = await mongoose.model('Invoice').countDocuments();
-    this.numero_facture = `INV-${year}-${String(count + 1).padStart(5, '0')}`;
+    const seq = await nextSequence(`invoice-${year}`);
+    this.numero_facture = `INV-${year}-${String(seq).padStart(5, '0')}`;
     this.date_echeance = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   }
   this.montant_paye = this.paiements.reduce((sum, p) => sum + p.montant, 0);

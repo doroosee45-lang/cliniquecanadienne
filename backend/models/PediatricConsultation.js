@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const PediatricConsultationSchema = new mongoose.Schema({
-  numero:      String,
+  numero:      { type: String, unique: true, sparse: true },
   child_id:    { type: mongoose.Schema.Types.ObjectId, ref: 'Child', required: true },
   patient_nom: String,
 
@@ -43,9 +43,10 @@ const PediatricConsultationSchema = new mongoose.Schema({
 
 PediatricConsultationSchema.pre('save', async function (next) {
   if (!this.numero) {
+    const { nextSequence } = require('../utils/counter');
     const year = new Date().getFullYear();
-    const count = await mongoose.model('PediatricConsultation').countDocuments({ numero: new RegExp(`^CPED-${year}-`) });
-    this.numero = `CPED-${year}-${String(count + 1).padStart(4, '0')}`;
+    const seq = await nextSequence(`pediatric-consultation-${year}`);
+    this.numero = `CPED-${year}-${String(seq).padStart(4, '0')}`;
   }
   next();
 });

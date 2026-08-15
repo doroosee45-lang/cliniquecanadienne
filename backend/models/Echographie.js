@@ -52,11 +52,10 @@ const EchographieSchema = new mongoose.Schema({
 // Auto-numérotation ECH-YYYY-XXXX
 EchographieSchema.pre('save', async function (next) {
   if (this.isNew && !this.numero) {
+    const { nextSequence } = require('../utils/counter');
     const year = new Date().getFullYear();
-    const count = await mongoose.model('Echographie').countDocuments({
-      createdAt: { $gte: new Date(`${year}-01-01`), $lt: new Date(`${year + 1}-01-01`) },
-    });
-    this.numero = `ECH-${year}-${String(count + 1).padStart(4, '0')}`;
+    const seq = await nextSequence(`echographie-${year}`);
+    this.numero = `ECH-${year}-${String(seq).padStart(4, '0')}`;
   }
   next();
 });

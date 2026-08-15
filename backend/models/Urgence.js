@@ -90,11 +90,10 @@ const UrgenceSchema = new mongoose.Schema({
 // Auto-numérotation URG-YYYY-XXXX
 UrgenceSchema.pre('save', async function (next) {
   if (this.isNew && !this.numero) {
+    const { nextSequence } = require('../utils/counter');
     const year = new Date().getFullYear();
-    const count = await mongoose.model('Urgence').countDocuments({
-      createdAt: { $gte: new Date(`${year}-01-01`), $lt: new Date(`${year + 1}-01-01`) },
-    });
-    this.numero = `URG-${year}-${String(count + 1).padStart(4, '0')}`;
+    const seq = await nextSequence(`urgence-${year}`);
+    this.numero = `URG-${year}-${String(seq).padStart(4, '0')}`;
   }
   next();
 });
