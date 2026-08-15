@@ -5,11 +5,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
+import { BedDouble, Plus, LogOut, Printer } from 'lucide-react';
 import {
   fetchHospitalizations, fetchRooms, createHospitalization, updateHospitalization,
   selectHospitalizations, selectRooms, selectHospitalizationLoading, selectOccupationPercentage,
 } from '../store/slices/hospitalizationSlice';
 import api from "../api";
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
@@ -713,39 +716,34 @@ export default function Hospitalisation() {
       <style>{CSS}</style>
       <div className="ho">
 
-        {/* ── TOPBAR ── */}
-        <div className="ho-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.bed}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Hospitalisation</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>
-                  {kpis.total} dossiers · {today}
-                  {enCoursCount > 0 && <> · <span style={{ color:"#A2D9CE", fontWeight:600 }}>{enCoursCount} hospitalisés</span></>}
-                  {attenteCount > 0 && <> · <span style={{ color:"#FAD7A0", fontWeight:600 }}>{attenteCount} en attente</span></>}
-                </div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="hbtn hbtn-teal" onClick={() => { setFormHosp(EMPTY_HOSP); setModalAdmission(true); }}>
-                {I.plus} Nouvelle admission
-              </button>
+        {/* ── HERO ── */}
+        <Hero
+          icon={BedDouble}
+          title="Hospitalisation"
+          dateLabel={
+            <>
+              {kpis.total} dossiers · {today}
+              {enCoursCount > 0 && <> · <span style={{ color:"#A2D9CE", fontWeight:600 }}>{enCoursCount} hospitalisés</span></>}
+              {attenteCount > 0 && <> · <span style={{ color:"#FAD7A0", fontWeight:600 }}>{attenteCount} en attente</span></>}
+            </>
+          }
+          right={
+            <>
               {currentHosp && currentHosp.statut !== "sorti" && (
-                <button className="hbtn hbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => { setFormSortie(EMPTY_SORTIE); setModalSortie(true); }}>
-                  {I.exit} Sortie patient
+                <button className="hero-btn-ghost" onClick={() => { setFormSortie(EMPTY_SORTIE); setModalSortie(true); }}>
+                  <LogOut size={14} /> Sortie patient
                 </button>
               )}
-              <button className="hbtn hbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => window.print()}>
-                {I.print} Imprimer
+              <button className="hero-btn-ghost" onClick={() => window.print()}>
+                <Printer size={14} /> Imprimer
               </button>
-            </div>
-          </div>
+              <Button icon={Plus} onClick={() => { setFormHosp(EMPTY_HOSP); setModalAdmission(true); }}>Nouvelle admission</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard", icon:I.grid,  label:"Tableau de bord",       labelM:"Dashboard" },
               { key:"liste",     icon:I.list,  label:"Toutes les admissions",  labelM:"Admissions" },
@@ -755,34 +753,27 @@ export default function Hospitalisation() {
             ].filter(t => !t.disabled);
             const cols = isMobile ? Math.min(3, TABS.length) : undefined;
             return (
-              <div style={isMobile ? {
-                display:'grid', gridTemplateColumns:`repeat(${cols},1fr)`,
-                gap:'4px', padding:'8px 10px', marginTop:'8px',
-                background:'rgba(255,255,255,.07)', borderRadius:'10px 10px 0 0',
-              } : {
-                display:'flex', gap:'2px', marginTop:'16px',
-                overflowX:'auto', scrollbarWidth:'none',
-              }}>
+              <div className="tab-bar" style={isMobile ? {
+                display:'grid', gridTemplateColumns:`repeat(${cols},1fr)`, gap:4,
+              } : {}}>
                 {TABS.map(t => (
                   <button
                     key={t.key}
-                    className={`ho-tab ${tab === t.key ? "active" : ""}`}
+                    className={`tab-bar-item ${tab === t.key ? "active" : ""}`}
                     style={isMobile ? {
-                      flexDirection:'column', alignItems:'center', justifyContent:'center',
-                      textAlign:'center', padding:'7px 3px 8px', fontSize:'9.5px',
-                      gap:'3px', borderRadius:'8px', whiteSpace:'normal', minWidth:0,
+                      flexDirection:'column', textAlign:'center', padding:'7px 3px 8px',
+                      fontSize:'9.5px', gap:'3px', whiteSpace:'normal', minWidth:0,
                     } : {}}
                     onClick={() => setTab(t.key)}
                   >
                     <span style={isMobile ? { fontSize:'14px' } : {}}>{t.icon}</span>
                     <span style={isMobile ? { lineHeight:1.2 } : {}}>{isMobile ? t.labelM : t.label}</span>
-                    {t.key === "liste" && attenteCount > 0 && <span className="ho-tab-badge">{attenteCount}</span>}
+                    {t.key === "liste" && attenteCount > 0 && <span className="tab-bar-item-count">{attenteCount}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>
