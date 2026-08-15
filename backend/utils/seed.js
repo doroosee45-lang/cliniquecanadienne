@@ -94,13 +94,15 @@ const seed = async () => {
     User.create({ email:'cpt.ella@clinique-souanke.cg',    password:PWD, nom:'Ella',       prenom:'Patrick',     role:'comptable',      telephone:'+242 06 600 0001', statut:'actif' }),
     // Réceptionnistes
     User.create({ email:'rec.mouanda@clinique-souanke.cg', password:PWD, nom:'Mouanda',    prenom:'Amina',       role:'receptionniste', telephone:'+242 06 700 0001', statut:'actif' }),
+    // Sage-femme (maternité)
+    User.create({ email:'sf.ngoyi@clinique-souanke.cg',    password:PWD, nom:'Ngoyi',      prenom:'Béatrice',    role:'sage_femme',     telephone:'+242 06 350 0001', statut:'actif' }),
     // Patients portail
     User.create({ email:'patient@clinique-souanke.cg',     password:PWD, nom:'Ondo',       prenom:'Georges',     role:'patient',        telephone:'+242 06 800 0001', statut:'actif' }),
   ]);
 
   const [superadmin, admin, drNguema, drObiang, drMoussavou, drNze,
          infBekale, infMba, infEyeghe, labBongo, labMbemba,
-         phNdong, cptElla, recMouanda, patientUser] = users;
+         phNdong, cptElla, recMouanda, sfNgoyi, patientUser] = users;
   console.log(`✅ Utilisateurs créés (${users.length})`);
 
   // ════════════════════════════════════════════════════════════════════════
@@ -121,6 +123,7 @@ const seed = async () => {
     { matricule:'STAF-0011', utilisateur: phNdong._id,     poste: 'Pharmacienne chef',           service: svcPHA._id, date_embauche: new Date('2017-08-15'), type_contrat: 'cdi', salaire_base: 560000,  conges_restants: 11, statut: 'actif', competences: ['Dispensation', 'Gestion stock', 'Pharmacovigilance'] },
     { matricule:'STAF-0012', utilisateur: cptElla._id,     poste: 'Chef comptable',              service: svcMG._id,  date_embauche: new Date('2015-05-20'), type_contrat: 'cdi', salaire_base: 490000,  conges_restants: 9,  statut: 'actif', competences: ['Comptabilité générale', 'Facturation', 'Paie'] },
     { matricule:'STAF-0013', utilisateur: recMouanda._id,  poste: 'Réceptionniste',              service: svcMG._id,  date_embauche: new Date('2021-10-01'), type_contrat: 'cdi', salaire_base: 280000,  conges_restants: 20, statut: 'actif', competences: ['Accueil patients', 'Prise de RDV', 'Facturation'] },
+    { matricule:'STAF-0014', utilisateur: sfNgoyi._id,     poste: 'Sage-femme',                  service: svcMAT._id, date_embauche: new Date('2019-05-01'), type_contrat: 'cdi', salaire_base: 420000,  conges_restants: 16, statut: 'actif', competences: ['Suivi de grossesse', 'Accouchement', 'Soins postnataux'] },
   ];
   const staffList = await Staff.insertMany(staffToCreate);
   console.log(`✅ Personnel créé (${staffList.length})`);
