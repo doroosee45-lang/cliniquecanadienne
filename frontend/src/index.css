@@ -225,10 +225,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 /* ── Badges ── */
 .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 50px; font-size: .72rem; font-weight: 600; white-space: nowrap; }
 .badge-blue   { background: #eff6ff; color: var(--primary); }
-.badge-green  { background: #f0fdf4; color: #15803d; }
+.badge-green  { background: #f0fdf4; color: var(--success); }
 .badge-yellow { background: #fefce8; color: #a16207; }
-.badge-red    { background: #fef2f2; color: #dc2626; }
-.badge-purple { background: #faf5ff; color: #7c3aed; }
+.badge-red    { background: #fef2f2; color: var(--danger); }
+.badge-purple { background: #faf5ff; color: var(--tertiary); }
 .badge-gray   { background: #f9fafb; color: #4b5563; }
 .badge-cyan   { background: #ecfeff; color: #0e7490; }
 .badge-orange { background: #fff7ed; color: #c2410c; }
@@ -293,7 +293,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .stat-card { padding: 14px 16px; }
 
   /* Boutons : plus compacts, restent inline-flex */
-  .btn-primary, .btn-secondary, .btn-danger {
+  .btn-primary, .btn-secondary, .btn-danger, .btn-ghost, .btn-outline {
     padding: 8px 14px;
     font-size: .8rem;
   }
@@ -324,7 +324,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 
   /* Formulaires pleine largeur */
   .form-input { padding: 10px 12px; }
-  .btn-primary, .btn-secondary, .btn-danger {
+  .btn-primary, .btn-secondary, .btn-danger, .btn-ghost, .btn-outline {
     padding: 8px 12px;
     font-size: .78rem;
   }
