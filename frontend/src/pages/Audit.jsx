@@ -12,6 +12,9 @@ import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { ClipboardCheck, RefreshCw, Download, Archive as ArchiveIcon } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── Chart.js loader ─────────────────────────────────────────
@@ -766,37 +769,32 @@ export default function JournalAudit() {
       <style>{CSS}</style>
       <div className="aud">
 
-        {/* ── TOPBAR ── */}
-        <div className="aud-top">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", position: "relative", zIndex: 2 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(255,255,255,.12)", border: "1.5px solid rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                {I.shield}
-              </div>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#fff", letterSpacing: -.3 }}>Journal d'Audit</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
-                  {kpis.total} événements · <span style={{ color: "#A7F3D0" }}>{kpis.actifs} utilisateur(s) actif(s)</span>
-                  {kpis.critiques > 0 && <> · <span style={{ color: "#FCA5A5", fontWeight: 700 }}>⚠ {kpis.critiques} alerte(s) critique(s)</span></>}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="abtn abtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={handleRefresh} disabled={refreshing}>
-                <span style={{ display: "inline-flex", animation: refreshing ? "spin 1s linear infinite" : "none" }}>{I.refresh}</span>
+        {/* ── HERO ── */}
+        <Hero
+          icon={ClipboardCheck}
+          title="Journal d'Audit"
+          dateLabel={
+            <>
+              {kpis.total} événements · <span style={{ color: "#A7F3D0" }}>{kpis.actifs} utilisateur(s) actif(s)</span>
+              {kpis.critiques > 0 && <> · <span style={{ color: "#FCA5A5", fontWeight: 700 }}>⚠ {kpis.critiques} alerte(s) critique(s)</span></>}
+            </>
+          }
+          right={
+            <>
+              <button className="hero-btn-ghost" onClick={handleRefresh} disabled={refreshing}>
+                <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
                 {refreshing ? "Actualisation..." : "Actualiser"}
               </button>
-              <button className="abtn abtn-teal" onClick={() => setModalExport(true)}>
-                {I.dl} Exporter
+              <button className="hero-btn-ghost" onClick={() => setModalArchive(true)}>
+                <ArchiveIcon size={14} /> Archiver
               </button>
-              <button className="abtn abtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => setModalArchive(true)}>
-                {I.archive} Archiver
-              </button>
-            </div>
-          </div>
+              <Button icon={Download} onClick={() => setModalExport(true)}>Exporter</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard",  icon:I.grid,  label:"Tableau de bord",      labelM:"Dashboard" },
               { key:"evenements", icon:I.list,  label:"Événements",            labelM:"Événemts", badge:kpis.critiques },
@@ -805,18 +803,17 @@ export default function JournalAudit() {
               { key:"stats",      icon:I.trend, label:"Statistiques",          labelM:"Stats" },
             ];
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`aud-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
-                    {(t.badge??0)>0&&<span className="aud-tab-badge">{t.badge}</span>}
+                    {(t.badge??0)>0&&<span className="tab-bar-item-count">{t.badge}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>

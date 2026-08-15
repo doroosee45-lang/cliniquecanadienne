@@ -20,6 +20,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
+import { Archive as ArchiveIcon } from 'lucide-react';
+import Hero from '../components/UI/Hero';
 
 // ─── CSS — same Medical Navy + Teal design system as Settings ─
 const CSS = `
@@ -1198,14 +1200,17 @@ export default function Archivage() {
     <>
       <style>{CSS}</style>
       <div className="arc">
+        {/* ── HERO ── */}
+        <Hero
+          icon={ArchiveIcon}
+          title="Archivage"
+          dateLabel={`${kpis.total} archives · ${kpis.taille_totale}`}
+        />
+
         <div className="arc-wrap">
 
           {/* ── SIDEBAR ── */}
           <aside className="arc-sidebar">
-            <div className="arc-sidebar-hdr">
-              <h2>📦 Archivage</h2>
-              <p>{kpis.total} archives · {kpis.taille_totale}</p>
-            </div>
             {NAV_ITEMS.map(group => (
               <div key={group.group} className="arc-nav-group">
                 <span className="arc-nav-group-label">{group.group}</span>

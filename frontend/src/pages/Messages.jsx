@@ -11,6 +11,9 @@ import api from "../api";
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
 import toast from "react-hot-toast";
+import { MessageSquare, Plus, Bell } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── CSS (same design system: Medical Navy + Teal) ────────────
 const CSS = `
@@ -857,33 +860,28 @@ export default function Messagerie() {
       <style>{CSS}</style>
       <div className="msg">
 
-        {/* ── TOPBAR ── */}
-        <div className="msg-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.chat}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Messagerie</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>
-                  {totalNonLus > 0 ? <span style={{ color:"#FCA5A5", fontWeight:600 }}>{totalNonLus} message(s) non lu(s)</span> : "Tous les messages lus"} · {convs.length} conversation(s)
-                </div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8 }}>
-              <button className="cbtn cbtn-teal" onClick={() => setShowNewMsg(true)}>
-                {I.plus} Nouveau message
-              </button>
-              <button className="cbtn cbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)", position:"relative" }} onClick={() => setTab("notifications")}>
-                {I.bell}
+        {/* ── HERO ── */}
+        <Hero
+          icon={MessageSquare}
+          title="Messagerie"
+          dateLabel={
+            <>
+              {totalNonLus > 0 ? <span style={{ color:"#FCA5A5", fontWeight:600 }}>{totalNonLus} message(s) non lu(s)</span> : "Tous les messages lus"} · {convs.length} conversation(s)
+            </>
+          }
+          right={
+            <>
+              <button className="hero-btn-ghost" style={{ position:"relative" }} onClick={() => setTab("notifications")}>
+                <Bell size={14} />
                 {notifsNonLues > 0 && <span style={{ position:"absolute", top:-6, right:-6, width:18, height:18, background:"#DC2626", color:"#fff", borderRadius:"50%", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{notifsNonLues}</span>}
               </button>
-            </div>
-          </div>
+              <Button icon={Plus} onClick={() => setShowNewMsg(true)}>Nouveau message</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"inbox",         icon:I.chat,    label:"Conversations",         labelM:"Messages",   badge:totalNonLus>0?totalNonLus:null },
               { key:"groupes",       icon:I.users,   label:`Groupes (${groups.length})`, labelM:"Groupes" },
@@ -893,18 +891,17 @@ export default function Messagerie() {
               { key:"historique",    icon:I.archive, label:"Historique & Audit",    labelM:"Historique" },
             ];
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`msg-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{typeof t.icon==="string"?t.icon:t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
-                    {t.badge&&<span className="msg-badge">{t.badge}</span>}
+                    {t.badge&&<span className="tab-bar-item-count">{t.badge}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ══ INBOX / CHAT ══ */}
         {tab === "inbox" && (
