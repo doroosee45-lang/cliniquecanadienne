@@ -131,6 +131,7 @@ body {
 }
 .tab-bar-item:hover { color: var(--ink); background: var(--tint); }
 .tab-bar-item.active { color: #fff; background: var(--primary); }
+.tab-bar-item-count { background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 99px; }
 
 /* ── Sidebar links ── */
 .sidebar-link {

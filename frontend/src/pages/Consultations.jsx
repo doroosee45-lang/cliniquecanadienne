@@ -6,12 +6,15 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import api from '../api';
 import toast from 'react-hot-toast';
+import { Stethoscope, Plus, Save, ArrowLeft, List, CheckCircle2 } from 'lucide-react';
 import {
   fetchConsultations, createConsultation,
   selectConsultations, selectConsultationsLoading, selectConsultationsTotal,
   selectVitals, setVitals,
 } from '../store/slices/consultationsSlice';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import Hero, { HeroStatus } from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── CSS Medical Navy + Teal (same design system) ─────────────
 const CSS = `
@@ -1013,92 +1016,77 @@ export default function Consultation() {
       <style>{CSS}</style>
       <div className="cons">
 
-        {/* ── TOPBAR ── */}
-        <div className="cons-top">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", position: "relative", zIndex: 2 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 54, height: 54, borderRadius: 14, background: "rgba(255,255,255,.12)", border: "1.5px solid rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {I.steth}
-              </div>
-              <div>
-                <div style={{ fontSize: 21, fontWeight: 700, color: "#fff", letterSpacing: -.3 }}>Consultations</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
-                  {reduxConsultations.length} consultation(s) enregistrée(s)
-                </div>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }} className="no-print">
+        {/* ── HERO ── */}
+        <Hero
+          icon={Stethoscope}
+          title="Consultations"
+          dateLabel={`${reduxConsultations.length} consultation(s) enregistrée(s)`}
+          right={
+            <div className="no-print flex items-center gap-2 flex-wrap">
               {mainView === 'new' && saved && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(5,150,105,.2)", border: "1px solid rgba(5,150,105,.4)", borderRadius: 10, padding: "8px 14px", color: "#6EE7B7", fontSize: 12, fontWeight: 600 }}>
-                  {I.check} Consultation enregistrée
-                </div>
+                <HeroStatus connected icon={CheckCircle2} connectedLabel="Consultation enregistrée" />
               )}
               {mainView === 'list' && (
-                <button className="cbtn cbtn-teal" onClick={() => { setMainView('new'); setForm({ ...EMPTY_CONS, numero: genNumero() }); setSection('patient'); }}>
-                  {I.plus} Nouvelle consultation
-                </button>
+                <Button icon={Plus} onClick={() => { setMainView('new'); setForm({ ...EMPTY_CONS, numero: genNumero() }); setSection('patient'); }}>
+                  Nouvelle consultation
+                </Button>
               )}
               {mainView === 'detail' && (
-                <button className="cbtn cbtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => setMainView('list')}>
-                  ← Retour à la liste
+                <button className="hero-btn-ghost" onClick={() => setMainView('list')}>
+                  <ArrowLeft size={14} /> Retour à la liste
                 </button>
               )}
               {mainView === 'new' && (
                 <>
-                  <button className="cbtn cbtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => setMainView('list')}>
-                    📋 Voir la liste
+                  <button className="hero-btn-ghost" onClick={() => setMainView('list')}>
+                    <List size={14} /> Voir la liste
                   </button>
-                  <button className="cbtn cbtn-teal" disabled={saving} onClick={handleSave}>
-                    {I.save} {saving ? "Enregistrement..." : "Enregistrer"}
-                  </button>
+                  <Button icon={Save} loading={saving} onClick={handleSave}>
+                    {saving ? "Enregistrement..." : "Enregistrer"}
+                  </Button>
                 </>
               )}
             </div>
-          </div>
+          }
+        />
 
-          {/* Tabs — visibles seulement en vue 'new' */}
-          <div style={isMobile ? {
-            display: mainView === 'new' ? 'grid' : 'none',
-            gridTemplateColumns:'repeat(3,1fr)',
-            gap:'4px', padding:'8px 10px', marginTop:'8px',
-            background:'rgba(255,255,255,.07)', borderRadius:'10px 10px 0 0',
-          } : {
-            display: mainView === 'new' ? 'flex' : 'none',
-            gap:'2px', padding:'0', marginTop:'16px',
-            overflowX:'auto', scrollbarWidth:'none',
-          }}>
-            {STEPS.map((s) => {
-              const mobileLabels = {
-                patient:'Patient', consultation:'Consult.',
-                vitaux:'Vitaux', clinique:'Examen',
-                diagnostic:'Diagnostic', prescriptions:'Prescrip.',
-                examens:'Examens', decision:'Décision', facturation:'Facture',
-              };
-              return (
-                <button
-                  key={s.id}
-                  className={`cons-tab ${section === s.id ? "active" : ""}`}
-                  style={isMobile ? {
-                    flexDirection:'column', alignItems:'center', justifyContent:'center',
-                    textAlign:'center', padding:'7px 3px 8px', fontSize:'9px',
-                    gap:'2px', borderRadius:'8px', whiteSpace:'normal', minWidth:0,
-                  } : {}}
-                  onClick={() => setSection(s.id)}
-                >
-                  <span style={isMobile ? { fontSize:'14px' } : {}}>{s.icon}</span>
-                  <span style={isMobile ? { lineHeight:1.2 } : {}}>
-                    {isMobile ? mobileLabels[s.id] : s.label}
-                  </span>
-                  {s.id === "prescriptions" && form.prescriptions.length > 0 && (
-                    <span className="cons-tab-badge">{form.prescriptions.length}</span>
-                  )}
-                  {s.id === "examens" && form.examens.length > 0 && (
-                    <span className="cons-tab-badge">{form.examens.length}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+        {/* Tabs — visibles seulement en vue 'new' */}
+        <div className="tab-bar" style={isMobile ? {
+          display: mainView === 'new' ? 'grid' : 'none',
+          gridTemplateColumns: 'repeat(3,1fr)', gap: 4,
+        } : {
+          display: mainView === 'new' ? 'flex' : 'none',
+        }}>
+          {STEPS.map((s) => {
+            const mobileLabels = {
+              patient:'Patient', consultation:'Consult.',
+              vitaux:'Vitaux', clinique:'Examen',
+              diagnostic:'Diagnostic', prescriptions:'Prescrip.',
+              examens:'Examens', decision:'Décision', facturation:'Facture',
+            };
+            return (
+              <button
+                key={s.id}
+                className={`tab-bar-item ${section === s.id ? "active" : ""}`}
+                style={isMobile ? {
+                  flexDirection:'column', textAlign:'center', padding:'7px 3px 8px',
+                  fontSize:'9px', gap:'2px', whiteSpace:'normal', minWidth:0,
+                } : {}}
+                onClick={() => setSection(s.id)}
+              >
+                <span style={isMobile ? { fontSize:'14px' } : {}}>{s.icon}</span>
+                <span style={isMobile ? { lineHeight:1.2 } : {}}>
+                  {isMobile ? mobileLabels[s.id] : s.label}
+                </span>
+                {s.id === "prescriptions" && form.prescriptions.length > 0 && (
+                  <span className="tab-bar-item-count">{form.prescriptions.length}</span>
+                )}
+                {s.id === "examens" && form.examens.length > 0 && (
+                  <span className="tab-bar-item-count">{form.examens.length}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* ══ VUE LISTE ══ */}
