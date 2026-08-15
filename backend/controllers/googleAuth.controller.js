@@ -1,5 +1,6 @@
 // controllers/googleAuth.controller.js
 const User = require('../models/User');
+const { sendTokenCookie } = require('../utils/helpers');
 
 /**
  * POST /api/auth/google
@@ -52,34 +53,15 @@ const googleLogin = async (req, res) => {
       }
     }
 
-    // ── 3. JWT via la méthode du modèle (getSignedJWT) ────────────────────
-    const token = user.getSignedJWT();
-
-    // ── 4. Cookie httpOnly (même comportement que login classique) ─────────
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge:   7 * 24 * 60 * 60 * 1000,
-    });
-
-    // ── 5. Mise à jour dernière connexion ─────────────────────────────────
+    // ── 3. Mise à jour dernière connexion ──────────────────────────────────
     user.derniere_connexion = new Date();
     await user.save();
 
-    return res.status(200).json({
-      success: true,
-      token,
-      user: {
-        id:     user._id,
-        nom:    user.nom,
-        prenom: user.prenom,
-        email:  user.email,
-        role:   user.role,
-        avatar: user.avatar,
-        statut: user.statut,
-      },
-    });
+    // ── 4. Cookie httpOnly + réponse — même helper que le login classique,
+    //      pour un comportement (sameSite/secure/forme du payload) identique
+    //      quel que soit le mode de connexion. Le JWT n'est jamais renvoyé
+    //      dans le corps de la réponse (cf. correction Socket.IO).
+    return sendTokenCookie(user, 200, res);
 
   } catch (err) {
     console.error('[googleLogin] Erreur :', err.message);

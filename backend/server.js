@@ -10,6 +10,7 @@ const hpp     = require('hpp');
 const rateLimit = require('express-rate-limit');
 const morgan  = require('morgan');
 const cookieParser = require('cookie-parser');
+const cookie  = require('cookie');
 const path    = require('path');
 const jwt     = require('jsonwebtoken');
 
@@ -44,11 +45,21 @@ const io = new Server(httpServer, {
 });
 
 // Middleware d'authentification Socket.IO (JWT)
+// Le token n'est jamais exposé au JS client (cookie httpOnly) : on le lit
+// directement depuis l'en-tête Cookie transmis lors du handshake, comme le
+// fait déjà `protect` côté REST. Les en-têtes auth/Authorization restent
+// acceptés en repli pour des clients non-navigateur (scripts, tests).
 io.use((socket, next) => {
   try {
-    const token = socket.handshake.auth?.token
+    let token = socket.handshake.auth?.token
       || socket.handshake.headers?.authorization?.replace('Bearer ', '');
-    if (!token) return next(new Error('Non authentifié'));
+
+    if (!token && socket.handshake.headers?.cookie) {
+      const cookies = cookie.parse(socket.handshake.headers.cookie);
+      token = cookies.token;
+    }
+
+    if (!token || token === 'none') return next(new Error('Non authentifié'));
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.userId   = decoded.id;
     socket.userRole = decoded.role || 'inconnu';
@@ -128,7 +139,12 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+// Couvre aussi Google OAuth (abus/énumération), mot de passe oublié (spam
+// d'emails) et réinitialisation (brute-force du token) — pas seulement /login.
 app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/google', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
@@ -178,3 +194,23 @@ const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () =>
   console.log(`Serveur démarré sur le port ${PORT} [${process.env.NODE_ENV}] — Socket.IO actif`)
 );
+
+// ── Filet de sécurité process ────────────────────────────────────────────────
+// Sans ces gestionnaires, une exception non interceptée en dehors du cycle
+// requête/réponse Express (timer, callback Socket.IO, promesse orpheline)
+// fait planter tout le processus pour TOUS les utilisateurs, sans trace
+// exploitable. La pratique recommandée par Node.js n'est pas d'ignorer
+// l'erreur et de continuer (l'état du process peut être corrompu), mais de
+// la journaliser puis de quitter proprement pour qu'un gestionnaire de
+// process (pm2, systemd, service Windows — voir ecosystem.config.js)
+// relance automatiquement le serveur. Sans un tel gestionnaire en amont, le
+// process ne redémarre pas seul : voir le rapport d'audit, section Reprise
+// après incident.
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Promesse rejetée non gérée :', reason);
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Exception non interceptée :', err);
+  process.exit(1);
+});

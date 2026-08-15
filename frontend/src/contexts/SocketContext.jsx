@@ -24,12 +24,13 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
-    const token = sessionStorage.getItem('ms_token');
-
     // En développement, Vite proxifie /socket.io → localhost:5000
-    // En production, même origine
+    // En production, même origine.
+    // withCredentials: true — le serveur authentifie le handshake via le
+    // cookie httpOnly « token » (même mécanisme que les requêtes REST),
+    // aucun JWT n'est donc jamais exposé au JS côté client.
     const s = io(window.location.origin, {
-      auth: { token },
+      withCredentials: true,
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,

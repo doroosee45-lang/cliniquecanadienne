@@ -738,11 +738,10 @@ export default function Login() {
     onSuccess: async (tokenResponse) => {
       setGoogleLoading(true);
       try {
-        const res = await api.post('/auth/google', {
+        await api.post('/auth/google', {
           access_token: tokenResponse.access_token,
         });
-        const { token } = res.data;
-        sessionStorage.setItem('ms_token', token);
+        // Le JWT est posé en cookie httpOnly par le serveur — jamais exposé au JS.
         await fetchMe();
         toast.success('Connexion Google réussie !');
         navigate('/');
