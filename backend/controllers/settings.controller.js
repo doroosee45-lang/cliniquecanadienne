@@ -103,6 +103,7 @@ exports.getInsurances = async (req, res, next) => {
 exports.createInsurance = async (req, res, next) => {
   try {
     const insurance = await Insurance.create(req.body);
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'settings', entite_id: insurance._id, ip: req.ip, message: `Nouvelle assurance : ${insurance.nom}` });
     res.status(201).json({ success: true, insurance });
   } catch (err) { next(err); }
 };

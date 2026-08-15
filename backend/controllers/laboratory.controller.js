@@ -173,6 +173,7 @@ exports.acquit = async (req, res, next) => {
       { new: true }
     );
     if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'ACQUIT', module: 'laboratory', entite_id: result._id, ip: req.ip, message: `Résultat critique acquitté${result.est_critique ? ' (CRITIQUE)' : ''}` });
     res.json({ success: true, result });
   } catch (err) { next(err); }
 };

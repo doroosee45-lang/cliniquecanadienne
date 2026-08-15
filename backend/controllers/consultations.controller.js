@@ -61,6 +61,7 @@ exports.remove = async (req, res, next) => {
   try {
     const c = await Consultation.findByIdAndDelete(req.params.id);
     if (!c) return res.status(404).json({ success: false, message: 'Consultation introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'consultations', entite_id: req.params.id, ip: req.ip, message: `Consultation supprimée — patient ${c.patient}` });
     res.json({ success: true, message: 'Consultation supprimée.' });
   } catch (err) { next(err); }
 };

@@ -369,13 +369,14 @@ exports.checkInteractions = async (req, res, next) => {
 
     // Sauvegarder si des interactions détectées
     if (allWarnings.length > 0) {
-      await AIPrediction.create({
+      const prediction = await AIPrediction.create({
         type: 'interaction_medicament',
         patient: patientId || undefined,
         resultat: { medications: medNames, warnings: allWarnings },
         score_confiance: 95,
         statut: 'en_attente',
       });
+      await logAction({ utilisateur: req.user?._id, action: 'IA_INTERACTION_DETECTEE', module: 'ia', entite_id: prediction._id, ip: req.ip, message: `${allWarnings.length} interaction(s)/allergie(s) détectée(s)` });
     }
 
     res.json({

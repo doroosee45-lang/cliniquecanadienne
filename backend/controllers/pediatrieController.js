@@ -138,6 +138,7 @@ exports.update = async (req, res) => {
   try {
     const child = await Child.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Dossier pédiatrique ${child.numero} modifié` });
     emitDashboardUpdate();
     res.json({ success: true, enfant: child });
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -153,6 +154,7 @@ exports.addVaccination = async (req, res) => {
     if (vacc.rappel_prevu) vacc.rappel_prevu = new Date(vacc.rappel_prevu);
     child.vaccinations.push(vacc);
     await child.save();
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Vaccination (${vacc.vaccin || '—'}) ajoutée au dossier ${child.numero}` });
     res.status(201).json({ success: true, enfant: child, vaccination: child.vaccinations[child.vaccinations.length - 1] });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -173,6 +175,7 @@ exports.addMesure = async (req, res) => {
     if (mesure.poids)  child.poids_actuel    = mesure.poids;
     if (mesure.taille) child.taille_actuelle = mesure.taille;
     await child.save();
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Mesure de croissance ajoutée au dossier ${child.numero}` });
     res.status(201).json({ success: true, enfant: child });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -185,6 +188,7 @@ exports.addMaladieChron = async (req, res) => {
     child.maladies_chroniques.push(req.body);
     child.statut = 'chronique';
     await child.save();
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Maladie chronique enregistrée au dossier ${child.numero}` });
     res.status(201).json({ success: true, enfant: child });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -236,6 +240,7 @@ exports.updateConsultation = async (req, res) => {
   try {
     const c = await PediatricConsultation.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!c) return res.status(404).json({ message: 'Consultation introuvable' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: c._id, ip: req.ip, message: `Consultation pédiatrique ${c.numero} modifiée` });
     res.json({ success: true, consultation: c });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

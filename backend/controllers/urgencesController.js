@@ -191,6 +191,7 @@ exports.addSoin = async (req, res) => {
       personnel: req.body.personnel || 'Infirmier',
     });
     await u.save();
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Soin (${soin.acte || 'acte'}) ajouté au dossier urgences ${u.numero}` });
     res.status(201).json({ soin: u.soins[0], message: 'Soin enregistré' });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };
@@ -212,6 +213,7 @@ exports.addPrescription = async (req, res) => {
     u.prescriptions.push(req.body);
     u.timeline.push({ action: `Prescription : ${req.body.designation || req.body.type}`, heure: new Date().toTimeString().substring(0,5), personnel: req.body.medecin || 'Médecin' });
     await u.save();
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Prescription (${req.body.designation || req.body.type || '—'}) ajoutée au dossier urgences ${u.numero}` });
     res.status(201).json({ prescription: u.prescriptions[u.prescriptions.length - 1] });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };
@@ -233,6 +235,7 @@ exports.addExamen = async (req, res) => {
     u.examens.push(req.body);
     u.timeline.push({ action: `Examen demandé : ${req.body.designation}${req.body.urgent ? ' 🚨URGENT' : ''}`, heure: new Date().toTimeString().substring(0,5), personnel: 'Médecin' });
     await u.save();
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Examen demandé (${req.body.designation || '—'}) — dossier urgences ${u.numero}` });
     res.status(201).json({ examen: u.examens[u.examens.length - 1] });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };
@@ -272,6 +275,7 @@ exports.assignMission = async (req, res) => {
     }
     amb.missions.push({ destination, motif_mission, heure_depart });
     await amb.save();
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'ambulances', entite_id: amb._id, ip: req.ip, message: `Mission assignée — ambulance ${numero} vers ${destination}` });
     res.status(201).json({ ambulance: amb, message: `Mission ambulance ${numero} assignée` });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };
@@ -286,6 +290,7 @@ exports.retourAmbulance = async (req, res) => {
     const dernier = amb.missions[amb.missions.length - 1];
     if (dernier) dernier.heure_retour = new Date().toTimeString().substring(0, 5);
     await amb.save();
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'ambulances', entite_id: amb._id, ip: req.ip, message: `Retour ambulance ${amb.numero} — disponible` });
     res.json({ ambulance: amb });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };

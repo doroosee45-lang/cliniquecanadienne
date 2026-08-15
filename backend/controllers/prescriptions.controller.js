@@ -61,6 +61,7 @@ exports.update = async (req, res, next) => {
   try {
     const prescription = await Prescription.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!prescription) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'prescriptions', entite_id: prescription._id, ip: req.ip, message: `Ordonnance ${prescription.numero_rx} modifiée` });
     res.json({ success: true, prescription });
   } catch (err) { next(err); }
 };

@@ -127,6 +127,7 @@ exports.update = async (req, res, next) => {
   try {
     const med = await Medication.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!med) return res.status(404).json({ success: false, message: 'Médicament introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: med._id, ip: req.ip, message: `Fiche médicament modifiée : ${med.nom_commercial}` });
     res.json({ success: true, medication: med });
   } catch (err) { next(err); }
 };

@@ -176,6 +176,7 @@ exports.addNote = async (req, res, next) => {
     if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
     hosp.notes_cliniques.push({ ...req.body, auteur: req.user._id });
     await hosp.save();
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip, message: 'Note clinique ajoutée' });
     res.json({ success: true, hospitalization: hosp });
   } catch (err) { next(err); }
 };

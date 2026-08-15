@@ -119,6 +119,7 @@ exports.update = async (req, res) => {
   try {
     const g = await Pregnancy.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Dossier de grossesse ${g.numero} modifié` });
     res.json({ success: true, grossesse: g });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -130,6 +131,7 @@ exports.addCPN = async (req, res) => {
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
     g.cpns.push({ ...req.body, date: req.body.date ? new Date(req.body.date) : new Date() });
     await g.save();
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Consultation prénatale ajoutée au dossier ${g.numero}` });
     res.status(201).json({ success: true, grossesse: g, cpn: g.cpns[g.cpns.length - 1] });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -141,6 +143,7 @@ exports.addEcho = async (req, res) => {
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
     g.echographies.push({ ...req.body, date: req.body.date ? new Date(req.body.date) : new Date() });
     await g.save();
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Échographie obstétricale ajoutée au dossier ${g.numero}` });
     res.status(201).json({ success: true, grossesse: g, echo: g.echographies[g.echographies.length - 1] });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -150,6 +153,7 @@ exports.updateTravail = async (req, res) => {
   try {
     const g = await Pregnancy.findByIdAndUpdate(req.params.id, { salle_travail: { ...req.body, en_travail: true } }, { new: true });
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Admission en salle de travail — dossier ${g.numero}` });
     res.json({ success: true, grossesse: g });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -162,6 +166,7 @@ exports.addPostnatal = async (req, res) => {
     g.consultations_postnatales.push({ ...req.body, date: req.body.date ? new Date(req.body.date) : new Date() });
     g.statut = 'suivi_postnatal';
     await g.save();
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Consultation postnatale ajoutée au dossier ${g.numero}` });
     res.status(201).json({ success: true, grossesse: g });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -231,6 +236,7 @@ exports.updateNewborn = async (req, res) => {
   try {
     const nb = await Newborn.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!nb) return res.status(404).json({ message: 'Nouveau-né introuvable' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: nb._id, ip: req.ip, message: `Dossier nouveau-né ${nb.numero} modifié` });
     res.json({ success: true, nouveau_ne: nb });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

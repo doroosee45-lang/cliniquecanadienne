@@ -358,6 +358,7 @@ exports.updateConfig = async (req, res, next) => {
       { cle: 'archive_auto_config', valeur: config, updated_by: req.user?._id },
       { upsert: true }
     );
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE_SETTING', module: 'archive', ip: req.ip, message: 'Configuration d\'archivage automatique modifiée' });
     res.json({ success: true, config });
   } catch (err) { next(err); }
 };

@@ -104,6 +104,7 @@ exports.update = async (req, res) => {
       req.params.id, req.body, { new: true, runValidators: true }
     );
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Demande d'échographie ${demande.numero} modifiée` });
     emitDashboardUpdate();
     res.json({ success: true, demande });
   } catch (err) {
@@ -121,6 +122,7 @@ exports.planifier = async (req, res) => {
       { new: true }
     );
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Échographie ${demande.numero} planifiée — ${echographiste || 'à assigner'}` });
     res.json({ success: true, demande });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -138,6 +140,7 @@ exports.saveRapport = async (req, res) => {
     }
     const demande = await Echographie.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Rapport d'échographie ${demande.numero} enregistré${rapport_statut === 'valide' ? ' et validé' : ''}` });
     res.json({ success: true, demande });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -151,6 +154,7 @@ exports.annuler = async (req, res) => {
       req.params.id, { statut: 'annulee' }, { new: true }
     );
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
+    await logAction({ utilisateur: req.user?._id, action: 'CANCEL', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Demande d'échographie ${demande.numero} annulée` });
     res.json({ success: true, demande });
   } catch (err) {
     res.status(500).json({ message: err.message });
