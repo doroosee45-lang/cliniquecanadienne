@@ -58,11 +58,11 @@ async function harvestArchivables() {
   const hospits = await Hospitalization.find({
     statut: { $in: ['sorti','transfere','decede'] },
     updatedAt: { $lt: ago(SEUILS.hospitalisation) },
-  }).populate('patient','nom prenom').select('_id patient updatedAt diagnostic_principal').lean();
+  }).populate('patient','nom prenom').select('_id patient updatedAt diagnostic_sortie').lean();
   for (const h of hospits) {
     const nom = h.patient ? `${h.patient.prenom} ${h.patient.nom}` : 'Patient';
     await upsert({
-      titre: `Hospitalisation — ${nom}`, description: h.diagnostic_principal || 'Séjour terminé',
+      titre: `Hospitalisation — ${nom}`, description: h.diagnostic_sortie || 'Séjour terminé',
       categorie: 'hospitalisation', source_model: 'Hospitalization', source_id: h._id,
       patient: h.patient?._id, patient_nom: nom,
       date_archivage: h.updatedAt, priorite: 'basse', tags: ['hospitalisation','sorti'],

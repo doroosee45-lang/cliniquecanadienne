@@ -189,12 +189,16 @@ exports.discharge = async (req, res, next) => {
     ).populate('chambre');
     if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
 
-    // Free the bed
-    const room = await Room.findById(hosp.chambre._id);
-    if (room) {
-      const bed = room.lits.find(l => l.numero === hosp.lit_numero);
-      if (bed) { bed.statut = 'libre'; bed.patient_actuel = undefined; }
-      await room.save();
+    // Free the bed — uniquement si le séjour référence une chambre structurée
+    // (un séjour peut avoir été admis avec une simple chambre_num en texte libre,
+    // auquel cas hosp.chambre est null et il n'y a pas de lit à libérer).
+    if (hosp.chambre?._id) {
+      const room = await Room.findById(hosp.chambre._id);
+      if (room) {
+        const bed = room.lits.find(l => l.numero === hosp.lit_numero);
+        if (bed) { bed.statut = 'libre'; bed.patient_actuel = undefined; }
+        await room.save();
+      }
     }
     // Notification patient à la sortie
     const pat = await require('../models/Patient').findById(hosp.patient).select('nom prenom email');
