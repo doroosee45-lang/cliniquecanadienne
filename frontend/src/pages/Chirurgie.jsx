@@ -7,7 +7,10 @@ import {
 } from '../store/slices/chirurgieSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { Scissors, Plus, Printer } from 'lucide-react';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -549,32 +552,25 @@ export default function Chirurgie() {
       <style>{CSS}</style>
       <div className="chir">
 
-        {/* ── TOPBAR ── */}
-        <div className="chir-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.heart}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Module Chirurgie</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>{kpis.total} dossiers · Clinique Canadienne de Souanké</div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="cbtn cbtn-teal" onClick={() => { setFormDossier(EMPTY_DOSSIER); setModalNouv(true); }}>
-                {I.plus} Nouveau dossier
-              </button>
+        {/* ── HERO ── */}
+        <Hero
+          icon={Scissors}
+          title="Module Chirurgie"
+          dateLabel={`${kpis.total} dossiers · Clinique Canadienne de Souanké`}
+          right={
+            <>
               {currentDossier && (
-                <button className="cbtn cbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => window.print()}>
-                  {I.print} Imprimer
+                <button className="hero-btn-ghost" onClick={() => window.print()}>
+                  <Printer size={14} /> Imprimer
                 </button>
               )}
-            </div>
-          </div>
+              <Button icon={Plus} onClick={() => { setFormDossier(EMPTY_DOSSIER); setModalNouv(true); }}>Nouveau dossier</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard", icon:I.grid, label:"Tableau de bord",    labelM:"Dashboard" },
               { key:"liste",     icon:I.list, label:"Dossiers chirurgicaux", labelM:"Dossiers" },
@@ -582,9 +578,9 @@ export default function Chirurgie() {
               { key:"ia",        icon:I.ia,   label:"IA & Analytics",     labelM:"IA" },
             ].filter(t=>!t.disabled);
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:`repeat(${Math.min(3,TABS.length)},1fr)`,gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:`repeat(${Math.min(3,TABS.length)},1fr)`,gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`chir-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
                   </button>
@@ -592,7 +588,6 @@ export default function Chirurgie() {
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>

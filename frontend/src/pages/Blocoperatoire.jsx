@@ -9,6 +9,9 @@ import {
   fetchBlocPlanning, fetchSalles,
   selectBlocPlanning, selectSalles, selectBlocLoading, selectBlocStats,
 } from '../store/slices/blocoperatoireSlice';
+import { Hospital, Plus, Printer } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
@@ -589,34 +592,29 @@ export default function BlocOperatoire() {
       <style>{CSS}</style>
       <div className="bo">
 
-        {/* ── TOPBAR ── */}
-        <div className="bo-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.scalpel}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Bloc Opératoire</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>
-                  {kpis.total} interventions · {today} · {enCoursCount > 0 && <span style={{ color:"#A2D9CE", fontWeight:600 }}>{enCoursCount} en cours</span>}
-                </div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="bbtn bbtn-teal" onClick={() => { setFormInterv(EMPTY_INTERV); setModalNouv(true); }}>
-                {I.plus} Nouvelle intervention
-              </button>
+        {/* ── HERO ── */}
+        <Hero
+          icon={Hospital}
+          title="Bloc Opératoire"
+          dateLabel={
+            <>
+              {kpis.total} interventions · {today} · {enCoursCount > 0 && <span style={{ color:"#A2D9CE", fontWeight:600 }}>{enCoursCount} en cours</span>}
+            </>
+          }
+          right={
+            <>
               {currentInterv && (
-                <button className="bbtn bbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => window.print()}>
-                  {I.print} Imprimer
+                <button className="hero-btn-ghost" onClick={() => window.print()}>
+                  <Printer size={14} /> Imprimer
                 </button>
               )}
-            </div>
-          </div>
+              <Button icon={Plus} onClick={() => { setFormInterv(EMPTY_INTERV); setModalNouv(true); }}>Nouvelle intervention</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard", icon:I.grid,     label:"Tableau de bord",           labelM:"Dashboard" },
               { key:"programme", icon:I.calendar, label:"Programme du jour",          labelM:"Programme" },
@@ -626,18 +624,17 @@ export default function BlocOperatoire() {
               { key:"stats",     icon:I.trend,    label:"Statistiques",               labelM:"Stats" },
             ].filter(t=>!t.disabled);
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`bo-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
-                    {t.key==="programme"&&enCoursCount>0&&<span className="bo-tab-badge">{enCoursCount}</span>}
+                    {t.key==="programme"&&enCoursCount>0&&<span className="tab-bar-item-count">{enCoursCount}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>
