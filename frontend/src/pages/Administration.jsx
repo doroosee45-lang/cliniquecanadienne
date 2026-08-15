@@ -8,6 +8,9 @@ import {
 } from '../store/slices/administrationSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { ShieldCheck, Plus, Bell } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -528,44 +531,34 @@ export default function Administration() {
       <style>{CSS}</style>
       <div className="adm">
 
-        {/* ── TOPBAR ── */}
-        <div className="adm-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.shield}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Administration</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>{users.length} utilisateurs · {settings.nom_clinique}</div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              {tab === "gestion" && section === "utilisateurs" && (
-                <button className="cbtn cbtn-teal" onClick={() => { setFormUser(EMPTY_USER); setEditUser(null); setModalUser(true); }}>
-                  {I.plus} Nouvel utilisateur
-                </button>
-              )}
-              {tab === "gestion" && section === "taches" && (
-                <button className="cbtn cbtn-teal" onClick={() => { setFormTask(EMPTY_TASK); setModalTask(true); }}>
-                  {I.plus} Nouvelle tâche
-                </button>
-              )}
-              {tab === "gestion" && section === "fournisseurs" && (
-                <button className="cbtn cbtn-teal" onClick={() => { setFormSupplier(EMPTY_SUPPLIER); setModalSupplier(true); }}>
-                  {I.plus} Nouveau fournisseur
-                </button>
-              )}
+        {/* ── HERO ── */}
+        <Hero
+          icon={ShieldCheck}
+          title="Administration"
+          dateLabel={`${users.length} utilisateurs · ${settings.nom_clinique}`}
+          right={
+            <>
               {alerteCount > 0 && (
                 <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(220,38,38,.2)", border:"1px solid rgba(220,38,38,.4)", borderRadius:10, padding:"6px 12px" }}>
-                  <span style={{ fontSize:12, color:"#FCA5A5", fontWeight:600 }}>🔔 {alerteCount} alerte(s)</span>
+                  <Bell size={14} style={{ color:"#FCA5A5" }} />
+                  <span style={{ fontSize:12, color:"#FCA5A5", fontWeight:600 }}>{alerteCount} alerte(s)</span>
                 </div>
               )}
-            </div>
-          </div>
+              {tab === "gestion" && section === "utilisateurs" && (
+                <Button icon={Plus} onClick={() => { setFormUser(EMPTY_USER); setEditUser(null); setModalUser(true); }}>Nouvel utilisateur</Button>
+              )}
+              {tab === "gestion" && section === "taches" && (
+                <Button icon={Plus} onClick={() => { setFormTask(EMPTY_TASK); setModalTask(true); }}>Nouvelle tâche</Button>
+              )}
+              {tab === "gestion" && section === "fournisseurs" && (
+                <Button icon={Plus} onClick={() => { setFormSupplier(EMPTY_SUPPLIER); setModalSupplier(true); }}>Nouveau fournisseur</Button>
+              )}
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard",  icon:I.grid,     label:"Tableau de bord",      labelM:"Dashboard" },
               { key:"gestion",    icon:I.users,    label:"Gestion & Opérations", labelM:"Gestion" },
@@ -575,9 +568,9 @@ export default function Administration() {
               { key:"parametres", icon:I.settings, label:"Paramètres",           labelM:"Paramètres" },
             ];
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`adm-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
                     {t.badge&&<span className="adm-tab-badge">{t.badge}</span>}
@@ -586,7 +579,6 @@ export default function Administration() {
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>

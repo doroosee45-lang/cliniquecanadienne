@@ -1,6 +1,8 @@
 ﻿import { useState, useEffect, useCallback } from "react";
 import api from "../api";
 import toast from "react-hot-toast";
+import { Settings as SettingsIcon } from 'lucide-react';
+import Hero from '../components/UI/Hero';
 
 // ─── CSS Medical Navy + Teal ──────────────────────────────────
 const CSS = `
@@ -1760,13 +1762,16 @@ export default function Settings() {
     <>
       <style>{CSS}</style>
       <div className="set">
+        {/* ── HERO ── */}
+        <Hero
+          icon={SettingsIcon}
+          title="Paramètres"
+          dateLabel={settings.length > 0 ? `${settings.length} paramètres chargés` : "Configuration du système"}
+        />
+
         <div className="set-wrap">
           {/* ── SIDEBAR ── */}
           <aside className="set-sidebar">
-            <div className="set-sidebar-hdr">
-              <h2>⚙️ Paramètres</h2>
-              <p>{settings.length > 0 ? `${settings.length} paramètres chargés` : "Configuration du système"}</p>
-            </div>
             {NAV.map(group => (
               <div key={group.group} className="set-nav-group">
                 <span className="set-nav-group-label">{group.group}</span>
