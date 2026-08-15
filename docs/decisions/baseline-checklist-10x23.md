@@ -66,3 +66,16 @@ Colonnes : **SA**=superadmin **AC**=adminclinique **ME**=médecin **IN**=infirmi
 ## Utilisation prévue à partir de la Phase 3
 
 Toute modification touchant `authorize(...)` sur une route déjà couverte ici doit être comparée à cette matrice avant fusion — un écart entre le comportement avant/après et une cellule `OK`/`Partiel`/`KO` de ce document est le signal d'une régression à documenter explicitement, pas à corriger silencieusement.
+
+## Rejeu — Phase 3 (Sécurité et authentification)
+
+Rejeu demandé par le brief Phase 3 pour vérifier si les tâches T3.1-T3.4 changent une cellule de cette matrice.
+
+**Résultat : aucune cellule modifiée.** Aucune des quatre tâches ne touche `authorize(...)` ni la liste de rôles d'une route :
+
+- **T3.1** (dossier Patient auto-créé à l'inscription Google) — crée un `Patient` et lie `patient_id`, mais ne change ni le rôle attribué (`role: 'patient'`, inchangé) ni les routes accessibles à ce rôle. Le rôle `patient` reste hors de cette matrice (portail uniquement), comme avant.
+- **T3.2** (vérification officielle du token Google) — durcit la validation de l'authenticité/audience du token en amont de la création de session ; ne touche à aucune règle `authorize(...)`.
+- **T3.3** (suppression du mot de passe temporaire en clair de la réponse JSON) — modification de la forme de la réponse HTTP d'un endpoint déjà `authorize('receptionniste', ...)`, sans changement des rôles autorisés.
+- **T3.4** (verrouillage de compte, complexité du mot de passe) — ajoute un nouvel état (compte temporairement verrouillé, HTTP 423) qui s'applique **avant** toute vérification de rôle, donc de façon strictement transversale à tous les rôles de la matrice — pas un changement de qui a accès à quoi, mais une nouvelle condition de refus temporaire identique pour tous.
+
+**Écart résiduel signalé (pas une cellule de cette matrice, car hors modèle rôle × module) :** §3.5(c) documente que `must_change_password` — un mécanisme de blocage de navigation, pas de contrôle d'accès — n'est jamais activé pour les comptes staff, contrairement au portail patient. Voir [ticket 0003](../tickets/0003-must-change-password-non-applique-comptes-staff.md) et [T3.5-verifications-complementaires.md](T3.5-verifications-complementaires.md).
