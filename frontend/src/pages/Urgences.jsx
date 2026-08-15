@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
+import { Siren, Plus, LogOut, Printer } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 import {
   fetchUrgencesStats,
   fetchUrgences,
@@ -405,18 +408,21 @@ function DoughnutChart({ labels, data, colors, height = 180 }) {
 
 // ─── Modal ───────────────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth = 760 }) {
+  const boxRef = useRef(null);
+  const titleId = useId();
   useEffect(() => {
     const h = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", h);
+    if (open) boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, open]);
   if (!open) return null;
   return (
     <div className="uov" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="uov-box" style={{ maxWidth }}>
+      <div ref={boxRef} className="uov-box" style={{ maxWidth }} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="uov-hdr">
-          <h3>{title}</h3>
-          <button className="uov-cls" onClick={onClose}>×</button>
+          <h3 id={titleId}>{title}</h3>
+          <button className="uov-cls" onClick={onClose} aria-label="Fermer">×</button>
         </div>
         <div className="uov-body">{children}</div>
       </div>
@@ -630,45 +636,34 @@ export default function Urgences() {
       <style>{CSS}</style>
       <div className="urg">
 
-        {/* ── TOPBAR ── */}
-        <div className="urg-top">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", position: "relative", zIndex: 2 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 54, height: 54, borderRadius: 14, background: "rgba(192,57,43,.25)", border: "1.5px solid rgba(192,57,43,.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {I.ambulance}
-              </div>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ fontSize: 21, fontWeight: 700, color: "#fff", letterSpacing: -0.3 }}>Urgences</div>
-                  {critiques.length > 0 && (
-                    <span style={{ background: "var(--ur)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99, animation: "urgP .8s infinite" }}>
-                      🔴 {critiques.length} CRITIQUE{critiques.length > 1 ? "S" : ""}
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
-                  {kpis?.admissions_jour ?? "—"} admissions aujourd'hui · {today}
-                  {enAttente.length > 0 && <> · <span style={{ color: "#FAD7A0", fontWeight: 600 }}>{enAttente.length} en attente</span></>}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="ubtn ubtn-danger" onClick={() => { setFormUrg(EMPTY_URG); setModalNouveauPatient(true); }}>
-                {I.plus} Nouveau patient
+        {/* ── HERO ── */}
+        <Hero
+          icon={Siren}
+          title="Urgences"
+          dateLabel={
+            <>
+              {kpis?.admissions_jour ?? "—"} admissions aujourd'hui · {today}
+              {enAttente.length > 0 && <> · <span style={{ color: "#FAD7A0", fontWeight: 600 }}>{enAttente.length} en attente</span></>}
+              {critiques.length > 0 && <> · <span style={{ color: "#F5B7B1", fontWeight: 700 }}>🔴 {critiques.length} critique{critiques.length > 1 ? "s" : ""}</span></>}
+            </>
+          }
+          right={
+            <>
+              <button className="hero-btn-ghost" onClick={() => window.print()}>
+                <Printer size={14} /> Imprimer
               </button>
               {currentUrg && currentUrg.statut !== "sorti" && currentUrg.statut !== "decede" && (
-                <button className="ubtn ubtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => { setFormCloture(EMPTY_CLOTURE); setModalCloture(true); }}>
-                  {I.exit} Clôturer dossier
+                <button className="hero-btn-ghost" onClick={() => { setFormCloture(EMPTY_CLOTURE); setModalCloture(true); }}>
+                  <LogOut size={14} /> Clôturer dossier
                 </button>
               )}
-              <button className="ubtn ubtn-ghost" style={{ color: "#fff", borderColor: "rgba(255,255,255,.3)" }} onClick={() => window.print()}>
-                {I.print} Imprimer
-              </button>
-            </div>
-          </div>
+              <Button variant="danger" icon={Plus} onClick={() => { setFormUrg(EMPTY_URG); setModalNouveauPatient(true); }}>Nouveau patient</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key: "dashboard", icon: I.grid,      label: "Tableau de bord",   labelM: "Dashboard" },
               { key: "liste",     icon: I.list,      label: "File d'attente",    labelM: "File attente" },
@@ -678,21 +673,20 @@ export default function Urgences() {
             ].filter(t => !t.disabled);
             const cols = isMobile ? Math.min(3, TABS.length) : undefined;
             return (
-              <div style={isMobile ? { display: "grid", gridTemplateColumns: `repeat(${cols},1fr)`, gap: "4px", padding: "8px 10px", marginTop: "8px", background: "rgba(255,255,255,.07)", borderRadius: "10px 10px 0 0" } : { display: "flex", gap: "2px", marginTop: "16px", overflowX: "auto", scrollbarWidth: "none" }}>
+              <div className="tab-bar" style={isMobile ? { display: "grid", gridTemplateColumns: `repeat(${cols},1fr)`, gap: 4 } : {}}>
                 {TABS.map(t => (
-                  <button key={t.key} className={`urg-tab ${tab === t.key ? "active" : ""}`}
-                    style={isMobile ? { flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "7px 3px 8px", fontSize: "9.5px", gap: "3px", borderRadius: "8px", whiteSpace: "normal", minWidth: 0 } : {}}
+                  <button key={t.key} className={`tab-bar-item ${tab === t.key ? "active" : ""}`}
+                    style={isMobile ? { flexDirection: "column", textAlign: "center", padding: "7px 3px 8px", fontSize: "9.5px", gap: "3px", whiteSpace: "normal", minWidth: 0 } : {}}
                     onClick={() => setTab(t.key)}>
                     <span style={isMobile ? { fontSize: "14px" } : {}}>{t.icon}</span>
                     <span style={isMobile ? { lineHeight: 1.2 } : {}}>{isMobile ? t.labelM : t.label}</span>
-                    {t.key === "liste" && enAttente.length > 0 && <span className="urg-tab-badge">{enAttente.length}</span>}
-                    {t.key === "liste" && critiques.length > 0 && <span className="urg-tab-badge">{critiques.length}</span>}
+                    {t.key === "liste" && enAttente.length > 0 && <span className="tab-bar-item-count">{enAttente.length}</span>}
+                    {t.key === "liste" && critiques.length > 0 && <span className="tab-bar-item-count">{critiques.length}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>
