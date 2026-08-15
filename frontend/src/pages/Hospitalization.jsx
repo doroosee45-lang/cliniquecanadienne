@@ -2,7 +2,7 @@
 
 
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { BedDouble, Plus, LogOut, Printer } from 'lucide-react';
@@ -302,18 +302,21 @@ const I = {
 
 // ─── Modal ────────────────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth = 720 }) {
+  const boxRef = useRef(null);
+  const titleId = useId();
   useEffect(() => {
     const h = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", h);
+    if (open) boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, open]);
   if (!open) return null;
   return (
     <div className="hov" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="hov-box" style={{ maxWidth }}>
+      <div ref={boxRef} className="hov-box" style={{ maxWidth }} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="hov-hdr">
-          <h3>{title}</h3>
-          <button className="hov-cls" onClick={onClose}>×</button>
+          <h3 id={titleId}>{title}</h3>
+          <button className="hov-cls" onClick={onClose} aria-label="Fermer">×</button>
         </div>
         <div className="hov-body">{children}</div>
       </div>

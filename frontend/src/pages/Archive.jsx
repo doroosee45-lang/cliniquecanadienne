@@ -2,7 +2,7 @@
 
 
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchArchives, fetchArchiveStats,
@@ -278,18 +278,21 @@ function Toggle({ checked, onChange }) {
 
 // ─── Modal ────────────────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth = 660 }) {
+  const boxRef = useRef(null);
+  const titleId = useId();
   useEffect(() => {
     const h = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", h);
+    if (open) boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, open]);
   if (!open) return null;
   return (
     <div className="amov" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="amov-box" style={{ maxWidth }}>
+      <div ref={boxRef} className="amov-box" style={{ maxWidth }} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="amov-hdr">
-          <h3>{title}</h3>
-          <button className="amov-cls" onClick={onClose}>×</button>
+          <h3 id={titleId}>{title}</h3>
+          <button className="amov-cls" onClick={onClose} aria-label="Fermer">×</button>
         </div>
         <div className="amov-body">{children}</div>
       </div>

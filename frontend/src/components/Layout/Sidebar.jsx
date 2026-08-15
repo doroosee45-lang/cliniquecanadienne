@@ -354,7 +354,7 @@ export default function Sidebar({ isOpen, onClose }) {
         />
       )}
 
-      <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+      <aside className={`sidebar ${isOpen ? 'open' : ''}`} aria-label="Navigation principale">
 
         {/* ── Logo ─────────────────────────────────────────────────────────── */}
         <div className="p-5 border-b border-white/10 flex-shrink-0">

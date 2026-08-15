@@ -2,7 +2,7 @@
 
 
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchInvoices, fetchFinanceStats, createInvoice, recordPayment,
@@ -552,18 +552,21 @@ function Prog({ pct, color }) {
 
 // ─── Modal ────────────────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth = 620 }) {
+  const boxRef = useRef(null);
+  const titleId = useId();
   useEffect(() => {
     const h = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", h);
+    if (open) boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, open]);
   if (!open) return null;
   return (
     <div className="fmov" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="fmov-box" style={{ maxWidth }}>
+      <div ref={boxRef} className="fmov-box" style={{ maxWidth }} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="fmov-hdr">
-          <h3>{title}</h3>
-          <button className="fmov-cls" onClick={onClose}>×</button>
+          <h3 id={titleId}>{title}</h3>
+          <button className="fmov-cls" onClick={onClose} aria-label="Fermer">×</button>
         </div>
         <div className="fmov-body">{children}</div>
       </div>

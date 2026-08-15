@@ -1356,7 +1356,7 @@
 
 
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchMedications, fetchInventory, fetchStockAlerts, createMedication, updateMedication, addStockMovement,
@@ -1657,18 +1657,21 @@ function PhotoPicker({ preview, currentUrl, inputRef, onChange, onRemove }) {
 }
 
 function Modal({ open, onClose, title, children, wide, narrow }) {
+  const boxRef = useRef(null);
+  const titleId = useId();
   useEffect(() => {
     const h = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", h);
+    if (open) boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, open]);
   if (!open) return null;
   return (
     <div className="pmov" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={`pmov-box ${wide?"wide":""} ${narrow?"narrow":""}`}>
+      <div ref={boxRef} className={`pmov-box ${wide?"wide":""} ${narrow?"narrow":""}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="pmov-hdr">
-          <h3>{title}</h3>
-          <button className="pmov-cls" onClick={onClose}>×</button>
+          <h3 id={titleId}>{title}</h3>
+          <button className="pmov-cls" onClick={onClose} aria-label="Fermer">×</button>
         </div>
         <div className="pmov-body">{children}</div>
       </div>
