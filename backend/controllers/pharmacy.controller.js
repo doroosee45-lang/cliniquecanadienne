@@ -2,6 +2,7 @@ const Medication = require('../models/Medication');
 const Prescription = require('../models/Prescription');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { detectInteractions } = require('../utils/drugInteractions');
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -182,19 +183,65 @@ exports.dispenser = async (req, res, next) => {
     if (prescription.statut !== 'active')
       return res.status(400).json({ success: false, message: 'Ordonnance déjà dispensée ou expirée.' });
 
+    // Seules les lignes reliées à une fiche Medication (catalogue) impactent le
+    // stock — une ligne saisie en texte libre (medicament_nom sans medicament)
+    // ne peut pas être rapprochée d'un produit sans risquer un mauvais match.
+    const lignesAvecStock = prescription.lignes.filter(l => l.medicament);
+    const medicamentsById = new Map();
+    for (const ligne of lignesAvecStock) {
+      const id = ligne.medicament.toString();
+      if (!medicamentsById.has(id)) {
+        const med = await Medication.findById(id);
+        if (med) medicamentsById.set(id, med);
+      }
+    }
+
+    // Vérifier tout le stock nécessaire avant d'écrire quoi que ce soit —
+    // on ne veut pas décrémenter certaines lignes puis échouer sur les suivantes.
+    const insuffisants = [];
+    for (const ligne of lignesAvecStock) {
+      const med = medicamentsById.get(ligne.medicament.toString());
+      const quantite = Math.abs(ligne.quantite || 0);
+      if (med && quantite > 0 && med.stock_actuel < quantite) {
+        insuffisants.push(`${med.nom_commercial} (stock: ${med.stock_actuel}, requis: ${quantite})`);
+      }
+    }
+    if (insuffisants.length) {
+      return res.status(400).json({
+        success: false,
+        message: `Stock insuffisant pour dispenser cette ordonnance : ${insuffisants.join(', ')}.`,
+      });
+    }
+
+    for (const ligne of lignesAvecStock) {
+      const med = medicamentsById.get(ligne.medicament.toString());
+      const quantite = Math.abs(ligne.quantite || 0);
+      if (!med || quantite === 0) continue;
+
+      med.stock_actuel -= quantite;
+      med.mouvements.push({
+        type: 'dispensation',
+        quantite,
+        reference: prescription.numero_rx,
+        notes: `Dispensation ordonnance ${prescription.numero_rx}`,
+        utilisateur: req.user._id,
+      });
+      med.statut = med.stock_actuel <= 0 ? 'rupture' : (med.statut === 'rupture' ? 'disponible' : med.statut);
+      await med.save();
+    }
+
     prescription.statut = 'dispensee';
     prescription.dispensee_par = req.user._id;
     prescription.date_dispensation = new Date();
 
-    // Detect drug interactions (simple rule-based)
+    // Interactions médicamenteuses — base partagée (utils/drugInteractions.js)
     const meds = prescription.lignes.map(l => l.medicament_nom?.toLowerCase() || '');
-    const interactions = [];
-    if (meds.includes('warfarine') && meds.includes('aspirine'))
-      interactions.push({ medicaments: ['Warfarine','Aspirine'], risque: 'Élevé', description: 'Risque hémorragique majeur' });
-    prescription.interactions_detectees = interactions;
+    prescription.interactions_detectees = detectInteractions(meds);
 
     await prescription.save();
     await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: prescription._id, ip: req.ip });
+    emitActivity({ module: 'pharmacy', action: 'Dispensation ordonnance', detail: prescription.numero_rx, icon: '💊', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
     res.json({ success: true, prescription });
   } catch (err) { next(err); }
 };
