@@ -22,6 +22,9 @@ import {
   selectPediatrieLoading,
   selectPediatrieSaving,
 } from "../store/slices/pediatrieSlice";
+import { Baby, Plus, Printer } from 'lucide-react';
+import Hero, { HeroButton } from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -549,46 +552,42 @@ export default function Pediatrie() {
       <style>{CSS}</style>
       <div className="ped">
 
-        {/* ── TOPBAR ── */}
-        <div className="ped-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>🧒</div>
-              <div>
-                <div style={{ fontSize:isMobile?17:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Pédiatrie</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>
-                  {lastUpdate.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · Clinique Canadienne de Souanké
-                </div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="pbtn pbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)", fontSize:12 }} onClick={handleRefresh}>🔄 Actualiser</button>
-              <button className="pbtn pbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)", fontSize:12 }} onClick={() => window.print()}>🖨 Imprimer</button>
-              <button className="pbtn pbtn-green" style={{ fontSize:12 }} onClick={() => openModal("dossier")}>➕ Nouveau patient</button>
-            </div>
-          </div>
+        {/* ── HERO ── */}
+        <Hero
+          icon={Baby}
+          title="Pédiatrie"
+          dateLabel={`${lastUpdate.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · Clinique Canadienne de Souanké`}
+          right={
+            <>
+              <HeroButton label="Actualiser" onClick={handleRefresh} />
+              <button className="hero-btn-ghost" onClick={() => window.print()}>
+                <Printer size={14} /> Imprimer
+              </button>
+              <Button icon={Plus} onClick={() => openModal("dossier")}>Nouveau patient</Button>
+            </>
+          }
+        />
 
-          {isMobile ? (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"4px", padding:"8px 10px", marginTop:"8px", background:"rgba(255,255,255,.07)", borderRadius:"10px 10px 0 0" }}>
-              {TABS.map(t => (
-                <button key={t.key} className={`ped-tab ${tab===t.key?"active":""}`}
-                  style={{ flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"7px 3px 8px", fontSize:"9.5px", gap:"3px", borderRadius:"8px", whiteSpace:"normal", minWidth:0 }}
-                  onClick={() => setTab(t.key)}>
-                  <span style={{ fontSize:14 }}>{t.icon}</span>
-                  <span style={{ lineHeight:1.2 }}>{t.labelM}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="ped-tabs">
-              {TABS.map(t => (
-                <button key={t.key} className={`ped-tab ${tab===t.key?"active":""}`} onClick={() => setTab(t.key)}>
-                  {t.icon} {t.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {isMobile ? (
+          <div className="tab-bar" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:4 }}>
+            {TABS.map(t => (
+              <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`}
+                style={{ flexDirection:"column", textAlign:"center", padding:"7px 3px 8px", fontSize:"9.5px", gap:"3px", whiteSpace:"normal", minWidth:0 }}
+                onClick={() => setTab(t.key)}>
+                <span style={{ fontSize:14 }}>{t.icon}</span>
+                <span style={{ lineHeight:1.2 }}>{t.labelM}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="tab-bar">
+            {TABS.map(t => (
+              <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} onClick={() => setTab(t.key)}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ── CONTENT ── */}
         <div style={{ padding:isMobile?12:24 }}>
