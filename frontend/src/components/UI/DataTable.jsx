@@ -5,7 +5,7 @@ export default function DataTable({ columns, data, loading, emptyMessage = 'Aucu
   if (loading) {
     return (
       <div className="flex justify-center items-center py-16">
-        <Spinner size="lg" />
+        <Spinner size="lg" label="Chargement des données..." />
       </div>
     );
   }
@@ -54,10 +54,10 @@ export function Pagination({ page, total, limit, onPage }) {
     <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 text-sm text-gray-500">
       <span>{total} résultat{total > 1 ? 's' : ''}</span>
       <div className="flex items-center gap-2">
-        <button disabled={page <= 1} onClick={() => onPage(page - 1)}
+        <button disabled={page <= 1} onClick={() => onPage(page - 1)} aria-label="Page précédente"
           className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center disabled:opacity-40 hover:bg-gray-50">‹</button>
         <span className="font-semibold text-gray-700">{page} / {totalPages}</span>
-        <button disabled={page >= totalPages} onClick={() => onPage(page + 1)}
+        <button disabled={page >= totalPages} onClick={() => onPage(page + 1)} aria-label="Page suivante"
           className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center disabled:opacity-40 hover:bg-gray-50">›</button>
       </div>
     </div>

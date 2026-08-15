@@ -97,7 +97,7 @@ export default function Header({ title, onMenuToggle }) {
       <header className="bg-white border-b border-gray-100 px-4 lg:px-6 py-3 flex items-center justify-between sticky top-0 z-40">
         {/* Hamburger + Clinic brand + Title */}
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <button onClick={onMenuToggle} className="lg:hidden w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center hover:bg-gray-100">
+          <button onClick={onMenuToggle} aria-label="Ouvrir le menu" className="lg:hidden w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center hover:bg-gray-100">
             <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
@@ -105,7 +105,7 @@ export default function Header({ title, onMenuToggle }) {
 
           {/* Clinic logo — lien vers la page d'accueil */}
           <Link to="/home" style={{ textDecoration: 'none' }} className="flex items-center gap-2 group flex-shrink-0" title="Retour à l'accueil">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-opacity group-hover:opacity-75" style={{ background: '#2563eb' }}>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-opacity group-hover:opacity-75" style={{ background: 'var(--primary)' }}>
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
@@ -129,7 +129,9 @@ export default function Header({ title, onMenuToggle }) {
         <div className="flex items-center gap-2 flex-shrink-0">
           {/* Search */}
           <div className="relative hidden md:block">
+            <label htmlFor="header-patient-search" className="sr-only">Rechercher un patient</label>
             <input
+              id="header-patient-search"
               type="search"
               value={searchQuery}
               onChange={e => handleSearch(e.target.value)}
@@ -157,10 +159,12 @@ export default function Header({ title, onMenuToggle }) {
 
           {/* Notifications */}
           <div className="relative" ref={notifRef}>
-            <button onClick={() => setShowNotifs(v => !v)} className="relative w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center hover:bg-gray-100">
-              <span className="text-lg">🔔</span>
+            <button onClick={() => setShowNotifs(v => !v)} aria-haspopup="true" aria-expanded={showNotifs}
+              aria-label={unread > 0 ? `Notifications, ${unread} non lue${unread > 1 ? 's' : ''}` : 'Notifications'}
+              className="relative w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center hover:bg-gray-100">
+              <span aria-hidden="true" className="text-lg">🔔</span>
               {unread > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                <span aria-hidden="true" className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
                   {unread > 9 ? '9+' : unread}
                 </span>
               )}
@@ -195,9 +199,9 @@ export default function Header({ title, onMenuToggle }) {
           </div>
 
           {/* AI Chat */}
-          <button onClick={() => setShowAI(true)}
+          <button onClick={() => setShowAI(true)} aria-label="Assistant IA"
             className="bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
-            <span>🤖</span>
+            <span aria-hidden="true">🤖</span>
             <span className="hidden sm:inline">IA</span>
           </button>
         </div>
@@ -215,7 +219,7 @@ export default function Header({ title, onMenuToggle }) {
                   <div className="text-white/70 text-xs">En ligne • {user?.prenom}</div>
                 </div>
               </div>
-              <button onClick={() => setShowAI(false)} className="text-white/70 hover:text-white text-xl">×</button>
+              <button onClick={() => setShowAI(false)} aria-label="Fermer l'assistant IA" className="text-white/70 hover:text-white text-xl">×</button>
             </div>
             <div className="h-48 overflow-y-auto p-4 space-y-3 bg-gray-50 custom-scroll">
               {aiMessages.map((m, i) => (
@@ -230,7 +234,9 @@ export default function Header({ title, onMenuToggle }) {
               ))}
             </div>
             <div className="p-3 border-t border-gray-100 bg-white flex gap-2">
+              <label htmlFor="header-ai-input" className="sr-only">Votre question à l'assistant IA</label>
               <input
+                id="header-ai-input"
                 type="text"
                 value={aiInput}
                 onChange={e => setAiInput(e.target.value)}
@@ -238,7 +244,7 @@ export default function Header({ title, onMenuToggle }) {
                 placeholder="Votre question..."
                 className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <button onClick={sendAI} className="bg-blue-600 text-white rounded-xl px-3 py-2 text-sm font-semibold hover:bg-blue-700">→</button>
+              <button onClick={sendAI} aria-label="Envoyer" className="bg-blue-600 text-white rounded-xl px-3 py-2 text-sm font-semibold hover:bg-blue-700">→</button>
             </div>
           </div>
         </div>

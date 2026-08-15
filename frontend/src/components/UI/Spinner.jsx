@@ -4,9 +4,11 @@ const COLORS = {
   current: 'border-current/25 border-t-current',
 };
 
-export default function Spinner({ size = 'md', color = 'primary', className = '' }) {
+export default function Spinner({ size = 'md', color = 'primary', className = '', label = 'Chargement...' }) {
   const sizes = { sm: 'w-4 h-4', md: 'w-8 h-8', lg: 'w-12 h-12' };
   return (
-    <div className={`${sizes[size]} ${COLORS[color] || COLORS.primary} border-4 rounded-full animate-spin ${className}`} />
+    <div role="status" className={`${sizes[size]} ${COLORS[color] || COLORS.primary} border-4 rounded-full animate-spin ${className}`}>
+      <span className="sr-only">{label}</span>
+    </div>
   );
 }

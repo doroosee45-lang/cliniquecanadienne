@@ -1,9 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useId } from 'react';
 
 export default function Modal({ isOpen, onClose, title, children, size = 'md' }) {
+  const boxRef = useRef(null);
+  const titleId = useId();
+
   useEffect(() => {
     const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
-    if (isOpen) document.addEventListener('keydown', handleKey);
+    if (isOpen) {
+      document.addEventListener('keydown', handleKey);
+      // Focus le panneau à l'ouverture — sans ça le focus clavier reste
+      // derrière la modale, sur un élément invisible/inaccessible.
+      boxRef.current?.focus();
+    }
     return () => document.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
@@ -13,10 +21,17 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' })
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal-box w-full ${sizes[size]}`}>
+      <div
+        ref={boxRef}
+        className={`modal-box w-full ${sizes[size]}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 text-lg">×</button>
+          <h2 id={titleId} className="text-lg font-bold text-gray-900">{title}</h2>
+          <button onClick={onClose} aria-label="Fermer" className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 text-lg">×</button>
         </div>
         {children}
       </div>

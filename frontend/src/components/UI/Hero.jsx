@@ -25,7 +25,11 @@ export default function Hero({
           )}
           <div>
             {eyebrow && <div className="hero-eyebrow">{eyebrow}</div>}
-            <div className="hero-title">{title}</div>
+            {/* h2, pas h1 : Header.jsx (Layout partagé, toutes les routes,
+                y compris Dashboard/Urgences non migrées) rend déjà un h1
+                avec le même titre de page — Hero est la section principale
+                de la page, pas un second titre de document concurrent. */}
+            <h2 className="hero-title">{title}</h2>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               {badge && (
                 <span className="hero-badge" style={{ background: `linear-gradient(135deg, ${roleColor}, ${roleColor}99)` }}>

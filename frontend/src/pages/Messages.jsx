@@ -871,9 +871,10 @@ export default function Messagerie() {
           }
           right={
             <>
-              <button className="hero-btn-ghost" style={{ position:"relative" }} onClick={() => setTab("notifications")}>
+              <button className="hero-btn-ghost" style={{ position:"relative" }} onClick={() => setTab("notifications")}
+                aria-label={notifsNonLues > 0 ? `Notifications, ${notifsNonLues} non lue${notifsNonLues > 1 ? 's' : ''}` : 'Notifications'}>
                 <Bell size={14} />
-                {notifsNonLues > 0 && <span style={{ position:"absolute", top:-6, right:-6, width:18, height:18, background:"#DC2626", color:"#fff", borderRadius:"50%", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{notifsNonLues}</span>}
+                {notifsNonLues > 0 && <span aria-hidden="true" style={{ position:"absolute", top:-6, right:-6, width:18, height:18, background:"#DC2626", color:"#fff", borderRadius:"50%", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{notifsNonLues}</span>}
               </button>
               <Button icon={Plus} onClick={() => setShowNewMsg(true)}>Nouveau message</Button>
             </>

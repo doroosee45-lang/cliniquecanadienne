@@ -38,6 +38,7 @@ export default function Button({
     <button
       type={type}
       disabled={isDisabled}
+      aria-busy={loading}
       className={`${VARIANTS[variant] || VARIANTS.primary} ${SIZES[size] || ''} ${className}`}
       {...rest}
     >

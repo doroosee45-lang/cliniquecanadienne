@@ -513,10 +513,10 @@ export default function MonEspacePatient() {
           }
           right={
             <>
-              <button className="hero-btn-ghost" onClick={() => setModalProfil(true)}>
+              <button className="hero-btn-ghost" onClick={() => setModalProfil(true)} aria-label="Profil">
                 <Pencil size={14} /> {!isSmall && "Profil"}
               </button>
-              <Button icon={Calendar} onClick={() => setModalRdv(true)}>{!isSmall ? "Prendre RDV" : ""}</Button>
+              <Button icon={Calendar} onClick={() => setModalRdv(true)} aria-label={isSmall ? "Prendre RDV" : undefined}>{!isSmall ? "Prendre RDV" : ""}</Button>
             </>
           }
         />
