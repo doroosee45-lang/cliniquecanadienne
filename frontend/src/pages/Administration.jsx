@@ -209,11 +209,16 @@ const I = {
 };
 
 // ─── ROLE COLORS ─────────────────────────────────────────────
+// Les clés doivent correspondre exactement à l'enum User.role du backend
+// (backend/models/User.js) — un écart ici rend le rôle impossible à
+// sélectionner/afficher correctement dans ce formulaire.
 const ROLE_CFG = {
-  super_admin:  { cls: "red",    label: "Super Admin",  color: "#DC2626" },
-  admin:        { cls: "purple", label: "Administrateur", color: "#7C3AED" },
+  superadmin:   { cls: "red",    label: "Super Admin",  color: "#DC2626" },
+  adminclinique:{ cls: "purple", label: "Administrateur", color: "#7C3AED" },
   medecin:      { cls: "blue",   label: "Médecin",      color: "#1B4F9E" },
   infirmier:    { cls: "teal",   label: "Infirmier",    color: "#0EA5A0" },
+  sage_femme:   { cls: "pink",   label: "Sage-femme",   color: "#EC4899" },
+  radiologue:   { cls: "cyan",   label: "Radiologue",   color: "#0891B2" },
   pharmacien:   { cls: "green",  label: "Pharmacien",   color: "#059669" },
   laborantin:   { cls: "orange", label: "Laborantin",   color: "#D97706" },
   comptable:    { cls: "indigo", label: "Comptable",    color: "#4F46E5" },
@@ -836,10 +841,12 @@ export default function Administration() {
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:16 }}>
                     {Object.entries(ROLE_CFG).map(([key, cfg]) => {
                       const perms = {
-                        super_admin: ["lecture","creation","modification","suppression","validation","exportation"],
-                        admin:       ["lecture","creation","modification","validation","exportation"],
+                        superadmin:  ["lecture","creation","modification","suppression","validation","exportation"],
+                        adminclinique: ["lecture","creation","modification","validation","exportation"],
                         medecin:     ["lecture","creation","modification"],
                         infirmier:   ["lecture","creation"],
+                        sage_femme:  ["lecture","creation"],
+                        radiologue:  ["lecture","creation","modification"],
                         pharmacien:  ["lecture","creation","modification"],
                         laborantin:  ["lecture","creation"],
                         comptable:   ["lecture","creation","modification","validation","exportation"],
@@ -1392,7 +1399,7 @@ export default function Administration() {
                     {[
                       { icon:"👔", group:"Direction",    nb:3, desc:"Alain Koumba, Dr. Moussavou, Henri Mboula" },
                       { icon:"👨‍⚕️", group:"Médecins",     nb:users.filter(u=>u.role==="medecin").length, desc:"Tous les médecins de la clinique" },
-                      { icon:"📋", group:"Administration",nb:users.filter(u=>["admin","comptable","receptionniste"].includes(u.role)).length, desc:"Équipe administrative complète" },
+                      { icon:"📋", group:"Administration",nb:users.filter(u=>["adminclinique","comptable","receptionniste"].includes(u.role)).length, desc:"Équipe administrative complète" },
                     ].map(g => (
                       <div key={g.group} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid #F3F7FF" }}>
                         <div style={{ width:36, height:36, background:"#EEF4FF", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{g.icon}</div>

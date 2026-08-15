@@ -78,7 +78,7 @@ exports.create = async (req, res, next) => {
       if (!user) {
         const roleMap = {
           medecin:'medecin', infirmier:'infirmier', laborantin:'laborantin',
-          radiologue:'radiologue', pharmacien:'pharmacien',
+          radiologue:'radiologue', pharmacien:'pharmacien', sage_femme:'sage_femme',
           administratif:'receptionniste', aide_soignant:'infirmier', maintenance:'receptionniste',
         };
         try {
@@ -117,6 +117,7 @@ exports.update = async (req, res, next) => {
       .populate('utilisateur', 'nom prenom role email telephone specialite')
       .populate('service', 'nom');
     if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Fiche personnel modifiée : ${staff.prenom || ''} ${staff.nom || ''}`.trim() });
     res.json({ success: true, staff: normalizeStaff(staff.toObject()) });
   } catch (err) { next(err); }
 };
@@ -125,6 +126,15 @@ exports.leave = async (req, res, next) => {
   try {
     const staff = await Staff.findById(req.params.id);
     if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
+
+    // Seul un admin RH ou l'employé lui-même (fiche Staff liée à son compte User)
+    // peut soumettre une demande de congé sur cette fiche.
+    const isAdmin = ['superadmin','adminclinique'].includes(req.user.role);
+    const isSelf  = staff.utilisateur && staff.utilisateur.toString() === req.user._id.toString();
+    if (!isAdmin && !isSelf) {
+      return res.status(403).json({ success: false, message: 'Vous ne pouvez pas soumettre de congé pour un autre employé.' });
+    }
+
     staff.conges.push({ ...req.body, statut: 'demande' });
     await staff.save();
     await logAction({ utilisateur: req.user._id, action: 'LEAVE_REQUEST', module: 'hr', entite_id: staff._id, ip: req.ip });

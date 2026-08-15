@@ -70,7 +70,7 @@ const UserSchema = new mongoose.Schema({
   prenom: { type: String, required: [true, 'Prénom requis'], trim: true },
   role: {
     type: String,
-    enum: ['superadmin','adminclinique','medecin','infirmier','laborantin',
+    enum: ['superadmin','adminclinique','medecin','infirmier','sage_femme','laborantin',
            'radiologue','pharmacien','comptable','receptionniste','patient'],
     required: true,
   },

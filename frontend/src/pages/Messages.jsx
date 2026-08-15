@@ -336,10 +336,12 @@ const fmtDay = (d) => {
 
 // ─── Role config ──────────────────────────────────────────────
 const ROLE_CFG = {
-  super_admin:    { icon:"👑", cls:"red",    label:"Super Admin",    color:"#DC2626" },
-  admin:          { icon:"🏥", cls:"purple", label:"Administrateur", color:"#7C3AED" },
+  superadmin:     { icon:"👑", cls:"red",    label:"Super Admin",    color:"#DC2626" },
+  adminclinique:  { icon:"🏥", cls:"purple", label:"Administrateur", color:"#7C3AED" },
   medecin:        { icon:"👨‍⚕️", cls:"blue",   label:"Médecin",        color:"#1B4F9E" },
   infirmier:      { icon:"💉", cls:"teal",   label:"Infirmier",      color:"#0EA5A0" },
+  sage_femme:     { icon:"🤰", cls:"pink",   label:"Sage-femme",     color:"#EC4899" },
+  radiologue:     { icon:"🩻", cls:"cyan",   label:"Radiologue",     color:"#0891B2" },
   pharmacien:     { icon:"💊", cls:"green",  label:"Pharmacien",     color:"#059669" },
   laborantin:     { icon:"🔬", cls:"orange", label:"Laborantin",     color:"#D97706" },
   comptable:      { icon:"💰", cls:"gray",   label:"Comptable",      color:"#6B7280" },
