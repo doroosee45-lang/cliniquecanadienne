@@ -10,6 +10,9 @@ import {
   selectPortalImaging, selectPortalInvoices, selectPortalNotifications,
   selectPortalLoading, selectPortalSaving, selectPortalError, clearPortalError,
 } from '../store/slices/portalSlice';
+import { User, Calendar, Pencil } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── Hook responsive — JavaScript pur, 100% fiable ────────────
 function useScreenSize() {
@@ -498,51 +501,38 @@ export default function MonEspacePatient() {
       {RCSS && <style>{RCSS}</style>}
       <div className="ep">
 
-        {/* ── TOPBAR (gradient + infos patient) ── */}
-        <div className="ep-top">
-          <div className="ep-header" style={{ padding: isMobile ? '12px 12px 14px' : '20px 24px 16px' }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
-              {/* Patient identity */}
-              <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0, flex:1 }}>
-                <div style={{ width: isMobile ? 40 : 52, height: isMobile ? 40 : 52, borderRadius:12, background:"rgba(255,255,255,.15)", border:"2px solid rgba(255,255,255,.25)", display:"flex", alignItems:"center", justifyContent:"center", fontSize: isMobile ? 20 : 24, flexShrink:0 }}>
-                  {patient.sexe === 'F' || patient.sexe === 'femme' ? "👩" : "👨"}
-                </div>
-                <div style={{ minWidth:0, flex:1 }}>
-                  <div style={{ fontSize: isMobile ? 15 : 18, fontWeight:700, color:"#fff", letterSpacing:-.2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {patient.prenom || patient.nom ? `${patient.prenom} ${patient.nom}` : "Mon espace patient"}
-                  </div>
-                  <div style={{ fontSize: isMobile ? 10 : 11, color:"rgba(255,255,255,.6)", marginTop:2, display:"flex", gap:8, flexWrap:"wrap" }}>
-                    <span>📋 {patient.numero_dossier || patient.dossier || "—"}</span>
-                    {!isMobile && <span>🎂 {ageCalc(patient.date_naissance) || patient.age}</span>}
-                    <span>🩸 {patient.groupe_sanguin || "—"}</span>
-                  </div>
-                  {mustChangePwd && <div style={{ fontSize:10, color:"#FCD34D", marginTop:2, fontWeight:700 }}>🔒 Changez votre mot de passe temporaire</div>}
-                </div>
-              </div>
-              {/* Quick actions */}
-              <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                <button className="ebtn ebtn-teal ebtn-sm" onClick={() => setModalRdv(true)}>📅 {!isSmall && "Prendre RDV"}</button>
-                <button className="ebtn ebtn-ghost ebtn-sm" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => setModalProfil(true)}>{I.edit}{!isSmall && " Profil"}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── TABS BAR — hors de ep-top pour éviter overflow:hidden ── */}
-        <div className="ep-tabs-bar">
-          <div className="ep-tabs">
-            {TABS.map(t => (
-              <button key={t.key} className={`ep-tab ${tab === t.key ? "active" : ""}`}
-                onClick={() => setTab(t.key)} title={t.label}
-                style={{ padding: isMobile ? '8px 10px 10px' : '8px 14px 10px' }}>
-                <span className="ep-tab-icon">{t.icon}</span>
-                <span className="ep-tab-lbl" style={{ display: isSmall && TABS.length > 8 ? 'none' : 'block' }}>
-                  {isMobile ? t.label.split(' ').slice(0,2).join(' ') : t.label}
-                </span>
-                {t.badge > 0 && <span className="ep-tab-badge">{t.badge}</span>}
+        {/* ── HERO ── */}
+        <Hero
+          icon={User}
+          title={patient.prenom || patient.nom ? `${patient.prenom} ${patient.nom}` : "Mon espace patient"}
+          dateLabel={
+            <span className="flex items-center gap-2 flex-wrap">
+              <span>📋 {patient.numero_dossier || patient.dossier || "—"} · 🎂 {ageCalc(patient.date_naissance) || patient.age} · 🩸 {patient.groupe_sanguin || "—"}</span>
+              {mustChangePwd && <span style={{ color:"#FCD34D", fontWeight:700 }}>🔒 Changez votre mot de passe temporaire</span>}
+            </span>
+          }
+          right={
+            <>
+              <button className="hero-btn-ghost" onClick={() => setModalProfil(true)}>
+                <Pencil size={14} /> {!isSmall && "Profil"}
               </button>
-            ))}
-          </div>
+              <Button icon={Calendar} onClick={() => setModalRdv(true)}>{!isSmall ? "Prendre RDV" : ""}</Button>
+            </>
+          }
+        />
+
+        {/* ── TABS BAR ── */}
+        <div className="tab-bar">
+          {TABS.map(t => (
+            <button key={t.key} className={`tab-bar-item ${tab === t.key ? "active" : ""}`}
+              onClick={() => setTab(t.key)} title={t.label}>
+              <span>{t.icon}</span>
+              <span style={{ display: isSmall && TABS.length > 8 ? 'none' : 'inline' }}>
+                {isMobile ? t.label.split(' ').slice(0,2).join(' ') : t.label}
+              </span>
+              {t.badge > 0 && <span className="tab-bar-item-count">{t.badge}</span>}
+            </button>
+          ))}
         </div>
 
         {/* ── CONTENT ── */}
