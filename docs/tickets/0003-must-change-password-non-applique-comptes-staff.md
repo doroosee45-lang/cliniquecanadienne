@@ -2,7 +2,9 @@
 
 **Statut :** Ouvert — non corrigé (constat de vérification §3.5, hors périmètre des tâches T3.1-T3.4)
 **Origine :** Phase 3, §3.5(c) — vérification que `must_change_password` bloque effectivement la navigation
-**Sévérité :** Moyenne — pas de faille de sécurité en soi, mais un mécanisme de protection existant n'est jamais activé pour la population qui en aurait le plus besoin (comptes créés par un tiers avec un mot de passe qu'ils n'ont pas choisi).
+**Sévérité :** Ce ticket regroupe deux constats de sévérité distincte, à ne pas confondre :
+- **`hr.controller.js::create` — Élevée (blocage fonctionnel à l'onboarding).** Ce n'est pas qu'une incohérence de sécurité : le mot de passe généré (`` `Clinique${crypto.randomBytes(4).toString('hex')}!` ``) n'est retourné nulle part (ni réponse HTTP, ni log, ni email) — **aucune personne ne peut le connaître**, pas même l'administrateur qui vient de créer le compte. Un compte staff créé via le module RH avec un email est donc **inutilisable dès sa création** tant qu'un administrateur ne passe pas explicitement par `PATCH /settings/users/:id` pour lui fixer un mot de passe connu. C'est un défaut opérationnel qui bloque l'arrivée de tout nouvel employé passant par ce flux, pas une simple absence de bonne pratique.
+- **`settings.controller.js::createUser` et absence de blocage UI staff — Moyenne.** Ici le mot de passe est bien connu (saisi par l'admin dans le formulaire), donc le compte est utilisable ; le gap est que rien n'oblige à le changer à la première connexion, contrairement au portail patient. Hygiène de sécurité manquante, pas un blocage fonctionnel.
 
 ## Constat
 
