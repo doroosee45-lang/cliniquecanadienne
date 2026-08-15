@@ -4,8 +4,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
+import { Users, Plus, Printer } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 import {
   fetchPatients, createPatient, updatePatient, deletePatient,
   selectPatients, selectPatientsTotal, selectPatientsLoading, selectPatientsSaving,
@@ -675,39 +678,33 @@ export default function Patient() {
       <style>{CSS}</style>
       <div className="pat">
 
-        {/* ── TOPBAR ── */}
-        <div className="pat-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div className="pat-avatar">{I.user}</div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Gestion des Patients</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>{kpis.total} patients · Clinique Canadienne de Souanké</div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="pbtn pbtn-teal" onClick={() => setModalNouv(true)}>
-                {I.plus} Nouveau patient
-              </button>
+        {/* ── HERO ── */}
+        <Hero
+          icon={Users}
+          title="Gestion des Patients"
+          dateLabel={`${kpis.total} patients · Clinique Canadienne de Souanké`}
+          right={
+            <>
               {currentPatient && (
-                <button className="pbtn pbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => window.print()}>
-                  {I.print} Imprimer
+                <button className="hero-btn-ghost" onClick={() => window.print()}>
+                  <Printer size={14} /> Imprimer
                 </button>
               )}
-            </div>
-          </div>
+              <Button icon={Plus} onClick={() => setModalNouv(true)}>Nouveau patient</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          <div className="pat-tabs">
-            {[
-              { key:"liste",   icon:I.list,     label:"Patients" },
-              { key:"dossier", icon:I.file,     label: currentPatient ? `${currentPatient.prenom} ${currentPatient.nom}` : "Dossier patient", disabled:!currentPatient },
-            ].filter(t => !t.disabled).map(t => (
-              <button key={t.key} className={`pat-tab ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>
-                {t.icon} <span>{t.label}</span>
-              </button>
-            ))}
-          </div>
+        {/* Tabs */}
+        <div className="tab-bar">
+          {[
+            { key:"liste",   icon:I.list,     label:"Patients" },
+            { key:"dossier", icon:I.file,     label: currentPatient ? `${currentPatient.prenom} ${currentPatient.nom}` : "Dossier patient", disabled:!currentPatient },
+          ].filter(t => !t.disabled).map(t => (
+            <button key={t.key} className={`tab-bar-item ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>
+              {t.icon} <span>{t.label}</span>
+            </button>
+          ))}
         </div>
 
         {/* ── CONTENT ── */}

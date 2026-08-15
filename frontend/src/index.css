@@ -118,6 +118,20 @@ body {
   .hero-avatar { width: 48px; height: 48px; border-radius: 14px; }
 }
 
+/* ── Tab bar (navigation par onglets, généralement sous un Hero) ──────────
+   Remplace les variantes par page (.pat-tabs, .fin-tab...) qui fusionnaient
+   les onglets dans le panneau sombre du header — désormais séparé, pour
+   que le Hero garde la même structure partout (cf. ADR-0003). */
+.tab-bar { display: flex; gap: 4px; padding: 6px; background: white; border-radius: 14px; box-shadow: var(--shadow); margin-bottom: 20px; overflow-x: auto; }
+.tab-bar::-webkit-scrollbar { display: none; }
+.tab-bar-item {
+  display: flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px;
+  font-size: .8125rem; font-weight: 600; color: var(--muted); border: none; background: none;
+  cursor: pointer; transition: all .2s; white-space: nowrap; font-family: var(--font);
+}
+.tab-bar-item:hover { color: var(--ink); background: var(--tint); }
+.tab-bar-item.active { color: #fff; background: var(--primary); }
+
 /* ── Sidebar links ── */
 .sidebar-link {
   display: flex; align-items: center; gap: 10px;

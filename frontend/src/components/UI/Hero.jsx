@@ -50,11 +50,18 @@ export function HeroStatus({ connected, connectedLabel = 'Temps réel actif', id
   );
 }
 
-export function HeroRefreshButton({ onClick, label = 'Actualiser' }) {
+export function HeroButton({ icon: Icon = RefreshCw, label, onClick }) {
   return (
     <button className="hero-btn-ghost" onClick={onClick}>
-      <RefreshCw size={14} />
+      <Icon size={14} />
       {label}
     </button>
   );
+}
+
+// Raccourci pour le cas Dashboard exact (icône + libellé par défaut) —
+// HeroButton reste le nom générique pour toute autre action (imprimer,
+// filtrer, exporter...) posée sur un Hero.
+export function HeroRefreshButton({ onClick, label = 'Actualiser' }) {
+  return <HeroButton icon={RefreshCw} label={label} onClick={onClick} />;
 }
