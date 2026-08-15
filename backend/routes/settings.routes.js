@@ -5,6 +5,10 @@ const { protect, authorize } = require('../middleware/auth');
 const User = require('../models/User');
 
 const ADMIN = ['superadmin','adminclinique'];
+// Données de référence (services, salles, assurances) consultées par de
+// nombreux formulaires métier — ouvert à tout le personnel, jamais aux patients.
+const STAFF = ['superadmin','adminclinique','medecin','infirmier','sage_femme',
+               'laborantin','radiologue','pharmacien','comptable','receptionniste'];
 
 // ── Paramètres clinique ───────────────────────────────────────
 router.get('/',         protect, authorize(...ADMIN), settingsC.getAll);
@@ -22,18 +26,18 @@ router.delete('/users/:id',   protect, authorize('superadmin'), async (req, res,
 });
 
 // ── Services médicaux ─────────────────────────────────────────
-router.get('/services',       protect,                        settingsC.getServices);
+router.get('/services',       protect, authorize(...STAFF),   settingsC.getServices);
 router.post('/services',      protect, authorize(...ADMIN),   settingsC.createService);
 router.put('/services/:id',   protect, authorize(...ADMIN),   settingsC.updateService);
 
 // ── Salles ────────────────────────────────────────────────────
-router.get('/rooms',          protect,                        settingsC.getRooms);
+router.get('/rooms',          protect, authorize(...STAFF),   settingsC.getRooms);
 
 // ── KPIs administration ───────────────────────────────────────
 router.get('/kpis',           protect, authorize(...ADMIN),   settingsC.getKpis);
 
 // ── Assurances ────────────────────────────────────────────────
-router.get('/insurances',     protect,                        settingsC.getInsurances);
+router.get('/insurances',     protect, authorize(...STAFF),   settingsC.getInsurances);
 router.post('/insurances',    protect, authorize(...ADMIN),   settingsC.createInsurance);
 
 module.exports = router;

@@ -5,31 +5,32 @@ const { protect, authorize } = require('../middleware/auth');
 const { uploadMedPhoto }   = require('../middleware/upload');
 
 const CAN_MANAGE = ['superadmin','adminclinique','pharmacien'];
+const CAN_READ   = ['superadmin','adminclinique','pharmacien','medecin','infirmier'];
 
-router.get('/prescriptions',                    protect,                              pharmaC.getPrescriptions);
+router.get('/prescriptions',                    protect, authorize(...CAN_READ),      pharmaC.getPrescriptions);
 router.put('/prescriptions/:id/dispenser',      protect, authorize(...CAN_MANAGE),    pharmaC.dispenser);
 
 // Alias français : /pharmacie/medicaments
-router.get('/medicaments',                      protect,                              pharmaC.getAll);
+router.get('/medicaments',                      protect, authorize(...CAN_READ),      pharmaC.getAll);
 router.post('/medicaments',                     protect, authorize(...CAN_MANAGE),    pharmaC.create);
 
 // Stats KPI
-router.get('/stats',                            protect,                              pharmaC.getStats);
+router.get('/stats',                            protect, authorize(...CAN_READ),      pharmaC.getStats);
 
 // Mouvements agrégés
-router.get('/mouvements',                       protect,                              pharmaC.getMovements);
+router.get('/mouvements',                       protect, authorize(...CAN_READ),      pharmaC.getMovements);
 
 // Ventes
 router.post('/ventes',                          protect, authorize(...CAN_MANAGE),    pharmaC.createVente);
 
 // Commandes & fournisseurs
-router.get('/commandes',                        protect,                              pharmaC.getCommandes);
+router.get('/commandes',                        protect, authorize(...CAN_MANAGE),    pharmaC.getCommandes);
 router.post('/commandes',                       protect, authorize(...CAN_MANAGE),    pharmaC.createCommande);
-router.get('/fournisseurs',                     protect,                              pharmaC.getFournisseurs);
+router.get('/fournisseurs',                     protect, authorize(...CAN_MANAGE),    pharmaC.getFournisseurs);
 
-router.get('/',                                 protect,                              pharmaC.getAll);
+router.get('/',                                 protect, authorize(...CAN_READ),      pharmaC.getAll);
 router.post('/',                                protect, authorize(...CAN_MANAGE),    pharmaC.create);
-router.get('/:id',                              protect,                              pharmaC.getOne);
+router.get('/:id',                              protect, authorize(...CAN_READ),      pharmaC.getOne);
 router.put('/:id',                              protect, authorize(...CAN_MANAGE),    pharmaC.update);
 router.post('/:id/photo',                       protect, authorize(...CAN_MANAGE),    uploadMedPhoto.single('photo'), pharmaC.uploadPhoto);
 router.post('/:id/mouvement',                   protect, authorize(...CAN_MANAGE),    pharmaC.mouvement);

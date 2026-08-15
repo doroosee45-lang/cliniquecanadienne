@@ -142,12 +142,12 @@ router.get('/paiements', protect, authorize(...CAN_ACCESS), async (req, res, nex
 // Dépenses, salaires, assurances — stubs (pas de modèle dédié encore)
 router.get('/depenses',   protect, authorize(...CAN_ACCESS), (req, res) => res.json({ success: true, depenses: [] }));
 router.get('/salaires',   protect, authorize(...CAN_ACCESS), (req, res) => res.json({ success: true, salaires: [] }));
-router.get('/assurances', protect,                           (req, res) => res.json({ success: true, assurances: [] }));
+router.get('/assurances', protect, authorize(...CAN_ACCESS), (req, res) => res.json({ success: true, assurances: [] }));
 router.post('/caisse',    protect, authorize(...CAN_ACCESS), (req, res) => res.json({ success: true, message: 'Enregistré.' }));
 
 router.get('/',             protect, authorize(...CAN_ACCESS), finC.getAll);
 router.post('/',            protect, authorize(...CAN_ACCESS), finC.create);
-router.get('/:id',          protect,                           finC.getOne);
+router.get('/:id',          protect, authorize(...CAN_ACCESS), finC.getOne);
 router.post('/:id/paiement',protect, authorize(...CAN_ACCESS), finC.addPayment);
 
 module.exports = router;
