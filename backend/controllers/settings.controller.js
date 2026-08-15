@@ -46,9 +46,18 @@ exports.createUser = async (req, res, next) => {
 exports.updateUser = async (req, res, next) => {
   try {
     const { password, ...data } = req.body;
+    const avant = await User.findById(req.params.id).select('role statut email').lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
     const user = await User.findByIdAndUpdate(req.params.id, data, { new: true });
-    if (!user) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
     if (password) { user.password = password; await user.save(); }
+    // Modification de compte utilisateur — traçabilité renforcée si le rôle
+    // ou le statut change (élévation de privilèges, suspension...).
+    await logAction({
+      utilisateur: req.user._id, action: 'UPDATE_USER', module: 'admin', entite_id: user._id, ip: req.ip,
+      avant: { role: avant.role, statut: avant.statut },
+      apres: { role: user.role, statut: user.statut },
+      message: `Utilisateur modifié : ${user.email}${avant.role !== user.role ? ` — rôle ${avant.role} → ${user.role}` : ''}${avant.statut !== user.statut ? ` — statut ${avant.statut} → ${user.statut}` : ''}${password ? ' — mot de passe réinitialisé' : ''}`,
+    });
     res.json({ success: true, user });
   } catch (err) { next(err); }
 };
@@ -63,6 +72,7 @@ exports.getServices = async (req, res, next) => {
 exports.createService = async (req, res, next) => {
   try {
     const service = await Service.create(req.body);
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'settings', entite_id: service._id, ip: req.ip, message: `Nouveau service : ${service.nom}` });
     res.status(201).json({ success: true, service });
   } catch (err) { next(err); }
 };
@@ -71,6 +81,7 @@ exports.updateService = async (req, res, next) => {
   try {
     const service = await Service.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!service) return res.status(404).json({ success: false, message: 'Service introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'settings', entite_id: service._id, ip: req.ip, message: `Service modifié : ${service.nom}` });
     res.json({ success: true, service });
   } catch (err) { next(err); }
 };
@@ -131,7 +142,10 @@ exports.getKpis = async (req, res, next) => {
         { $group: { _id: { mois: { $month: '$date_facture' } }, total: { $sum: '$montant_ttc' } } },
         { $sort: { '_id.mois': 1 } },
       ]),
-      Room.find().select('statut type').lean(),
+      // Room.statut (actif/maintenance/ferme) est un statut d'ouverture de la
+      // chambre — la disponibilité réelle (libre/occupé) vit au niveau de
+      // chaque lit (Room.lits[].statut), jamais sur la chambre elle-même.
+      Room.find().select('statut type lits').lean(),
       User.aggregate([
         { $match: { statut: 'actif' } },
         { $group: { _id: '$role', count: { $sum: 1 } } },
@@ -157,8 +171,11 @@ exports.getKpis = async (req, res, next) => {
       revenus_par_mois,
       rooms: {
         total:        rooms.length,
-        libres:       rooms.filter(r => r.statut === 'libre').length,
-        occupees:     rooms.filter(r => r.statut === 'occupe').length,
+        // Comptage réel au niveau des lits (Room.lits[].statut), pas de la
+        // chambre — voir hospitalization.controller.js::getStats pour la
+        // même logique de référence.
+        libres:       rooms.reduce((s, r) => s + (r.lits?.filter(l => l.statut === 'libre').length || 0), 0),
+        occupees:     rooms.reduce((s, r) => s + (r.lits?.filter(l => l.statut === 'occupe').length || 0), 0),
         maintenance:  rooms.filter(r => r.statut === 'maintenance').length,
       },
       personnel_par_role: {

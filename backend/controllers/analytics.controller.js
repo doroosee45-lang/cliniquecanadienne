@@ -125,9 +125,12 @@ exports.getStats = async (req, res, next) => {
       // ── Urgences
       safeCount(Urgence),
       safeCount(Urgence, { createdAt: { $gte: depuis } }),
-      safeCount(Urgence, { niveau_urgence: { $in: ['critique','p1','rouge'] } }),
+      // Urgence.niveau_urgence n'existe pas — le champ réel est niveau_triage
+      // (enum rouge/orange/jaune/vert/bleu) ; 'rouge' = niveau critique.
+      safeCount(Urgence, { niveau_triage: 'rouge' }),
       // ── Maternité
-      safeCount(Pregnancy, { statut: { $in: ['en_cours','active','suivi'] } }),
+      // Enum réel Pregnancy.statut : active/accouchee/suivi_postnatal/cloturee/a_risque
+      safeCount(Pregnancy, { statut: { $in: ['active','a_risque'] } }),
       safeCount(Delivery, { createdAt: { $gte: depuis } }),
       // ── Pédiatrie
       safeCount(PediatricConsultation),

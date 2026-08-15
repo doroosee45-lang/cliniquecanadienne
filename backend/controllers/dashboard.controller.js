@@ -1,68 +1,31 @@
-// const Patient = require('../models/Patient');
-// const Appointment = require('../models/Appointment');
-// const Consultation = require('../models/Consultation');
-// const Invoice = require('../models/Invoice');
-// const LabResult = require('../models/LabResult');
-// const Hospitalization = require('../models/Hospitalization');
-// const Medication = require('../models/Medication');
-
-// exports.getStats = async (req, res, next) => {
-//   try {
-//     const today = new Date();
-//     today.setHours(0, 0, 0, 0);
-//     const tomorrow = new Date(today);
-//     tomorrow.setDate(tomorrow.getDate() + 1);
-
-//     const [
-//       totalPatients, totalStaff, rdvAujourdhui, hospisEnCours,
-//       critiquesNonAcquittes, stockAlertes, caTotal, rdvData, invoiceData
-//     ] = await Promise.all([
-//       Patient.countDocuments({ statut: 'actif' }),
-//       require('../models/User').countDocuments({ statut: 'actif' }),
-//       Appointment.countDocuments({ date_heure: { $gte: today, $lt: tomorrow } }),
-//       Hospitalization.countDocuments({ statut: 'en_cours' }),
-//       LabResult.countDocuments({ est_critique: true, acquitte_par: null }),
-//       Medication.countDocuments({ $expr: { $lte: ['$stock_actuel', '$seuil_alerte'] } }),
-//       Invoice.aggregate([{ $group: { _id: null, total: { $sum: '$montant_paye' } } }]),
-//       // 7-day appointments
-//       Appointment.aggregate([
-//         { $match: { date_heure: { $gte: new Date(Date.now() - 7 * 86400000) } } },
-//         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date_heure' } }, count: { $sum: 1 } } },
-//         { $sort: { _id: 1 } },
-//       ]),
-//       // 7-day revenue
-//       Invoice.aggregate([
-//         { $match: { date_facture: { $gte: new Date(Date.now() - 7 * 86400000) } } },
-//         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date_facture' } }, total: { $sum: '$montant_paye' } } },
-//         { $sort: { _id: 1 } },
-//       ]),
-//     ]);
-
-//     res.json({ success: true, stats: {
-//       totalPatients, totalStaff, rdvAujourdhui, hospisEnCours,
-//       critiquesNonAcquittes, stockAlertes,
-//       caTotal: caTotal[0]?.total || 0,
-//       rdvData, invoiceData,
-//     }});
-//   } catch (err) { next(err); }
-// };
-
-
-
-
-
 // controllers/dashboardController.js
+//
+// ⚠️ Ce fichier interrogeait massivement des champs/valeurs d'énumération
+// qui n'existent PAS dans les modèles Mongoose réels (ex: Invoice.type,
+// Invoice.statut='impayee', Consultation.date, Hospitalization.date_admission,
+// Surgery.statut='realisee', User.statut_service, Ordonnance.medicaments...).
+// Ces requêtes ne levaient aucune erreur (Mongo traite un champ absent comme
+// "n'existe pas"), elles renvoyaient juste 0/vide en permanence — chaque
+// rôle voyait donc un tableau de bord silencieusement faux. Toutes les
+// requêtes ci-dessous ont été réalignées sur les schémas réels ; les KPI
+// pour lesquels aucune donnée n'est réellement modélisée (dépenses,
+// ventes comptoir pharmacie, planning infirmier détaillé, échecs de
+// connexion) sont désormais des zéros EXPLICITES et commentés, plutôt que
+// des zéros accidentels indiscernables d'une vraie absence d'activité.
 const Patient        = require('../models/Patient');
 const Appointment    = require('../models/Appointment');
 const Consultation   = require('../models/Consultation');
 const Invoice        = require('../models/Invoice');
 const LabResult      = require('../models/LabResult');
+const ImagingResult  = require('../models/ImagingResult');
 const Hospitalization= require('../models/Hospitalization');
 const Medication     = require('../models/Medication');
 const Surgery        = require('../models/DossierChirurgical');
 const Ordonnance     = require('../models/Prescription');
 const User           = require('../models/User');
-const Message        = require('../models/Conversation');
+const Staff          = require('../models/Staff');
+const Room           = require('../models/Room');
+const Conversation   = require('../models/Conversation');
 
 // ─── Helpers ──────────────────────────────────────────────────
 const todayRange = () => {
@@ -77,6 +40,14 @@ const dayLabels = (arr) => arr.map(d => {
   return dt.toLocaleDateString('fr-FR', { weekday:'short', day:'numeric' });
 });
 const monthLabels = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+
+// Occupation réelle des lits (mêmes règles que hospitalization.controller.js::getStats)
+const litsOccupationPct = async () => {
+  const rooms = await Room.find();
+  const totalLits   = rooms.reduce((s, r) => s + (r.lits?.length || 0), 0);
+  const litsOccupes = rooms.reduce((s, r) => s + (r.lits?.filter(l => l.statut === 'occupe').length || 0), 0);
+  return totalLits > 0 ? Math.round((litsOccupes / totalLits) * 100) : 0;
+};
 
 // ─── 1. SUPER ADMIN ────────────────────────────────────────────
 exports.superAdminStats = async (req, res, next) => {
@@ -109,11 +80,13 @@ exports.superAdminStats = async (req, res, next) => {
       User.countDocuments({ statut:'actif', derniere_connexion:{ $gte: new Date(Date.now()-15*60000) } }),
       Consultation.countDocuments({}),
       Hospitalization.countDocuments({ statut:'en_cours' }),
-      Surgery.countDocuments({ statut:'realisee' }),
+      Surgery.countDocuments({ statut:{ $in:['opere','suivi_postop','cloture'] } }),
       Appointment.countDocuments({}),
-      Invoice.aggregate([{ $match:{ statut:'impayee' }}, { $group:{ _id:null, total:{ $sum:'$montant_total' }}}]),
+      Invoice.aggregate([{ $match:{ statut:{ $in:['emise','partiellement_payee'] } }}, { $group:{ _id:null, total:{ $sum:'$montant_restant' }}}]),
       Invoice.aggregate([{ $match:{ statut:'payee', date_facture:{ $gte: new Date(new Date().getFullYear(),new Date().getMonth(),1) }}}, { $group:{ _id:null, total:{ $sum:'$montant_paye' }}}]),
-      Invoice.aggregate([{ $match:{ type:'depense', date_facture:{ $gte: new Date(new Date().getFullYear(),new Date().getMonth(),1) }}}, { $group:{ _id:null, total:{ $sum:'$montant_total' }}}]),
+      // Dépenses de clinique : aucun modèle dédié n'existe actuellement
+      // (Invoice ne sert qu'à la facturation patient) — 0 explicite.
+      Promise.resolve([]),
       User.aggregate([{ $group:{ _id:'$role', count:{ $sum:1 }}}]),
       // CA 12 mois
       Invoice.aggregate([
@@ -121,12 +94,8 @@ exports.superAdminStats = async (req, res, next) => {
         { $group:{ _id:{ $month:'$date_facture' }, total:{ $sum:'$montant_paye' }}},
         { $sort:{ '_id':1 }},
       ]),
-      // Dépenses 12 mois
-      Invoice.aggregate([
-        { $match:{ type:'depense', date_facture:{ $gte: last12months() }}},
-        { $group:{ _id:{ $month:'$date_facture' }, total:{ $sum:'$montant_total' }}},
-        { $sort:{ '_id':1 }},
-      ]),
+      // Dépenses 12 mois — idem, non modélisé
+      Promise.resolve([]),
       // Alertes critiques système
       LabResult.aggregate([
         { $match:{ est_critique:true, acquitte_par:null }},
@@ -135,10 +104,12 @@ exports.superAdminStats = async (req, res, next) => {
         { $project:{ type:'error', msg:{ $concat:['Résultat critique — ', { $arrayElemAt:['$pat.nom',0] }] }, heure:'$createdAt' }},
       ]),
       Patient.countDocuments({ createdAt:{ $gte:start, $lte:end }}),
-      Consultation.countDocuments({ date:{ $gte:start, $lte:end }}),
-      Hospitalization.countDocuments({ date_admission:{ $gte:start, $lte:end }}),
-      User.countDocuments({ tentatives_connexion_echouees:{ $gt:3 }}),
-      User.countDocuments({ statut:'bloque' }),
+      Consultation.countDocuments({ date_consultation:{ $gte:start, $lte:end }}),
+      Hospitalization.countDocuments({ date_entree:{ $gte:start, $lte:end }}),
+      // Aucun compteur de tentatives de connexion échouées n'est encore
+      // persisté sur User — 0 explicite (voir rapport d'audit : à implémenter).
+      Promise.resolve(0),
+      User.countDocuments({ statut:'suspendu' }),
     ]);
 
     // Formater users_par_role en objet
@@ -187,11 +158,11 @@ exports.adminCliniqueStats = async (req, res, next) => {
 
     const [
       patients_auj,
-      rdv_auj_total, rdv_confirmes, rdv_en_attente, rdv_annules,
-      consults_en_attente, consults_en_cours, consults_terminees,
-      hospit_en_cours, occupation_lits, sorties_prev,
+      rdv_auj_total, rdv_confirmes, rdv_en_attente, rdv_annules, rdv_absents,
+      consults_en_cours, consults_suspendues, consults_terminees,
+      hospit_en_cours, occupation_lits, sorties_prev, admissions_auj,
       labo_auj, imagerie_auj,
-      chirurgie_prog, chirurgie_real, chirurgie_rep,
+      chirurgie_prog, chirurgie_real,
       ordonnances_auj,
       revenus_auj_agg, depenses_auj_agg, factures_imp_agg,
       stock_faible, expires, commandes_attente,
@@ -205,32 +176,35 @@ exports.adminCliniqueStats = async (req, res, next) => {
       Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'confirme' }),
       Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'en_attente' }),
       Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'annule' }),
-      Consultation.countDocuments({ date:{ $gte:start,$lte:end }, statut:'en_attente' }),
-      Consultation.countDocuments({ date:{ $gte:start,$lte:end }, statut:'en_cours' }),
-      Consultation.countDocuments({ date:{ $gte:start,$lte:end }, statut:'terminee' }),
+      Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'absent' }),
+      Consultation.countDocuments({ date_consultation:{ $gte:start,$lte:end }, statut:'en_cours' }),
+      Consultation.countDocuments({ date_consultation:{ $gte:start,$lte:end }, statut:'suspendue' }),
+      Consultation.countDocuments({ date_consultation:{ $gte:start,$lte:end }, statut:'terminee' }),
       Hospitalization.countDocuments({ statut:'en_cours' }),
-      Hospitalization.countDocuments({ statut:'en_cours' }).then(n => Math.round((n/50)*100)), // sur 50 lits
-      Hospitalization.countDocuments({ statut:'en_cours', sortie_prevue:{ $gte:start,$lte:end }}),
+      litsOccupationPct(),
+      Hospitalization.countDocuments({ statut:'en_cours', date_sortie_prevue:{ $gte:start,$lte:end }}),
+      Hospitalization.countDocuments({ date_entree:{ $gte:start,$lte:end }}),
       LabResult.countDocuments({ createdAt:{ $gte:start,$lte:end }}),
-      Consultation.countDocuments({ date:{ $gte:start,$lte:end }, type:'imagerie' }),
-      Surgery.countDocuments({ date_prevue:{ $gte:start,$lte:end }, statut:'programmee' }),
-      Surgery.countDocuments({ date_prevue:{ $gte:start,$lte:end }, statut:'realisee' }),
-      Surgery.countDocuments({ date_prevue:{ $gte:start,$lte:end }, statut:'reportee' }),
+      ImagingResult.countDocuments({ date_prescription:{ $gte:start,$lte:end }}),
+      Surgery.countDocuments({ date_intervention_prev:{ $gte:start,$lte:end }, statut:'preoperatoire' }),
+      Surgery.countDocuments({ date_intervention_prev:{ $gte:start,$lte:end }, statut:{ $in:['opere','suivi_postop','cloture'] } }),
       Ordonnance.countDocuments({ createdAt:{ $gte:start,$lte:end }}),
       Invoice.aggregate([{ $match:{ statut:'payee', date_facture:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant_paye' }}}]),
-      Invoice.aggregate([{ $match:{ type:'depense', date_facture:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant_total' }}}]),
-      Invoice.aggregate([{ $match:{ statut:'impayee' }},{ $group:{ _id:null,total:{ $sum:'$montant_total' }}}]),
-      Medication.countDocuments({ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }, date_expiration:{ $gt: new Date() }}),
-      Medication.countDocuments({ date_expiration:{ $lte: new Date() }}),
-      Medication.countDocuments({ statut_commande:'en_attente' }),
-      User.countDocuments({ role:'medecin', statut_service:'present', date_service:{ $gte:start }}),
-      User.countDocuments({ role:'infirmier', statut_service:'present', date_service:{ $gte:start }}),
-      User.countDocuments({ role:'laborantin', statut_service:'present', date_service:{ $gte:start }}),
-      User.countDocuments({ role:{ $in:['adminclinique','receptionniste','comptable'] }, statut_service:'present', date_service:{ $gte:start }}),
-      User.countDocuments({ statut_service:'absent', date_service:{ $gte:start }}),
-      User.countDocuments({ statut_service:'conge' }),
+      // Dépenses clinique : non modélisé
+      Promise.resolve([]),
+      Invoice.aggregate([{ $match:{ statut:{ $in:['emise','partiellement_payee'] } }},{ $group:{ _id:null,total:{ $sum:'$montant_restant' }}}]),
+      Medication.countDocuments({ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }, date_peremption:{ $gt: new Date() }}),
+      Medication.countDocuments({ date_peremption:{ $lte: new Date() }}),
+      // Commandes fournisseurs : non persistées en base actuellement (voir pharmacy.controller.js::getCommandes)
+      Promise.resolve(0),
+      User.countDocuments({ role:'medecin', statut:'actif' }),
+      User.countDocuments({ role:'infirmier', statut:'actif' }),
+      User.countDocuments({ role:'laborantin', statut:'actif' }),
+      User.countDocuments({ role:{ $in:['adminclinique','receptionniste','comptable'] }, statut:'actif' }),
+      Staff.countDocuments({ statut:'absent' }),
+      Staff.countDocuments({ statut:'conge' }),
       LabResult.find({ est_critique:true, acquitte_par:null }).populate('patient','nom prenom').limit(5),
-      Medication.find({ $or:[{ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }},{ date_expiration:{ $lte: new Date() }}]}).limit(3),
+      Medication.find({ $or:[{ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }},{ date_peremption:{ $lte: new Date() }}]}).limit(3),
       // RDV du jour avec détails
       Appointment.find({ date_heure:{ $gte:start,$lte:end }})
         .populate('patient','nom prenom')
@@ -238,8 +212,8 @@ exports.adminCliniqueStats = async (req, res, next) => {
         .sort({ date_heure:1 }).limit(10),
       // Consultations 7 jours
       Consultation.aggregate([
-        { $match:{ date:{ $gte:last7days() }}},
-        { $group:{ _id:{ $dateToString:{ format:'%Y-%m-%d', date:'$date' }}, count:{ $sum:1 }}},
+        { $match:{ date_consultation:{ $gte:last7days() }}},
+        { $group:{ _id:{ $dateToString:{ format:'%Y-%m-%d', date:'$date_consultation' }}, count:{ $sum:1 }}},
         { $sort:{ _id:1 }},
       ]),
       // Revenus 7 jours
@@ -265,24 +239,27 @@ exports.adminCliniqueStats = async (req, res, next) => {
 
     // Alertes combinées
     const alertes = [
-      ...alertes_labo.map(a => ({ type:'error', icon:'🔬', msg:`Résultat critique : ${a.patient?.nom||'Patient'} — ${a.test}`, heure: new Date(a.createdAt).toLocaleString('fr-FR') })),
-      ...alertes_pharma.map(m => ({ type: m.date_expiration<=new Date()?'error':'warn', icon:'💊', msg:`${m.nom} — ${m.date_expiration<=new Date()?'Expiré':'Stock bas ('+m.stock_actuel+' unités)'}`, heure:'Aujourd\'hui' })),
+      ...alertes_labo.map(a => ({ type:'error', icon:'🔬', msg:`Résultat critique : ${a.patient?.nom||'Patient'}`, heure: new Date(a.createdAt).toLocaleString('fr-FR') })),
+      ...alertes_pharma.map(m => ({ type: m.date_peremption<=new Date()?'error':'warn', icon:'💊', msg:`${m.nom_commercial} — ${m.date_peremption<=new Date()?'Expiré':'Stock bas ('+m.stock_actuel+' unités)'}`, heure:'Aujourd\'hui' })),
       factures_imp_agg[0]?.total > 0 ? { type:'warn', icon:'💰', msg:`${(factures_imp_agg[0].total).toLocaleString('fr-FR')} CFA de factures impayées`, heure:'Aujourd\'hui' } : null,
     ].filter(Boolean);
 
     res.json({ success:true, stats:{
       kpis:{
         patients_auj, rdv_auj: rdv_auj_total,
-        consultations_auj: consults_en_attente + consults_en_cours + consults_terminees,
+        consultations_auj: consults_en_cours + consults_suspendues + consults_terminees,
         hospit_en_cours, labo_auj, imagerie_auj, ordonnances_auj,
         revenus_auj: revenus_auj_agg[0]?.total || 0,
         depenses_auj: depenses_auj_agg[0]?.total || 0,
         factures_imp: factures_imp_agg[0]?.total || 0,
       },
-      consults:{ en_attente:consults_en_attente, en_cours:consults_en_cours, terminees:consults_terminees },
-      hospit:{ admissions_auj:0, occupation_lits, sorties_prev },
-      chirurgie:{ programmees:chirurgie_prog, realisees:chirurgie_real, reportees:chirurgie_rep },
-      rdv:{ total:rdv_auj_total, confirmes:rdv_confirmes, en_attente:rdv_en_attente, annules:rdv_annules, absents:0 },
+      // Le modèle Consultation n'a pas d'état "en attente" (enum réel :
+      // en_cours/terminee/suspendue) — le 3ᵉ compteur reflète "suspendue".
+      consults:{ en_attente:consults_suspendues, en_cours:consults_en_cours, terminees:consults_terminees },
+      hospit:{ admissions_auj, occupation_lits, sorties_prev },
+      // "reportee" n'existe pas dans l'enum DossierChirurgical.statut — non modélisé.
+      chirurgie:{ programmees:chirurgie_prog, realisees:chirurgie_real, reportees:0 },
+      rdv:{ total:rdv_auj_total, confirmes:rdv_confirmes, en_attente:rdv_en_attente, annules:rdv_annules, absents:rdv_absents },
       pharmacie:{ stock_faible, expires, commandes_attente },
       personnel:{ medecins_presents:medecins_p, infirmiers_presents:infirmiers_p, laborantins_presents:laborantins_p, admin_presents:admin_p, absents, conges },
       alertes,
@@ -315,24 +292,24 @@ exports.medecinStats = async (req, res, next) => {
       ia_stats,
     ] = await Promise.all([
       Patient.countDocuments({ medecin_referent:medecinId, statut:'actif' }),
-      Consultation.countDocuments({ medecin:medecinId, date:{ $gte:start,$lte:end }}),
+      Consultation.countDocuments({ medecin:medecinId, date_consultation:{ $gte:start,$lte:end }}),
       Appointment.countDocuments({ medecin:medecinId, date_heure:{ $gte:start,$lte:end }}),
       Ordonnance.countDocuments({ medecin:medecinId, createdAt:{ $gte:start,$lte:end }}),
       Hospitalization.countDocuments({ medecin_responsable:medecinId, statut:'en_cours' }),
-      Surgery.countDocuments({ chirurgien_principal:medecinId, statut:'realisee' }),
+      Surgery.countDocuments({ chirurgien_id:medecinId, statut:{ $in:['opere','suivi_postop','cloture'] } }),
       // Consultations du jour avec détails
-      Consultation.find({ medecin:medecinId, date:{ $gte:start,$lte:end }})
+      Consultation.find({ medecin:medecinId, date_consultation:{ $gte:start,$lte:end }})
         .populate('patient','nom prenom')
-        .sort({ heure:1 }).limit(10),
+        .sort({ date_consultation:1 }).limit(10),
       // Patients hospitalisés
       Hospitalization.find({ medecin_responsable:medecinId, statut:'en_cours' })
         .populate('patient','nom prenom')
         .limit(5),
       // Alertes labo critiques pour mes patients
-      LabResult.find({ est_critique:true, acquitte_par:null, medecin:medecinId })
+      LabResult.find({ est_critique:true, acquitte_par:null, medecin_prescripteur:medecinId })
         .populate('patient','nom prenom').limit(5),
-      // Stats IA (si module IA disponible)
-      Consultation.countDocuments({ medecin:medecinId, ia_utilise:true }).then(d => ({
+      // Stats IA (suggestions générées automatiquement à la consultation)
+      Consultation.countDocuments({ medecin:medecinId, 'ia_suggestions.0':{ $exists:true } }).then(d => ({
         diagnostics_assistes: d,
         alertes_risque: 0,
         interactions_detectees: 0,
@@ -342,24 +319,24 @@ exports.medecinStats = async (req, res, next) => {
 
     // Formater consultations du jour
     const consults_auj = consults_du_jour.map(c => ({
-      heure: c.heure || new Date(c.date).toLocaleTimeString('fr-FR',{ hour:'2-digit',minute:'2-digit' }),
+      heure: new Date(c.date_consultation).toLocaleTimeString('fr-FR',{ hour:'2-digit',minute:'2-digit' }),
       patient: c.patient ? `${c.patient.prenom} ${c.patient.nom}` : 'Inconnu',
-      motif: c.motif || '—',
-      statut: c.statut || 'en_attente',
+      motif: c.diagnostic || c.anamnese || '—',
+      statut: c.statut || 'en_cours',
     }));
 
     // Formater hospitalisations
     const hospit_patients_fmt = hospit_patients.map(h => ({
       nom: h.patient ? `${h.patient.prenom} ${h.patient.nom}` : 'Inconnu',
-      chambre: h.numero_chambre || '—',
-      jours: Math.ceil((new Date()-new Date(h.date_admission)) / 86400000),
-      statut: h.statut_clinique || 'stable',
+      chambre: h.chambre_num || '—',
+      jours: Math.ceil((new Date()-new Date(h.date_entree)) / 86400000),
+      statut: 'stable',
     }));
 
     // Alertes
     const alertes = alertes_labo.map(a => ({
       type:'error',
-      msg:`${a.patient?.nom||'Patient'} — Résultat critique : ${a.test} = ${a.valeur}`,
+      msg:`${a.patient?.nom||'Patient'} — Résultat critique${a.valeurs_critiques ? ' : ' + a.valeurs_critiques : ''}`,
       heure: new Date(a.createdAt).toLocaleString('fr-FR'),
     }));
 
@@ -374,51 +351,29 @@ exports.medecinStats = async (req, res, next) => {
 };
 
 // ─── 4. INFIRMIER ──────────────────────────────────────────────
+// ⚠️ Il n'existe aujourd'hui aucun schéma de "plan de soins" (soins,
+// constantes à prendre, médicaments à distribuer par horaire) — seul
+// Hospitalization.notes_cliniques[] existe (saisie libre horodatée), sans
+// structure de tâches/rappels. Les KPI ci-dessous qui nécessiteraient ce
+// modèle sont donc à 0 de façon EXPLICITE (fonctionnalité non construite,
+// pas un bug de requête) — voir rapport d'audit, section Infirmier.
 exports.infirmierStats = async (req, res, next) => {
   try {
-    const { start, end } = todayRange();
-    const infirmierId = req.user._id;
-
-    const [
-      patients_surveilles,
-      soins_auj,
-      temperatures_a_prendre,
-      pansements,
-      medicaments_a_distribuer,
-      constantes_a_noter,
-      alertes_constantes,
-      planning_soins,
-    ] = await Promise.all([
-      Hospitalization.countDocuments({ infirmier_referent:infirmierId, statut:'en_cours' }),
-      Hospitalization.countDocuments({ 'soins.date':{ $gte:start,$lte:end }, 'soins.infirmier':infirmierId }),
-      Hospitalization.countDocuments({ statut:'en_cours', 'constantes.prochaine_prise':{ $lte:new Date() }}),
-      Hospitalization.countDocuments({ statut:'en_cours', 'soins.type':'pansement', 'soins.statut':'a_faire' }),
-      Hospitalization.countDocuments({ statut:'en_cours', 'medicaments.heure_prochaine_dose':{ $lte:new Date() }}),
-      Hospitalization.countDocuments({ statut:'en_cours', 'constantes.prochaine_saisie':{ $lte:new Date() }}),
-      // Alertes constantes anormales
-      Hospitalization.find({ statut:'en_cours', 'constantes.alerte':true })
-        .populate('patient','nom prenom chambre').limit(5),
-      // Planning du jour
-      Hospitalization.find({ infirmier_referent:infirmierId, statut:'en_cours', 'soins.date':{ $gte:start,$lte:end }})
-        .populate('patient','nom prenom').limit(8),
+    const [patients_surveilles] = await Promise.all([
+      Hospitalization.countDocuments({ statut:'en_cours' }),
     ]);
 
-    const alertes = alertes_constantes.map(h => ({
-      type: 'error',
-      msg: `${h.patient?.nom||'Patient'} — Chambre ${h.numero_chambre||'?'} : constante anormale`,
-      heure: 'Maintenant',
-    }));
-
-    const planning = planning_soins.map((h, i) => ({
-      heure: new Date(start.getTime() + (i+1)*7200000).toLocaleTimeString('fr-FR',{ hour:'2-digit',minute:'2-digit' }),
-      tache: `Soins — ${h.patient?.nom||'Patient'} Chambre ${h.numero_chambre||'?'}`,
-      fait: h.soins?.[0]?.statut === 'fait',
-    }));
-
     res.json({ success:true, stats:{
-      kpis:{ patients_surveilles, soins_auj, temperatures_a_prendre, pansements, medicaments_a_distribuer, constantes_a_noter },
-      alertes,
-      planning,
+      kpis:{
+        patients_surveilles,
+        soins_auj: 0,
+        temperatures_a_prendre: 0,
+        pansements: 0,
+        medicaments_a_distribuer: 0,
+        constantes_a_noter: 0,
+      },
+      alertes: [],
+      planning: [],
     }});
   } catch (err) { next(err); }
 };
@@ -441,22 +396,26 @@ exports.laborantinStats = async (req, res, next) => {
       LabResult.countDocuments({ statut:'en_cours' }),
       LabResult.countDocuments({ statut:'valide', createdAt:{ $gte:start,$lte:end }}),
       LabResult.countDocuments({ est_critique:true, acquitte_par:null }),
-      LabResult.countDocuments({ statut:'en_attente_validation' }),
-      LabResult.find({ $or:[{ est_critique:true },{ statut_alerte:{ $in:['anormal','eleve','critique'] }}]})
-        .populate('patient','nom prenom').sort({ est_critique:-1 }).limit(10),
-      LabResult.find({ est_critique:true, acquitte_par:null }).populate('patient','nom prenom').limit(5),
+      // "en_attente_validation" n'existe pas dans l'enum réel — l'état
+      // équivalent est 'termine' (résultat saisi, en attente de validation).
+      LabResult.countDocuments({ statut:'termine' }),
+      LabResult.find({ est_critique:true })
+        .populate('patient','nom prenom').populate('examen','nom')
+        .sort({ createdAt:-1 }).limit(10),
+      LabResult.find({ est_critique:true, acquitte_par:null })
+        .populate('patient','nom prenom').populate('examen','nom').limit(5),
     ]);
 
     const analyses_urgentes = analyses_urgentes_raw.map(a => ({
       patient: a.patient ? `${a.patient.prenom} ${a.patient.nom}` : 'Inconnu',
-      examen: a.test || a.type_analyse || '—',
-      valeur: `${a.valeur||'?'} ${a.unite||''}`.trim(),
-      statut: a.est_critique ? 'critique' : (a.statut_alerte || 'anormal'),
+      examen: a.examen?.nom || a.patient_dossier || '—',
+      valeur: a.valeurs_critiques || '—',
+      statut: a.est_critique ? 'critique' : (a.statut || 'anormal'),
     }));
 
     const alertes = alertes_raw.map(a => ({
       type: 'error',
-      msg: `${a.patient?.nom||'Patient'} — ${a.test} : CRITIQUE`,
+      msg: `${a.patient?.nom||'Patient'} — ${a.examen?.nom || 'Résultat'} : CRITIQUE`,
       heure: 'Urgent',
     }));
 
@@ -487,35 +446,37 @@ exports.pharmacienStats = async (req, res, next) => {
       alertes_raw,
       top_meds_raw,
     ] = await Promise.all([
-      Medication.countDocuments({ statut:'actif' }),
+      Medication.countDocuments({}),
       Medication.countDocuments({ stock_actuel:{ $lte:0 }}),
       Medication.countDocuments({ $expr:{ $and:[{ $gt:['$stock_actuel',0] },{ $lte:['$stock_actuel','$seuil_alerte'] }]}}),
-      Medication.countDocuments({ date_expiration:{ $lte:new Date() }}),
-      Ordonnance.countDocuments({ statut:'delivree', date_delivrance:{ $gte:start,$lte:end }}),
-      Invoice.aggregate([{ $match:{ type:'vente_pharma', date_facture:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant_paye' }}}]),
+      Medication.countDocuments({ date_peremption:{ $lte:new Date() }}),
+      Ordonnance.countDocuments({ statut:'dispensee', date_dispensation:{ $gte:start,$lte:end }}),
+      // Les ventes comptoir (pharmacy.controller.js::createVente) ne sont
+      // pas encore persistées en base — 0 explicite.
+      Promise.resolve([]),
       Medication.find({ $or:[
         { stock_actuel:{ $lte:0 }},
-        { date_expiration:{ $lte:new Date() }},
+        { date_peremption:{ $lte:new Date() }},
         { $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }},
       ]}).limit(6),
-      // Top médicaments dispensés
+      // Top médicaments dispensés (7 jours)
       Ordonnance.aggregate([
-        { $match:{ statut:'delivree', createdAt:{ $gte:last7days() }}},
-        { $unwind:'$medicaments' },
-        { $group:{ _id:'$medicaments.nom', total:{ $sum:'$medicaments.quantite' }}},
+        { $match:{ statut:'dispensee', date_dispensation:{ $gte:last7days() }}},
+        { $unwind:'$lignes' },
+        { $group:{ _id:'$lignes.medicament_nom', total:{ $sum:'$lignes.quantite' }}},
         { $sort:{ total:-1 }},
         { $limit:5 },
       ]),
     ]);
 
     const alertes = alertes_raw.map(m => ({
-      type: m.stock_actuel <= 0 || m.date_expiration <= new Date() ? 'error' : 'warn',
+      type: m.stock_actuel <= 0 || m.date_peremption <= new Date() ? 'error' : 'warn',
       msg: m.stock_actuel <= 0
-        ? `${m.nom} — Rupture de stock`
-        : m.date_expiration <= new Date()
-          ? `${m.nom} — Lot périmé (${new Date(m.date_expiration).toLocaleDateString('fr-FR')})`
-          : `${m.nom} — Stock bas (${m.stock_actuel} ${m.unite||'unités'})`,
-      heure: m.stock_actuel <= 0 || m.date_expiration <= new Date() ? 'Urgent' : 'Commander',
+        ? `${m.nom_commercial} — Rupture de stock`
+        : m.date_peremption <= new Date()
+          ? `${m.nom_commercial} — Lot périmé (${new Date(m.date_peremption).toLocaleDateString('fr-FR')})`
+          : `${m.nom_commercial} — Stock bas (${m.stock_actuel} unités)`,
+      heure: m.stock_actuel <= 0 || m.date_peremption <= new Date() ? 'Urgent' : 'Commander',
     }));
 
     const top_meds = top_meds_raw.map(m => [m._id || 'Inconnu', m.total || 0]);
@@ -545,9 +506,15 @@ exports.receptionnisteStats = async (req, res, next) => {
       Patient.countDocuments({ createdAt:{ $gte:start,$lte:end }}),
       Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'confirme' }),
       Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'en_attente' }),
-      Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'patient_absent' }),
+      Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'absent' }),
       Patient.countDocuments({ createdAt:{ $gte:start,$lte:end }}),
-      Message.countDocuments({ destinataire:req.user._id, lu:false }),
+      // Conversations où l'utilisateur est membre et a au moins un message
+      // non lu qu'il n'a pas lui-même envoyé (Conversation n'a pas de champ
+      // destinataire/lu au niveau racine — ce sont des sous-documents).
+      Conversation.countDocuments({
+        membres: req.user._id,
+        messages: { $elemMatch: { lu_par: { $ne: req.user._id }, expediteur: { $ne: req.user._id } } },
+      }),
       Appointment.find({ date_heure:{ $gte:new Date() }})
         .populate('patient','nom prenom')
         .populate('medecin','nom prenom')
@@ -584,11 +551,14 @@ exports.comptableStats = async (req, res, next) => {
       chart_revenus,
     ] = await Promise.all([
       Invoice.aggregate([{ $match:{ statut:'payee', date_facture:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant_paye' }}}]),
-      Invoice.aggregate([{ $match:{ type:'depense', date_facture:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant_total' }}}]),
-      Invoice.aggregate([{ $match:{ statut:'impayee' }},{ $group:{ _id:null,total:{ $sum:'$montant_total' }}}]),
-      Invoice.aggregate([{ $match:{ statut:'impayee', mode_paiement:'assurance' }},{ $group:{ _id:null,total:{ $sum:'$montant_total' }}}]),
-      Invoice.countDocuments({ date_paiement:{ $gte:start,$lte:end }, statut:'payee' }),
-      Invoice.find({ statut:'impayee', montant_total:{ $gt:100000 }}).sort({ montant_total:-1 }).limit(5),
+      // Dépenses clinique : non modélisé
+      Promise.resolve([]),
+      Invoice.aggregate([{ $match:{ statut:{ $in:['emise','partiellement_payee'] } }},{ $group:{ _id:null,total:{ $sum:'$montant_restant' }}}]),
+      Invoice.aggregate([{ $match:{ statut:{ $in:['emise','partiellement_payee'] } }},{ $group:{ _id:null,total:{ $sum:'$montant_assurance' }}}]),
+      // Factures ayant reçu au moins un paiement aujourd'hui (les paiements
+      // sont des sous-documents avec leur propre date, pas un champ racine).
+      Invoice.countDocuments({ paiements: { $elemMatch: { date: { $gte:start, $lte:end } } } }),
+      Invoice.find({ statut:{ $in:['emise','partiellement_payee'] }, montant_restant:{ $gt:100000 }}).sort({ montant_restant:-1 }).limit(5),
       Invoice.aggregate([
         { $match:{ statut:'payee', date_facture:{ $gte:last7days() }}},
         { $group:{ _id:{ $dateToString:{ format:'%Y-%m-%d', date:'$date_facture' }}, total:{ $sum:'$montant_paye' }}},
@@ -603,7 +573,7 @@ exports.comptableStats = async (req, res, next) => {
 
     const alertes = [
       fimp > 0 ? { type:'error', msg:`${fimp.toLocaleString('fr-FR')} CFA de factures impayées (${alertes_raw.length} factures)`, heure:'Critique' } : null,
-      ...alertes_raw.slice(0,2).map(f => ({ type:'warn', msg:`Facture #${f.numero||'?'} — ${(f.montant_total||0).toLocaleString('fr-FR')} CFA impayée`, heure:`Depuis ${new Date(f.createdAt).toLocaleDateString('fr-FR')}` })),
+      ...alertes_raw.slice(0,2).map(f => ({ type:'warn', msg:`Facture #${f.numero_facture||'?'} — ${(f.montant_restant||0).toLocaleString('fr-FR')} CFA impayée`, heure:`Depuis ${new Date(f.createdAt).toLocaleDateString('fr-FR')}` })),
     ].filter(Boolean);
 
     res.json({ success:true, stats:{
@@ -618,16 +588,17 @@ exports.comptableStats = async (req, res, next) => {
 };
 
 // ─── 9. RADIOLOGUE ────────────────────────────────────────────
+// L'imagerie médicale est portée par le modèle ImagingResult, pas
+// Consultation (qui n'a ni champ `type`, ni `ia_result`).
 exports.radiologueStats = async (req, res, next) => {
   try {
     const { start, end } = todayRange();
-    const radiologueId = req.user._id;
 
     const [examens_auj, en_attente, rapports_rediges, anomalies] = await Promise.all([
-      Consultation.countDocuments({ type:'imagerie', date:{ $gte:start,$lte:end }}),
-      Consultation.countDocuments({ type:'imagerie', statut:'en_attente', date:{ $gte:start,$lte:end }}),
-      Consultation.countDocuments({ type:'imagerie', statut:'rapport_redige', date:{ $gte:start,$lte:end }}),
-      Consultation.countDocuments({ type:'imagerie', 'ia_result.anomalie':true }),
+      ImagingResult.countDocuments({ date_prescription:{ $gte:start,$lte:end }}),
+      ImagingResult.countDocuments({ statut:'en_attente', date_prescription:{ $gte:start,$lte:end }}),
+      ImagingResult.countDocuments({ statut:{ $in:['rapporte','valide'] }, date_prescription:{ $gte:start,$lte:end }}),
+      ImagingResult.countDocuments({ ia_anomalie:true }),
     ]);
 
     res.json({ success:true, stats:{
@@ -653,13 +624,13 @@ exports.getStats = async (req, res, next) => {
   };
   const handler = handlers[role];
   if (handler) return handler(req, res, next);
-  // Fallback générique si rôle inconnu
+  // Fallback générique si rôle inconnu (ex: sage_femme, sans dashboard dédié)
   const { start, end } = todayRange();
   try {
     const [patients, rdv, consultations] = await Promise.all([
       Patient.countDocuments({}),
       Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }}),
-      Consultation.countDocuments({ date:{ $gte:start,$lte:end }}),
+      Consultation.countDocuments({ date_consultation:{ $gte:start,$lte:end }}),
     ]);
     res.json({ success:true, stats:{ kpis:{ patients, rdv, consultations }, alertes:[], chart:{} }});
   } catch (err) { next(err); }
