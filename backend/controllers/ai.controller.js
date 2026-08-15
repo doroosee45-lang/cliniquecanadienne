@@ -5,6 +5,7 @@ const ImagingResult = require('../models/ImagingResult');
 const Prescription  = require('../models/Prescription');
 const Hospitalization = require('../models/Hospitalization');
 const { logAction } = require('../utils/helpers');
+const { INTERACTIONS_DB, detectInteractions } = require('../utils/drugInteractions');
 
 // ─── Symptômes → conditions probables ────────────────────────
 const SYMPTOM_MAP = {
@@ -38,24 +39,9 @@ const SYMPTOM_MAP = {
   douleurs_pelviennes: ['Salpingite', 'Grossesse extra-utérine', 'Endométriose'],
 };
 
-// ─── Interactions médicamenteuses connues ─────────────────────
-const INTERACTIONS_DB = [
-  { drugs: ['quinine', 'digoxin', 'digoxine'],        risque: 'elevé',   description: 'La quinine augmente les concentrations de digoxine — risque de toxicité digitalique (arythmie, bradycardie).' },
-  { drugs: ['metronidazole', 'alcool', 'alcohol'],    risque: 'elevé',   description: 'Association contre-indiquée : effet antabuse (nausées, vomissements, bouffées vasomotrices).' },
-  { drugs: ['warfarine', 'aspirine', 'ibuprofene', 'naproxene'], risque: 'elevé', description: 'AINS + anticoagulant : risque hémorragique majeur.' },
-  { drugs: ['methotrexate', 'cotrimoxazole', 'trimethoprime'], risque: 'elevé', description: 'Potentialisation de la toxicité hématologique du méthotrexate.' },
-  { drugs: ['chloroquine', 'amiodarone'],             risque: 'elevé',   description: 'Allongement du QT — risque de torsades de pointes.' },
-  { drugs: ['rifampicine', 'contraceptifs'],          risque: 'modéré', description: 'La rifampicine réduit l\'efficacité des contraceptifs oraux.' },
-  { drugs: ['inhibiteur_eca', 'spironolactone', 'amiloride'], risque: 'modéré', description: 'Risque d\'hyperkaliémie avec les diurétiques épargneurs de potassium.' },
-  { drugs: ['aminoside', 'gentamicine', 'amikacine', 'furosemide'], risque: 'modéré', description: 'Association néphrotoxique et ototoxique — surveiller la fonction rénale et l\'audition.' },
-  { drugs: ['quinine', 'mefloquine'],                 risque: 'elevé',   description: 'Association déconseillée : risque de convulsions et cardiotoxicité.' },
-  { drugs: ['artemether', 'efavirenz', 'nevirapine'], risque: 'modéré', description: 'Les antirétroviraux inducteurs enzymatiques réduisent les concentrations d\'artémether.' },
-  { drugs: ['isoniazide', 'rifampicine', 'pyrazinamide'], risque: 'modéré', description: 'Hépatotoxicité cumulée des antituberculeux — surveiller les enzymes hépatiques.' },
-  { drugs: ['ciprofloxacine', 'theophylline'],        risque: 'modéré', description: 'Augmentation des concentrations de théophylline — risque de toxicité.' },
-  { drugs: ['morphine', 'benzodiazepine', 'diazepam', 'midazolam'], risque: 'elevé', description: 'Dépression respiratoire additive — surveillance étroite requise.' },
-  { drugs: ['paracetamol', 'acetaminophen'],          risque: 'faible',  description: 'Paracétamol : vérifier que la dose totale/24h ne dépasse pas 4g (3g si insuffisance hépatique).' },
-  { drugs: ['metformine', 'produit_de_contraste'],    risque: 'modéré', description: 'Arrêter la metformine 48h avant injection de produit de contraste iodé — risque d\'acidose lactique.' },
-];
+// Interactions médicamenteuses connues — voir utils/drugInteractions.js
+// (source unique de vérité, également utilisée par prescriptions.controller.js
+// et pharmacy.controller.js, qui maintenaient chacun leur propre liste partielle).
 
 // ─── Calcul risques cliniques ─────────────────────────────────
 function computeRisks(patient, symptoms = [], vitals = {}) {
@@ -357,16 +343,7 @@ exports.checkInteractions = async (req, res, next) => {
     );
 
     // Vérifier les interactions connues
-    for (const rule of INTERACTIONS_DB) {
-      const matched = rule.drugs.filter(d => medNames.some(m => m.includes(d)));
-      if (matched.length >= 2) {
-        warnings.push({
-          medicaments: matched,
-          risque: rule.risque,
-          description: rule.description,
-        });
-      }
-    }
+    warnings.push(...detectInteractions(medNames));
 
     // Vérifier les allergies patient
     let allergieWarnings = [];

@@ -4,6 +4,7 @@ const User         = require('../models/User');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate, emitTo } = require('../utils/socket');
 const { sendPrescriptionEmail } = require('../utils/mail');
+const { detectInteractions } = require('../utils/drugInteractions');
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -39,13 +40,10 @@ exports.getOne = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    // Détection interactions médicamenteuses (règle simple)
+    // Détection interactions médicamenteuses — base partagée avec le module
+    // IA et la pharmacie (utils/drugInteractions.js), 15 règles au lieu de 2.
     const meds = (req.body.lignes || []).map(l => (l.medicament_nom || '').toLowerCase());
-    const interactions = [];
-    if (meds.includes('warfarine') && meds.includes('aspirine'))
-      interactions.push({ medicaments: ['Warfarine', 'Aspirine'], risque: 'Élevé', description: 'Risque hémorragique majeur — surveillance INR obligatoire' });
-    if (meds.includes('metformine') && meds.includes('alcool'))
-      interactions.push({ medicaments: ['Metformine', 'Alcool'], risque: 'Modéré', description: 'Risque d\'acidose lactique accru' });
+    const interactions = detectInteractions(meds);
 
     const prescription = await Prescription.create({
       ...req.body,
