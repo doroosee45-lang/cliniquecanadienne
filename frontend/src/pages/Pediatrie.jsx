@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
@@ -271,6 +271,14 @@ const ageTexte     = (ddn) => {
 function ModalDossier({ onClose, saving }) {
   const dispatch = useDispatch();
   const [form, setForm] = useState({ nom:"", prenom:"", date_naissance:"", sexe:"M", parent_nom:"", parent_tel:"", groupe_sanguin:"", allergies:"", antecedents_medicaux:"" });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
 
   const submit = async () => {
     if (!form.nom || !form.date_naissance) { toast.error("Nom et date de naissance obligatoires"); return; }
@@ -286,10 +294,10 @@ function ModalDossier({ onClose, saving }) {
 
   return (
     <div className="ped-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="ped-modal nice-scroll">
+      <div ref={boxRef} className="ped-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="ped-modal-hdr">
-          <h2>👶 Nouveau dossier pédiatrique</h2>
-          <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose}>✕</button>
+          <h2 id={titleId}>👶 Nouveau dossier pédiatrique</h2>
+          <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="ped-modal-body">
           <div style={{ fontSize:13, fontWeight:700, color:"var(--pg)", marginBottom:10 }}>🧒 Identité de l'enfant</div>
@@ -331,6 +339,14 @@ function ModalDossier({ onClose, saving }) {
 function ModalConsultation({ enfant, patientNom, onClose, saving }) {
   const dispatch = useDispatch();
   const [form, setForm] = useState({ motif:"Fièvre", type:"consultation", temp:"", fc:"", fr:"", spo2:"", tension_sys:"", tension_dia:"", poids:"", etat_general:"bon", diagnostic:"", gravite:"normal", medicaments:"", posologie:"", conseils:"" });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
 
   const submit = async () => {
     if (!form.diagnostic) { toast.error("Veuillez saisir un diagnostic"); return; }
@@ -360,10 +376,10 @@ function ModalConsultation({ enfant, patientNom, onClose, saving }) {
 
   return (
     <div className="ped-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="ped-modal nice-scroll">
+      <div ref={boxRef} className="ped-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="ped-modal-hdr">
-          <h2>🩺 Consultation — {patientNom}</h2>
-          <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose}>✕</button>
+          <h2 id={titleId}>🩺 Consultation — {patientNom}</h2>
+          <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="ped-modal-body">
           <div className="pg2">
@@ -426,6 +442,14 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
     VACCINS_REF.forEach(v => { init[v.nom] = vaccinesAdministres.has(v.nom); });
     return init;
   });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
 
   const submit = async () => {
     if (!enfant?._id) { toast.error("Sélectionnez un patient"); return; }
@@ -440,10 +464,10 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
 
   return (
     <div className="ped-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="ped-modal nice-scroll">
+      <div ref={boxRef} className="ped-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="ped-modal-hdr">
-          <h2>💉 Carnet vaccinal — {patientNom}</h2>
-          <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose}>✕</button>
+          <h2 id={titleId}>💉 Carnet vaccinal — {patientNom}</h2>
+          <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="ped-modal-body">
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>

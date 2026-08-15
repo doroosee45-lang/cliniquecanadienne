@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
@@ -207,6 +207,14 @@ function Prog({ pct, color, h=8 }) {
 function ModalDossier({ onClose, saving }) {
   const dispatch = useDispatch();
   const [form, setForm] = useState({ patient_nom:"", patient_prenom:"", telephone:"", ddr:"", groupe_sanguin:"", medecin_responsable:"", antecedents_medicaux:"", facteurs_risque:[] });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
 
   const handleSubmit = async () => {
     if (!form.patient_nom || !form.ddr) { toast.error("Veuillez remplir les champs obligatoires"); return; }
@@ -221,10 +229,10 @@ function ModalDossier({ onClose, saving }) {
 
   return (
     <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="mat-modal nice-scroll">
+      <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="mat-modal-hdr">
-          <h2>🤱 Nouveau dossier grossesse</h2>
-          <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose}>✕</button>
+          <h2 id={titleId}>🤱 Nouveau dossier grossesse</h2>
+          <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="mat-modal-body">
           <div className="mat-g2">
@@ -286,6 +294,14 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
     vih:"negatif", hepatite_b:"negatif", syphilis:"negatif", proteinurie:"negative",
     conseils:"", vitamines:""
   });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
 
   const handleSubmit = async () => {
     if (!grossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
@@ -312,10 +328,10 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
   );
   return (
     <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="mat-modal nice-scroll">
+      <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="mat-modal-hdr">
-          <h2>🩺 Consultation Prénatale — {patienteNom}</h2>
-          <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose}>✕</button>
+          <h2 id={titleId}>🩺 Consultation Prénatale — {patienteNom}</h2>
+          <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="mat-modal-body">
           <div style={{fontSize:13,fontWeight:700,color:"var(--apk)",marginBottom:12}}>📊 Signes vitaux</div>
@@ -365,6 +381,14 @@ function ModalAccouchement({ grossesse, patienteNom, onClose, saving }) {
     sage_femme:"", complications:[], notes:"",
     bebe_prenom:"", bebe_sexe:"F", poids:"", taille:"", apgar_1:"", apgar_5:""
   });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
 
   const handleSubmit = async () => {
     if (!form.date_heure) { toast.error("Renseignez la date d'accouchement"); return; }
@@ -403,10 +427,10 @@ function ModalAccouchement({ grossesse, patienteNom, onClose, saving }) {
 
   return (
     <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="mat-modal nice-scroll">
+      <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="mat-modal-hdr">
-          <h2>🍼 Déclaration d'accouchement — {patienteNom}</h2>
-          <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose}>✕</button>
+          <h2 id={titleId}>🍼 Déclaration d'accouchement — {patienteNom}</h2>
+          <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="mat-modal-body">
           <div style={{fontSize:13,fontWeight:700,color:"var(--apk)",marginBottom:10}}>📅 Informations accouchement</div>
