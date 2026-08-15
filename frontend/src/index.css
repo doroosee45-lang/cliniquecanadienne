@@ -67,43 +67,49 @@ body {
 .main-content { margin-left: var(--sidebar-w); min-height: 100vh; }
 
 /* ── Hero (bandeau d'accueil de page) ──────────────────────────────────────
-   Gabarit unique pour toutes les pages, calé sur le style déjà en place
-   dans Dashboard.jsx (hors périmètre, jamais modifié) : dégradé navy +
-   halos radiaux sarcelle, avatar de rôle, badge, statut, bouton fantôme.
-   Noms de classe volontairement différents de ceux de Dashboard.jsx
-   (.db-hero/.role-crown/.dbtn-ghost/dbpulse) pour éviter toute collision
-   si les deux feuilles de style coexistent dans le même document. */
+   Valeurs copiées telles quelles depuis le .db-hero/.role-crown/.dbtn-ghost/
+   dbpulse/fadeUp de Dashboard.jsx (hors périmètre, jamais modifié — collées
+   par l'utilisateur). --primary/--ink/--ink-2/--accent/--tint sont déjà
+   les valeurs de --dn/--dn2/--dt/--dl de Dashboard (ADR-0003). Noms de
+   classe/keyframe volontairement différents des siens pour éviter toute
+   collision si les deux feuilles de style coexistent dans le même document. */
 .hero {
-  position: relative; overflow: hidden; border-radius: 24px; padding: 28px 32px;
-  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 100%);
-  box-shadow: var(--shadow-lg);
+  position: relative; overflow: hidden; border-radius: 20px; padding: 24px 28px;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 60%, var(--primary) 100%);
+  animation: hero-fade-up .35s ease both;
 }
-.hero::before, .hero::after {
-  content: ''; position: absolute; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+.hero::before {
+  content: ''; position: absolute; top: -60px; right: -60px; width: 260px; height: 260px;
+  background: radial-gradient(circle, rgba(14,165,160,.2) 0%, transparent 70%);
+  border-radius: 50%; pointer-events: none;
 }
-.hero::before { width: 320px; height: 320px; top: -140px; right: -60px; opacity: .25; }
-.hero::after  { width: 220px; height: 220px; bottom: -140px; right: 160px; opacity: .15; }
+.hero::after {
+  content: ''; position: absolute; bottom: -80px; left: 30%; width: 220px; height: 220px;
+  background: radial-gradient(circle, rgba(27,79,158,.12) 0%, transparent 70%);
+  border-radius: 50%; pointer-events: none;
+}
 .hero-content { position: relative; z-index: 2; }
 .hero-avatar { width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.hero-eyebrow { font-size: .75rem; color: rgba(255,255,255,.6); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
-.hero-title { font-size: 1.375rem; font-weight: 700; color: #fff; letter-spacing: -.3px; margin-top: 2px; }
-.hero-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: .72rem; font-weight: 700; color: #fff; white-space: nowrap; }
-.hero-date { font-size: .68rem; color: rgba(255,255,255,.5); }
+.hero-eyebrow { font-size: 12px; color: rgba(255,255,255,.6); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.hero-title { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: -.3px; margin-top: 2px; }
+.hero-badge { display: inline-flex; align-items: center; gap: 5px; background: linear-gradient(135deg,#F59E0B,#D97706); padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; }
+.hero-date { font-size: 11px; color: rgba(255,255,255,.5); }
 
-.hero-status { display: flex; align-items: center; gap: 6px; background: rgba(107,122,153,.2); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 6px 14px; font-size: .75rem; font-weight: 600; color: rgba(255,255,255,.5); }
+.hero-status { display: flex; align-items: center; gap: 6px; background: rgba(107,122,153,.2); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 6px 14px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.5); }
 .hero-status.is-connected { background: rgba(5,150,105,.25); border-color: rgba(5,150,105,.4); color: #6EE7B7; }
 .hero-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #9CA3AF; }
 .hero-status.is-connected .hero-status-dot { background: #34D399; animation: hero-pulse 2s infinite; }
 
 .hero-btn-ghost {
-  display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px;
-  font-size: .75rem; font-weight: 600; cursor: pointer; transition: all .2s; font-family: var(--font);
-  background: rgba(255,255,255,.05); color: #fff; border: 1px solid rgba(255,255,255,.3);
+  display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 10px;
+  font-size: 12px; font-weight: 600; cursor: pointer; transition: all .2s; font-family: var(--font);
+  text-decoration: none; background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,.3);
 }
-.hero-btn-ghost:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.5); }
+.hero-btn-ghost:hover { background: var(--tint); color: var(--ink); }
 
-@keyframes hero-pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+@keyframes hero-pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes hero-fade-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 
 /* Mobile : bandeau plus compact */
 @media (max-width: 767px) {
