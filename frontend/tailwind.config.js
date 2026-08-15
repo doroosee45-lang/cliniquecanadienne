@@ -14,7 +14,7 @@ export default {
         danger:  '#DC2626',
         warning: '#D97706',
         info:    '#0EA5A0',
-        muted:   '#6B7A99',
+        muted:   '#556685', // 6B7A99 était sous le seuil WCAG AA (4.31:1 sur blanc)
       },
       // Clés nommées (pas de DEFAULT) : additives, ne changent pas le
       // comportement des classes rounded-*/shadow-* déjà utilisées ailleurs

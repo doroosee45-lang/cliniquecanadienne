@@ -22,7 +22,8 @@
   --warning: #D97706;
   --info: #0EA5A0;
   --border: #E2EAF4;
-  --muted: #6B7A99;
+  --muted: #556685; /* 6B7A99 mesuré à 4.31:1 sur blanc — sous le seuil WCAG
+                        AA 4.5:1 pour texte normal ; cette valeur passe à 5.79:1 */
   --tint: #EEF4FF;
   --surface: #F8FAFD;
   --font: 'Poppins', sans-serif;

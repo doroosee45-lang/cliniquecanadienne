@@ -7,7 +7,7 @@ export default function FormFileUpload({ label, id, required, hint, error, fileN
       <label htmlFor={id} className={`form-file flex flex-col items-center gap-2 ${className}`}>
         <Upload size={20} className="text-muted" />
         <span className="text-xs text-muted">{fileName || 'Cliquer pour choisir un fichier'}</span>
-        <input type="file" id={id} accept={accept} className="hidden" {...rest} />
+        <input type="file" id={id} required={required} accept={accept} className="hidden" {...rest} />
       </label>
     </FieldShell>
   );
