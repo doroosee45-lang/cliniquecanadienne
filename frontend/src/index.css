@@ -91,6 +91,8 @@ body {
 }
 .hero-content { position: relative; z-index: 2; }
 .hero-avatar { width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.hero-avatar.pulse { animation: hero-icon-pulse 3s infinite; }
+@keyframes hero-icon-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: .8; } }
 .hero-eyebrow { font-size: 12px; color: rgba(255,255,255,.6); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
 .hero-title { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: -.3px; margin-top: 2px; }
 .hero-badge { display: inline-flex; align-items: center; gap: 5px; background: linear-gradient(135deg,#F59E0B,#D97706); padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; }

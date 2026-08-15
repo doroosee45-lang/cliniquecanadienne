@@ -10,6 +10,7 @@ export default function Hero({
   title,
   badge,        // { icon, label } — pilule de rôle ; omise si non fournie
   dateLabel,
+  pulseIcon = false, // avatar en respiration douce (ex. icône IA "vivante")
   right,        // ReactNode — statut / actions propres à la page
   className = '',
 }) {
@@ -18,7 +19,7 @@ export default function Hero({
       <div className="hero-content flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4">
           {Icon && (
-            <div className="hero-avatar" style={{ background: `${roleColor}22`, border: `2px solid ${roleColor}44` }}>
+            <div className={`hero-avatar ${pulseIcon ? 'pulse' : ''}`} style={{ background: `${roleColor}22`, border: `2px solid ${roleColor}44` }}>
               <Icon size={28} style={{ color: roleColor }} />
             </div>
           )}
@@ -31,7 +32,9 @@ export default function Hero({
                   {badge.icon && <badge.icon size={12} />} {badge.label}
                 </span>
               )}
-              {dateLabel && <span className="hero-date">· {dateLabel}</span>}
+              {/* Le point ne sépare que badge et date — pas de préfixe orphelin
+                  quand dateLabel est utilisé seul comme sous-titre de page. */}
+              {dateLabel && <span className="hero-date">{badge ? '· ' : ''}{dateLabel}</span>}
             </div>
           </div>
         </div>

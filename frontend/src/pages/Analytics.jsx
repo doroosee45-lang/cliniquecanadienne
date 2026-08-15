@@ -11,6 +11,9 @@ import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
+import { BarChart3, Printer, Download } from 'lucide-react';
+import Hero, { HeroButton } from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -426,35 +429,24 @@ export default function Analytics() {
       <style>{CSS}</style>
       <div className="anl">
 
-        {/* ── TOPBAR ── */}
-        <div className="anl-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.analytics}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Analytics — Tableau de Bord</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>
-                  Mis à jour : {lastUpdate.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · Clinique Canadienne de Souanké
-                </div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="abtn abtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)", fontSize:12 }} onClick={loadAll} title="Actualiser">
-                {I.refresh} Actualiser
+        {/* ── HERO ── */}
+        <Hero
+          icon={BarChart3}
+          title="Analytics — Tableau de Bord"
+          dateLabel={`Mis à jour : ${lastUpdate.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · Clinique Canadienne de Souanké`}
+          right={
+            <>
+              <HeroButton label="Actualiser" onClick={loadAll} />
+              <button className="hero-btn-ghost" onClick={() => window.print()}>
+                <Printer size={14} /> Imprimer
               </button>
-              <button className="abtn abtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)", fontSize:12 }} onClick={() => window.print()}>
-                {I.print} Imprimer
-              </button>
-              <button className="abtn abtn-teal" style={{ fontSize:12 }} onClick={exportAnalyticsPDF}>
-                {I.dl} Export PDF
-              </button>
-            </div>
-          </div>
+              <Button icon={Download} onClick={exportAnalyticsPDF}>Export PDF</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"vue_globale", icon:I.grid,    label:"Vue globale",       labelM:"Globale" },
               { key:"medical",     icon:I.consult, label:"Activité médicale", labelM:"Médical" },
@@ -463,18 +455,17 @@ export default function Analytics() {
               { key:"alertes",     icon:I.alert,   label:"Alertes",           labelM:"Alertes", badge:DEMO_ALERTES_MED.filter(a=>a.type==="danger").length+DEMO_ALERTES_ADM.filter(a=>a.type==="danger").length },
             ];
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`anl-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
-                    {(t.badge??0)>0&&<span style={{background:"#DC2626",color:"#fff",fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:99}}>{t.badge}</span>}
+                    {(t.badge??0)>0&&<span className="tab-bar-item-count">{t.badge}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>

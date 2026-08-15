@@ -13,6 +13,9 @@ import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { BrainCircuit, Zap } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -602,36 +605,32 @@ export default function IntelligenceArtificielle() {
       <style>{CSS}</style>
       <div className="ia">
 
-        {/* ── TOPBAR ── */}
-        <div className="ia-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center", animation:"iaPulse 3s infinite" }}>
-                {I.ia}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Intelligence Artificielle</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2, display:"flex", alignItems:"center", gap:6 }}>
-                  <span style={{ width:7, height:7, borderRadius:"50%", background:"#4ADE80", display:"inline-block", boxShadow:"0 0 0 3px rgba(74,222,128,.3)", animation:"iaP 2s infinite" }}/>
-                  IA active · {CLINIC_NAME} {CLINIC_SUBTITLE}
-                </div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+        {/* ── HERO ── */}
+        <Hero
+          icon={BrainCircuit}
+          pulseIcon
+          title="Intelligence Artificielle"
+          dateLabel={
+            <span className="flex items-center gap-1.5">
+              <span style={{ width:7, height:7, borderRadius:"50%", background:"#4ADE80", display:"inline-block", boxShadow:"0 0 0 3px rgba(74,222,128,.3)" }} className="animate-pulse" />
+              IA active · {CLINIC_NAME} {CLINIC_SUBTITLE}
+            </span>
+          }
+          right={
+            <>
               {nbAlertesNonLues > 0 && (
                 <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(220,38,38,.2)", border:"1px solid rgba(220,38,38,.4)", borderRadius:10, padding:"8px 14px" }}>
                   <span style={{ fontSize:14 }}>🔴</span>
                   <span style={{ fontSize:12, color:"#FCA5A5", fontWeight:700 }}>{nbAlertesNonLues} alerte{nbAlertesNonLues > 1?"s":""} critique{nbAlertesNonLues > 1?"s":""}</span>
                 </div>
               )}
-              <button className="ibtn ibtn-teal ibtn-sm" onClick={() => setTab("modules") }>
-                {I.iaS} Lancer analyse
-              </button>
-            </div>
-          </div>
+              <Button icon={Zap} onClick={() => setTab("modules") }>Lancer analyse</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard", icon:I.grid,    label:"Tableau de bord",        labelM:"Dashboard" },
               { key:"modules",   icon:I.iaS,     label:"Modules IA",             labelM:"Modules" },
@@ -642,18 +641,17 @@ export default function IntelligenceArtificielle() {
               { key:"settings",  icon:I.settings,label:"Paramètres",             labelM:"Paramètres" },
             ];
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`ia-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
-                    {t.key==="alertes"&&nbAlertesNonLues>0&&<span className="ia-tab-badge">{nbAlertesNonLues}</span>}
+                    {t.key==="alertes"&&nbAlertesNonLues>0&&<span className="tab-bar-item-count">{nbAlertesNonLues}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>
