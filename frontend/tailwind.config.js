@@ -14,6 +14,7 @@ export default {
         danger:  '#DC2626',
         warning: '#D97706',
         info:    '#0EA5A0',
+        muted:   '#6B7A99',
       },
       // Clés nommées (pas de DEFAULT) : additives, ne changent pas le
       // comportement des classes rounded-*/shadow-* déjà utilisées ailleurs

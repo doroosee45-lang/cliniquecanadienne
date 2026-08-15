@@ -1,4 +1,5 @@
 import Spinner from './Spinner';
+import EmptyState from './EmptyState';
 
 export default function DataTable({ columns, data, loading, emptyMessage = 'Aucun résultat.' }) {
   if (loading) {
@@ -25,9 +26,8 @@ export default function DataTable({ columns, data, loading, emptyMessage = 'Aucu
           {data.length === 0
             ? (
               <tr>
-                <td colSpan={columns.length} className="text-center py-12 text-gray-400">
-                  <div className="text-3xl mb-2">📭</div>
-                  {emptyMessage}
+                <td colSpan={columns.length}>
+                  <EmptyState title={emptyMessage} />
                 </td>
               </tr>
             )

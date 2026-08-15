@@ -221,20 +221,26 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import {
+  Crown, Building2, Stethoscope, Syringe, Baby, FlaskConical, ScanLine, Pill,
+  Wallet, ClipboardList, User, Home, Users, Calendar, FileText, BedDouble,
+  Siren, HeartPulse, Scissors, Hospital, Activity, Briefcase, MessageSquare,
+  BrainCircuit, BarChart3, Archive, ShieldCheck, Settings, ClipboardCheck, LogOut,
+} from 'lucide-react';
 
 // ── Configuration des rôles ────────────────────────────────────────────────
 const ROLE_CONFIG = {
-  superadmin:     { icon: '👑', color: '#f59e0b', label: 'Super Admin' },
-  adminclinique:  { icon: '🏥', color: '#8b5cf6', label: 'Admin Clinique' },
-  medecin:        { icon: '👨‍⚕️', color: '#3b82f6', label: 'Médecin' },
-  infirmier:      { icon: '💉', color: '#06b6d4', label: 'Infirmier' },
-  sage_femme:     { icon: '🤰', color: '#ec4899', label: 'Sage-femme' },
-  laborantin:     { icon: '🔬', color: '#22c55e', label: 'Laborantin' },
-  radiologue:     { icon: '🩻', color: '#6366f1', label: 'Radiologue' },
-  pharmacien:     { icon: '💊', color: '#f97316', label: 'Pharmacien' },
-  comptable:      { icon: '💰', color: '#eab308', label: 'Comptable' },
-  receptionniste: { icon: '📋', color: '#ec4899', label: 'Réceptionniste' },
-  patient:        { icon: '🙍', color: '#6b7280', label: 'Patient' },
+  superadmin:     { icon: Crown,       color: '#f59e0b', label: 'Super Admin' },
+  adminclinique:  { icon: Building2,   color: '#8b5cf6', label: 'Admin Clinique' },
+  medecin:        { icon: Stethoscope, color: '#3b82f6', label: 'Médecin' },
+  infirmier:      { icon: Syringe,     color: '#06b6d4', label: 'Infirmier' },
+  sage_femme:     { icon: Baby,        color: '#ec4899', label: 'Sage-femme' },
+  laborantin:     { icon: FlaskConical,color: '#22c55e', label: 'Laborantin' },
+  radiologue:     { icon: ScanLine,    color: '#6366f1', label: 'Radiologue' },
+  pharmacien:     { icon: Pill,        color: '#f97316', label: 'Pharmacien' },
+  comptable:      { icon: Wallet,      color: '#eab308', label: 'Comptable' },
+  receptionniste: { icon: ClipboardList, color: '#ec4899', label: 'Réceptionniste' },
+  patient:        { icon: User,        color: '#6b7280', label: 'Patient' },
 };
 
 // ── Rôles admins — voient TOUT automatiquement ─────────────────────────────
@@ -249,73 +255,73 @@ const NAV_SECTIONS = [
     id: 'main',
     label: null,
     items: [
-      { to: '/', label: 'Tableau de bord', icon: '🏠', roles: null },
+      { to: '/', label: 'Tableau de bord', icon: Home, roles: null },
     ],
   },
   {
     id: 'clinique',
     label: 'Clinique',
     items: [
-      { to: '/patients',        label: 'Patients',        icon: '👥', roles: withAdmins('medecin','infirmier','receptionniste') },
-      { to: '/appointments',    label: 'Rendez-vous',     icon: '📅', roles: null },
-      { to: '/consultations',   label: 'Consultations',   icon: '🩺', roles: withAdmins('medecin','infirmier'), ai: true },
-      { to: '/prescriptions',   label: 'Ordonnances',     icon: '📋', roles: withAdmins('medecin','pharmacien','infirmier') },
-      { to: '/hospitalization', label: 'Hospitalisation', icon: '🛏️', roles: withAdmins('medecin','infirmier') },
+      { to: '/patients',        label: 'Patients',        icon: Users,      roles: withAdmins('medecin','infirmier','receptionniste') },
+      { to: '/appointments',    label: 'Rendez-vous',     icon: Calendar,   roles: null },
+      { to: '/consultations',   label: 'Consultations',   icon: Stethoscope, roles: withAdmins('medecin','infirmier'), ai: true },
+      { to: '/prescriptions',   label: 'Ordonnances',     icon: FileText,   roles: withAdmins('medecin','pharmacien','infirmier') },
+      { to: '/hospitalization', label: 'Hospitalisation', icon: BedDouble,  roles: withAdmins('medecin','infirmier') },
     ],
   },
   {
     id: 'specialites',
     label: 'Spécialités',
     items: [
-      { to: '/urgences',       label: 'Urgences',        icon: '🚨', roles: withAdmins('medecin','infirmier') },
-      { to: '/pediatrie',      label: 'Pédiatrie',       icon: '👶', roles: withAdmins('medecin','infirmier','sage_femme') },
-      { to: '/maternite',      label: 'Maternité',       icon: '🤱', roles: withAdmins('medecin','infirmier','sage_femme') },
-      { to: '/chirurgie',      label: 'Chirurgie',       icon: '🔪', roles: withAdmins('medecin') },
-      { to: '/blocoperatoire', label: 'Bloc Opératoire', icon: '🏥', roles: withAdmins('medecin') },
+      { to: '/urgences',       label: 'Urgences',        icon: Siren,      roles: withAdmins('medecin','infirmier') },
+      { to: '/pediatrie',      label: 'Pédiatrie',       icon: Baby,       roles: withAdmins('medecin','infirmier','sage_femme') },
+      { to: '/maternite',      label: 'Maternité',       icon: HeartPulse, roles: withAdmins('medecin','infirmier','sage_femme') },
+      { to: '/chirurgie',      label: 'Chirurgie',       icon: Scissors,   roles: withAdmins('medecin') },
+      { to: '/blocoperatoire', label: 'Bloc Opératoire', icon: Hospital,   roles: withAdmins('medecin') },
     ],
   },
   {
     id: 'paraclinique',
     label: 'Paraclinique',
     items: [
-      { to: '/laboratory',  label: 'Laboratoire', icon: '🔬', roles: withAdmins('medecin','laborantin') },
-      { to: '/radiology',   label: 'Imagerie',    icon: '🩻', roles: withAdmins('medecin','radiologue') },
-      { to: '/echographie', label: 'Échographie', icon: '📡', roles: withAdmins('medecin','radiologue','infirmier') },
-      { to: '/pharmacy',    label: 'Pharmacie',   icon: '💊', roles: withAdmins('pharmacien','medecin') },
+      { to: '/laboratory',  label: 'Laboratoire', icon: FlaskConical, roles: withAdmins('medecin','laborantin') },
+      { to: '/radiology',   label: 'Imagerie',    icon: ScanLine,     roles: withAdmins('medecin','radiologue') },
+      { to: '/echographie', label: 'Échographie', icon: Activity,     roles: withAdmins('medecin','radiologue','infirmier') },
+      { to: '/pharmacy',    label: 'Pharmacie',   icon: Pill,         roles: withAdmins('pharmacien','medecin') },
     ],
   },
   {
     id: 'gestion',
     label: 'Gestion',
     items: [
-      { to: '/hr',       label: 'Ressources Humaines', icon: '👔', roles: ADMINS },
-      { to: '/finance',  label: 'Finance',             icon: '💰', roles: withAdmins('comptable') },
-      { to: '/messages', label: 'Messagerie',          icon: '💬', roles: null },
+      { to: '/hr',       label: 'Ressources Humaines', icon: Briefcase,     roles: ADMINS },
+      { to: '/finance',  label: 'Finance',             icon: Wallet,        roles: withAdmins('comptable') },
+      { to: '/messages', label: 'Messagerie',          icon: MessageSquare, roles: null },
     ],
   },
   {
     id: 'intelligence',
     label: 'Intelligence',
     items: [
-      { to: '/ai',        label: 'Intelligence IA', icon: '🤖', roles: withAdmins('medecin'), ai: true },
-      { to: '/analytics', label: 'Analytics',       icon: '📊', roles: ADMINS },
+      { to: '/ai',        label: 'Intelligence IA', icon: BrainCircuit, roles: withAdmins('medecin'), ai: true },
+      { to: '/analytics', label: 'Analytics',       icon: BarChart3,    roles: ADMINS },
     ],
   },
   {
     id: 'administration',
     label: 'Administration',
     items: [
-      { to: '/archive',        label: 'Archivage',       icon: '🗄️', roles: ADMINS },
-      { to: '/administration', label: 'Administration',  icon: '🛡️', roles: ADMINS },
-      { to: '/settings',       label: 'Paramètres',      icon: '⚙️', roles: ADMINS },
-      { to: '/audit',          label: "Journal d'audit", icon: '📋', roles: ['superadmin'] },
+      { to: '/archive',        label: 'Archivage',       icon: Archive,         roles: ADMINS },
+      { to: '/administration', label: 'Administration',  icon: ShieldCheck,     roles: ADMINS },
+      { to: '/settings',       label: 'Paramètres',      icon: Settings,        roles: ADMINS },
+      { to: '/audit',          label: "Journal d'audit", icon: ClipboardCheck, roles: ['superadmin'] },
     ],
   },
   {
     id: 'patient',
     label: null,
     items: [
-      { to: '/portal', label: 'Mon Espace Patient', icon: '🙍', roles: ['patient'] },
+      { to: '/portal', label: 'Mon Espace Patient', icon: User, roles: ['patient'] },
     ],
   },
 ];
@@ -324,7 +330,7 @@ const NAV_SECTIONS = [
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate         = useNavigate();
-  const rc = ROLE_CONFIG[user?.role] || { icon: '👤', color: '#6b7280', label: user?.role };
+  const rc = ROLE_CONFIG[user?.role] || { icon: User, color: '#6b7280', label: user?.role };
 
   const handleLogout = async () => {
     try {
@@ -355,7 +361,7 @@ export default function Sidebar({ isOpen, onClose }) {
           <Link to="/home" style={{ textDecoration: 'none' }} className="flex items-center gap-3 group" title="Retour à l'accueil">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-opacity group-hover:opacity-75"
-              style={{ background: '#2563eb' }}
+              style={{ background: 'var(--primary)' }}
             >
               <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -363,8 +369,8 @@ export default function Sidebar({ isOpen, onClose }) {
               </svg>
             </div>
             <div>
-              <div className="text-white font-bold text-sm leading-tight group-hover:text-blue-200 transition-colors">Clinique canadienne</div>
-              <div className="text-blue-400 text-xs">de Souanké</div>
+              <div className="text-white font-bold text-sm leading-tight group-hover:text-accent transition-colors">Clinique canadienne</div>
+              <div className="text-accent text-xs">de Souanké</div>
             </div>
           </Link>
         </div>
@@ -373,10 +379,10 @@ export default function Sidebar({ isOpen, onClose }) {
         <div className="p-4 border-b border-white/10 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ background: `${rc.color}22`, border: `2px solid ${rc.color}55` }}
             >
-              {rc.icon}
+              <rc.icon size={18} style={{ color: rc.color }} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-white text-sm font-semibold truncate">
@@ -414,7 +420,7 @@ export default function Sidebar({ isOpen, onClose }) {
                         `sidebar-link ${isActive ? 'active' : ''}`
                       }
                     >
-                      <span className="text-base flex-shrink-0">{item.icon}</span>
+                      <item.icon size={17} className="flex-shrink-0" />
                       <span className="flex-1 truncate">{item.label}</span>
                       {item.ai && (
                         <span className="ai-badge flex-shrink-0">IA</span>
@@ -433,7 +439,7 @@ export default function Sidebar({ isOpen, onClose }) {
             onClick={handleLogout}
             className="sidebar-link w-full text-red-400 hover:text-red-300 hover:bg-red-500/10"
           >
-            <span>🚪</span>
+            <LogOut size={17} />
             <span>Déconnexion</span>
           </button>
         </div>

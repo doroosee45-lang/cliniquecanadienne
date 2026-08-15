@@ -111,6 +111,29 @@ body {
 }
 .btn-danger:hover { background: #B91C1C; transform: translateY(-1px); }
 
+.btn-ghost {
+  background: transparent; color: var(--muted); border: none;
+  padding: 9px 20px; border-radius: 10px; font-size: .875rem; font-weight: 500;
+  cursor: pointer; transition: all .2s; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font);
+}
+.btn-ghost:hover { background: var(--tint); color: var(--ink); }
+
+.btn-outline {
+  background: transparent; color: var(--primary); border: 1.5px solid var(--primary);
+  padding: 9px 20px; border-radius: 10px; font-size: .875rem; font-weight: 600;
+  cursor: pointer; transition: all .2s; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font);
+}
+.btn-outline:hover { background: var(--primary); color: white; }
+
+.btn-primary:disabled, .btn-secondary:disabled, .btn-danger:disabled,
+.btn-ghost:disabled, .btn-outline:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+/* Focus clavier visible sur tout élément interactif (souris non affectée) */
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible,
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
 /* ── Forms ── */
 .form-input {
   width: 100%; border: 1.5px solid #e5e7eb; border-radius: 10px;
@@ -118,7 +141,34 @@ body {
   color: #111827; transition: all .2s; background: white;
 }
 .form-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(27,79,158,.1); }
+.form-input.error { border-color: var(--danger); }
+.form-input.error:focus { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(220,38,38,.12); }
+.form-input:disabled { background: #f9fafb; color: #9ca3af; cursor: not-allowed; }
 .form-label { display: block; font-size: .8rem; font-weight: 600; color: #374151; margin-bottom: 5px; }
+.form-required { color: var(--danger); margin-left: 2px; }
+.form-hint { font-size: .75rem; color: var(--muted); margin-top: 4px; }
+.form-error-text { font-size: .75rem; color: var(--danger); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+
+.form-checkbox, .form-radio {
+  width: 18px; height: 18px; border: 1.5px solid #d1d5db; cursor: pointer;
+  accent-color: var(--primary); flex-shrink: 0;
+}
+.form-checkbox { border-radius: 5px; }
+.form-radio { border-radius: 50%; }
+
+.form-file {
+  display: block; border: 1.5px dashed var(--border); border-radius: 14px; padding: 24px;
+  text-align: center; cursor: pointer; transition: all .2s; background: var(--surface);
+}
+.form-file:hover { border-color: var(--accent); background: var(--tint); }
+
+/* ── Skeleton ── */
+.skeleton {
+  background: linear-gradient(90deg, var(--tint) 25%, #dce8fb 37%, var(--tint) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+@keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
 
 /* ── Badges ── */
 .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 50px; font-size: .72rem; font-weight: 600; white-space: nowrap; }
