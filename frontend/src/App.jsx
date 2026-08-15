@@ -391,7 +391,25 @@ export default function App() {
     <AuthProvider>
       <SocketProvider>
         <AppRoutes />
-        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 3000,
+            style: {
+              background: '#fff',
+              color: '#0B1E3B',
+              fontFamily: "'Poppins', sans-serif",
+              fontSize: '.875rem',
+              fontWeight: 500,
+              borderRadius: '14px',
+              padding: '10px 16px',
+              boxShadow: '0 12px 40px rgba(11,30,59,.14)',
+              border: '1px solid #E2EAF4',
+            },
+            success: { iconTheme: { primary: '#059669', secondary: '#fff' } },
+            error:   { iconTheme: { primary: '#DC2626', secondary: '#fff' } },
+          }}
+        />
       </SocketProvider>
     </AuthProvider>
   );

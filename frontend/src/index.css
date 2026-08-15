@@ -3,20 +3,34 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Variables ── */
+/* ── Variables ──────────────────────────────────────────────────────────
+   ADR-0003 — palette canonique navy + sarcelle. Ces valeurs sont celles
+   déjà utilisées par 19 des 23 pages qui redéfinissaient localement leur
+   propre :root (mêmes hex, noms de variable différents par page) — pas
+   une nouvelle invention, la consolidation de ce qui existait déjà en
+   double un peu partout. */
 :root {
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
-  --success: #22c55e;
-  --danger: #ef4444;
-  --warning: #f59e0b;
-  --info: #3b82f6;
+  --primary: #1B4F9E;
+  --primary-dark: #174391;
+  --accent: #0EA5A0;
+  --accent-dark: #0D9490;
+  --ink: #0B1E3B;
+  --ink-2: #132744;
+  --tertiary: #7C3AED;
+  --success: #059669;
+  --danger: #DC2626;
+  --warning: #D97706;
+  --info: #0EA5A0;
+  --border: #E2EAF4;
+  --muted: #6B7A99;
+  --tint: #EEF4FF;
+  --surface: #F8FAFD;
   --font: 'Poppins', sans-serif;
   --sidebar-w: 260px;
-  --radius: 16px;
-  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
-  --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.05);
-  --shadow-lg: 0 10px 25px rgba(0,0,0,.1), 0 5px 10px rgba(0,0,0,.06);
+  --radius: 18px;
+  --shadow: 0 1px 3px rgba(11,30,59,.08);
+  --shadow-md: 0 4px 16px rgba(11,30,59,.10);
+  --shadow-lg: 0 12px 40px rgba(11,30,59,.14);
 }
 
 * { box-sizing: border-box; }
@@ -31,7 +45,7 @@ body {
 /* ── Sidebar ── */
 .sidebar {
   width: var(--sidebar-w);
-  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+  background: linear-gradient(180deg, var(--ink) 0%, var(--ink-2) 100%);
   /* height fixe (PAS min-height) : indispensable pour que flex-1 de la nav
      soit contraint et que overflow-y:auto déclenche le scroll */
   height: 100vh;
@@ -62,9 +76,9 @@ body {
 }
 .sidebar-link:hover { background: rgba(255,255,255,.08); color: white; }
 .sidebar-link.active {
-  background: linear-gradient(135deg, var(--primary), #1d4ed8);
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: white;
-  box-shadow: 0 4px 15px rgba(37,99,235,.3);
+  box-shadow: 0 4px 15px rgba(27,79,158,.3);
 }
 
 /* ── Cards ── */
@@ -80,7 +94,7 @@ body {
   font-size: .875rem; font-weight: 600; cursor: pointer; transition: all .2s;
   display: inline-flex; align-items: center; gap: 6px; font-family: var(--font);
 }
-.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,.35); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(27,79,158,.35); }
 .btn-primary:disabled { opacity: .6; cursor: not-allowed; transform: none; }
 
 .btn-secondary {
@@ -95,7 +109,7 @@ body {
   border-radius: 10px; font-size: .875rem; font-weight: 600; cursor: pointer;
   transition: all .2s; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font);
 }
-.btn-danger:hover { background: #dc2626; transform: translateY(-1px); }
+.btn-danger:hover { background: #B91C1C; transform: translateY(-1px); }
 
 /* ── Forms ── */
 .form-input {
@@ -103,12 +117,12 @@ body {
   padding: 10px 14px; font-size: .875rem; font-family: var(--font);
   color: #111827; transition: all .2s; background: white;
 }
-.form-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+.form-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(27,79,158,.1); }
 .form-label { display: block; font-size: .8rem; font-weight: 600; color: #374151; margin-bottom: 5px; }
 
 /* ── Badges ── */
 .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 50px; font-size: .72rem; font-weight: 600; white-space: nowrap; }
-.badge-blue   { background: #eff6ff; color: #1d4ed8; }
+.badge-blue   { background: #eff6ff; color: var(--primary); }
 .badge-green  { background: #f0fdf4; color: #15803d; }
 .badge-yellow { background: #fefce8; color: #a16207; }
 .badge-red    { background: #fef2f2; color: #dc2626; }
@@ -116,7 +130,7 @@ body {
 .badge-gray   { background: #f9fafb; color: #4b5563; }
 .badge-cyan   { background: #ecfeff; color: #0e7490; }
 .badge-orange { background: #fff7ed; color: #c2410c; }
-.ai-badge { background: linear-gradient(135deg, #7c3aed, #2563eb); color: white; font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; display: inline-flex; align-items: center; gap: 4px; }
+.ai-badge { background: linear-gradient(135deg, var(--tertiary), var(--primary)); color: white; font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; display: inline-flex; align-items: center; gap: 4px; }
 
 /* ── Alerts ── */
 .critical-alert { background: linear-gradient(135deg, #fef2f2, #fee2e2); border: 1px solid #fca5a5; }
@@ -152,7 +166,7 @@ body {
 .animate-spin   { animation: spin 1s linear infinite; }
 .animate-pulse  { animation: pulse 2s infinite; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.status-dot.online { background: #22c55e; animation: pulse 2s infinite; }
+.status-dot.online { background: var(--success); animation: pulse 2s infinite; }
 
 /* ── Custom scrollbar ── */
 .custom-scroll::-webkit-scrollbar { width: 6px; }
