@@ -7,7 +7,10 @@ import {
 } from '../store/slices/prescriptionsSlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { FileText, Plus, Printer } from 'lucide-react';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -563,34 +566,25 @@ export default function Ordonnances() {
       <style>{CSS}</style>
       <div className="ord">
 
-        {/* ── TOPBAR ── */}
-        <div className="ord-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.rx}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Module Ordonnances</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>
-                  {kpis.total} ordonnance(s) · {kpis.actives} active(s) · {kpis.aujourd_hui} aujourd'hui
-                </div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="obtn obtn-teal" onClick={() => { setFormOrd(EMPTY_ORD); setModalNouv(true); }}>
-                {I.plus} Nouvelle ordonnance
-              </button>
+        {/* ── HERO ── */}
+        <Hero
+          icon={FileText}
+          title="Module Ordonnances"
+          dateLabel={`${kpis.total} ordonnance(s) · ${kpis.actives} active(s) · ${kpis.aujourd_hui} aujourd'hui`}
+          right={
+            <>
               {currentOrd && (
-                <button className="obtn obtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => window.print()}>
-                  {I.print} Imprimer
+                <button className="hero-btn-ghost" onClick={() => window.print()}>
+                  <Printer size={14} /> Imprimer
                 </button>
               )}
-            </div>
-          </div>
+              <Button icon={Plus} onClick={() => { setFormOrd(EMPTY_ORD); setModalNouv(true); }}>Nouvelle ordonnance</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard",  icon:I.grid,    label:"Tableau de bord", labelM:"Dashboard" },
               { key:"liste",      icon:I.list,    label:"Historique",       labelM:"Historique" },
@@ -600,22 +594,16 @@ export default function Ordonnances() {
             ].filter(t=>!t.disabled);
             const cols = isMobile ? Math.min(3, TABS.length) : undefined;
             return (
-              <div style={isMobile ? {
-                display:'grid', gridTemplateColumns:`repeat(${cols},1fr)`,
-                gap:'4px', padding:'8px 10px', marginTop:'8px',
-                background:'rgba(255,255,255,.07)', borderRadius:'10px 10px 0 0',
-              } : {
-                display:'flex', gap:'2px', padding:'0', marginTop:'16px',
-                overflowX:'auto', scrollbarWidth:'none',
-              }}>
+              <div className="tab-bar" style={isMobile ? {
+                display:'grid', gridTemplateColumns:`repeat(${cols},1fr)`, gap:4,
+              } : {}}>
                 {TABS.map(t=>(
                   <button
                     key={t.key}
-                    className={`ord-tab ${tab===t.key?"active":""}`}
+                    className={`tab-bar-item ${tab===t.key?"active":""}`}
                     style={isMobile ? {
-                      flexDirection:'column', alignItems:'center', justifyContent:'center',
-                      textAlign:'center', padding:'7px 3px 8px', fontSize:'9.5px',
-                      gap:'3px', borderRadius:'8px', whiteSpace:'normal', minWidth:0,
+                      flexDirection:'column', textAlign:'center', padding:'7px 3px 8px',
+                      fontSize:'9.5px', gap:'3px', whiteSpace:'normal', minWidth:0,
                     } : {}}
                     onClick={() => setTab(t.key)}
                   >
@@ -623,13 +611,12 @@ export default function Ordonnances() {
                     <span style={isMobile ? { lineHeight:1.2 } : {}}>
                       {isMobile ? t.labelM : t.label}
                     </span>
-                    {t.key==="liste" && (interactions>0||expirees>0) && <span className="ord-tab-badge">{interactions+expirees}</span>}
+                    {t.key==="liste" && (interactions>0||expirees>0) && <span className="tab-bar-item-count">{interactions+expirees}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>
