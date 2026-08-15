@@ -106,6 +106,7 @@ exports.create = async (req, res, next) => {
         telephone:            patient.telephone || '',
         statut:               'inactif',       // activé lors du clic sur le lien
         must_change_password: true,
+        patient_id:           patient._id,     // T2.2 — lien direct dossier ↔ compte
       });
     }
 

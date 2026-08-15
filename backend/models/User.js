@@ -88,6 +88,14 @@ const UserSchema = new mongoose.Schema({
   // ✅ Nouveau champ Google OAuth
   googleId: { type: String, default: null, sparse: true },
 
+  // T2.2 — lien direct vers le dossier médical, pour les comptes role:'patient'.
+  // Renseigné à la création (patients.controller.js::create) ; les comptes
+  // existants sont rattachés par le script de migration
+  // utils/migrate-link-patient-id.js (correspondance par email). Le portail
+  // (portal.controller.js) continue de chercher par email jusqu'à la
+  // Phase 3, qui le fera utiliser patient_id en priorité — non touché ici.
+  patient_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', default: null },
+
 }, { timestamps: true });
 
 // ── Hash password ─────────────────────────────────────────────────────────
