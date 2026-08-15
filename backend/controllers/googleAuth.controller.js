@@ -1,6 +1,28 @@
 // controllers/googleAuth.controller.js
 const User = require('../models/User');
+const Patient = require('../models/Patient');
 const { sendTokenCookie } = require('../utils/helpers');
+
+// T3.1 — Un compte Google auto-inscrit (role:'patient') n'avait jusqu'ici
+// jamais de dossier Patient associé : le portail répondait 404 dès la
+// première connexion. Crée immédiatement un dossier minimal, marqué
+// profil_a_completer (Google ne fournit ni date de naissance ni sexe — pas
+// de valeur clinique inventée), et le lie via patient_id (T2.2).
+// numero_dossier est généré automatiquement par le hook pre('save') du
+// modèle (compteur atomique) — ne pas le fixer ici.
+async function ensurePatientDossier(user) {
+  if (user.role !== 'patient' || user.patient_id) return;
+  const patient = await Patient.create({
+    nom: user.nom,
+    prenom: user.prenom,
+    email: user.email,
+    actif: true,
+    statut: 'actif',
+    profil_a_completer: true,
+  });
+  user.patient_id = patient._id;
+  await user.save();
+}
 
 /**
  * POST /api/auth/google
@@ -53,11 +75,15 @@ const googleLogin = async (req, res) => {
       }
     }
 
-    // ── 3. Mise à jour dernière connexion ──────────────────────────────────
+    // ── 3. Dossier Patient (nouveau compte OU compte patient existant
+    //      jamais lié — ex. créé avant ce correctif) ─────────────────────────
+    await ensurePatientDossier(user);
+
+    // ── 4. Mise à jour dernière connexion ──────────────────────────────────
     user.derniere_connexion = new Date();
     await user.save();
 
-    // ── 4. Cookie httpOnly + réponse — même helper que le login classique,
+    // ── 5. Cookie httpOnly + réponse — même helper que le login classique,
     //      pour un comportement (sameSite/secure/forme du payload) identique
     //      quel que soit le mode de connexion. Le JWT n'est jamais renvoyé
     //      dans le corps de la réponse (cf. correction Socket.IO).
