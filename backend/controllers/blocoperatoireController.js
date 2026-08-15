@@ -3,6 +3,7 @@ const Patient = require('../models/Patient');
 const User    = require('../models/User');
 const { logAction } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { nextSequence } = require('../utils/counter');
 
 // Salles du bloc opératoire (configuration statique)
 const SALLES_BLOC = [
@@ -17,12 +18,11 @@ function toModelStatut(s) {
   return map[s] || s;
 }
 
-// Numéro d'intervention bloc
+// Numéro d'intervention bloc — compteur atomique (voir chirurgieController.js)
 async function generateNumeroBloc() {
   const yr = new Date().getFullYear();
-  const last = await DossierChirurgical.findOne({ numero: new RegExp(`^BLOC-${yr}-`) }).sort({ numero: -1 });
-  const next = last ? parseInt(last.numero.split('-')[2]) + 1 : 1;
-  return `BLOC-${yr}-${String(next).padStart(4, '0')}`;
+  const seq = await nextSequence(`bloc-${yr}`);
+  return `BLOC-${yr}-${String(seq).padStart(4, '0')}`;
 }
 
 // ── GET /planning  (ou GET /) ─────────────────────────────────────────────────

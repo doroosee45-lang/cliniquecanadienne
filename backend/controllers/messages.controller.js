@@ -1,5 +1,6 @@
 const Conversation = require('../models/Conversation');
 const { emitTo } = require('../utils/socket');
+const { logAction } = require('../utils/helpers');
 
 exports.getConversations = async (req, res, next) => {
   try {
@@ -21,6 +22,7 @@ exports.getOrCreate = async (req, res, next) => {
     if (!conv) {
       conv = await Conversation.create({ type: 'direct', membres: [req.user._id, userId], created_by: req.user._id });
       await conv.populate('membres', 'nom prenom role avatar');
+      await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'messages', entite_id: conv._id, ip: req.ip, message: `Nouvelle conversation avec ${userId}` });
     }
     res.json({ success: true, conversation: conv });
   } catch (err) { next(err); }

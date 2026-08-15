@@ -38,6 +38,7 @@ exports.update = async (req, res, next) => {
     const protocol = await RecurringProtocol.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
       .populate('medecin', 'nom prenom specialite');
     if (!protocol) return res.status(404).json({ success: false, message: 'Protocole introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'recurring', entite_id: protocol._id, ip: req.ip, message: `Protocole récurrent modifié : ${protocol.titre}` });
     res.json({ success: true, protocol });
   } catch (err) { next(err); }
 };
@@ -45,7 +46,8 @@ exports.update = async (req, res, next) => {
 // ── DELETE (soft) ────────────────────────────────────────────────────────────
 exports.remove = async (req, res, next) => {
   try {
-    await RecurringProtocol.findByIdAndUpdate(req.params.id, { actif: false });
+    const protocol = await RecurringProtocol.findByIdAndUpdate(req.params.id, { actif: false });
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'recurring', entite_id: req.params.id, ip: req.ip, message: `Protocole récurrent archivé${protocol ? ` : ${protocol.titre}` : ''}` });
     res.json({ success: true, message: 'Protocole archivé.' });
   } catch (err) { next(err); }
 };

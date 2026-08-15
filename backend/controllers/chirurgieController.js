@@ -6,17 +6,16 @@ const Complication = require('../models/Complication');
 const Patient = require('../models/Patient');
 const User = require('../models/User');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { nextSequence } = require('../utils/counter');
+const { logAction } = require('../utils/helpers');
 
 // Génération du numéro de dossier : CHIR-YYYY-XXXX
+// Compteur atomique — l'ancien pattern findOne().sort() pouvait attribuer le
+// même numéro à deux dossiers créés en même temps (condition de course).
 async function generateNumero() {
   const year = new Date().getFullYear();
-  const lastDossier = await DossierChirurgical.findOne({ numero: new RegExp(`^CHIR-${year}-`) }).sort({ numero: -1 });
-  let nextNum = 1;
-  if (lastDossier) {
-    const parts = lastDossier.numero.split('-');
-    nextNum = parseInt(parts[2]) + 1;
-  }
-  return `CHIR-${year}-${String(nextNum).padStart(4, '0')}`;
+  const seq = await nextSequence(`chirurgie-${year}`);
+  return `CHIR-${year}-${String(seq).padStart(4, '0')}`;
 }
 
 // Mise à jour du niveau IA à partir du score
@@ -158,6 +157,7 @@ exports.createDossier = async (req, res) => {
     });
 
     await dossier.save();
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Nouveau dossier chirurgical ${dossier.numero} — ${dossier.patient_nom}` });
     emitActivity({ module: 'chirurgie', action: 'Nouveau dossier chirurgical', detail: `${dossier.patient_nom} — ${dossier.type_intervention || dossier.motif_consultation || ''}`, icon: '🏥', userId: chirurgien_id || null, userName: chirurgien_nom || 'Système' });
     emitDashboardUpdate();
     res.status(201).json(dossier);
@@ -179,6 +179,7 @@ exports.updateDossier = async (req, res) => {
     dossier.updated_at = Date.now();
     await dossier.save();
 
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Dossier chirurgical ${dossier.numero} modifié` });
     res.json(dossier);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -196,6 +197,7 @@ exports.addBilan = async (req, res) => {
       ...req.body
     });
     await bilan.save();
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Bilan ajouté au dossier ${dossier.numero} (${bilan.type})` });
     res.status(201).json(bilan);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -218,6 +220,7 @@ exports.addSuivi = async (req, res) => {
     dossier.nb_suivis += 1;
     await dossier.save();
 
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Suivi postopératoire ajouté au dossier ${dossier.numero}` });
     res.status(201).json(suivi);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -245,6 +248,7 @@ exports.addComplication = async (req, res) => {
     dossier.ia_risque_niveau = updateIaNiveau(newScore);
     await dossier.save();
 
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Complication (${complication.type_complication}) enregistrée pour le dossier ${dossier.numero}` });
     res.status(201).json(complication);
   } catch (err) {
     res.status(500).json({ message: err.message });

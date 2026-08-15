@@ -1,6 +1,7 @@
 const Child                  = require('../models/Child');
 const PediatricConsultation  = require('../models/PediatricConsultation');
 const { emitDashboardUpdate } = require('../utils/socket');
+const { logAction } = require('../utils/helpers');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function ageEnAns(ddn) {
@@ -127,6 +128,7 @@ exports.create = async (req, res) => {
     const body = { ...req.body, created_by: req.user._id };
     if (body.date_naissance) body.date_naissance = new Date(body.date_naissance);
     const child = await Child.create(body);
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Nouveau dossier pédiatrique ${child.numero} — ${child.prenom || ''} ${child.nom}`.trim() });
     emitDashboardUpdate();
     res.status(201).json({ success: true, enfant: child });
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -225,6 +227,7 @@ exports.createConsultation = async (req, res) => {
     }
 
     const consult = await PediatricConsultation.create(body);
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: consult._id, ip: req.ip, message: `Consultation pédiatrique ${consult.numero} — ${consult.patient_nom || 'enfant'} (${consult.type})` });
     res.status(201).json({ success: true, consultation: consult });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

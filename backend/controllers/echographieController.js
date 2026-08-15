@@ -1,5 +1,6 @@
 const Echographie = require('../models/Echographie');
 const { emitDashboardUpdate } = require('../utils/socket');
+const { logAction } = require('../utils/helpers');
 
 // ── GET /echographie/stats
 exports.getStats = async (req, res) => {
@@ -88,6 +89,7 @@ exports.getOne = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     const demande = await Echographie.create(req.body);
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Nouvelle demande d'échographie ${demande.numero} — ${demande.patient || 'patient'}` });
     emitDashboardUpdate();
     res.status(201).json({ success: true, demande });
   } catch (err) {

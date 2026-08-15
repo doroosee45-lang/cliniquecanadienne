@@ -1,6 +1,7 @@
 const Urgence   = require('../models/Urgence');
 const Ambulance = require('../models/Ambulance');
 const { emitDashboardUpdate } = require('../utils/socket');
+const { logAction } = require('../utils/helpers');
 
 const normalize = (u) => ({
   ...u.toObject({ virtuals: true }),
@@ -130,6 +131,7 @@ exports.create = async (req, res) => {
     });
 
     await u.save();
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Admission urgences ${u.numero} — ${u.patient_nom} (triage ${u.niveau_triage})` });
     emitDashboardUpdate();
     await u.populate('patient', 'prenom nom numero_dossier');
     res.status(201).json({ urgence: normalize(u), message: `Patient ${u.numero} admis aux urgences` });
@@ -157,6 +159,7 @@ exports.update = async (req, res) => {
     }
 
     await u.save();
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Dossier urgences ${u.numero} modifié${fields.statut ? ` — statut → ${fields.statut}` : ''}` });
     emitDashboardUpdate();
     await u.populate('patient', 'prenom nom numero_dossier');
     await u.populate('medecin_responsable', 'prenom nom');
