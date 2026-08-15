@@ -10,7 +10,10 @@ import {
 } from '../store/slices/radiologySlice';
 import api from "../api";
 import toast from "react-hot-toast";
+import { ScanLine, Plus, Printer } from 'lucide-react';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -553,32 +556,25 @@ export default function Imagerie() {
       <style>{CSS}</style>
       <div className="img">
 
-        {/* ── TOPBAR ── */}
-        <div className="img-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.scan}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Module Imagerie Médicale</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>{kpis.total} examens · Radiologie / Échographie / Scanner / IRM</div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="ibtn ibtn-teal" onClick={() => { setFormExamen(EMPTY_EXAMEN); setModalNouv(true); }}>
-                {I.plus} Nouvelle demande
-              </button>
+        {/* ── HERO ── */}
+        <Hero
+          icon={ScanLine}
+          title="Module Imagerie Médicale"
+          dateLabel={`${kpis.total} examens · Radiologie / Échographie / Scanner / IRM`}
+          right={
+            <>
               {currentExamen && (
-                <button className="ibtn ibtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => window.print()}>
-                  {I.print} Imprimer
+                <button className="hero-btn-ghost" onClick={() => window.print()}>
+                  <Printer size={14} /> Imprimer
                 </button>
               )}
-            </div>
-          </div>
+              <Button icon={Plus} onClick={() => { setFormExamen(EMPTY_EXAMEN); setModalNouv(true); }}>Nouvelle demande</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          {(() => {
+        {/* Tabs */}
+        {(() => {
             const TABS = [
               { key:"dashboard", icon:I.grid,  label:"Tableau de bord",  labelM:"Dashboard" },
               { key:"liste",     icon:I.list,  label:"Liste des examens", labelM:"Examens" },
@@ -586,18 +582,17 @@ export default function Imagerie() {
               { key:"planning",  icon:I.clock, label:"Planning",          labelM:"Planning" },
             ].filter(t=>!t.disabled);
             return (
-              <div style={isMobile?{display:'grid',gridTemplateColumns:`repeat(${Math.min(3,TABS.length)},1fr)`,gap:'4px',padding:'8px 10px',marginTop:'8px',background:'rgba(255,255,255,.07)',borderRadius:'10px 10px 0 0'}:{display:'flex',gap:'2px',marginTop:'16px',overflowX:'auto',scrollbarWidth:'none'}}>
+              <div className="tab-bar" style={isMobile?{display:'grid',gridTemplateColumns:`repeat(${Math.min(3,TABS.length)},1fr)`,gap:4}:{}}>
                 {TABS.map(t=>(
-                  <button key={t.key} className={`img-tab ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',borderRadius:'8px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
+                  <button key={t.key} className={`tab-bar-item ${tab===t.key?"active":""}`} style={isMobile?{flexDirection:'column',textAlign:'center',padding:'7px 3px 8px',fontSize:'9.5px',gap:'3px',whiteSpace:'normal',minWidth:0}:{}} onClick={()=>setTab(t.key)}>
                     <span style={isMobile?{fontSize:'14px'}:{}}>{t.icon}</span>
                     <span style={isMobile?{lineHeight:1.2}:{}}>{isMobile?t.labelM:t.label}</span>
-                    {t.key==="liste"&&urgents>0&&<span className="img-tab-badge">{urgents}</span>}
+                    {t.key==="liste"&&urgents>0&&<span className="tab-bar-item-count">{urgents}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>

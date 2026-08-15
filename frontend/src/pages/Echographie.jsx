@@ -5,6 +5,9 @@ import {
   fetchEchographieStats, fetchDemandes, createDemande,
   selectDemandesList,
 } from "../store/slices/echographieSlice";
+import { Activity, Plus } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 
 // ─── CSS — même design system que Consultation (Navy + Teal) ──
 const CSS = `
@@ -1528,24 +1531,21 @@ export default function Echographie() {
       <style>{CSS}</style>
       <div className="echo">
 
-        {/* ── TOPBAR ── */}
-        <div className="echo-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>
-                🔬
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Module Échographie</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2, display:"flex", gap:12, flexWrap:"wrap" }}>
-                  <span>{demandes.length} demande(s) · {demandes.filter(d=>d.statut==="planifiee").length} planifiée(s)</span>
-                  {urgentes>0 && <span style={{ color:"#FCA5A5", fontWeight:700 }}>🚨 {urgentes} urgente(s)</span>}
-                  <span className="pulse-dot" style={{ width:6, height:6, background:"#34D399" }} />
-                  <span style={{ color:"rgba(255,255,255,.4)" }}>Temps réel</span>
-                </div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+        {/* ── HERO ── */}
+        <Hero
+          icon={Activity}
+          title="Module Échographie"
+          dateLabel={
+            <span className="flex items-center gap-3 flex-wrap">
+              <span>{demandes.length} demande(s) · {demandes.filter(d=>d.statut==="planifiee").length} planifiée(s)</span>
+              {urgentes>0 && <span style={{ color:"#FCA5A5", fontWeight:700 }}>🚨 {urgentes} urgente(s)</span>}
+              <span className="flex items-center gap-1.5" style={{ color:"rgba(255,255,255,.4)" }}>
+                <span className="pulse-dot" style={{ width:6, height:6, background:"#34D399" }} /> Temps réel
+              </span>
+            </span>
+          }
+          right={
+            <>
               {/* Badges liaisons rapides */}
               <div style={{ display:"flex", gap:4 }}>
                 {LIAISONS.slice(0,4).map(l=>(
@@ -1554,20 +1554,20 @@ export default function Echographie() {
                   </div>
                 ))}
               </div>
-              <button className="cbtn cbtn-teal" onClick={()=>setModalNouv(true)}>+ Nouvelle demande</button>
-            </div>
-          </div>
+              <Button icon={Plus} onClick={()=>setModalNouv(true)}>Nouvelle demande</Button>
+            </>
+          }
+        />
 
-          {/* Tabs */}
-          <div className="echo-tabs">
-            {TABS.map(t=>(
-              <button key={t.id} className={`echo-tab ${mainTab===t.id?"active":""}`} onClick={()=>setMainTab(t.id)}>
-                <span>{t.icon}</span>
-                <span>{t.label}</span>
-                {t.badge>0 && <span className="echo-tab-badge">{t.badge}</span>}
-              </button>
-            ))}
-          </div>
+        {/* Tabs */}
+        <div className="tab-bar">
+          {TABS.map(t=>(
+            <button key={t.id} className={`tab-bar-item ${mainTab===t.id?"active":""}`} onClick={()=>setMainTab(t.id)}>
+              <span>{t.icon}</span>
+              <span>{t.label}</span>
+              {t.badge>0 && <span className="tab-bar-item-count">{t.badge}</span>}
+            </button>
+          ))}
         </div>
 
         {/* ── CONTENT ── */}

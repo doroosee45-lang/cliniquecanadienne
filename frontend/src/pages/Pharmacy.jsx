@@ -1366,6 +1366,9 @@ import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import jsPDF from 'jspdf';
+import { Pill, Plus, ShoppingCart, Zap } from 'lucide-react';
+import Hero from '../components/UI/Hero';
+import Button from '../components/UI/Button';
 import autoTable from 'jspdf-autotable';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
@@ -2526,29 +2529,26 @@ ${lignes}
       <input ref={gridPhotoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display:'none' }} onChange={handleGridPhotoChange} />
       <div className="ph">
 
-        {/* ── TOPBAR ── */}
-        <div className="ph-top">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap", position:"relative", zIndex:2 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:54, height:54, borderRadius:14, background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                {I.pill}
-              </div>
-              <div>
-                <div style={{ fontSize:21, fontWeight:700, color:"#fff", letterSpacing:-.3 }}>Module Pharmacie</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.55)", marginTop:2 }}>
-                  {kpis.total} médicament(s) · {kpis.ruptures} rupture(s) · Stock : {fmtCFA(kpis.valeur_stock)}
-                </div>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="pbtn pbtn-teal" onClick={() => { setFormMed(EMPTY_MED); setModalAdd(true); }}>{I.plus} Nouveau médicament</button>
-              <button className="pbtn pbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => setModalVente(true)}>{I.cart} Vente</button>
-              <button className="pbtn pbtn-ghost" style={{ color:"#fff", borderColor:"rgba(255,255,255,.3)" }} onClick={() => { setFormMvt(EMPTY_MVT); setModalMvt(true); }}>⚡ Mouvement</button>
-            </div>
-          </div>
+        {/* ── HERO ── */}
+        <Hero
+          icon={Pill}
+          title="Module Pharmacie"
+          dateLabel={`${kpis.total} médicament(s) · ${kpis.ruptures} rupture(s) · Stock : ${fmtCFA(kpis.valeur_stock)}`}
+          right={
+            <>
+              <button className="hero-btn-ghost" onClick={() => setModalVente(true)}>
+                <ShoppingCart size={14} /> Vente
+              </button>
+              <button className="hero-btn-ghost" onClick={() => { setFormMvt(EMPTY_MVT); setModalMvt(true); }}>
+                <Zap size={14} /> Mouvement
+              </button>
+              <Button icon={Plus} onClick={() => { setFormMed(EMPTY_MED); setModalAdd(true); }}>Nouveau médicament</Button>
+            </>
+          }
+        />
 
-          {/* Tabs — grille 3×3 sur mobile, ligne scrollable sur desktop */}
-          {(() => {
+        {/* Tabs — grille 3×3 sur mobile, ligne scrollable sur desktop */}
+        {(() => {
             const TABS = [
               { key:"dashboard",  icon:I.chart,  label:"Tableau de bord",              labelM:"Dashboard" },
               { key:"catalogue",  icon:I.pill,   label:"Catalogue",                    labelM:"Catalogue" },
@@ -2561,34 +2561,27 @@ ${lignes}
               { key:"audit",      icon:I.log,    label:"Audit",                        labelM:"Audit" },
             ];
             return (
-              <div style={isMobile ? {
-                display:'grid', gridTemplateColumns:'repeat(3,1fr)',
-                gap:'4px', padding:'8px 10px', marginTop:'8px',
-                background:'rgba(255,255,255,.07)', borderRadius:'10px 10px 0 0',
-              } : {
-                display:'flex', gap:'2px', marginTop:'16px',
-                overflowX:'auto', scrollbarWidth:'none',
-              }}>
+              <div className="tab-bar" style={isMobile ? {
+                display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:4,
+              } : {}}>
                 {TABS.map(t => (
                   <button
                     key={t.key}
-                    className={`ph-tab ${tab===t.key?"active":""}`}
+                    className={`tab-bar-item ${tab===t.key?"active":""}`}
                     style={isMobile ? {
-                      flexDirection:'column', alignItems:'center', justifyContent:'center',
-                      textAlign:'center', padding:'7px 3px 8px', fontSize:'9.5px',
-                      gap:'3px', borderRadius:'8px', whiteSpace:'normal', minWidth:0,
+                      flexDirection:'column', textAlign:'center', padding:'7px 3px 8px',
+                      fontSize:'9.5px', gap:'3px', whiteSpace:'normal', minWidth:0,
                     } : {}}
                     onClick={() => setTab(t.key)}
                   >
                     <span style={isMobile ? { fontSize:'14px' } : {}}>{t.icon}</span>
                     <span style={isMobile ? { lineHeight:1.2 } : {}}>{isMobile ? t.labelM : t.label}</span>
-                    {(t.badge ?? 0) > 0 && <span className="ph-tab-badge">{t.badge}</span>}
+                    {(t.badge ?? 0) > 0 && <span className="tab-bar-item-count">{t.badge}</span>}
                   </button>
                 ))}
               </div>
             );
           })()}
-        </div>
 
         {/* ── CONTENT ── */}
         <div style={{ padding: isMobile ? 14 : 24 }}>
