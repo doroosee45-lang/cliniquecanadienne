@@ -414,7 +414,7 @@ export default function IntelligenceArtificielle() {
     });
     (realAlerts.predictions_en_attente || []).forEach(p => {
       const pat = p.patient;
-      const typeLabel = { diagnostic: 'Diagnostic IA', interaction_medicament: 'Interaction médicament', conflit_rdv: 'Conflit RDV' }[p.type] || p.type;
+      const typeLabel = { diagnostic: 'Diagnostic IA', interaction_medicament: 'Interaction médicament' }[p.type] || p.type;
       items.push({ id: String(p._id), icon: '🤖', title: `${typeLabel} en attente`, detail: `Patient: ${pat ? `${pat.prenom} ${pat.nom}` : 'Anonyme'} · Confiance: ${p.score_confiance}%`, module: 'IA', priority: 'eleve', time: fmtDate(p.createdAt) });
     });
     return items;
@@ -568,7 +568,7 @@ export default function IntelligenceArtificielle() {
       body: reduxPredictions.map(p => {
         const pat = p.patient;
         const patName = pat ? `${pat.prenom || ''} ${pat.nom || ''}`.trim() || 'Anonyme' : 'Anonyme';
-        const typeLabel = { diagnostic: 'Analyse diagnostique', interaction_medicament: 'Interaction médicament', conflit_rdv: 'Conflit RDV' }[p.type] || p.type;
+        const typeLabel = { diagnostic: 'Analyse diagnostique', interaction_medicament: 'Interaction médicament' }[p.type] || p.type;
         const score = p.resultat?.suggestions?.[0]?.probabilite ?? p.score_confiance ?? 0;
         const tracte = p.traite_par ? `${p.traite_par.prenom || ''} ${p.traite_par.nom || ''}`.trim() : '—';
         return [fmtDate(p.createdAt), tracte, typeLabel, patName, `${score}%`, p.statut === 'traite' ? 'Validé' : 'En attente'];
@@ -1396,7 +1396,7 @@ export default function IntelligenceArtificielle() {
                       {reduxPredictions.map(p => {
                         const pat = p.patient;
                         const patName = pat ? `${pat.prenom || ''} ${pat.nom || ''}`.trim() || 'Anonyme' : 'Anonyme';
-                        const typeLabel = { diagnostic:"Analyse diagnostique", interaction_medicament:"Interaction médicament", conflit_rdv:"Conflit RDV" }[p.type] || p.type;
+                        const typeLabel = { diagnostic:"Analyse diagnostique", interaction_medicament:"Interaction médicament" }[p.type] || p.type;
                         const score = p.resultat?.suggestions?.[0]?.probabilite ?? p.score_confiance ?? 0;
                         const tracte = p.traite_par ? `${p.traite_par.prenom || ''} ${p.traite_par.nom || ''}`.trim() : '—';
                         return (
