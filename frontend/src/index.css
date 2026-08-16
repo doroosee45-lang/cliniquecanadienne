@@ -124,13 +124,20 @@ body {
 /* ── Tab bar (navigation par onglets, généralement sous un Hero) ──────────
    Remplace les variantes par page (.pat-tabs, .fin-tab...) qui fusionnaient
    les onglets dans le panneau sombre du header — désormais séparé, pour
-   que le Hero garde la même structure partout (cf. ADR-0003). */
-.tab-bar { display: flex; gap: 4px; padding: 6px; background: white; border-radius: 14px; box-shadow: var(--shadow); margin-bottom: 20px; overflow-x: auto; }
-.tab-bar::-webkit-scrollbar { display: none; }
+   que le Hero garde la même structure partout (cf. ADR-0003).
+   flex-wrap (plutôt que overflow-x: auto) : avec les listes d'onglets
+   longues (ex. RH, 14 entrées), un défilement horizontal en scroll caché
+   masque les entrées hors champ sans indice visuel ; en cas de rétrécissement
+   flex sans wrap, un libellé "white-space: nowrap" peut aussi déborder de son
+   propre bouton et chevaucher visuellement le bouton suivant. Le retour à la
+   ligne automatique garantit qu'aucun onglet ne peut jamais en chevaucher un
+   autre, quelle que soit la largeur d'écran ou le nombre d'onglets — chaque
+   module bénéficie de la correction via cette seule classe partagée. */
+.tab-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; background: white; border-radius: 14px; box-shadow: var(--shadow); margin-bottom: 20px; }
 .tab-bar-item {
-  display: flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 16px; border-radius: 10px;
   font-size: .8125rem; font-weight: 600; color: var(--muted); border: none; background: none;
-  cursor: pointer; transition: all .2s; white-space: nowrap; font-family: var(--font);
+  cursor: pointer; transition: all .2s; white-space: nowrap; font-family: var(--font); flex: 0 0 auto;
 }
 .tab-bar-item:hover { color: var(--ink); background: var(--tint); }
 .tab-bar-item.active { color: #fff; background: var(--primary); }
