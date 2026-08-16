@@ -27,6 +27,14 @@ Vérifié positivement : `npm test` (avec le script corrigé, cf. Résolution) r
 - Vérifié sur 3 exécutions consécutives de `npm test`, avec contrôle `ps aux` + `ps -W` avant/après chacune : aucun processus résiduel dans tous les cas.
 - Nettoyage ponctuel effectué en cours de route (non structurel, mais utile à noter) : `nodemon`/`server.js` actif depuis la veille et 3 instances Vite redondantes, arrêtés.
 
+## Note post-clôture — portée réelle du biais de diagnostic `ps aux`
+
+Ajouté après une question explicite sur ce point : la confusion de colonne `ps -W` documentée ci-dessus n'est pas restée théorique — elle a concrètement produit de fausses déclarations « propre » **dans cette même session**, avant d'être corrigée.
+
+Cas concrets vérifiables : pendant la validation du merge de `feature/P8.1-document-upload-hash` (juste avant la clôture de ce ticket), j'ai écrit à l'utilisateur *« Only the pre-existing Vite dev server remains (not a test process, expected) »* puis, dans le récapitulatif final de ce même tour, *« Final state: full sequential suite (117/117) green on develop, frontend build clean, no stray processes »*. Les deux affirmations reposaient uniquement sur `ps aux`. Le `nodemon server.js` retrouvé plus tard (PID Windows 10612) a été créé le **2026-08-15 21:52:24**, c'est-à-dire avant ces deux vérifications — il était donc déjà actif et invisible au moment précis où j'ai déclaré l'environnement « propre ». Trois instances Vite redondantes étaient dans le même cas.
+
+Ce que je ne peux **pas** vérifier : les nettoyages de processus fantômes effectués pendant les Phases 7-8 (avant la fenêtre de conversation actuellement inspectable) ont utilisé la même paire d'outils (`ps aux` + `ps -W`) sans qu'il soit possible, a posteriori, de confirmer si la bonne colonne de `ps -W` a été lue à chaque fois, ni si des processus natifs supplémentaires (hors arbre MSYS, comme ce `nodemon`) sont passés inaperçus à ces moments-là. Je ne fais donc aucune affirmation sur l'état réel de ces vérifications historiques — seulement ce constat : **tout diagnostic « propre » basé sur `ps aux` seul, antérieur à la correction de colonne documentée ci-dessus, doit être considéré comme non fiable**, y compris dans cette session avant la découverte, et a fortiori pour tout ce qui précède la fenêtre actuellement inspectable.
+
 ## Objectif futur, si repris (non bloquant, dette résiduelle mineure)
 
 - Le descripteur exact responsable de la persistance quand le flag est absent n'a jamais été isolé précisément (le comptage `connect`/`disconnect` par fichier n'a montré aucun déséquilibre) — sans intérêt pratique maintenant que `--test-force-exit` neutralise le symptôme, mais utile si la cause profonde doit un jour être comprise plutôt que contournée.
