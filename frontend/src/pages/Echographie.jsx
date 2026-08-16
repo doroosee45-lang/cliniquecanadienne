@@ -442,6 +442,7 @@ const LIAISONS = [
 
 // ─── TABLEAU DE BORD ─────────────────────────────────────────
 function Dashboard({ demandes }) {
+  const navigate = useNavigate();
   const total = demandes.length;
   const today_r = demandes.filter(d => d.statut==="realisee").length;
   const planif  = demandes.filter(d => d.statut==="planifiee").length;
@@ -578,6 +579,7 @@ function Dashboard({ demandes }) {
 
 // ─── DEMANDES D'EXAMEN ────────────────────────────────────────
 function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
+  const navigate = useNavigate();
   const [filtre, setFiltre] = useState("tous");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
@@ -801,6 +803,7 @@ function Planning({ demandes }) {
 
 // ─── RÉALISATION EXAMEN ───────────────────────────────────────
 function Realisation({ demandes }) {
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [selectedDemande, setSelectedDemande] = useState(demandes.find(d=>d.statut==="planifiee")||null);
   const [typeEcho, setTypeEcho] = useState(null);
@@ -1219,6 +1222,7 @@ function Realisation({ demandes }) {
 
 // ─── FACTURATION ECHOGRAPHIE ──────────────────────────────────
 function Facturation({ demandes }) {
+  const navigate = useNavigate();
   const ACTES = [
     { id:"simple",    label:"Échographie simple",    prix:15000, count: demandes.filter(d=>!["Doppler","Cardiaque"].includes(d.type)).length },
     { id:"specialise",label:"Échographie spécialisée",prix:25000, count: demandes.filter(d=>d.type==="Gynécologique"||d.type==="Obstétricale").length },

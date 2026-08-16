@@ -66,8 +66,11 @@ test('couverture fonctionnelle — échantillon réel (base configurée)', { ski
     const LabResult = require('../models/LabResult');
     const labC = require('../controllers/laboratory.controller');
     const Patient = require('../models/Patient');
-    const patient = await Patient.findOne({});
-    const lab = await LabResult.create({ patient: patient?._id, patient_nom: 'Test', est_critique: true, statut: 'valide' });
+    // T9.6 — findOne({}) supposait un Patient déjà présent en base (vrai sur
+    // Atlas dev, faux sur une base CI fraîche) : le patient est maintenant
+    // créé par le test lui-même, indépendant de tout état préexistant.
+    const patient = await Patient.create({ nom: 'Test', prenom: 'Audit', date_naissance: new Date('1990-01-01'), sexe: 'M' });
+    const lab = await LabResult.create({ patient: patient._id, patient_nom: 'Test', est_critique: true, statut: 'valide' });
     try {
       const before = await AuditLog.countDocuments({ module: 'laboratory', action: 'ACQUIT', entite_id: lab._id.toString() });
       await labC.acquit({ params: { id: lab._id.toString() }, user: laborantin, ip: '127.0.0.1' }, { json: () => {} }, () => {});
@@ -76,6 +79,7 @@ test('couverture fonctionnelle — échantillon réel (base configurée)', { ski
     } finally {
       await LabResult.findByIdAndDelete(lab._id);
       await AuditLog.deleteMany({ entite_id: lab._id.toString() });
+      await Patient.findByIdAndDelete(patient._id);
     }
   });
 
@@ -83,14 +87,18 @@ test('couverture fonctionnelle — échantillon réel (base configurée)', { ski
     const Consultation = require('../models/Consultation');
     const consultC = require('../controllers/consultations.controller');
     const Patient = require('../models/Patient');
-    const patient = await Patient.findOne({});
-    const consult = await Consultation.create({ patient: patient?._id, medecin: medecin._id, diagnostic: 'Test' });
-    const after1 = await AuditLog.countDocuments({ module: 'consultations', action: 'DELETE', entite_id: consult._id.toString() });
-    assert.equal(after1, 0);
-    await consultC.remove({ params: { id: consult._id.toString() }, user: medecin, ip: '127.0.0.1' }, { json: () => {}, status: () => ({ json: () => {} }) }, () => {});
-    const after2 = await AuditLog.countDocuments({ module: 'consultations', action: 'DELETE', entite_id: consult._id.toString() });
-    assert.equal(after2, 1);
-    await AuditLog.deleteMany({ entite_id: consult._id.toString() });
+    const patient = await Patient.create({ nom: 'Test', prenom: 'Audit', date_naissance: new Date('1990-01-01'), sexe: 'M' });
+    try {
+      const consult = await Consultation.create({ patient: patient._id, medecin: medecin._id, diagnostic: 'Test' });
+      const after1 = await AuditLog.countDocuments({ module: 'consultations', action: 'DELETE', entite_id: consult._id.toString() });
+      assert.equal(after1, 0);
+      await consultC.remove({ params: { id: consult._id.toString() }, user: medecin, ip: '127.0.0.1' }, { json: () => {}, status: () => ({ json: () => {} }) }, () => {});
+      const after2 = await AuditLog.countDocuments({ module: 'consultations', action: 'DELETE', entite_id: consult._id.toString() });
+      assert.equal(after2, 1);
+      await AuditLog.deleteMany({ entite_id: consult._id.toString() });
+    } finally {
+      await Patient.findByIdAndDelete(patient._id);
+    }
   });
 
   await t.test('pediatrie.addVaccination écrit une entrée AuditLog', async () => {
