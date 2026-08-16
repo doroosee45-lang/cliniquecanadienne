@@ -6,8 +6,8 @@
 
 ## Méthode et niveau de preuve
 
-- **Live-testé** : 14 des 23 modules ont été vérifiés par appels HTTP réels contre le serveur en fonctionnement, avec un compte de test par rôle (`tests/accessMatrix.test.js`, Phase 2) — 154 combinaisons, 0 écart.
-- **Vérifié statiquement** : les 9 modules restants sont vérifiés par lecture directe et fraîche (pas de mémoire) des tableaux `authorize(...)` de chaque fichier de route, recoupée avec les menus frontend (`App.jsx`, `Sidebar.jsx`). Non exécuté en HTTP réel dans le cadre de ce document — à faire si une preuve live est requise avant la Phase 3.
+- **Live-testé** : 13 des 23 modules ont été vérifiés par appels HTTP réels contre le serveur en fonctionnement, avec un compte de test par rôle (`tests/accessMatrix.test.js`, Phase 2) — 154 combinaisons, 0 écart. *(Corrigé de « 14 » à « 13 » lors du rejeu Phase 3 — comptage erroné dans la version initiale, cf. section de rejeu ci-dessous.)*
+- **Vérifié statiquement** : les 10 modules restants sont vérifiés par lecture directe et fraîche (pas de mémoire) des tableaux `authorize(...)` de chaque fichier de route, recoupée avec les menus frontend (`App.jsx`, `Sidebar.jsx`). Non exécuté en HTTP réel dans le cadre de ce document — à faire si une preuve live est requise. *(Corrigé de « 9 » à « 10 ».)*
 - **Légende** : `OK` = accès conforme à la fonction du rôle (pas nécessairement accès total — un accès en lecture seule pour un rôle consultatif est un `OK`, pas un `Partiel`). `Partiel` = accès réel mais notablement restreint par rapport à un rôle voisin, ou fonctionnalité du **module** elle-même incomplète indépendamment du rôle. `KO` = aucun accès — **par conception**, pas une anomalie, sauf mention contraire explicite.
 
 ## Regroupement des 23 modules
@@ -66,3 +66,35 @@ Colonnes : **SA**=superadmin **AC**=adminclinique **ME**=médecin **IN**=infirmi
 ## Utilisation prévue à partir de la Phase 3
 
 Toute modification touchant `authorize(...)` sur une route déjà couverte ici doit être comparée à cette matrice avant fusion — un écart entre le comportement avant/après et une cellule `OK`/`Partiel`/`KO` de ce document est le signal d'une régression à documenter explicitement, pas à corriger silencieusement.
+
+## Rejeu — Phase 3 (Sécurité et authentification)
+
+Rejeu demandé par le brief Phase 3 pour vérifier si les tâches T3.1-T3.4 changent une cellule de cette matrice.
+
+**Résultat : aucune cellule modifiée.** Aucune des quatre tâches ne touche `authorize(...)` ni la liste de rôles d'une route :
+
+- **T3.1** (dossier Patient auto-créé à l'inscription Google) — crée un `Patient` et lie `patient_id`, mais ne change ni le rôle attribué (`role: 'patient'`, inchangé) ni les routes accessibles à ce rôle. Le rôle `patient` reste hors de cette matrice (portail uniquement), comme avant.
+- **T3.2** (vérification officielle du token Google) — durcit la validation de l'authenticité/audience du token en amont de la création de session ; ne touche à aucune règle `authorize(...)`.
+- **T3.3** (suppression du mot de passe temporaire en clair de la réponse JSON) — modification de la forme de la réponse HTTP d'un endpoint déjà `authorize('receptionniste', ...)`, sans changement des rôles autorisés.
+- **T3.4** (verrouillage de compte, complexité du mot de passe) — ajoute un nouvel état (compte temporairement verrouillé, HTTP 423) qui s'applique **avant** toute vérification de rôle, donc de façon strictement transversale à tous les rôles de la matrice — pas un changement de qui a accès à quoi, mais une nouvelle condition de refus temporaire identique pour tous.
+
+**Écart résiduel signalé (pas une cellule de cette matrice, car hors modèle rôle × module) :** §3.5(c) documente que `must_change_password` — un mécanisme de blocage de navigation, pas de contrôle d'accès — n'est jamais activé pour les comptes staff, contrairement au portail patient. Voir [ticket 0003](../tickets/0003-must-change-password-non-applique-comptes-staff.md) et [T3.5-verifications-complementaires.md](T3.5-verifications-complementaires.md).
+
+### Niveau de preuve des 10 modules « Vérifié statiquement » — confirmation explicite
+
+Question posée en clôture de Phase 3 : ce rejeu a-t-il fait passer l'un de ces 10 modules de « Vérifié statiquement » à « Live-testé » ? **Non, aucun.** Le rejeu Phase 3 est un raisonnement de code (« T3.1-T3.4 touchent-elles `authorize(...)` ? ») et ne consiste en aucun appel HTTP réel. Aucun des quatre modules techniquement concernés par T3.1-T3.4 (authentification) ne recoupe d'ailleurs ces 10 modules métier. État inchangé, module par module :
+
+| Module | Preuve avant ce rejeu | Preuve après ce rejeu |
+|---|---|---|
+| Urgences & Ambulances | Statique | Statique — inchangé |
+| Maternité | Statique | Statique — inchangé |
+| Pédiatrie | Statique | Statique — inchangé |
+| Échographie | Statique | Statique — inchangé |
+| Messagerie | Statique⁶ | Statique⁶ — inchangé |
+| Notifications | Statique⁶ | Statique⁶ — inchangé |
+| Intelligence Artificielle | Statique | Statique — inchangé |
+| Analytics | Statique | Statique — inchangé |
+| Archivage | Statique | Statique — inchangé |
+| Administration & Paramètres | Statique | Statique — inchangé |
+
+Ces 10 modules restent une dette de preuve ouverte (mentionnée dès la version initiale de ce document : « à faire si une preuve live est requise ») — non traitée en Phase 3, dont le périmètre ne portait pas sur ces modules.
