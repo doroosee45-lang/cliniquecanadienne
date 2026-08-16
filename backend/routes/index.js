@@ -19,6 +19,7 @@ router.use('/messages',         require('./messages.routes'));
 router.use('/notifications',    require('./notifications.routes'));
 router.use('/audit',            require('./audit.routes'));
 router.use('/archives',         require('./archive.routes'));
+router.use('/documents',        require('./document.routes'));
 router.use('/analytics',        require('./analytics.routes'));
 router.use('/prescriptions',    require('./prescriptions.routes'));
 router.use('/settings',         require('./settings.routes'));
