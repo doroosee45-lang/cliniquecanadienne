@@ -132,6 +132,10 @@ exports.createIntervention = async (req, res, next) => {
     if (chirurgien_id)    dossier.chirurgien_id            = chirurgien_id;
     if (diagnostic_preop) dossier.diagnostic_chirurgical  = diagnostic_preop;
     if (notes)            dossier.cr_operatoire            = notes;
+    if (assistant)         dossier.assistant               = assistant;
+    if (anesthesiste)      dossier.anesthesiste             = anesthesiste;
+    if (infirmier_instru)  dossier.infirmier_instru         = infirmier_instru;
+    if (infirmier_circu)   dossier.infirmier_circu          = infirmier_circu;
 
     const niveauMap = { programmee:'electif', electif:'electif', urgent:'urgent', urgence_absolue:'urgence_absolue' };
     dossier.niveau_urgence = niveauMap[niveau_urgence] || 'electif';
@@ -159,7 +163,7 @@ exports.createIntervention = async (req, res, next) => {
 // ── POST /:id/cr — Sauvegarder le compte rendu opératoire ─────────────────────
 exports.saveCR = async (req, res, next) => {
   try {
-    const { diagnostic_postop, resume, cr_detail, recommandations, saignement_ml, materiel_implante, incidents } = req.body;
+    const { diagnostic_postop, resume, cr_detail, recommandations, saignement_ml, materiel_implante, transfusion_ml, incidents } = req.body;
     const dossier = await DossierChirurgical.findById(req.params.id);
     if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
     const avant = dossier.toObject();
@@ -167,6 +171,9 @@ exports.saveCR = async (req, res, next) => {
     if (diagnostic_postop)  dossier.diagnostic_final   = diagnostic_postop;
     if (cr_detail || resume)dossier.cr_operatoire       = cr_detail || resume;
     if (recommandations)    dossier.recommandations     = recommandations;
+    if (materiel_implante)  dossier.materiel_implante   = materiel_implante;
+    if (saignement_ml !== undefined && saignement_ml !== '')   dossier.saignement_ml   = saignement_ml;
+    if (transfusion_ml !== undefined && transfusion_ml !== '') dossier.transfusion_ml  = transfusion_ml;
     if (incidents)          dossier.cr_operatoire       = (dossier.cr_operatoire || '') + '\n\nIncidents: ' + incidents;
     if (dossier.statut === 'opere') dossier.statut = 'suivi_postop';
 

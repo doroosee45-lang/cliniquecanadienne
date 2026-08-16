@@ -79,11 +79,22 @@ test('couverture fonctionnelle — chirurgie, bloc opératoire, laboratoire, ima
     });
 
     await t.test('blocoperatoireController.createIntervention — branche nouveau dossier ET branche dossier existant', async () => {
-      const { status: s1, body: b1 } = await call(blocC.createIntervention, { body: { patient_id: patient._id, chirurgien_id: medecin._id, type_intervention: 'Appendicectomie', salle: 'Bloc 1' }, user });
+      // Payload calqué sur EMPTY_INTERV (Blocoperatoire.jsx) — l'équipe est
+      // saisie dès la création, pas seulement en édition ultérieure.
+      const { status: s1, body: b1 } = await call(blocC.createIntervention, { body: {
+        patient_id: patient._id, chirurgien_id: medecin._id, type_intervention: 'Appendicectomie', salle: 'Bloc 1',
+        assistant: 'Dr. Assistant Test', anesthesiste: 'Dr. Anesth Test',
+        infirmier_instru: 'Inf. Instru Test', infirmier_circu: 'Inf. Circu Test',
+      }, user });
       assert.equal(s1, 201);
       const dossierId1 = b1.intervention?._id || b1._id;
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossierId1));
       assert.ok(dossierId1, 'un nouveau dossier chirurgical doit être créé depuis le bloc');
+      const saved1 = await DossierChirurgical.findById(dossierId1).lean();
+      assert.equal(saved1.assistant, 'Dr. Assistant Test');
+      assert.equal(saved1.anesthesiste, 'Dr. Anesth Test');
+      assert.equal(saved1.infirmier_instru, 'Inf. Instru Test');
+      assert.equal(saved1.infirmier_circu, 'Inf. Circu Test');
 
       const dossierExistant = await DossierChirurgical.create({ numero: `CHIR-T95G1c-${stamp}`, patient_id: patient._id, patient_nom: 'T95G1 P' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossierExistant._id));
