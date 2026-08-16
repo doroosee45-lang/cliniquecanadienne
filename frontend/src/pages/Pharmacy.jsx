@@ -2463,9 +2463,9 @@ ${lignes}
 
     } else if (type === 'approvisionnements') {
       // ── Approvisionnements ────────────────────────────────
-      startY = pdfHeader(doc, 'RAPPORT — APPROVISIONNEMENTS', `${cmds.length} commande(s)`);
+      startY = pdfHeader(doc, 'RAPPORT — APPROVISIONNEMENTS', `${commandes.length} commande(s)`);
       head = [['N° Commande','Fournisseur','Date','Statut','Nb lignes','Montant total']];
-      rows = cmds.length > 0 ? cmds.map(c => [
+      rows = commandes.length > 0 ? commandes.map(c => [
         c.numero || '—', c.fournisseur || '—', fmtDate(c.date || c.date_creation),
         c.statut || '—', String(c.nb_lignes || c.lignes?.length || '—'), fmtCFA(c.montant_total),
       ]) : [['—','Aucune commande enregistrée','—','—','—','—']];
