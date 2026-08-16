@@ -1,6 +1,6 @@
 # Ticket 0008 — Trois comptes patient réels sans aucun dossier `Patient` associé
 
-**Statut :** Partiellement traité — contrainte structurelle livrée (empêche toute récidive). Décision suppression/recréation pour les 3 comptes existants toujours en attente de l'utilisateur.
+**Statut :** Résolu et clos.
 **Origine :** Phase 7, P7.8 — comptage `patient_id` avant migration de `portal.controller.js`
 **Sévérité :** Moyenne — ces comptes sont actuellement inutilisables sur le portail patient (404 sur toutes les routes), aucun impact sur un vrai parcours patient actif
 
@@ -46,10 +46,12 @@ Testé dans `backend/tests/patientDeletionGuard.test.js` (3 sous-tests : blocage
 
 Ceci empêche toute **récidive** du symptôme de ce ticket, mais ne change rien à l'état actuel des 3 comptes déjà orphelins — ils prédatent la contrainte.
 
-## Décision requise (en attente)
+## Décision et résolution finale (2026-08-16)
 
-Pour chacun des 3 comptes, au cas par cas :
-- **Supprimer** le compte `User` orphelin (cohérent avec l'hypothèse « nettoyage de données de test/démo » ci-dessus — les 3 emails et le regroupement temporel avec 2 autres suppressions similaires le suggèrent), **ou**
-- **Recréer** un dossier `Patient` minimal (`profil_a_completer: true`, même mécanisme que T3.1 pour les inscriptions Google) si l'un d'eux doit rester utilisable.
+**Décision explicite de l'utilisateur** : suppression des 3 comptes `User` orphelins — cohérente avec l'intention déjà exprimée par la suppression délibérée des 3 dossiers `Patient` correspondants (action volontaire du compte superadmin de l'utilisateur, confirmée par l'investigation `AuditLog` ci-dessus).
 
-Piste complémentaire, non bloquante : un script d'audit périodique détectant les comptes patient orphelins (même requête que celle utilisée pour le constat initial), pour rattraper toute donnée déjà corrompue avant la contrainte structurelle.
+**Exécuté** : les 3 comptes (`redreseaux3@gmail.com`, `mersematondo86@gmail.com`, `meyaosee915@gmail.com`) ont été supprimés directement via `User.findByIdAndDelete`. Chaque suppression a été journalisée individuellement dans `AuditLog` (`action: 'DELETE', module: 'patients'`, message référençant explicitement le ticket 0008 et la suppression du dossier `Patient` lié le 2026-06-14) pour garder une trace de cette intervention manuelle, cohérent avec la convention de traçabilité du projet (§18.4).
+
+**Vérification du mécanisme de cascade demandée avant clôture** : confirmé que `patients.controller.js::remove()` retrouve le `User` lié **par correspondance d'email**, pas par `patient_id`, aux deux endroits où il agit sur ce compte (désactivation ligne 374, suppression ligne 388) — c'est bien la même classe de fragilité que celle corrigée pour la lecture dans R-07, jamais appliquée à cette cascade en écriture. C'est le mécanisme confirmé (pas supposé) à l'origine des 3 comptes de ce ticket. **Documenté séparément dans le ticket [[0010]]**, avec le détail de ce que la contrainte structurelle de ce ticket couvre et ne couvre pas — pas corrigé ici, correctif différé à une passe dédiée par décision explicite.
+
+Piste complémentaire, non bloquante, toujours valable : un script d'audit périodique détectant les comptes patient orphelins (même requête que celle utilisée pour le constat initial), pour rattraper toute donnée déjà corrompue avant la contrainte structurelle ou avant la correction du ticket 0010.
