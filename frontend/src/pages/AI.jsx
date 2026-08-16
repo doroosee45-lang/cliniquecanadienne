@@ -632,6 +632,22 @@ export default function IntelligenceArtificielle() {
           }
         />
 
+        {/* T9.4 (R-11) — placé juste sous le Hero, hors de tout onglet, pour
+            rester visible quel que soit l'onglet sélectionné (contrairement à
+            un placement dans le seul Dashboard) : la personne qui ouvre ce
+            module doit voir cette précision avant même de choisir un onglet. */}
+        <div style={{ padding: isMobile ? "14px 14px 0" : "20px 24px 0" }}>
+          <div className="al-ia fu" style={{ display:"flex", alignItems:"flex-start", gap:14 }}>
+            <div style={{ width:36, height:36, background:"#DBEAFE", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:18 }}>ℹ️</div>
+            <div>
+              <strong style={{ color:"var(--cn)", fontSize:13.5 }}>À propos de ce module</strong>
+              <div style={{ fontSize:12.5, color:"var(--cm)", marginTop:4, lineHeight:1.6 }}>
+                Les analyses et alertes de cette page sont produites par un <strong>moteur de règles programmées à l'avance</strong> (par exemple : « température &gt; 38,5&nbsp;°C → suggérer un syndrome fébrile »), <strong>pas par un modèle d'intelligence artificielle entraîné sur des données</strong>. Aucun apprentissage automatique n'est utilisé ici : les résultats sont donc prévisibles et reproductibles, mais ils ne remplacent en aucun cas le jugement clinique d'un professionnel de santé.
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Tabs */}
         {(() => {
             const TABS = [
