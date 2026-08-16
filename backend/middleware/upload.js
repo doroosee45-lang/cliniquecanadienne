@@ -72,4 +72,31 @@ const uploadMedPhoto = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
 });
 
-module.exports = { uploadImages, uploadPatientPhoto, uploadMedPhoto };
+// ── Document générique (pièces justificatives, contrats, rapports scannés) ────
+const storageDocument = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../uploads/documents');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext  = path.extname(file.originalname).toLowerCase();
+    const base = path.basename(file.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
+    cb(null, `${Date.now()}-${base}${ext}`);
+  },
+});
+
+const fileFilterDocument = (req, file, cb) => {
+  const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx'];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowed.includes(ext)) return cb(null, true);
+  cb(new Error(`Type de fichier non autorisé : ${ext}`), false);
+};
+
+const uploadDocument = multer({
+  storage: storageDocument,
+  fileFilter: fileFilterDocument,
+  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+});
+
+module.exports = { uploadImages, uploadPatientPhoto, uploadMedPhoto, uploadDocument };
