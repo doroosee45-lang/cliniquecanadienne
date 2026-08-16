@@ -51,6 +51,12 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      # T9.7 — seuil "critical" seulement : une faille haute (nodemailer,
+      # non exploitable via l'usage de ce code, voir docs/tickets/0011) est
+      # actée et documentée, pas corrigible sans saut majeur. "high" ferait
+      # échouer la CI sur un risque déjà accepté à chaque run. Dependabot
+      # reste le radar continu pour tout le reste (voir dependabot.yml).
+      - run: npm audit --audit-level=critical
 
   frontend:
     runs-on: ubuntu-latest
@@ -69,3 +75,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      # T9.7 — même logique que le job backend : xlsx (haute, sans correctif
+      # disponible) et react-router-dom (modérées, saut majeur différé) sont
+      # des risques déjà actés, voir docs/tickets/0011.
+      - run: npm audit --audit-level=critical
