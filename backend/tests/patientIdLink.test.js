@@ -51,8 +51,11 @@ test('lien User.patient_id (base réelle)', { skip: !process.env.MONGO_URI && 'M
       const reloaded = await User.findById(user._id);
       assert.equal(String(reloaded.patient_id), String(patient._id), 'un compte déjà lié ne doit pas être modifié par une ré-exécution');
     } finally {
-      await Patient.findByIdAndDelete(patient._id);
+      // Le User (statut par défaut 'actif') référence patient._id : depuis
+      // la contrainte structurelle du ticket 0008, il doit être supprimé
+      // avant le Patient.
       await User.findByIdAndDelete(user._id);
+      await Patient.findByIdAndDelete(patient._id);
     }
   });
 
