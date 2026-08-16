@@ -2,7 +2,10 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
 const AIPredictionSchema = new Schema({
-  type: { type: String, enum: ['diagnostic','anomalie_labo','anomalie_imagerie','risque_finance','interaction_medicament','absenteisme','conflit_rdv'] },
+  // R-10c — risque_finance/absenteisme/conflit_rdv retirés : aucun
+  // contrôleur ne les alimentait, aucune donnée existante ne les utilisait
+  // (vérifié avant modification), pas prioritaires actuellement.
+  type: { type: String, enum: ['diagnostic','anomalie_labo','anomalie_imagerie','interaction_medicament'] },
   patient: { type: Schema.Types.ObjectId, ref: 'Patient' },
   entite_id: String,
   resultat: mongoose.Schema.Types.Mixed,

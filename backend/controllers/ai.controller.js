@@ -145,7 +145,6 @@ exports.getStats = async (req, res, next) => {
       labo_critiques,
       labo_anomalies_ia,
       imagerie_urgentes,
-      rdv_conflits,
       patients_analyses,
     ] = await Promise.all([
       AIPrediction.countDocuments({ createdAt: { $gte: startOfMonth } }),
@@ -154,7 +153,6 @@ exports.getStats = async (req, res, next) => {
       LabResult.countDocuments({ est_critique: true, createdAt: { $gte: startOfDay } }),
       LabResult.countDocuments({ ia_anomalie: true, createdAt: { $gte: startOfMonth } }),
       ImagingResult.countDocuments({ priorite: { $in: ['urgente', 'tres_urgente', 'stat'] }, createdAt: { $gte: startOfDay } }),
-      AIPrediction.countDocuments({ type: 'conflit_rdv', createdAt: { $gte: startOfMonth } }),
       AIPrediction.distinct('patient', { createdAt: { $gte: startOfMonth } }),
     ]);
 
@@ -163,7 +161,9 @@ exports.getStats = async (req, res, next) => {
     const total   = await AIPrediction.countDocuments();
     const precision = total > 0 ? Math.round((traites / total) * 100) : 0;
 
-    const alertes_risque = labo_critiques + imagerie_urgentes + rdv_conflits;
+    // R-10c — conflit_rdv retiré de l'enum AIPrediction.type (jamais alimenté) ;
+    // alertes_risque ne compte plus que les deux sources réellement produites.
+    const alertes_risque = labo_critiques + imagerie_urgentes;
 
     res.json({
       success: true,
