@@ -38,4 +38,11 @@ PrescriptionSchema.pre('save', async function(next) {
   next();
 });
 
+// T9.8 — numero_rx (unique, auto) était le seul index avant ce correctif
+// (constaté en T2.4) ; patient/statut/medecin sont très filtrés (pharmacie,
+// dashboard) sans en bénéficier.
+PrescriptionSchema.index({ patient: 1, date_prescription: -1 });
+PrescriptionSchema.index({ statut: 1, date_prescription: -1 });
+PrescriptionSchema.index({ medecin: 1 });
+
 module.exports = mongoose.model('Prescription', PrescriptionSchema);

@@ -65,4 +65,13 @@ const ConsultationSchema = new Schema({
   ia_suggestions: [{ diagnostic: String, confidence: Number }],
 }, { timestamps: true });
 
+// T9.8 — aucun index avant ce correctif (constaté en T2.4). date_consultation
+// seul couvre les requêtes de plage de dates du dashboard ; les trois
+// composés couvrent la liste filtrée+triée par statut/patient/medecin
+// (chacun étant filtré indépendamment dans consultations.controller.js).
+ConsultationSchema.index({ date_consultation: -1 });
+ConsultationSchema.index({ statut: 1, date_consultation: -1 });
+ConsultationSchema.index({ patient: 1, date_consultation: -1 });
+ConsultationSchema.index({ medecin: 1, date_consultation: -1 });
+
 module.exports = mongoose.model('Consultation', ConsultationSchema);

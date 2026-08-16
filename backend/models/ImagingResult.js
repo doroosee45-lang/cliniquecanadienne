@@ -55,4 +55,12 @@ const ImagingResultSchema = new Schema({
   statut: { type: String, enum: ['programme','en_attente','realise','rapporte','valide','annule'], default: 'programme' },
 }, { timestamps: true });
 
+// T9.8 — aucun index avant ce correctif (constaté en T2.4) : patient/statut/
+// date_prescription/priorite sont filtrés en continu par le dashboard
+// radiologue.
+ImagingResultSchema.index({ statut: 1, date_prescription: -1 });
+ImagingResultSchema.index({ date_prescription: -1 });
+ImagingResultSchema.index({ patient: 1 });
+ImagingResultSchema.index({ priorite: 1 });
+
 module.exports = mongoose.model('ImagingResult', ImagingResultSchema);
