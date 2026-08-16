@@ -8,14 +8,33 @@ const Notification = require('../models/Notification');
 const User         = require('../models/User');
 const { logAction } = require('../utils/helpers');
 
-// Trouve le dossier patient lié au User connecté (par email)
-const findPatient = (email) =>
-  Patient.findOne({ email: email.toLowerCase().trim() });
+// R-07 — Trouve le dossier patient lié au User connecté. patient_id
+// d'abord : référence directe par ObjectId, stable même si Patient.email
+// change après coup (staff pouvant éditer un dossier patient sans que
+// User.email soit resynchronisé — l'email seul peut alors désigner le
+// mauvais dossier, ou plus aucun). Repli sur l'email uniquement pour les
+// comptes dont patient_id n'est pas encore peuplé (vérifié sur les
+// données réelles avant cette migration : 4 comptes sur 7 — pas un cas
+// rare). Si patient_id est renseigné mais ne résout plus rien (dossier
+// supprimé), c'est une anomalie de données réelle, pas un simple compte
+// non lié — journalisée plutôt que silencieusement absorbée par le repli.
+const findPatient = async (user) => {
+  if (user.patient_id) {
+    const patient = await Patient.findById(user.patient_id);
+    if (patient) return patient;
+    await logAction({
+      utilisateur: user._id, action: 'DATA_ANOMALY', module: 'portal',
+      message: `patient_id (${user.patient_id}) renseigné sur le compte ${user.email} mais aucun dossier Patient correspondant — repli sur l'email`,
+      statut: 'echec',
+    });
+  }
+  return Patient.findOne({ email: user.email.toLowerCase().trim() });
+};
 
 // ── ME : profil + statistiques ────────────────────────────────────────────────
 exports.getMe = async (req, res, next) => {
   try {
-    const patient = await findPatient(req.user.email);
+    const patient = await findPatient(req.user);
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
     const [nbRdv, nbOrd, nbLabo, nbImag, nbFact, nbFactImpayees] = await Promise.all([
@@ -39,7 +58,7 @@ exports.getMe = async (req, res, next) => {
 // ── RENDEZ-VOUS ───────────────────────────────────────────────────────────────
 exports.getAppointments = async (req, res, next) => {
   try {
-    const patient = await findPatient(req.user.email);
+    const patient = await findPatient(req.user);
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
     const appointments = await Appointment.find({ patient: patient._id })
@@ -54,7 +73,7 @@ exports.getAppointments = async (req, res, next) => {
 // ── ORDONNANCES ───────────────────────────────────────────────────────────────
 exports.getPrescriptions = async (req, res, next) => {
   try {
-    const patient = await findPatient(req.user.email);
+    const patient = await findPatient(req.user);
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
     const prescriptions = await Prescription.find({ patient: patient._id })
@@ -69,7 +88,7 @@ exports.getPrescriptions = async (req, res, next) => {
 // ── RÉSULTATS LABORATOIRE ────────────────────────────────────────────────────
 exports.getLabResults = async (req, res, next) => {
   try {
-    const patient = await findPatient(req.user.email);
+    const patient = await findPatient(req.user);
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
     const labResults = await LabResult.find({ patient: patient._id, statut: 'valide' })
@@ -84,7 +103,7 @@ exports.getLabResults = async (req, res, next) => {
 // ── IMAGERIES ─────────────────────────────────────────────────────────────────
 exports.getImaging = async (req, res, next) => {
   try {
-    const patient = await findPatient(req.user.email);
+    const patient = await findPatient(req.user);
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
     const imaging = await ImagingResult.find({ patient: patient._id, statut: { $in: ['rapporte','valide'] } })
@@ -99,7 +118,7 @@ exports.getImaging = async (req, res, next) => {
 // ── FACTURES ──────────────────────────────────────────────────────────────────
 exports.getInvoices = async (req, res, next) => {
   try {
-    const patient = await findPatient(req.user.email);
+    const patient = await findPatient(req.user);
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
     const invoices = await Invoice.find({ patient: patient._id })
@@ -134,7 +153,7 @@ exports.markNotificationsRead = async (req, res, next) => {
 // ── MODIFIER PROFIL ───────────────────────────────────────────────────────────
 exports.updateProfile = async (req, res, next) => {
   try {
-    const patient = await findPatient(req.user.email);
+    const patient = await findPatient(req.user);
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
     // Champs modifiables par le patient lui-même
