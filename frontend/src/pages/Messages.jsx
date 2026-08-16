@@ -629,7 +629,7 @@ export default function Messagerie() {
 
     socket.on('message:new', handleNewMsg);
     return () => socket.off('message:new', handleNewMsg);
-  }, [socket, loadConvs]);
+  }, [socket, loadConvs, me._id]);
 
   // ── Open conversation ─────────────────────────────────────
   const openConv = async (conv) => {

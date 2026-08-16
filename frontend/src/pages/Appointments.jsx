@@ -976,10 +976,11 @@ export default function RendezVous() {
   const [formReport, setFormReport]     = useState({ date:"", heure:"", motif:"" });
 
   // today : recalculé une fois par minute max (useMemo stable, évite les re-renders infinis)
-  const today = useMemo(() => new Date(), [
-    // Dépendance sur la minute courante (change au plus toutes les 60s)
-    Math.floor(Date.now() / 60000),
-  ]);
+  // currentMinute n'est pas lu dans le corps du useMemo : il sert uniquement
+  // de déclencheur de recalcul (cache-key), pattern que la règle ne modélise pas.
+  const currentMinute = Math.floor(Date.now() / 60000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const today = useMemo(() => new Date(), [currentMinute]);
 
   // Date plafond pour "cette semaine" = aujourd'hui + 6 jours (7 jours glissants)
   const semaineFin = useMemo(() => {

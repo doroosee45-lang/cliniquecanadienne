@@ -485,7 +485,7 @@ export default function Archivage() {
     dispatch(fetchArchiveStats());
     try {
       const { data } = await api.get("/archives/stats");
-      setKpis(data.kpis || kpis);
+      setKpis(prev => data.kpis || prev);
     } catch { /* garde les kpis existants (zéros si DB vide) */ }
   }, [dispatch]);
 

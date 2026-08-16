@@ -482,7 +482,7 @@ export default function Laboratoire() {
   const loadStats = useCallback(async () => {
     try {
       const { data } = await api.get("/laboratory/stats");
-      setKpis(data.kpis || kpis);
+      setKpis(prev => data.kpis || prev);
     } catch {
       const d = DEMO_ANALYSES;
       setKpis({
