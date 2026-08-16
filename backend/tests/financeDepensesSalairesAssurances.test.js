@@ -1,6 +1,15 @@
 // R-14 (Finance) — /finance/depenses, /salaires, /assurances étaient des
 // stubs figés (tableaux vides) ; /finance/depenses n'avait même pas de
 // route POST (addDepense du frontend visait un endpoint inexistant).
+//
+// TODO(ticket 0007) — le test "payerSalaire" ci-dessous échoue de façon
+// intermittente en exécution parallèle (node --test tests/*.test.js, mode
+// par défaut) : getSalaires interroge tout le personnel actif de la base
+// sans le scoper aux données de CE test, donc une exécution concurrente
+// d'un autre fichier de test peut interférer. Passe proprement à chaque
+// fois avec --test-concurrency=1 — pas une régression de code, un problème
+// d'isolation de test. Voir docs/tickets/0007 pour le détail, non traité
+// pour l'instant (décision explicite, pas bloquant pour la Phase 7).
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
