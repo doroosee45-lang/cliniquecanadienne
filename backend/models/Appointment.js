@@ -19,6 +19,10 @@ const AppointmentSchema = new Schema({
   // la liste des RDV et le détail) depuis toujours, mais il n'était jamais
   // déclaré ici : silencieusement supprimé par Mongoose à chaque création.
   salle: String,
+  // Corrections rendez-vous — le formulaire "Reporter" (Appointments.jsx)
+  // envoie ce champ depuis toujours, jamais déclaré ici : même bug que
+  // salle ci-dessus, silencieusement supprimé par Mongoose à chaque report.
+  motif_report: String,
   rappels_envoyes: { type: Number, default: 0 },
   created_by: { type: Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

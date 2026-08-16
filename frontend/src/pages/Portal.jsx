@@ -13,6 +13,7 @@ import {
 import { User, Calendar, Pencil } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 // ─── Hook responsive — JavaScript pur, 100% fiable ────────────
 function useScreenSize() {
@@ -389,8 +390,11 @@ export default function MonEspacePatient() {
   const saving             = useSelector(selectPortalSaving);
   const portalError        = useSelector(selectPortalError);
 
-  // ── Fetch au montage ─────────────────────────────────────
-  useEffect(() => {
+  // ── Fetch au montage + rafraîchissement temps réel ────────
+  // Corrections rendez-vous, item 6 : un rendez-vous confirmé/reporté par le
+  // personnel doit apparaître à jour côté patient sans qu'il ait besoin de
+  // recharger la page manuellement.
+  const refreshPortal = useCallback(() => {
     dispatch(fetchPortalMe());
     dispatch(fetchPortalAppointments());
     dispatch(fetchPortalPrescriptions());
@@ -399,6 +403,8 @@ export default function MonEspacePatient() {
     dispatch(fetchPortalInvoices());
     dispatch(fetchPortalNotifications());
   }, [dispatch]);
+  useEffect(() => { refreshPortal(); }, [refreshPortal]);
+  useRealtimeRefresh(refreshPortal);
 
   // ── Données fusionnées (API ou démo si vide) ──────────────
   const patient     = reduxPatient     || PATIENT;
