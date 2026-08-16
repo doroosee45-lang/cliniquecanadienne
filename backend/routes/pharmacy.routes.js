@@ -26,6 +26,7 @@ router.post('/ventes',                          protect, authorize(...CAN_MANAGE
 // Commandes & fournisseurs
 router.get('/commandes',                        protect, authorize(...CAN_MANAGE),    pharmaC.getCommandes);
 router.post('/commandes',                       protect, authorize(...CAN_MANAGE),    pharmaC.createCommande);
+router.put('/commandes/:id/reception',          protect, authorize(...CAN_MANAGE),    pharmaC.receptionCommande);
 router.get('/fournisseurs',                     protect, authorize(...CAN_MANAGE),    pharmaC.getFournisseurs);
 
 router.get('/',                                 protect, authorize(...CAN_READ),      pharmaC.getAll);

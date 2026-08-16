@@ -1,5 +1,6 @@
 const Medication = require('../models/Medication');
 const Prescription = require('../models/Prescription');
+const Commande = require('../models/Commande');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
@@ -85,15 +86,77 @@ exports.createVente = async (req, res, next) => {
 };
 
 exports.getCommandes = async (req, res, next) => {
-  res.json({ success: true, commandes: [], total: 0 });
+  try {
+    const { page = 1, limit = 20, statut } = req.query;
+    const filter = statut ? { statut } : {};
+    const total = await Commande.countDocuments(filter);
+    const raw = await paginate(Commande.find(filter).sort('-createdAt'), page, limit);
+    const commandes = raw.map(c => ({
+      ...c.toObject(),
+      date: c.createdAt,
+      nb_lignes: c.lignes.length,
+    }));
+    res.json({ success: true, total, commandes });
+  } catch (err) { next(err); }
 };
 
 exports.createCommande = async (req, res, next) => {
   try {
-    const year = new Date().getFullYear();
-    const numero = `BC-${year}-${String(Date.now()).slice(-5)}`;
-    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pharmacy', ip: req.ip, message: `Bon de commande ${numero}` });
-    res.status(201).json({ success: true, commande: { ...req.body, numero, statut: 'brouillon', date: new Date() } });
+    const { fournisseur, lignes, date_livraison_souhaitee, notes } = req.body;
+    if (!fournisseur || !Array.isArray(lignes) || lignes.length === 0) {
+      return res.status(400).json({ success: false, message: 'Fournisseur et au moins une ligne sont requis.' });
+    }
+    const montant = lignes.reduce((s, l) => s + (l.prix_unitaire || 0) * (l.quantite || 0), 0);
+
+    const commande = await Commande.create({
+      fournisseur, lignes, date_livraison_souhaitee, notes, montant,
+      cree_par: req.user._id,
+    });
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pharmacy', entite_id: commande._id, ip: req.ip, message: `Bon de commande ${commande.numero} — ${fournisseur}` });
+    emitActivity({ module: 'pharmacy', action: 'Nouveau bon de commande', detail: `${commande.numero} — ${fournisseur}`, icon: '📦', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    res.status(201).json({ success: true, commande: { ...commande.toObject(), date: commande.createdAt, nb_lignes: commande.lignes.length } });
+  } catch (err) { next(err); }
+};
+
+// PUT /pharmacy/commandes/:id/reception — réceptionner tout ou partie d'une
+// commande ; incrémente le stock pour chaque ligne rattachée à une fiche
+// Medication (même limite que la dispensation : une ligne saisie en texte
+// libre ne peut pas être rapprochée d'un produit sans risquer un mauvais
+// match, donc son stock n'est pas touché).
+exports.receptionCommande = async (req, res, next) => {
+  try {
+    const commande = await Commande.findById(req.params.id);
+    if (!commande) return res.status(404).json({ success: false, message: 'Commande introuvable.' });
+    if (['recu', 'annule'].includes(commande.statut)) {
+      return res.status(400).json({ success: false, message: 'Cette commande est déjà reçue ou annulée.' });
+    }
+
+    const { receptions } = req.body; // [{ index, quantite_recue }]
+    for (const r of (receptions || [])) {
+      const ligne = commande.lignes[r.index];
+      if (!ligne) continue;
+      const recues = Math.min(ligne.quantite, (ligne.quantite_recue || 0) + (r.quantite_recue || 0));
+      ligne.quantite_recue = recues;
+      if (ligne.medicament) {
+        const med = await Medication.findById(ligne.medicament);
+        if (med) {
+          med.stock_actuel += (r.quantite_recue || 0);
+          med.mouvements.push({ type: 'entree', quantite: r.quantite_recue || 0, reference: commande.numero, notes: `Réception commande ${commande.numero}`, utilisateur: req.user._id });
+          med.statut = med.stock_actuel > 0 && med.statut === 'rupture' ? 'disponible' : med.statut;
+          await med.save();
+        }
+      }
+    }
+
+    const totalRecu = commande.lignes.every(l => l.quantite_recue >= l.quantite);
+    const auMoinsUnRecu = commande.lignes.some(l => l.quantite_recue > 0);
+    commande.statut = totalRecu ? 'recu' : (auMoinsUnRecu ? 'recu_partiel' : commande.statut);
+    if (totalRecu) commande.date_reception = new Date();
+
+    await commande.save();
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: commande._id, ip: req.ip, message: `Réception ${commande.statut === 'recu' ? 'complète' : 'partielle'} — ${commande.numero}` });
+    emitDashboardUpdate();
+    res.json({ success: true, commande });
   } catch (err) { next(err); }
 };
 
