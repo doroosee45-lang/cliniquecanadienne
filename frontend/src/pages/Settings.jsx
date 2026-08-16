@@ -1137,12 +1137,18 @@ export default function Settings() {
     case "api": return (
       <div className="fu">
         <div className="set-section-top">
-          <div><div className="set-section-title">🔗 Intégrations API</div><div className="set-section-sub">API /integrations — Connexions aux services externes</div></div>
-          <button className="sbtn sbtn-primary" onClick={() => toast.success("➕ Nouvelle intégration")}>{I.plus} Nouvelle intégration</button>
+          <div><div className="set-section-title">🔗 Intégrations API</div><div className="set-section-sub">Connexions aux services externes — fonctionnalité pas encore disponible</div></div>
+          <button className="sbtn sbtn-ghost" disabled title="Fonctionnalité non disponible pour le moment">{I.plus} Nouvelle intégration</button>
         </div>
         <div className="al-info" style={{ fontSize:12 }}>
           <strong>🔗 API REST :</strong> Documentation sur <code style={{ background:"#EFF6FF", padding:"1px 6px", borderRadius:4, fontFamily:"monospace" }}>docs.clinique-souanke.cg/api</code>
         </div>
+        {/* AUDIT-03 — cette section listait des intégrations comme "Connecté"
+            et proposait de les configurer/déconnecter alors qu'aucun backend
+            d'intégrations n'existe (les boutons appelaient /integrations, une
+            route qui n'a jamais été implémentée). Neutralisé plutôt que
+            construit : statut honnête, actions désactivées, aucun appel
+            réseau. Voir docs/tickets si une vraie intégration est décidée. */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>
           {INTEGRATIONS.map((integ, i) => (
             <div key={i} style={{ background:"#fff", border:"1.5px solid var(--sbr)", borderRadius:16, padding:18, boxShadow:"var(--sh)", display:"flex", flexDirection:"column", gap:12 }}>
@@ -1152,22 +1158,10 @@ export default function Settings() {
                   <div style={{ fontSize:13, fontWeight:700, color:"var(--sn)" }}>{integ.nom}</div>
                   <div style={{ fontSize:11, color:"var(--sm)" }}>{integ.desc}</div>
                 </div>
-                <div style={{ width:10, height:10, borderRadius:"50%", background:integ.color, flexShrink:0 }} />
               </div>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <Badge cls={integ.statut==="connecté"?"green":integ.statut==="en attente"?"orange":"red"}>
-                  {integ.statut==="connecté"?"● Connecté":integ.statut==="en attente"?"◐ En attente":"○ Déconnecté"}
-                </Badge>
-                <div style={{ display:"flex", gap:6 }}>
-                  {integ.statut==="connecté" ? (
-                    <>
-                      <button className="sbtn sbtn-ghost sbtn-sm" style={{ fontSize:11 }} onClick={async () => { try { await api.put(`/integrations/${integ.nom.replace(/\s+/g,"_")}`); toast.success(`🔧 ${integ.nom} configuré`); } catch { toast.error("Erreur"); } }}>Config.</button>
-                      <button className="sbtn sbtn-danger sbtn-sm" style={{ fontSize:11 }} onClick={async () => { try { await api.delete(`/integrations/${integ.nom.replace(/\s+/g,"_")}`); toast.success(`🔌 Déconnecté`); } catch { toast.error("Erreur"); } }}>Déconnecter</button>
-                    </>
-                  ) : (
-                    <button className="sbtn sbtn-primary sbtn-sm" style={{ fontSize:11 }} onClick={async () => { try { await api.post("/integrations", { nom:integ.nom }); toast.success(`🔗 Connexion lancée`); } catch { toast.error("Erreur de connexion"); } }}>Connecter</button>
-                  )}
-                </div>
+                <Badge cls="gray">○ Bientôt disponible</Badge>
+                <button className="sbtn sbtn-ghost sbtn-sm" style={{ fontSize:11 }} disabled title="Fonctionnalité non disponible pour le moment">Indisponible</button>
               </div>
             </div>
           ))}
