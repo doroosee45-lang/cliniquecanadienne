@@ -441,8 +441,8 @@ export default function Hospitalisation() {
   // ── Chargement TOUTES les hosps (sans filtre) pour les KPIs ─
   const loadAllForKpis = useCallback(async () => {
     try {
-      const { data } = await api.get("/hospitalisations?limit=1000");
-      const all = (data.hospitalisations || data.data || []).map(normalizeHosp);
+      const { data } = await api.get("/hospitalization?limit=1000");
+      const all = (data.hospitalizations || data.data || []).map(normalizeHosp);
       setKpis(computeKpis(all, data.taux_occupation || data.kpis?.taux_occ || 0));
     } catch {
       // silencieux — les KPIs restent à 0 si l'API échoue
@@ -456,8 +456,8 @@ export default function Hospitalisation() {
       const p = new URLSearchParams({ page, limit:15 });
       if (search) p.set("q", search);
       if (filterStatut) p.set("statut", filterStatut);
-      const { data } = await api.get(`/hospitalisations?${p}`);
-      const list = (data.hospitalisations || data.data || []).map(normalizeHosp);
+      const { data } = await api.get(`/hospitalization?${p}`);
+      const list = (data.hospitalizations || data.data || []).map(normalizeHosp);
       setHosps(list);
       setTotal(data.total || list.length);
       // Si on n'a pas de filtre actif, profiter de ce chargement pour les KPIs aussi
@@ -476,7 +476,7 @@ export default function Hospitalisation() {
   // ── Chargement des stats dédiées (endpoint /stats) ───────
   const loadStats = useCallback(async () => {
     try {
-      const { data } = await api.get("/hospitalisations/stats");
+      const { data } = await api.get("/hospitalization/stats");
       if (data.kpis) setKpis(prev => ({ ...prev, ...data.kpis }));
     } catch {
       // les KPIs locaux calculés depuis loadHosps suffisent
@@ -507,11 +507,11 @@ export default function Hospitalisation() {
     if (!hospId) return;
     try {
       const [c, t, pr, ex, v] = await Promise.allSettled([
-        api.get(`/hospitalisations/${hospId}/constantes`),
-        api.get(`/hospitalisations/${hospId}/traitements`),
-        api.get(`/hospitalisations/${hospId}/prescriptions`),
-        api.get(`/hospitalisations/${hospId}/examens`),
-        api.get(`/hospitalisations/${hospId}/visites`),
+        api.get(`/hospitalization/${hospId}/constantes`),
+        api.get(`/hospitalization/${hospId}/traitements`),
+        api.get(`/hospitalization/${hospId}/prescriptions`),
+        api.get(`/hospitalization/${hospId}/examens`),
+        api.get(`/hospitalization/${hospId}/visites`),
       ]);
       setConstantes(c.status === "fulfilled" ? (c.value.data.constantes || c.value.data.data || c.value.data || []) : []);
       setTraitements(t.status === "fulfilled" ? (t.value.data.traitements || t.value.data.data || t.value.data || []) : []);
@@ -562,7 +562,7 @@ export default function Hospitalisation() {
     const toastId = toast.loading("⏳ Création de l'admission...");
 
     try {
-      const { data } = await api.post("/hospitalisations", formHosp);
+      const { data } = await api.post("/hospitalization", formHosp);
       const newHosp = normalizeHosp(data.hospitalisation || data.hospitalization || data.data || data);
 
       // 1. Fermer le modal et réinitialiser le formulaire
@@ -609,7 +609,7 @@ export default function Hospitalisation() {
     setSaving(true);
     const toastId = toast.loading("💾 Enregistrement...");
     try {
-      const { data } = await api.put(`/hospitalisations/${currentHosp._id}`, { ...currentHosp, ...updates });
+      const { data } = await api.put(`/hospitalization/${currentHosp._id}`, { ...currentHosp, ...updates });
       const updated = data.hospitalisation || data.data || { ...currentHosp, ...updates };
 
       // Mettre à jour le dossier courant
@@ -641,7 +641,7 @@ export default function Hospitalisation() {
     const toastId = toast.loading("💾 Enregistrement des constantes...");
     try {
       const payload = { ...formConstante, date: formConstante.date || new Date().toISOString() };
-      const { data } = await api.post(`/hospitalisations/${currentHosp._id}/constantes`, payload);
+      const { data } = await api.post(`/hospitalization/${currentHosp._id}/constantes`, payload);
       const nouv = data.constante || data.data || { ...payload, id: data._id || Date.now().toString() };
       setConstantes(prev => [nouv, ...prev]);
       toast.success("✅ Constantes enregistrées", { id: toastId });
@@ -657,7 +657,7 @@ export default function Hospitalisation() {
     e.preventDefault();
     const toastId = toast.loading("💾 Ajout du traitement...");
     try {
-      const { data } = await api.post(`/hospitalisations/${currentHosp._id}/traitements`, formTraitement);
+      const { data } = await api.post(`/hospitalization/${currentHosp._id}/traitements`, formTraitement);
       const nouv = data.traitement || data.data || { ...formTraitement, id: data._id || Date.now().toString() };
       setTraitements(prev => [nouv, ...prev]);
       toast.success("✅ Traitement ajouté", { id: toastId });
@@ -673,7 +673,7 @@ export default function Hospitalisation() {
     e.preventDefault();
     const toastId = toast.loading("💾 Création de la demande...");
     try {
-      const { data } = await api.post(`/hospitalisations/${currentHosp._id}/examens`, formExamen);
+      const { data } = await api.post(`/hospitalization/${currentHosp._id}/examens`, formExamen);
       const nouv = data.examen || data.data || { ...formExamen, id: data._id || Date.now().toString() };
       setExamens(prev => [nouv, ...prev]);
       toast.success("✅ Examen demandé", { id: toastId });
@@ -689,7 +689,7 @@ export default function Hospitalisation() {
     e.preventDefault();
     const toastId = toast.loading("💾 Enregistrement de la visite...");
     try {
-      const { data } = await api.post(`/hospitalisations/${currentHosp._id}/visites`, formVisite);
+      const { data } = await api.post(`/hospitalization/${currentHosp._id}/visites`, formVisite);
       const nouv = data.visite || data.data || { ...formVisite, id: data._id || Date.now().toString() };
       setVisites(prev => [nouv, ...prev]);
       toast.success("✅ Visite enregistrée", { id: toastId });
@@ -1987,7 +1987,7 @@ export default function Hospitalisation() {
             e.preventDefault();
             const toastId = toast.loading("💾 Ajout de la prescription...");
             try {
-              const { data } = await api.post(`/hospitalisations/${currentHosp._id}/prescriptions`, { ...formPrescription, date: new Date().toISOString().substring(0,10) });
+              const { data } = await api.post(`/hospitalization/${currentHosp._id}/prescriptions`, { ...formPrescription, date: new Date().toISOString().substring(0,10) });
               const nouv = data.prescription || data.data || { ...formPrescription, id: data._id || Date.now().toString(), date: new Date().toISOString().substring(0,10) };
               setPrescriptions(prev => [...prev, nouv]);
               toast.success("✅ Prescription ajoutée", { id: toastId });

@@ -10,8 +10,6 @@ router.use('/appointments',     require('./appointments.routes'));
 router.use('/recurring',        require('./recurring.routes'));
 router.use('/consultations',    require('./consultations.routes'));
 router.use('/hospitalization',  require('./hospitalization.routes'));
-router.use('/hospitalisations', require('./hospitalization.routes'));
-router.use('/chambres',         require('./hospitalization.routes'));  // alias → /rooms
 router.use('/laboratory',       require('./laboratory.routes'));
 router.use('/laboratoire',      require('./laboratory.routes'));   // alias français
 router.use('/radiology',        require('./radiology.routes'));

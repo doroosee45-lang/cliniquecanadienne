@@ -51,8 +51,7 @@ exports.getAll = async (req, res, next) => {
         .sort('-date_entree'),
       page, limit
     );
-    // retourner les deux clés pour compatibilité frontend (hospitalisations/hospitalizations)
-    res.json({ success: true, total, hospitalizations, hospitalisations: hospitalizations });
+    res.json({ success: true, total, hospitalizations });
   } catch (err) { next(err); }
 };
 
