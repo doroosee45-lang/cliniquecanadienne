@@ -470,7 +470,7 @@ export default function Laboratoire() {
       if (search) p.set("q", search);
       if (filterStatut) p.set("statut", filterStatut);
       const { data } = await api.get(`/laboratory?${p}`);
-      setAnalyses(data.analyses || data.data || []);
+      setAnalyses(data.results || data.data || []);
       setTotal(data.total || 0);
     } catch {
       setAnalyses(DEMO_ANALYSES);

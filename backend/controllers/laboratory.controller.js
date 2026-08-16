@@ -61,7 +61,7 @@ exports.getAll = async (req, res, next) => {
       };
     });
 
-    res.json({ success: true, total, results: list, analyses: list });
+    res.json({ success: true, total, results: list });
   } catch (err) { next(err); }
 };
 
@@ -136,7 +136,7 @@ exports.create = async (req, res, next) => {
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'laboratory', entite_id: result._id, ip: req.ip });
     emitActivity({ module: 'laboratory', action: 'Nouvelle analyse', detail: `${payload.patient_nom || ''} — ${examens_demandes.length} examen(s)`, icon: '🔬', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
-    res.status(201).json({ success: true, result, analyse: result });
+    res.status(201).json({ success: true, result });
   } catch (err) { next(err); }
 };
 
