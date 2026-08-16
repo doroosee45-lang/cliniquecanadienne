@@ -279,4 +279,63 @@ const sendAppointmentEmail = async ({ email, prenom, nom, date_heure, medecin, t
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail };
+/**
+ * Envoie un rappel de rendez-vous au patient par email (R-10a).
+ * @param {{ email, prenom, nom, date_heure, medecin, type, motif }} opts
+ */
+const sendReminderEmail = async ({ email, prenom, nom, date_heure, medecin, type, motif }) => {
+  const dateObj  = new Date(date_heure);
+  const dateStr  = dateObj.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  const heureStr = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+  const typeLabel = {
+    consultation: 'Consultation', suivi: 'Suivi médical', urgence: 'Urgence',
+    bilan: 'Bilan de santé', vaccination: 'Vaccination', prevention: 'Prévention',
+  }[type] || type || 'Rendez-vous';
+
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#FFF7ED;border-left:4px solid #D97706;border-radius:8px;padding:14px 18px;margin-bottom:24px;">
+        <div style="font-size:11px;color:#92400E;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Rappel de rendez-vous</div>
+        <div style="font-size:20px;font-weight:800;color:#0B1E3B;margin-top:4px;">⏰ Votre rendez-vous approche</div>
+      </div>
+
+      <h2 style="color:#0B1E3B;font-size:17px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Nous vous rappelons votre rendez-vous prévu prochainement à la Clinique Canadienne de Souanké.
+      </p>
+
+      <div style="background:#F8FAFD;border-radius:10px;padding:18px 20px;margin:20px 0;">
+        <div style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Type :</strong> ${typeLabel}</div>
+        <div style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Date :</strong> ${dateStr}</div>
+        <div style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Heure :</strong> ${heureStr}</div>
+        ${medecin ? `<div style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Médecin :</strong> ${medecin}</div>` : ''}
+        ${motif ? `<div style="font-size:13px;color:#374151;"><strong>Motif :</strong> ${motif}</div>` : ''}
+      </div>
+
+      <p style="color:#374151;font-size:13px;line-height:1.6;">
+        Merci de vous présenter 15 minutes avant l'heure prévue, muni de votre carte patient.
+        En cas d'empêchement, contactez-nous au <strong>+242 22 295 0000</strong>.
+      </p>
+    </div>
+
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: `Rappel — rendez-vous du ${dateStr} — Clinique Canadienne`,
+    html,
+  });
+};
+
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendReminderEmail };

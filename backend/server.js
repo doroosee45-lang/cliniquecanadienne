@@ -18,6 +18,7 @@ const connectDB      = require('./config/db');
 const errorHandler   = require('./middleware/errorHandler');
 const routes         = require('./routes');
 const { setIO }      = require('./utils/socket');
+const { startReminderJob } = require('./utils/appointmentReminders');
 
 connectDB().catch(err => {
   console.error('Connexion MongoDB échouée au démarrage:', err.message);
@@ -191,9 +192,10 @@ if (process.env.NODE_ENV === 'production') {
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () =>
-  console.log(`Serveur démarré sur le port ${PORT} [${process.env.NODE_ENV}] — Socket.IO actif`)
-);
+httpServer.listen(PORT, () => {
+  console.log(`Serveur démarré sur le port ${PORT} [${process.env.NODE_ENV}] — Socket.IO actif`);
+  startReminderJob();
+});
 
 // ── Filet de sécurité process ────────────────────────────────────────────────
 // Sans ces gestionnaires, une exception non interceptée en dehors du cycle
