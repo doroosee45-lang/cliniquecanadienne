@@ -97,7 +97,7 @@ export default function Header({ title, onMenuToggle }) {
       <header className="bg-white border-b border-gray-100 px-4 lg:px-6 py-3 flex items-center justify-between sticky top-0 z-40">
         {/* Hamburger + Clinic brand + Title */}
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <button onClick={onMenuToggle} aria-label="Ouvrir le menu" className="lg:hidden w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center hover:bg-gray-100">
+          <button onClick={onMenuToggle} aria-label="Afficher ou masquer le menu de navigation" className="w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center hover:bg-gray-100 flex-shrink-0">
             <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>

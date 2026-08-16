@@ -327,7 +327,7 @@ const NAV_SECTIONS = [
 ];
 
 // ── Composant ──────────────────────────────────────────────────────────────
-export default function Sidebar({ isOpen, onClose }) {
+export default function Sidebar({ isOpen, collapsed, onClose }) {
   const { user, logout } = useAuth();
   const navigate         = useNavigate();
   const rc = ROLE_CONFIG[user?.role] || { icon: User, color: '#6b7280', label: user?.role };
@@ -354,7 +354,7 @@ export default function Sidebar({ isOpen, onClose }) {
         />
       )}
 
-      <aside className={`sidebar ${isOpen ? 'open' : ''}`} aria-label="Navigation principale">
+      <aside className={`sidebar ${isOpen ? 'open' : ''} ${collapsed ? 'collapsed' : ''}`.trim()} aria-label="Navigation principale">
 
         {/* ── Logo ─────────────────────────────────────────────────────────── */}
         <div className="p-5 border-b border-white/10 flex-shrink-0">

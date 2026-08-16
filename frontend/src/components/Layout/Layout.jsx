@@ -39,17 +39,30 @@ const getTitle = (pathname) => {
 };
 
 export default function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Deux états distincts plutôt qu'un seul booléen partagé : sur mobile/
+  // tablette (< 1024px), la sidebar est masquée par défaut et le
+  // hamburger la révèle temporairement (overlay) ; sur grand écran
+  // (≥ 1024px), elle est visible par défaut et le même bouton la replie
+  // pour libérer l'espace de contenu — deux comportements par défaut
+  // opposés, impossibles à représenter proprement avec un seul state.
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const location = useLocation();
   const title = getTitle(location.pathname);
 
-  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
+  // 1024px = seuil `lg:` de Tailwind, déjà utilisé par le CSS de la sidebar.
+  const toggleSidebar = () => {
+    if (window.innerWidth >= 1024) setDesktopCollapsed(v => !v);
+    else setMobileOpen(v => !v);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Poppins, sans-serif' }}>
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="main-content">
-        <Header title={title} onMenuToggle={() => setSidebarOpen(v => !v)} />
+      <Sidebar isOpen={mobileOpen} collapsed={desktopCollapsed} onClose={() => setMobileOpen(false)} />
+      <div className={`main-content ${desktopCollapsed ? 'sidebar-collapsed' : ''}`}>
+        <Header title={title} onMenuToggle={toggleSidebar} />
         <main className="p-3 sm:p-4 lg:p-6">
           <Outlet />
         </main>
