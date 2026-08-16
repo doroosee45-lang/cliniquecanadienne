@@ -59,22 +59,24 @@ exports.create = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
+    const avant = await Prescription.findById(req.params.id);
     const prescription = await Prescription.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!prescription) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'prescriptions', entite_id: prescription._id, ip: req.ip, message: `Ordonnance ${prescription.numero_rx} modifiée` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'prescriptions', entite_id: prescription._id, ip: req.ip, message: `Ordonnance ${prescription.numero_rx} modifiée`, avant, apres: prescription });
     res.json({ success: true, prescription });
   } catch (err) { next(err); }
 };
 
 exports.cancel = async (req, res, next) => {
   try {
+    const avant = await Prescription.findById(req.params.id);
     const prescription = await Prescription.findByIdAndUpdate(
       req.params.id,
       { statut: 'annulee' },
       { new: true }
     );
     if (!prescription) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'CANCEL', module: 'prescriptions', entite_id: prescription._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'CANCEL', module: 'prescriptions', entite_id: prescription._id, ip: req.ip, avant, apres: prescription });
     res.json({ success: true, prescription });
   } catch (err) { next(err); }
 };
@@ -89,6 +91,8 @@ exports.publier = async (req, res, next) => {
 
     if (!rx) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
     if (rx.statut === 'annulee') return res.status(400).json({ success: false, message: 'Impossible de publier une ordonnance annulée.' });
+
+    const avant = rx.toObject();
 
     rx.statut   = 'publiee';
     rx.publie_at  = new Date();
@@ -141,6 +145,7 @@ exports.publier = async (req, res, next) => {
       utilisateur: req.user._id, action: 'PUBLISH', module: 'prescriptions',
       entite_id: rx._id, ip: req.ip,
       message: `Ordonnance ${rx.numero_rx} publiée — email${emailEnvoye ? '' : ' non'} envoyé`,
+      avant, apres: rx,
     });
     emitActivity({ module: 'prescriptions', action: 'Ordonnance publiée', detail: `${rx.numero_rx} → ${rx.patient?.prenom} ${rx.patient?.nom}`, icon: '📨', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
