@@ -65,7 +65,22 @@ const UserSchema = new mongoose.Schema({
     minlength: [6, 'Min 6 caractères'],
     select:    false,
     // required retiré — null autorisé pour connexion Google
+    // T3.4 — complexité minimale (majuscule + chiffre) en plus de la longueur.
+    // isModified() protège les saves ultérieurs qui ne touchent pas le mot de
+    // passe (ex. mise à jour de derniere_connexion) : sans cette garde, un
+    // hash bcrypt déjà stocké serait re-testé contre ce même regex à chaque
+    // save() du document et pourrait, par malchance, échouer.
+    validate: {
+      validator: function (v) {
+        if (!v || !this.isModified('password')) return true;
+        return /[A-Z]/.test(v) && /[0-9]/.test(v);
+      },
+      message: 'Le mot de passe doit contenir au moins une majuscule et un chiffre.',
+    },
   },
+  // T3.4 — verrouillage de compte après échecs répétés.
+  tentatives_echouees: { type: Number, default: 0 },
+  verrouille_jusqu_a:  { type: Date, default: null },
   nom:    { type: String, required: [true, 'Nom requis'],    trim: true },
   prenom: { type: String, required: [true, 'Prénom requis'], trim: true },
   role: {
