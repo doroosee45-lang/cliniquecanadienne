@@ -37,4 +37,14 @@ const HospitalizationSchema = new Schema({
   tel_urgence:          String,
 }, { timestamps: true });
 
+// T9.8 — aucun index avant ce correctif (constaté en T2.4) : toute requête
+// filtrait sur COLLSCAN. statut/date_entree couvrent le dashboard (compteurs
+// par statut, occupation du jour) et la liste triée par défaut ; patient et
+// medecin_responsable+statut couvrent respectivement l'historique patient et
+// la vue "mon service".
+HospitalizationSchema.index({ statut: 1, date_entree: -1 });
+HospitalizationSchema.index({ date_entree: -1 });
+HospitalizationSchema.index({ patient: 1, date_entree: -1 });
+HospitalizationSchema.index({ medecin_responsable: 1, statut: 1 });
+
 module.exports = mongoose.model('Hospitalization', HospitalizationSchema);

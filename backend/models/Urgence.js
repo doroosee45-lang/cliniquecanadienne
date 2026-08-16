@@ -98,4 +98,11 @@ UrgenceSchema.pre('save', async function (next) {
   next();
 });
 
+// T9.8 — aucun index avant ce correctif (constaté en T2.4) : statut et
+// niveau_triage sont filtrés en continu par le module urgences (criticité
+// temporelle élevée). Modèle uniquement — urgencesController.js reste hors
+// périmètre, cf. T9.3.
+UrgenceSchema.index({ statut: 1, date_arrivee: -1 });
+UrgenceSchema.index({ niveau_triage: 1 });
+
 module.exports = mongoose.model('Urgence', UrgenceSchema);

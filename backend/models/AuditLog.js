@@ -16,5 +16,9 @@ const AuditLogSchema = new Schema({
 
 AuditLogSchema.index({ utilisateur: 1, createdAt: -1 });
 AuditLogSchema.index({ module: 1, action: 1 });
+// T9.8 — les graphiques d'activité 7j/30j (audit.controller.js) filtrent sur
+// createdAt seul ; le préfixe des deux index composés ci-dessus ne sert pas
+// cette forme de requête (constaté en T2.4).
+AuditLogSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('AuditLog', AuditLogSchema);

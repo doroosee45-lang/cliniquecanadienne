@@ -98,5 +98,9 @@ PatientSchema.pre('findOneAndDelete', async function (next) {
 });
 
 PatientSchema.index({ nom: 'text', prenom: 'text', numero_dossier: 'text', telephone: 'text' });
+// T9.8 — email très sollicité (recherche portail, migration T2.2) sans index
+// dédié (constaté en T2.4). Non unique (partagé possible entre membres d'une
+// famille) et sparse (non requis, cf. T3.1 comptes auto-inscrits).
+PatientSchema.index({ email: 1 }, { sparse: true });
 
 module.exports = mongoose.model('Patient', PatientSchema);
