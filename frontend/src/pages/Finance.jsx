@@ -793,6 +793,17 @@ export default function Finance() {
     }
   };
 
+  // ── Payer un salaire ──────────────────────────────────────
+  const payerSalaire = async (s) => {
+    try {
+      const { data } = await api.put(`/finance/salaires/${s._id}/payer`);
+      setSalaires(prev => prev.map(x => x._id === s._id ? { ...x, statut: data.salaire.statut, date_paiement: data.salaire.date_paiement } : x));
+      toast.success("✅ Salaire payé — " + s.employe);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors du paiement du salaire");
+    }
+  };
+
   // ── Create facture ───────────────────────────────────────
   const createFacture = async (e) => {
     e.preventDefault();
@@ -1682,7 +1693,7 @@ export default function Finance() {
                           <td>
                             <div style={{ display:"flex", gap:6 }}>
                               {s.statut !== "paye" && (
-                                <button className="fbtn fbtn-green fbtn-sm" style={{ fontSize:11 }} onClick={() => { setSalaires(prev => prev.map(x => x._id === s._id ? {...x, statut:"paye", date_paiement:new Date().toISOString()} : x)); toast.success("✅ Salaire payé — " + s.employe); }}>
+                                <button className="fbtn fbtn-green fbtn-sm" style={{ fontSize:11 }} onClick={() => payerSalaire(s)}>
                                   💸 Payer
                                 </button>
                               )}
