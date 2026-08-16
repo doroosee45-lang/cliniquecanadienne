@@ -141,7 +141,7 @@ test('balayage T5.2 — Appointments, Patients, Finance/Invoices, Administration
     await t.test('Administration — createUser mappe mot_de_passe (frontend) vers password (schéma)', async () => {
       const email = `_t52e-${stamp}@_test.local`;
       // Payload construit à l'identique de Administration.jsx (EMPTY_USER + saveUser).
-      const payload = { prenom: 'Nouvel', nom: 'Employe', email, telephone: '060000000', role: 'medecin', service: '', statut: 'actif', mot_de_passe: 'MotDePasse1' };
+      const payload = { prenom: 'Nouvel', nom: 'Employe', email, telephone: '060000000', role: 'medecin', service: 'Chirurgie', statut: 'actif', mot_de_passe: 'MotDePasse1' };
       const { status, body } = await call(settingsC.createUser, { body: payload, user: staff, ip: '127.0.0.1' });
       assert.equal(status, 201);
       cleanup.push(() => User.findByIdAndDelete(body.user._id));
@@ -149,6 +149,27 @@ test('balayage T5.2 — Appointments, Patients, Finance/Invoices, Administration
       const fresh = await User.findById(body.user._id).select('+password');
       assert.ok(fresh.password, 'le compte créé via Administration doit avoir un mot de passe utilisable — avant le correctif, il restait undefined');
       assert.ok(await fresh.matchPassword('MotDePasse1'), 'le mot de passe saisi dans le formulaire doit être celui réellement utilisable pour se connecter');
+      // AUDIT-01 — service (select "Service / Département") n'était pas
+      // déclaré sur le schéma User : silencieusement supprimé à la création.
+      assert.equal(body.user.service, 'Chirurgie', 'le service choisi à la création doit être renvoyé dans la réponse');
+      assert.equal(fresh.service, 'Chirurgie', 'le service choisi à la création doit être réellement persisté en base');
+    });
+
+    await t.test('Administration — updateUser persiste le champ service (AUDIT-01)', async () => {
+      const email = `_t52h-${stamp}@_test.local`;
+      const user = await User.create({ email, password: 'Xx1aaaaa', nom: 'Test', prenom: 'T52H', role: 'medecin', statut: 'actif', service: 'Urgences' });
+      cleanup.push(() => User.findByIdAndDelete(user._id));
+
+      const { status, body } = await call(settingsC.updateUser, {
+        params: { id: user._id },
+        body: { prenom: 'T52H', nom: 'Test', email, telephone: '', role: 'medecin', service: 'Pédiatrie', statut: 'actif', mot_de_passe: '' },
+        user: staff, ip: '127.0.0.1',
+      });
+      assert.equal(status, 200);
+      assert.equal(body.user.service, 'Pédiatrie', 'la réponse doit refléter le nouveau service');
+
+      const fresh = await User.findById(user._id);
+      assert.equal(fresh.service, 'Pédiatrie', 'le changement de service doit être réellement persisté en base, pas seulement dans la réponse');
     });
 
     await t.test('Administration — updateUser réinitialise le mot de passe via mot_de_passe', async () => {

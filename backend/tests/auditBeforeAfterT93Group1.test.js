@@ -100,10 +100,19 @@ test('donnees_avant/donnees_apres — chirurgie, bloc opératoire, laboratoire, 
       assert.equal(log.donnees_apres.statut, 'realise');
       assert.equal(log.donnees_apres.conclusion, 'RAS');
 
-      await call(radC.validation, { params: { id: examen._id }, body: { radiologue: 'Dr Test' }, user });
+      // AUDIT-02 — payload calqué sur formValid (Radiology.jsx) : le code de
+      // signature saisi par le radiologue à la validation était silencieusement
+      // perdu (champ absent du schéma) avant ce correctif.
+      const { body: validationBody } = await call(radC.validation, { params: { id: examen._id }, body: { radiologue: 'Dr Test', signature: 'DR-TEST-2026' }, user });
       log = await AuditLog.findOne({ module: 'radiology', action: 'VALIDATE', entite_id: examen._id.toString() }).sort('-createdAt');
       assert.equal(log.donnees_avant.statut, 'realise');
       assert.equal(log.donnees_apres.statut, 'valide');
+      assert.equal(validationBody.examen.signature, 'DR-TEST-2026', 'la réponse immédiate doit refléter la signature envoyée');
+
+      // Relecture depuis une requête fraîche (pas juste la réponse en mémoire
+      // du même appel) — preuve que la signature est réellement persistée.
+      const relu = await ImagingResult.findById(examen._id).lean();
+      assert.equal(relu.signature, 'DR-TEST-2026', 'la signature doit être récupérable après relecture en base, pas seulement présente dans la réponse immédiate');
     });
   } finally {
     for (const fn of cleanup) await fn();
