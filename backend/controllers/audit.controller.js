@@ -152,6 +152,32 @@ exports.getConnexions = async (req, res, next) => {
 //     lente (IPs tournantes) contre un seul compte n'atteint jamais le seuil
 //     par IP et reste invisible ici (le verrouillage de compte, R-16, la
 //     rattrape à 5 échecs — mais c'est un filet différent, pas cette règle).
+//
+// T9.2 — règle « accès refusé » revue. Elle transformait auparavant CHAQUE
+// entrée ACCESS_DENIED en suspect individuel, sans seuil : un unique refus
+// isolé (ex. clic sur un lien de menu resté affiché juste après un
+// changement de rôle) apparaissait avec la même sévérité qu'un vrai
+// balayage de permissions — et en pratique, la base réelle avait accumulé
+// 3537 entrées de ce type sur 7 jours (bruit de test), rendant la liste des
+// suspects inutilisable pour une vraie investigation.
+// Testé empiriquement (3 scénarios suspects / 3 scénarios normaux) avant de
+// choisir le correctif : seuil ≥5 refus sur 7 jours, agrégé PAR UTILISATEUR
+// SEUL (pas par paire utilisateur+module comme envisagé initialement) —
+// une agrégation par (utilisateur, module) se serait révélée aveugle à la
+// forme d'attaque la plus évidente trouvée dans le bruit réel lui-même : un
+// même compte touchant 5 modules différents en moins d'une seconde n'aurait
+// jamais dépassé un compte de 1 par paire. Seuil 5 (pas 3) choisi car il
+// élimine le seul faux positif plausible construit pendant les tests (un
+// compte qui explore 4 modules différents sans intention malveillante) sans
+// retarder significativement la détection d'un vrai balayage (la plupart
+// des attaques réelles dépasseront 5 très vite, la base compte >15 modules
+// protégés). Compromis accepté : un martelage répété sur un SEUL module
+// n'est détecté qu'à la 5e tentative au lieu de la 3e — partiellement
+// couvert par ailleurs par le verrouillage de compte (R-16) et le
+// rate-limit sur les routes d'auth, indépendants de cette règle.
+// Simplification non traitée : toutes les entrées ACCESS_DENIED comptent
+// pareil quel que soit le module visé — 5 refus sur des modules peu
+// sensibles pèse autant que 5 refus sur finance/settings. Pas pondéré ici.
 exports.getSuspects = async (req, res, next) => {
   try {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
@@ -183,14 +209,27 @@ exports.getSuspects = async (req, res, next) => {
       }
     });
 
+    const DENIED_THRESHOLD = 5;
+    const deniedByUser = {};
     deniedAccess.forEach(log => {
-      const u = log.utilisateur || {};
+      const uid = log.utilisateur?._id ? String(log.utilisateur._id) : 'inconnu';
+      if (!deniedByUser[uid]) {
+        deniedByUser[uid] = { count: 0, user: log.utilisateur, modules: new Set(), lastLog: log };
+      }
+      deniedByUser[uid].count += 1;
+      if (log.module) deniedByUser[uid].modules.add(log.module);
+      if (new Date(log.createdAt) > new Date(deniedByUser[uid].lastLog.createdAt)) deniedByUser[uid].lastLog = log;
+    });
+
+    Object.entries(deniedByUser).forEach(([uid, info]) => {
+      if (info.count < DENIED_THRESHOLD) return;
+      const u = info.user || {};
       suspects.push({
-        _id: String(log._id),
-        type: 'Accès refusé',
-        utilisateur: u.prenom ? `${u.prenom} ${u.nom}` : (u.nom || log.ip_address || 'Inconnu'),
-        description: log.message || `Tentative d'accès non autorisé au module ${log.module || 'inconnu'}`,
-        date: log.createdAt,
+        _id: `denied_${uid}`,
+        type: 'Accès refusé répété',
+        utilisateur: u.prenom ? `${u.prenom} ${u.nom}` : (u.nom || 'Inconnu'),
+        description: `${info.count} tentative(s) d'accès refusé sur ${info.modules.size} module(s) différent(s) en moins de 7 jours (dernière : ${info.lastLog.message || `module ${info.lastLog.module || 'inconnu'}`}).`,
+        date: info.lastLog.createdAt,
         severite: 'eleve',
         risque: 'eleve',
         statut: 'ouvert',
