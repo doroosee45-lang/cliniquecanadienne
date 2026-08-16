@@ -137,6 +137,21 @@ exports.getConnexions = async (req, res, next) => {
 };
 
 // GET /audit/suspects — activités suspectes 7 derniers jours
+//
+// R-09 — limites de conception connues, documentées mais volontairement non
+// corrigées dans cette passe (décisions de durcissement plus substantielles,
+// à trancher séparément si la détection anti-force-brute doit être musclée) :
+//  1) Comptage par IP sans `app.set('trust proxy', ...)` dans server.js — si
+//     l'appli tourne derrière un reverse proxy/load balancer, req.ip peut
+//     retourner la même adresse pour tous les utilisateurs, invalidant le
+//     comptage (faux négatifs en masse, ou amalgame d'utilisateurs innocents).
+//  2) Seuil (≥3 échecs) sans dégressivité temporelle sur une fenêtre de 7
+//     jours : 3 mots de passe mal tapés étalés sur une semaine (comportement
+//     légitime plausible) déclenche la même alerte qu'une rafale en 10s.
+//  3) Détection uniquement par IP, jamais par compte : une attaque distribuée
+//     lente (IPs tournantes) contre un seul compte n'atteint jamais le seuil
+//     par IP et reste invisible ici (le verrouillage de compte, R-16, la
+//     rattrape à 5 échecs — mais c'est un filet différent, pas cette règle).
 exports.getSuspects = async (req, res, next) => {
   try {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
