@@ -2,8 +2,8 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import {
-  fetchStaff, fetchLeaves, fetchSchedules,
-  selectStaff, selectLeaves, selectSchedules, selectHRLoading,
+  fetchStaff,
+  selectStaff, selectHRLoading,
 } from '../store/slices/hrSlice';
 import api from "../api";
 import toast from "react-hot-toast";
@@ -328,7 +328,6 @@ function Stars({ note, max = 5 }) {
 // ─── DEMO DATA ───────────────────────────────────────────────
 const DEMO_EMPLOYES = [];
 
-const DEMO_CONGES = [];
 
 const DEMO_CANDIDATURES = [];
 
@@ -345,18 +344,6 @@ const DEMO_AUDIT = [];
 const MOIS_LABELS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 const DEMO_EFFECTIF_MOIS = [];
 const DEMO_ABSENCE_MOIS  = [];
-
-const PLANNING_JOURS = ["Lun 02", "Mar 03", "Mer 04", "Jeu 05", "Ven 06", "Sam 07", "Dim 08"];
-const PLANNING_DATA = {
-  "Martin Leblanc":  ["travail","travail","travail","travail","travail","repos","repos"],
-  "Sophie Pierre":   ["travail","travail","conge","conge","conge","conge","conge"],
-  "Aline Moukala":   ["travail","garde","travail","travail","travail","repos","repos"],
-  "Paul Nkomo":      ["travail","travail","travail","repos","travail","astreinte","repos"],
-  "Fatima Diallo":   ["conge","conge","conge","conge","conge","conge","conge"],
-  "Jacques Bongo":   ["travail","travail","travail","travail","garde","repos","repos"],
-  "Marie Nguema":    ["absence","travail","travail","travail","travail","repos","repos"],
-  "André Makosso":   ["travail","travail","travail","travail","travail","repos","repos"],
-};
 
 const PLAN_LABEL = { travail:"Travail", garde:"Garde", conge:"Congé", repos:"Repos", absence:"Absent", astreinte:"Astreinte" };
 
@@ -393,17 +380,14 @@ const normalizeEmp = (s) => {
 export default function RessourcesHumaines() {
   const dispatch = useDispatch();
   const reduxStaff = useSelector(selectStaff);
-  const reduxLeaves = useSelector(selectLeaves);
 
   useEffect(() => {
     dispatch(fetchStaff({}));
-    dispatch(fetchLeaves());
-    dispatch(fetchSchedules());
   }, [dispatch]);
   const refreshHR = useCallback(() => {
     dispatch(fetchStaff({}));
-    dispatch(fetchLeaves());
-    dispatch(fetchSchedules());
+    loadConges();
+    loadSchedules();
   }, [dispatch]);
   useRealtimeRefresh(refreshHR);
 
@@ -420,7 +404,8 @@ export default function RessourcesHumaines() {
   const [tab, setTab]                     = useState("dashboard");
   const [section, setSection]             = useState("infos");
   const [employes, setEmployes]           = useState([]);
-  const [conges, setConges]               = useState(DEMO_CONGES);
+  const [conges, setConges]               = useState([]);
+  const [schedules, setSchedules]         = useState([]);
   const [candidatures, setCandidatures]   = useState(DEMO_CANDIDATURES);
   const [evaluations, setEvaluations]     = useState(DEMO_EVALUATIONS);
   const [formations, setFormations]       = useState(DEMO_FORMATIONS);
@@ -464,6 +449,43 @@ export default function RessourcesHumaines() {
 
   useEffect(() => { loadEmployes(); }, [loadEmployes]);
 
+  const loadConges = useCallback(async () => {
+    try {
+      const { data } = await api.get('/hr/leaves');
+      setConges(data.leaves || []);
+    } catch (err) {
+      console.error('Erreur chargement congés:', err);
+    }
+  }, []);
+  useEffect(() => { loadConges(); }, [loadConges]);
+
+  // Semaine courante (lundi → dimanche), calculée dynamiquement — remplace
+  // l'ancienne grille figée sur une semaine de juin 2025.
+  const weekDates = (() => {
+    const now = new Date();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d;
+    });
+  })();
+  const weekLabels = weekDates.map(d => `${['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'][((d.getDay()+6)%7)]} ${String(d.getDate()).padStart(2,'0')}`);
+  const isoDay = (d) => d.toISOString().substring(0, 10);
+
+  const loadSchedules = useCallback(async () => {
+    try {
+      const { data } = await api.get(`/hr/schedules?date_debut=${isoDay(weekDates[0])}&date_fin=${isoDay(weekDates[6])}`);
+      setSchedules(data.schedules || []);
+    } catch (err) {
+      console.error('Erreur chargement planning:', err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => { loadSchedules(); }, [loadSchedules]);
+
   // KPIs
   const total      = employes.length;
   const actifs     = employes.filter(e => e.statut === "actif").length;
@@ -473,6 +495,16 @@ export default function RessourcesHumaines() {
   const nbSanction = sanctions.length;
   const congesAttente = conges.filter(c => c.statut === "en_attente").length;
   const masseSalariale = employes.reduce((s,e) => s + (e.salaire_base || 0), 0);
+
+  // Pivot des créneaux plats (schedules) en grille employé × jour de la
+  // semaine courante, pour le rendu du planning hebdomadaire.
+  const scheduleByEmp = {};
+  employes.forEach(e => { scheduleByEmp[e._id] = weekDates.map(() => ''); });
+  schedules.forEach(s => {
+    const day = s.date ? String(s.date).substring(0, 10) : '';
+    const dayIdx = weekDates.findIndex(d => isoDay(d) === day);
+    if (dayIdx !== -1 && scheduleByEmp[s.employe_id]) scheduleByEmp[s.employe_id][dayIdx] = s.type;
+  });
 
   const filteredEmps = employes.filter(e => {
     const q = search.toLowerCase();
@@ -518,21 +550,29 @@ export default function RessourcesHumaines() {
     }
   };
 
-  const addConge = (ev) => {
+  const addConge = async (ev) => {
     ev.preventDefault();
-    const emp = employes.find(e => e._id === formConge.employe_id);
-    const d1 = new Date(formConge.date_debut), d2 = new Date(formConge.date_fin);
-    const nb = Math.ceil((d2 - d1) / (1000*60*60*24)) + 1;
-    const newC = { ...formConge, _id:Date.now().toString(), employe_nom:emp ? `${emp.prenom} ${emp.nom}` : "—", nb_jours:nb, statut:"en_attente" };
-    setConges(prev => [newC, ...prev]);
-    toast.success("✅ Demande de congé soumise");
-    setModalConge(false); setFormConge(EMPTY_CONGE);
+    try {
+      const { employe_id, type, date_debut, date_fin, motif } = formConge;
+      await api.post(`/hr/${employe_id}/conge`, { type, date_debut, date_fin, motif });
+      await loadConges();
+      toast.success("✅ Demande de congé soumise");
+      setModalConge(false); setFormConge(EMPTY_CONGE);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la soumission du congé");
+    }
   };
 
-  const approuverConge = (id) => {
-    setConges(prev => prev.map(c => c._id === id ? { ...c, statut:"approuve" } : c));
-    toast.success("✅ Congé approuvé");
+  const decideConge = async (c, statut) => {
+    try {
+      await api.put(`/hr/${c.employe_id}/conge/${c._id}`, { statut });
+      await loadConges();
+      toast[statut === 'approuve' ? 'success' : 'error'](statut === 'approuve' ? "✅ Congé approuvé" : "❌ Congé refusé");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors du traitement de la demande");
+    }
   };
+  const approuverConge = (c) => decideConge(c, 'approuve');
 
   const addCandidat = (ev) => {
     ev.preventDefault();
@@ -1847,8 +1887,8 @@ export default function RessourcesHumaines() {
                             <td>
                               {c.statut === "en_attente" && (
                                 <div style={{ display:"flex", gap:6 }}>
-                                  <button className="rbtn rbtn-teal rbtn-sm" style={{ fontSize:11 }} onClick={() => approuverConge(c._id)}>✅ Approuver</button>
-                                  <button className="rbtn rbtn-danger rbtn-sm" style={{ fontSize:11 }} onClick={() => { setConges(prev => prev.map(x => x._id === c._id ? {...x,statut:"refuse"} : x)); toast.error("❌ Congé refusé"); }}>Refuser</button>
+                                  <button className="rbtn rbtn-teal rbtn-sm" style={{ fontSize:11 }} onClick={() => approuverConge(c)}>✅ Approuver</button>
+                                  <button className="rbtn rbtn-danger rbtn-sm" style={{ fontSize:11 }} onClick={() => decideConge(c, 'refuse')}>Refuser</button>
                                 </div>
                               )}
                             </td>
@@ -1865,23 +1905,24 @@ export default function RessourcesHumaines() {
           {/* ══ PLANNING ══ */}
           {tab === "planning" && (
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Planning hebdomadaire — Semaine du 02 au 08 Juin 2025</div>
+              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Planning hebdomadaire — Semaine du {weekLabels[0]} au {weekLabels[6]} {weekDates[6].toLocaleDateString('fr-FR',{month:'long',year:'numeric'})}</div>
               <div className="rh-card fu" style={{ overflowX:"auto" }}>
                 <table style={{ width:"100%", borderCollapse:"collapse", minWidth:900 }}>
                   <thead>
                     <tr style={{ background:"linear-gradient(to right,#F8FAFD,#EEF4FF)" }}>
                       <th style={{ padding:"11px 14px", textAlign:"left", fontSize:11, fontWeight:700, color:"var(--rm)", textTransform:"uppercase", borderBottom:"1.5px solid var(--rbr)", width:160 }}>Employé</th>
-                      {PLANNING_JOURS.map(j => (
+                      {weekLabels.map(j => (
                         <th key={j} style={{ padding:"11px 8px", textAlign:"center", fontSize:11, fontWeight:700, color:"var(--rm)", textTransform:"uppercase", letterSpacing:.4, borderBottom:"1.5px solid var(--rbr)" }}>{j}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(PLANNING_DATA).map(([nom, jours]) => {
-                      const emp = employes.find(e => `${e.prenom} ${e.nom}` === nom);
-                      const pc  = emp ? (POSTE_COLORS[emp.poste] || { color:"#6B7280" }) : { color:"#6B7280" };
+                    {employes.map((emp) => {
+                      const nom = `${emp.prenom} ${emp.nom}`;
+                      const pc  = POSTE_COLORS[emp.poste] || { color:"#6B7280" };
+                      const jours = scheduleByEmp[emp._id] || weekDates.map(() => '');
                       return (
-                        <tr key={nom} style={{ borderBottom:"1px solid #F3F7FF" }}>
+                        <tr key={emp._id} style={{ borderBottom:"1px solid #F3F7FF" }}>
                           <td style={{ padding:"10px 14px" }}>
                             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                               <div className="emp-avatar" style={{ background:pc.color, width:30, height:30, fontSize:11, borderRadius:8 }}>{nom.split(" ").map(n=>n[0]).join("")}</div>
@@ -1890,7 +1931,7 @@ export default function RessourcesHumaines() {
                           </td>
                           {jours.map((type, i) => (
                             <td key={i} style={{ padding:"8px 6px", textAlign:"center" }}>
-                              <div className={`plan-cell ${type}`}>{PLAN_LABEL[type] || type}</div>
+                              <div className={`plan-cell ${type}`}>{PLAN_LABEL[type] || (type ? type : '—')}</div>
                             </td>
                           ))}
                         </tr>
