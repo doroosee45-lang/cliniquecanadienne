@@ -135,9 +135,89 @@ exports.leave = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Vous ne pouvez pas soumettre de congé pour un autre employé.' });
     }
 
-    staff.conges.push({ ...req.body, statut: 'demande' });
+    const { type, date_debut, date_fin, motif } = req.body;
+    const nb_jours = date_debut && date_fin
+      ? Math.round((new Date(date_fin) - new Date(date_debut)) / 86400000) + 1
+      : undefined;
+
+    staff.conges.push({ type, date_debut, date_fin, motif, nb_jours, statut: 'en_attente' });
     await staff.save();
-    await logAction({ utilisateur: req.user._id, action: 'LEAVE_REQUEST', module: 'hr', entite_id: staff._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'LEAVE_REQUEST', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Demande de congé (${type || '—'}) — ${staff.prenom || ''} ${staff.nom || ''}`.trim() });
+    emitDashboardUpdate();
+    res.json({ success: true, staff });
+  } catch (err) { next(err); }
+};
+
+// GET /hr/leaves — toutes les demandes de congé, tous employés confondus
+exports.getLeaves = async (req, res, next) => {
+  try {
+    const staffList = await Staff.find({ 'conges.0': { $exists: true } }).select('prenom nom conges').lean();
+    const leaves = [];
+    for (const s of staffList) {
+      for (const c of s.conges) {
+        leaves.push({ ...c, employe_id: s._id, employe_nom: `${s.prenom || ''} ${s.nom || ''}`.trim() });
+      }
+    }
+    leaves.sort((a, b) => new Date(b.date_debut || 0) - new Date(a.date_debut || 0));
+    res.json({ success: true, leaves });
+  } catch (err) { next(err); }
+};
+
+// PUT /hr/:id/conge/:congeId — approuver/refuser une demande de congé
+exports.updateLeaveStatus = async (req, res, next) => {
+  try {
+    const { statut } = req.body;
+    if (!['approuve', 'refuse'].includes(statut)) {
+      return res.status(400).json({ success: false, message: 'Statut invalide — approuve ou refuse attendu.' });
+    }
+    const staff = await Staff.findById(req.params.id);
+    if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
+    const conge = staff.conges.id(req.params.congeId);
+    if (!conge) return res.status(404).json({ success: false, message: 'Demande de congé introuvable.' });
+    if (conge.statut !== 'en_attente') {
+      return res.status(400).json({ success: false, message: 'Cette demande a déjà été traitée.' });
+    }
+
+    conge.statut = statut;
+    conge.approuve_par = req.user._id;
+    if (statut === 'approuve' && conge.nb_jours) {
+      staff.conges_restants = Math.max(0, (staff.conges_restants || 0) - conge.nb_jours);
+    }
+    await staff.save();
+    await logAction({ utilisateur: req.user._id, action: statut === 'approuve' ? 'LEAVE_APPROVE' : 'LEAVE_REFUSE', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Congé ${statut === 'approuve' ? 'approuvé' : 'refusé'} — ${staff.prenom || ''} ${staff.nom || ''}`.trim() });
+    emitDashboardUpdate();
+    res.json({ success: true, staff });
+  } catch (err) { next(err); }
+};
+
+// GET /hr/schedules — planning de tous les employés, filtrable par plage de dates
+exports.getSchedules = async (req, res, next) => {
+  try {
+    const { date_debut, date_fin } = req.query;
+    const staffList = await Staff.find({ 'planning.0': { $exists: true } }).select('prenom nom poste planning').lean();
+    const schedules = [];
+    for (const s of staffList) {
+      for (const p of s.planning) {
+        if (date_debut && new Date(p.date) < new Date(date_debut)) continue;
+        if (date_fin && new Date(p.date) > new Date(date_fin)) continue;
+        schedules.push({ ...p, employe_id: s._id, employe_nom: `${s.prenom || ''} ${s.nom || ''}`.trim(), poste: s.poste });
+      }
+    }
+    schedules.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    res.json({ success: true, schedules });
+  } catch (err) { next(err); }
+};
+
+// POST /hr/:id/planning — assigner un créneau à un employé
+exports.addSchedule = async (req, res, next) => {
+  try {
+    const staff = await Staff.findById(req.params.id);
+    if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
+    const { date, heure_debut, heure_fin, type } = req.body;
+    staff.planning.push({ date, heure_debut, heure_fin, type });
+    await staff.save();
+    await logAction({ utilisateur: req.user._id, action: 'SCHEDULE_ADD', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Créneau planning (${type || '—'}) assigné — ${staff.prenom || ''} ${staff.nom || ''}`.trim() });
+    emitDashboardUpdate();
     res.json({ success: true, staff });
   } catch (err) { next(err); }
 };

@@ -12,13 +12,15 @@ const STAFF = ['superadmin','adminclinique','medecin','infirmier','sage_femme',
 
 // Alias attendus par le frontend
 router.get('/staff',     protect, authorize(...ADMIN), hrC.getAll);
-router.get('/leaves',    protect, authorize(...ADMIN), (req, res) => res.json({ success: true, leaves: [] }));
-router.get('/schedules', protect, authorize(...ADMIN), (req, res) => res.json({ success: true, schedules: [] }));
+router.get('/leaves',    protect, authorize(...ADMIN), hrC.getLeaves);
+router.get('/schedules', protect, authorize(...ADMIN), hrC.getSchedules);
 
 router.get('/',          protect, authorize(...ADMIN), hrC.getAll);
 router.post('/',         protect, authorize(...ADMIN), hrC.create);
 router.get('/:id',       protect, authorize(...ADMIN), hrC.getOne);
 router.put('/:id',       protect, authorize(...ADMIN), hrC.update);
-router.post('/:id/conge',protect, authorize(...STAFF), hrC.leave);
+router.post('/:id/conge',            protect, authorize(...STAFF), hrC.leave);
+router.put('/:id/conge/:congeId',    protect, authorize(...ADMIN), hrC.updateLeaveStatus);
+router.post('/:id/planning',         protect, authorize(...ADMIN), hrC.addSchedule);
 
 module.exports = router;
