@@ -1,6 +1,7 @@
 const Pregnancy = require('../models/Pregnancy');
 const Delivery  = require('../models/Delivery');
 const Newborn   = require('../models/Newborn');
+const Child     = require('../models/Child');
 const Patient   = require('../models/Patient');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction } = require('../utils/helpers');
@@ -238,5 +239,42 @@ exports.updateNewborn = async (req, res) => {
     if (!nb) return res.status(404).json({ message: 'Nouveau-né introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: nb._id, ip: req.ip, message: `Dossier nouveau-né ${nb.numero} modifié` });
     res.json({ success: true, nouveau_ne: nb });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// R-10d — création du dossier pédiatrique (Child) à partir d'un nouveau-né,
+// sur action explicite du personnel plutôt qu'automatiquement à la création
+// du Newborn (voir commentaire sur Newborn.child_id).
+const ETAT_TO_STATUT = { bon: 'normal', surveillance: 'surveillance', critique: 'a_risque' };
+
+exports.createChildDossier = async (req, res) => {
+  try {
+    const nb = await Newborn.findById(req.params.id);
+    if (!nb) return res.status(404).json({ message: 'Nouveau-né introuvable' });
+    if (nb.child_id) {
+      return res.status(400).json({ message: 'Un dossier pédiatrique existe déjà pour ce nouveau-né.', child_id: nb.child_id });
+    }
+
+    const child = await Child.create({
+      nom: nb.nom || nb.mere_nom || 'Nouveau-né',
+      prenom: nb.prenom,
+      date_naissance: nb.date_naissance,
+      sexe: nb.sexe,
+      parent_nom: nb.mere_nom,
+      parent_relation: 'mère',
+      statut: ETAT_TO_STATUT[nb.etat] || 'normal',
+      poids_actuel: nb.poids ? nb.poids / 1000 : undefined, // Newborn.poids en grammes, Child en kg
+      taille_actuelle: nb.taille,
+      vaccinations: nb.vaccinations,
+      notes: nb.observations,
+      created_by: req.user._id,
+    });
+
+    nb.child_id = child._id;
+    await nb.save();
+
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Dossier pédiatrique ${child.numero} créé depuis le nouveau-né ${nb.numero}` });
+    emitDashboardUpdate();
+    res.status(201).json({ success: true, enfant: child });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

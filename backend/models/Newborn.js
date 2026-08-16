@@ -29,6 +29,11 @@ const NewbornSchema = new mongoose.Schema({
   }],
   observations:    String,
   created_by:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  // R-10d — pas de création automatique d'un dossier Child : ce champ trace
+  // le dossier créé quand le personnel choisit explicitement de le faire
+  // (POST /maternite/nouveau-nes/:id/dossier-enfant), et empêche d'en créer
+  // un second par erreur pour le même nouveau-né.
+  child_id:        { type: mongoose.Schema.Types.ObjectId, ref: 'Child', default: null },
 }, { timestamps: true });
 
 NewbornSchema.pre('save', async function (next) {

@@ -24,5 +24,6 @@ router.post('/accouchements',        protect, authorize(...CAN), c.createDeliver
 router.get('/nouveau-nes',           protect, authorize(...CAN), c.getNewborns);
 router.post('/nouveau-nes',          protect, authorize(...CAN), c.createNewborn);
 router.put('/nouveau-nes/:id',       protect, authorize(...CAN), c.updateNewborn);
+router.post('/nouveau-nes/:id/dossier-enfant', protect, authorize(...CAN), c.createChildDossier);
 
 module.exports = router;
