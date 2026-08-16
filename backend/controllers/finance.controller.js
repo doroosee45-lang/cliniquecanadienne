@@ -34,7 +34,7 @@ exports.getAll = async (req, res, next) => {
       page, limit
     );
     const invoices = raw.map(i => normalizeInvoice(i.toObject ? i.toObject() : i));
-    res.json({ success: true, total, invoices, factures: invoices });
+    res.json({ success: true, total, invoices });
   } catch (err) { next(err); }
 };
 

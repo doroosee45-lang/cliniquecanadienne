@@ -88,7 +88,7 @@ exports.getAll = async (req, res, next) => {
     if (utilisateur) events = events.filter(e => e.utilisateur.toLowerCase().includes(utilisateur.toLowerCase()));
     if (risque) events = events.filter(e => e.risque === risque);
 
-    res.json({ success: true, total, events, data: events });
+    res.json({ success: true, total, events });
   } catch (err) { next(err); }
 };
 

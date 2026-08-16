@@ -77,7 +77,7 @@ export default function PatientDetail() {
       hospi:    () => api.get(`/hospitalization?patient=${id}&limit=15`),
       ordos:    () => api.get(`/prescriptions?patient=${id}&limit=15`),
       labo:     () => api.get(`/laboratory?patient=${id}&limit=15`),
-      imagerie: () => api.get(`/imagerie?patient=${id}&limit=15`),
+      imagerie: () => api.get(`/radiology?patient=${id}&limit=15`),
       urgences: () => api.get(`/urgences?patient=${id}&limit=15`),
       chirurgie:() => api.get(`/chirurgie?patient_id=${id}&limit=15`),
       factures: () => api.get(`/finance?patient=${id}&limit=15`),
