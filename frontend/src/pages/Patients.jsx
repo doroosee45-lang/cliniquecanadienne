@@ -1546,7 +1546,7 @@ export default function Patient() {
               Identité du patient
             </div>
             <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
-              {[["Nom *","nom","text","Ex: Dupont"],["Prénom *","prenom","text","Ex: Jean"],["Date de naissance *","date_naissance","date",""],["Téléphone","telephone","tel","+242 06 xxx"],["E-mail (activation compte)","email","email","patient@email.com"],["Nationalité","nationalite","text","Ex: Congolaise"]].map(([lbl,key,type,ph]) => (
+              {[["Nom *","nom","text","Nom de famille"],["Prénom *","prenom","text","Prénom"],["Date de naissance *","date_naissance","date",""],["Téléphone","telephone","tel","+242 06 xxx"],["E-mail (activation compte)","email","email","patient@email.com"],["Nationalité","nationalite","text","Nationalité"]].map(([lbl,key,type,ph]) => (
                 <div key={key}>
                   <label className="plbl">{lbl}</label>
                   <input type={type} className="pinp" placeholder={ph} value={formPatient[key]||""} onChange={e => setFormPatient(f => ({...f,[key]:e.target.value}))} />
@@ -1687,7 +1687,7 @@ export default function Patient() {
             <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:10, background:"#FFF7ED", border:"1.5px solid #FED7AA", borderRadius:12, padding:"14px" }}>
               <div>
                 <label className="plbl">Nom complet</label>
-                <input className="pinp" placeholder="Ex: Claire Dupont" value={formPatient.contact_urgence.nom} onChange={e => setFormPatient(f => ({...f,contact_urgence:{...f.contact_urgence,nom:e.target.value}}))} />
+                <input className="pinp" placeholder="Nom complet du contact" value={formPatient.contact_urgence.nom} onChange={e => setFormPatient(f => ({...f,contact_urgence:{...f.contact_urgence,nom:e.target.value}}))} />
               </div>
               <div>
                 <label className="plbl">Lien de parenté</label>
