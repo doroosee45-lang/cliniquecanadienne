@@ -18,8 +18,7 @@ router.use('/hr',               require('./hr.routes'));
 router.use('/messages',         require('./messages.routes'));
 router.use('/notifications',    require('./notifications.routes'));
 router.use('/audit',            require('./audit.routes'));
-router.use('/archive',          require('./archive.routes'));
-router.use('/archives',         require('./archive.routes'));  // alias pluriel (frontend)
+router.use('/archives',         require('./archive.routes'));
 router.use('/analytics',        require('./analytics.routes'));
 router.use('/prescriptions',    require('./prescriptions.routes'));
 router.use('/settings',         require('./settings.routes'));
