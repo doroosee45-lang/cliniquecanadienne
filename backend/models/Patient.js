@@ -67,6 +67,30 @@ PatientSchema.pre('save', async function (next) {
   next();
 });
 
+// Ticket 0008 — trois comptes User réels sont restés orphelins après la
+// suppression de leur dossier Patient lié (patient.email ne correspondant
+// plus exactement à celui du User au moment de la suppression, donc le
+// nettoyage du compte lié dans patients.controller.js::remove() a
+// silencieusement matché zéro document). Contrainte structurelle plutôt
+// qu'une simple vérification dans ce seul contrôleur : ce hook s'applique à
+// tout appel de Patient.findByIdAndDelete (findOneAndDelete en interne),
+// quel que soit l'appelant, pas seulement remove(). Ne couvre pas
+// deleteMany volontairement — utils/seed.js s'en sert pour réinitialiser
+// toute la base et doit rester libre de le faire.
+PatientSchema.pre('findOneAndDelete', async function (next) {
+  const target = await this.model.findOne(this.getFilter()).select('_id');
+  if (!target) return next();
+
+  const User = require('./User');
+  const linkedActiveUser = await User.findOne({ patient_id: target._id, role: 'patient', statut: 'actif' }).select('email');
+  if (linkedActiveUser) {
+    const err = new Error(`Impossible de supprimer ce dossier : le compte portail actif ${linkedActiveUser.email} le référence encore par patient_id.`);
+    err.statusCode = 409;
+    return next(err);
+  }
+  next();
+});
+
 PatientSchema.index({ nom: 'text', prenom: 'text', numero_dossier: 'text', telephone: 'text' });
 
 module.exports = mongoose.model('Patient', PatientSchema);

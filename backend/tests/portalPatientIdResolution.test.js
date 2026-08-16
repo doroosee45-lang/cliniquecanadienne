@@ -28,11 +28,14 @@ test('résolution patient_id/email dans portal.controller.js (base réelle)', { 
   try {
     await t.test('patient_id prioritaire — résout même si l\'email ne matcherait aucun dossier', async () => {
       const patient = await Patient.create({ nom: `T07A${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M', email: `_t07-real-${stamp}@_test.local` });
-      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
       // Email du compte volontairement différent de celui du dossier —
       // seule la résolution par patient_id peut réussir ici.
       const user = await User.create({ email: `_t07-userA-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'T07A', prenom: 'U', role: 'patient', statut: 'actif', patient_id: patient._id });
+      // Ordre important depuis la contrainte structurelle du ticket 0008 :
+      // le User actif référence patient._id, donc il doit être supprimé
+      // avant le Patient (cleanup s'exécute dans l'ordre de push).
       cleanup.push(() => User.findByIdAndDelete(user._id));
+      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
       const { status, body } = await call(user);
       assert.equal(status, 200);
@@ -62,7 +65,14 @@ test('résolution patient_id/email dans portal.controller.js (base réelle)', { 
       // n'est pas que le repli "sauve" la requête (il ne le peut pas dans
       // ce cas précis) mais que l'anomalie soit bien journalisée avant
       // l'échec final, pour distinguer ce cas d'un compte jamais lié.
-      await Patient.findByIdAndDelete(patient._id);
+      // Passe par le driver Mongo brut plutôt que Patient.findByIdAndDelete :
+      // la contrainte structurelle ajoutée pour le ticket 0008 bloque
+      // désormais ce chemin normal tant qu'un User actif référence le
+      // patient — ce test simule justement un état déjà cassé (donnée
+      // historique antérieure à la contrainte, ou intervention DB directe
+      // hors application), pas un nouveau cas que l'app laisserait se
+      // produire elle-même.
+      await mongoose.connection.collection('patients').deleteOne({ _id: patient._id });
 
       const before = await AuditLog.countDocuments({ action: 'DATA_ANOMALY', utilisateur: user._id });
       const { status } = await call(user);
