@@ -15,6 +15,10 @@ const AppointmentSchema = new Schema({
     default: 'planifie',
   },
   notes: String,
+  // Suite du balayage T5.2 — Appointments.jsx envoie ce champ (affiché dans
+  // la liste des RDV et le détail) depuis toujours, mais il n'était jamais
+  // déclaré ici : silencieusement supprimé par Mongoose à chaque création.
+  salle: String,
   rappels_envoyes: { type: Number, default: 0 },
   created_by: { type: Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

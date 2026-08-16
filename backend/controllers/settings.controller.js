@@ -37,7 +37,14 @@ exports.getUsers = async (req, res, next) => {
 
 exports.createUser = async (req, res, next) => {
   try {
-    const user = await User.create(req.body);
+    // Suite du balayage T5.2 — Administration.jsx envoie le mot de passe
+    // saisi sous `mot_de_passe`, le schéma déclare `password` : User.create
+    // (req.body) ignorait silencieusement ce champ, créant un compte sans
+    // aucun mot de passe utilisable (le champ est requis à la création côté
+    // formulaire, mais jamais réellement enregistré).
+    const { mot_de_passe, ...body } = req.body;
+    if (mot_de_passe) body.password = mot_de_passe;
+    const user = await User.create(body);
     await logAction({ utilisateur: req.user._id, action: 'CREATE_USER', module: 'admin', ip: req.ip, message: `Nouvel utilisateur: ${user.email}` });
     res.status(201).json({ success: true, user });
   } catch (err) { next(err); }
@@ -45,7 +52,10 @@ exports.createUser = async (req, res, next) => {
 
 exports.updateUser = async (req, res, next) => {
   try {
-    const { password, ...data } = req.body;
+    // Même correctif que createUser — le formulaire d'édition réutilise le
+    // même champ `mot_de_passe` (vide = ne pas changer, non vide = réinitialiser).
+    const { mot_de_passe, password: _ignored, ...data } = req.body;
+    const password = mot_de_passe || undefined;
     const avant = await User.findById(req.params.id).select('role statut email').lean();
     if (!avant) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
     const user = await User.findByIdAndUpdate(req.params.id, data, { new: true });

@@ -44,7 +44,14 @@ InvoiceSchema.pre('save', async function(next) {
     const year = new Date().getFullYear();
     const seq = await nextSequence(`invoice-${year}`);
     this.numero_facture = `INV-${year}-${String(seq).padStart(5, '0')}`;
-    this.date_echeance = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    // Suite du balayage T5.2 — cette ligne écrasait inconditionnellement
+    // date_echeance par "+30 jours" pour toute nouvelle facture, y compris
+    // quand finance.controller.js::create l'avait déjà correctement posé
+    // depuis le `echeance` envoyé par le formulaire (mapping en place,
+    // vérifié) : l'échéance choisie par le personnel était donc toujours
+    // silencieusement remplacée par le défaut à 30 jours. +30 jours reste le
+    // défaut légitime quand rien n'est fourni, mais seulement dans ce cas.
+    if (!this.date_echeance) this.date_echeance = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   }
   this.montant_paye = this.paiements.reduce((sum, p) => sum + p.montant, 0);
   this.montant_restant = this.montant_ttc - this.montant_paye;
