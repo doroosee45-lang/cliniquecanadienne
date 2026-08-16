@@ -341,6 +341,20 @@ exports.update = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Ticket 0010 — la cascade vers le compte User lié résolvait par email, une
+// correspondance qui peut se désynchroniser silencieusement entre les deux
+// documents (aucune contrainte les liant). Même principe que
+// portal.controller.js::findPatient depuis R-07 : patient_id (référence
+// ObjectId stable) en priorité, repli sur l'email seulement s'il n'y a pas
+// de User dont le patient_id pointe vers ce dossier. Retourne un filtre
+// Mongo (pas le document) pour rester utilisable aussi bien par
+// findOneAndUpdate que par deleteOne aux deux points d'appel ci-dessous.
+const resolveLinkedUserFilter = async (patient) => {
+  const byPatientId = { patient_id: patient._id, role: 'patient' };
+  if (await User.exists(byPatientId)) return byPatientId;
+  return patient.email ? { email: patient.email, role: 'patient' } : null;
+};
+
 // ── DELETE ───────────────────────────────────────────────────────────────────
 exports.remove = async (req, res, next) => {
   try {
@@ -370,8 +384,9 @@ exports.remove = async (req, res, next) => {
       patient.statut = 'inactif';
       await patient.save();
       // Le compte portail associé ne doit plus pouvoir se connecter.
-      if (patient.email) {
-        await User.findOneAndUpdate({ email: patient.email, role: 'patient' }, { statut: 'inactif' });
+      const deactivateFilter = await resolveLinkedUserFilter(patient);
+      if (deactivateFilter) {
+        await User.findOneAndUpdate(deactivateFilter, { statut: 'inactif' });
       }
       await logAction({ utilisateur: req.user._id, action: 'DEACTIVATE', module: 'patients', entite_id: patient._id, ip: req.ip, message: `Désactivation (historique existant) : ${patient.nom} ${patient.prenom}` });
       return res.json({
@@ -383,9 +398,16 @@ exports.remove = async (req, res, next) => {
 
     // Aucun historique : suppression réelle possible. On nettoie aussi le
     // compte User "patient" lié pour ne pas laisser un compte orphelin.
+    // Filtre résolu AVANT la suppression du Patient : la contrainte
+    // structurelle du ticket 0008 (Patient.pre('findOneAndDelete')) refuse
+    // déjà la suppression tant qu'un User actif référence patient_id, donc
+    // arriver jusqu'ici avec un User actif signifie soit qu'il est inactif,
+    // soit que patient_id n'était pas peuplé — dans les deux cas le repli
+    // email reste la seule option, d'où la résolution avant l'appel.
+    const deleteFilter = await resolveLinkedUserFilter(patient);
     await Patient.findByIdAndDelete(patient._id);
-    if (patient.email) {
-      await User.deleteOne({ email: patient.email, role: 'patient' });
+    if (deleteFilter) {
+      await User.deleteOne(deleteFilter);
     }
     await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'patients', entite_id: req.params.id, ip: req.ip, message: `Suppression : ${patient.nom} ${patient.prenom}` });
     res.json({ success: true, message: 'Patient supprimé.' });
