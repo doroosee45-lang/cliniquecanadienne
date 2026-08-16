@@ -811,7 +811,11 @@ export default function Consultation() {
   useRealtimeRefresh(refreshConsultations);
 
   // KPIs calculés à partir des consultations chargées
-  const today = useMemo(() => new Date(), [Math.floor(Date.now() / 60000)]);
+  // currentMinute n'est pas lu dans le corps du useMemo : il sert uniquement
+  // de déclencheur de recalcul (cache-key), pattern que la règle ne modélise pas.
+  const currentMinute = Math.floor(Date.now() / 60000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const today = useMemo(() => new Date(), [currentMinute]);
   const semaineFin = useMemo(() => {
     const d = new Date(today); d.setDate(today.getDate() + 6); d.setHours(23,59,59,999); return d;
   }, [today]);

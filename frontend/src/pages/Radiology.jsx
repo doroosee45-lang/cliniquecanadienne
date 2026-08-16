@@ -406,7 +406,7 @@ export default function Imagerie() {
   const loadStats = useCallback(async () => {
     try {
       const { data } = await api.get("/radiology/stats");
-      setKpis(data.kpis || kpis);
+      setKpis(prev => data.kpis || prev);
       if (data.chart) setChartData(data.chart);
     } catch {
       const d = DEMO_EXAMENS;

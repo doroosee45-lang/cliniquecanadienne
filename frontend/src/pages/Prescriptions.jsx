@@ -424,7 +424,7 @@ export default function Ordonnances() {
       setOrds([]);
       setTotal(0);
     } finally { setLoading(false); }
-  }, [page, search, filterSt, filterChr]);
+  }, [page, search, filterSt]);
 
   const loadStats = useCallback(async () => {
     try {

@@ -227,6 +227,42 @@ const CONGE_CFG = {
   exceptionnel: { label:"Congé exceptionnel",icon:"⭐", color:"#D97706" },
 };
 
+const CANDIDAT_CFG = {
+  recu:       { cls:"blue",   label:"Reçu" },
+  en_analyse: { cls:"orange", label:"En analyse" },
+  entretien:  { cls:"purple", label:"Entretien" },
+  selectionne:{ cls:"green",  label:"Sélectionné" },
+  refuse:     { cls:"red",    label:"Refusé" },
+};
+
+const CONGE_STATUT = {
+  en_attente: { cls:"orange", label:"En attente" },
+  approuve:   { cls:"green",  label:"Approuvé" },
+  refuse:     { cls:"red",    label:"Refusé" },
+};
+
+// ─── Export helpers — hors composant : ni CLINIC_FULL (constantes
+// importées) ni pdfHeader/todaySlug (aucune référence à props/state) n'ont
+// besoin d'être recréés à chaque rendu ni listés en dépendance des
+// useCallback qui les utilisent.
+const CLINIC_FULL = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+const todaySlug = () => new Date().toISOString().split('T')[0];
+
+const pdfHeader = (doc, title) => {
+  const W = doc.internal.pageSize.getWidth();
+  doc.setFillColor(11, 30, 59);
+  doc.rect(0, 0, W, 28, 'F');
+  doc.setFillColor(14, 165, 160);
+  doc.rect(0, 28, W, 3, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+  doc.text(title, 14, 12);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.text(CLINIC_FULL, 14, 20);
+  doc.text(`Exporté le ${new Date().toLocaleDateString('fr-FR')}`, W - 14, 20, { align: 'right' });
+  doc.setTextColor(0, 0, 0);
+};
+
 // ─── SVG Icons ────────────────────────────────────────────────
 const I = {
   users:   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
@@ -384,12 +420,6 @@ export default function RessourcesHumaines() {
   useEffect(() => {
     dispatch(fetchStaff({}));
   }, [dispatch]);
-  const refreshHR = useCallback(() => {
-    dispatch(fetchStaff({}));
-    loadConges();
-    loadSchedules();
-  }, [dispatch]);
-  useRealtimeRefresh(refreshHR);
 
   // Fermer le menu export en cliquant dehors
   useEffect(() => {
@@ -485,6 +515,16 @@ export default function RessourcesHumaines() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => { loadSchedules(); }, [loadSchedules]);
+
+  // refreshHR défini après loadConges/loadSchedules (dépendance directe des
+  // deux) plutôt qu'avant avec un dep array incomplet — la position d'origine
+  // aurait causé une ReferenceError en TDZ si les deux avaient été ajoutées.
+  const refreshHR = useCallback(() => {
+    dispatch(fetchStaff({}));
+    loadConges();
+    loadSchedules();
+  }, [dispatch, loadConges, loadSchedules]);
+  useRealtimeRefresh(refreshHR);
 
   // KPIs
   const total      = employes.length;
@@ -636,40 +676,6 @@ export default function RessourcesHumaines() {
     licenciement: { cls:"red",    label:"Licenciement",  icon:"🚫" },
   };
 
-  const CANDIDAT_CFG = {
-    recu:       { cls:"blue",   label:"Reçu" },
-    en_analyse: { cls:"orange", label:"En analyse" },
-    entretien:  { cls:"purple", label:"Entretien" },
-    selectionne:{ cls:"green",  label:"Sélectionné" },
-    refuse:     { cls:"red",    label:"Refusé" },
-  };
-
-  const CONGE_STATUT = {
-    en_attente: { cls:"orange", label:"En attente" },
-    approuve:   { cls:"green",  label:"Approuvé" },
-    refuse:     { cls:"red",    label:"Refusé" },
-  };
-
-  // ─── Export helpers ──────────────────────────────────────────
-  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
-  const todayStr = new Date().toLocaleDateString('fr-FR');
-  const dateSlug = new Date().toISOString().split('T')[0];
-
-  const pdfHeader = (doc, title) => {
-    const W = doc.internal.pageSize.getWidth();
-    doc.setFillColor(11, 30, 59);
-    doc.rect(0, 0, W, 28, 'F');
-    doc.setFillColor(14, 165, 160);
-    doc.rect(0, 28, W, 3, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(15); doc.setFont('helvetica', 'bold');
-    doc.text(title, 14, 12);
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-    doc.text(clinicFull, 14, 20);
-    doc.text(`Exporté le ${todayStr}`, W - 14, 20, { align: 'right' });
-    doc.setTextColor(0, 0, 0);
-  };
-
   // ── 1. Export liste des employés ──────────────────────────────
   const exportEmployesPDF = useCallback(() => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
@@ -703,8 +709,8 @@ export default function RessourcesHumaines() {
     const finalY = doc.lastAutoTable.finalY + 8;
     doc.setFontSize(9); doc.setTextColor(107, 114, 128);
     doc.text(`Total : ${employes.length} employé(s) · Masse salariale brute : ${masseSalariale.toLocaleString('fr-FR')} FCFA`, 14, finalY);
-    doc.save(`personnel-${dateSlug}.pdf`);
-  }, [employes]);
+    doc.save(`personnel-${todaySlug()}.pdf`);
+  }, [employes, masseSalariale]);
 
   const exportEmployesExcel = useCallback(() => {
     const ws = XLSX.utils.aoa_to_sheet([
@@ -735,8 +741,8 @@ export default function RessourcesHumaines() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Personnel');
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Résumé');
-    XLSX.writeFile(wb, `personnel-${dateSlug}.xlsx`);
-  }, [employes]);
+    XLSX.writeFile(wb, `personnel-${todaySlug()}.xlsx`);
+  }, [employes, actifs, enConge, medecins, infirmiers, masseSalariale]);
 
   const exportEmployesCSV = useCallback(() => {
     const rows = [
@@ -753,7 +759,7 @@ export default function RessourcesHumaines() {
     ];
     const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `personnel-${dateSlug}.csv`; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `personnel-${todaySlug()}.csv`; a.click();
     URL.revokeObjectURL(url);
   }, [employes]);
 
@@ -776,7 +782,7 @@ export default function RessourcesHumaines() {
       headStyles: { fillColor: [14, 165, 160], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [248, 250, 255] },
     });
-    doc.save(`conges-${dateSlug}.pdf`);
+    doc.save(`conges-${todaySlug()}.pdf`);
   }, [conges]);
 
   // ── 3. Export salarial PDF ────────────────────────────────────
@@ -819,7 +825,7 @@ export default function RessourcesHumaines() {
       ]],
       footStyles: { fillColor: [11, 30, 59], textColor: 255, fontStyle: 'bold' },
     });
-    doc.save(`salaires-${dateSlug}.pdf`);
+    doc.save(`salaires-${todaySlug()}.pdf`);
   }, [employes, masseSalariale]);
 
   const exportSalairesExcel = useCallback(() => {
@@ -836,7 +842,7 @@ export default function RessourcesHumaines() {
     ws['!cols'] = [10,20,16,14,12,12,14,14,14].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Salaires');
-    XLSX.writeFile(wb, `salaires-${dateSlug}.xlsx`);
+    XLSX.writeFile(wb, `salaires-${todaySlug()}.xlsx`);
   }, [employes]);
 
   // ── 4. Bulletin de paie individuel ───────────────────────────
@@ -858,7 +864,7 @@ export default function RessourcesHumaines() {
     doc.setFontSize(16); doc.setFont('helvetica', 'bold');
     doc.text('BULLETIN DE PAIE', W / 2, 13, { align: 'center' });
     doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-    doc.text(clinicFull, W / 2, 21, { align: 'center' });
+    doc.text(CLINIC_FULL, W / 2, 21, { align: 'center' });
     doc.text(`${new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`, W / 2, 27, { align: 'center' });
     doc.setTextColor(0, 0, 0);
     // Info blocs
@@ -872,9 +878,9 @@ export default function RessourcesHumaines() {
     doc.text(`Poste : ${POSTE_COLORS[e.poste]?.label || e.poste}`, 14, 60);
     doc.text(`Matricule : ${e.matricule || '—'}`, 14, 66);
     doc.text(`Embauche : ${fmtDate(e.date_embauche)}`, 14, 72);
-    doc.text(clinicFull, 109, 54);
+    doc.text(CLINIC_FULL, 109, 54);
     doc.text('Souanké, Congo', 109, 60);
-    doc.text(`Date émission : ${todayStr}`, 109, 66);
+    doc.text(`Date émission : ${new Date().toLocaleDateString('fr-FR')}`, 109, 66);
     // Table
     autoTable(doc, {
       startY: 82,
@@ -899,8 +905,8 @@ export default function RessourcesHumaines() {
     doc.text(`${net.toLocaleString('fr-FR')} FCFA`, W - 14, y + 8, { align: 'right' });
     doc.setFontSize(8); doc.setTextColor(107, 114, 128); doc.setFont('helvetica', 'italic');
     doc.text('Ce bulletin est un document confidentiel.', W / 2, y + 22, { align: 'center' });
-    doc.save(`bulletin-${e.matricule || e.nom}-${dateSlug}.pdf`);
-  }, [employes]);
+    doc.save(`bulletin-${e.matricule || e.nom}-${todaySlug()}.pdf`);
+  }, []);
 
   // ── 5. Export évaluations PDF ─────────────────────────────────
   const exportEvaluationsPDF = useCallback(() => {
@@ -918,7 +924,7 @@ export default function RessourcesHumaines() {
       headStyles: { fillColor: [124, 58, 237], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [248, 250, 255] },
     });
-    doc.save(`evaluations-${dateSlug}.pdf`);
+    doc.save(`evaluations-${todaySlug()}.pdf`);
   }, [evaluations]);
 
   // ── 6. Export candidatures PDF ───────────────────────────────
@@ -937,7 +943,7 @@ export default function RessourcesHumaines() {
       headStyles: { fillColor: [27, 79, 158], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [248, 250, 255] },
     });
-    doc.save(`recrutement-${dateSlug}.pdf`);
+    doc.save(`recrutement-${todaySlug()}.pdf`);
   }, [candidatures]);
 
   // ── 7. Rapport complet RH PDF ─────────────────────────────────
@@ -987,8 +993,8 @@ export default function RessourcesHumaines() {
         alternateRowStyles: { fillColor: [248, 250, 255] },
       });
     }
-    doc.save(`rh-${type}-${dateSlug}.pdf`);
-  }, [employes, conges, evaluations, candidatures, formations, sanctions, actifs, enConge, medecins, infirmiers, masseSalariale, congesAttente]);
+    doc.save(`rh-${type}-${todaySlug()}.pdf`);
+  }, [employes, candidatures, formations, sanctions, actifs, enConge, medecins, infirmiers, masseSalariale, congesAttente, exportCongesPDF, exportSalairesPDF, exportEvaluationsPDF, exportCandidaturesPDF]);
 
   // ── 8. Export rapport complet Excel ──────────────────────────
   const exportRapportRH_Excel = useCallback(() => {
@@ -1026,7 +1032,7 @@ export default function RessourcesHumaines() {
     XLSX.utils.book_append_sheet(wb, wsSalaires, 'Salaires');
     XLSX.utils.book_append_sheet(wb, wsConges, 'Congés');
     XLSX.utils.book_append_sheet(wb, wsResume, 'Résumé');
-    XLSX.writeFile(wb, `rapport-rh-${dateSlug}.xlsx`);
+    XLSX.writeFile(wb, `rapport-rh-${todaySlug()}.xlsx`);
   }, [employes, conges, candidatures, formations, sanctions, actifs, enConge, medecins, infirmiers, masseSalariale]);
 
   // ═══════════════════════════════════════════════════════════

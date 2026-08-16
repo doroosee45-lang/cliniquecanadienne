@@ -512,12 +512,16 @@ export default function Maternite() {
     return () => window.removeEventListener("resize", fn);
   }, []);
 
-  // Chargement initial des données
+  // Chargement initial des données — filters.q/statut ne sont lus qu'une
+  // fois comme valeur de départ (mount-only) : le re-filtrage à l'usage
+  // passe par handleRefresh avec l'état local (searchQ/filterRisque), pas
+  // par ce Redux filters, jamais réémis par setFilters dans ce composant.
   useEffect(() => {
     dispatch(fetchMaterniteStats());
     dispatch(fetchGrossesses({ q: filters.q, statut: filters.statut }));
     dispatch(fetchAccouchements());
     dispatch(fetchNouveauxNes());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
 
   const handleRefresh = () => {

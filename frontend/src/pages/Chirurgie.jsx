@@ -395,7 +395,7 @@ export default function Chirurgie() {
   const loadStats = useCallback(async () => {
     try {
       const { data } = await api.get("/chirurgie/stats");
-      setKpis(data.kpis || kpis);
+      setKpis(prev => data.kpis || prev);
       if (data.chart) { setChartMois(data.chart.labels); setChartInterv(data.chart.data); }
       setTauxCompl(data.taux_compl || 0);
     } catch {
