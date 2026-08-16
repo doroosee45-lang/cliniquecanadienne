@@ -5,10 +5,18 @@
 // jeton Google réel n'est disponible en environnement de test automatisé),
 // puis exécute le vrai contrôleur portal.controller.js::getMe derrière —
 // c'est exactement le critère de vérification demandé.
+//
+// T3.1 et T3.2 ont été développées en parallèle sur la même base, sans se
+// voir : depuis leur fusion, googleLogin vérifie d'abord le jeton via
+// OAuth2Client.getTokenInfo() (T3.2) avant d'atteindre le code que ce test
+// cible. getTokenInfo() appelle Google via son propre client HTTP (gaxios),
+// pas global.fetch — le mock ci-dessous ne l'intercepte pas, d'où le besoin
+// de le stubber séparément pour retrouver le comportement testé à l'origine.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
+const { OAuth2Client } = require('google-auth-library');
 
 test('inscription Google (e-mail inconnu) → portail accessible immédiatement (T3.1)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -19,6 +27,14 @@ test('inscription Google (e-mail inconnu) → portail accessible immédiatement 
 
   const email = `_t31-google-${Date.now()}@_test.local`;
   const originalFetch = global.fetch;
+  const originalGetTokenInfo = OAuth2Client.prototype.getTokenInfo;
+
+  // Stub de la vérification d'audience (T3.2) — hors périmètre de ce test,
+  // qui porte sur la création du dossier Patient une fois le jeton accepté.
+  OAuth2Client.prototype.getTokenInfo = async function (accessToken) {
+    assert.equal(accessToken, 'fake-token');
+    return { aud: process.env.GOOGLE_CLIENT_ID };
+  };
 
   // Mock minimal de l'API userinfo Google — la vérification officielle du
   // jeton (T3.2) est une tâche séparée, ce test se concentre sur la
@@ -60,6 +76,7 @@ test('inscription Google (e-mail inconnu) → portail accessible immédiatement 
     assert.ok(portalBody.patient, 'la réponse doit contenir le dossier patient');
   } finally {
     global.fetch = originalFetch;
+    OAuth2Client.prototype.getTokenInfo = originalGetTokenInfo;
     if (createdUserId) await User.findByIdAndDelete(createdUserId);
     if (createdPatientId) await Patient.findByIdAndDelete(createdPatientId);
   }
