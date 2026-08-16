@@ -12,7 +12,8 @@ const CAN_READ = ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_f
                    'receptionniste', 'laborantin', 'radiologue', 'pharmacien', 'comptable'];
 
 // ── Public : activation compte patient via lien email ──────────────────────
-router.get('/activate/:token', patC.activate);
+router.get('/activate/:token',  patC.activate);
+router.post('/activate/:token', patC.setPasswordAndActivate);
 
 // ── Protégées ──────────────────────────────────────────────────────────────
 router.get('/search',  protect, authorize(...CAN_READ),      patC.search);
