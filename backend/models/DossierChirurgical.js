@@ -15,6 +15,10 @@ const dossierChirurgicalSchema = new mongoose.Schema({
 
   chirurgien_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   chirurgien_nom: String,
+  assistant: String,
+  anesthesiste: String,
+  infirmier_instru: String,
+  infirmier_circu: String,
 
   statut: { type: String, enum: ['consultation', 'preoperatoire', 'opere', 'suivi_postop', 'cloture'], default: 'consultation' },
   niveau_urgence: { type: String, enum: ['electif', 'urgent', 'urgence_absolue'], default: 'electif' },
@@ -32,6 +36,9 @@ const dossierChirurgicalSchema = new mongoose.Schema({
   duree_intervention_min: Number,
   cr_operatoire: String,
   evolution_immediate: String,
+  materiel_implante: String,
+  saignement_ml: Number,
+  transfusion_ml: Number,
 
   date_sortie: Date,
   etat_sortie: { type: String, enum: ['guerison', 'amelioration', 'stationnaire', 'aggravation', 'deces'] },

@@ -51,12 +51,24 @@ test('donnees_avant/donnees_apres — chirurgie, bloc opératoire, laboratoire, 
       const dossier = await DossierChirurgical.create({ numero: `BLOC-T93-${stamp}`, patient_id: patient._id, patient_nom: 'T93 P', statut: 'opere' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossier._id));
 
-      await call(blocC.saveCR, { params: { id: dossier._id }, body: { diagnostic_postop: 'Appendicite confirmée' }, user });
+      // Payload calqué sur EMPTY_CR (Blocoperatoire.jsx) — saignement_ml,
+      // materiel_implante et transfusion_ml étaient saisis mais jamais
+      // persistés (silencieusement perdus) avant ce correctif.
+      await call(blocC.saveCR, { params: { id: dossier._id }, body: {
+        diagnostic_postop: 'Appendicite confirmée',
+        saignement_ml: 150, materiel_implante: 'Drain de Penrose', transfusion_ml: 0,
+      }, user });
       let log = await AuditLog.findOne({ module: 'blocoperatoire', action: 'UPDATE', entite_id: dossier._id.toString() }).sort('-createdAt');
       assert.equal(log.donnees_avant.diagnostic_final, undefined);
       assert.equal(log.donnees_apres.diagnostic_final, 'Appendicite confirmée');
       assert.equal(log.donnees_avant.statut, 'opere');
       assert.equal(log.donnees_apres.statut, 'suivi_postop', 'saveCR fait aussi transitionner le statut');
+      assert.equal(log.donnees_apres.saignement_ml, 150);
+      assert.equal(log.donnees_apres.materiel_implante, 'Drain de Penrose');
+      const savedDossier = await DossierChirurgical.findById(dossier._id).lean();
+      assert.equal(savedDossier.saignement_ml, 150);
+      assert.equal(savedDossier.materiel_implante, 'Drain de Penrose');
+      assert.equal(savedDossier.transfusion_ml, 0);
 
       await call(blocC.saveReveil, { params: { id: dossier._id }, body: { etat_patient: 'stable', temperature: '37.2' }, user });
       log = await AuditLog.findOne({ module: 'blocoperatoire', action: 'UPDATE', entite_id: dossier._id.toString() }).sort('-createdAt');
