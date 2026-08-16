@@ -35,7 +35,16 @@ test('activation patient avec mot de passe auto-défini (base réelle)', { skip:
       }, res, () => {});
       assert.equal(status, 201);
       assert.equal(body.mot_de_passe_temp, undefined, 'mot_de_passe_temp ne doit plus exister dans la réponse');
-      cleanup.push(() => Patient.findByIdAndDelete(body.patient._id));
+      // Capturer l'id tout de suite plutôt que de fermer sur `body` (variable
+      // partagée et réaffectée par chaque sous-test suivant) : sinon, au
+      // moment où finally exécute ce cleanup, `body` contient la réponse du
+      // DERNIER sous-test exécuté (activateAdmin), qui a aussi un champ
+      // `.patient` — la fermeture supprimait silencieusement le mauvais
+      // patient (double suppression inoffensive côté activateAdmin) et
+      // laissait fuiter celui-ci indéfiniment, provoquant un 409 sur toute
+      // exécution suivante de la suite.
+      const createdPatientId = body.patient._id;
+      cleanup.push(() => Patient.findByIdAndDelete(createdPatientId));
 
       const user = await User.findOne({ email }).select('+password');
       cleanup.push(() => User.findByIdAndDelete(user._id));
