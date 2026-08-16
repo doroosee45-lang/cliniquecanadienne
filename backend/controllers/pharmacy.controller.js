@@ -22,7 +22,7 @@ exports.getAll = async (req, res, next) => {
     }
     const total = await Medication.countDocuments(filter);
     const medications = await paginate(Medication.find(filter).sort('nom_commercial'), page, limit);
-    res.json({ success: true, total, medications, medicaments: medications });
+    res.json({ success: true, total, medications });
   } catch (err) { next(err); }
 };
 
