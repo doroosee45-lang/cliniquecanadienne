@@ -1,6 +1,6 @@
 # Ticket 0010 — `patients.controller.js::remove()` retrouve le compte `User` lié par email, pas par `patient_id`
 
-**Statut :** Ouvert — non corrigé
+**Statut :** Résolu et clos — commit `db55b4b` (`fix/ticket-0010-remove-cascade-patient-id`)
 **Origine :** Vérification demandée avant clôture du ticket 0008, sur la mécanique exacte de suppression en cascade
 **Sévérité :** Moyenne — c'est le mécanisme confirmé à l'origine des 3 comptes orphelins du ticket 0008 (pas une hypothèse théorique), et rien n'empêche une récidive sur un futur cas de désynchronisation email
 
@@ -37,15 +37,12 @@ Le hook `pre('findOneAndDelete')` ajouté sur `Patient` (ticket 0008) bloque la 
 
 Autrement dit : la contrainte structurelle réduit le risque mais ne le ferme pas. Ce ticket porte sur la correction de la cascade elle-même, pas sur un doublon de 0008.
 
-## Correctif proposé (non implémenté — ticket ouvert, décision différée)
+## Correctif livré
 
-Faire résoudre les deux branches par `patient_id` en priorité, avec repli sur l'email uniquement si `patient_id` n'est pas peuplé (même philosophie que la migration R-07 de `portal.controller.js`, pas une réinvention) :
+`patients.controller.js` gagne `resolveLinkedUserFilter(patient)` : tente `{ patient_id: patient._id, role: 'patient' }` (via `User.exists`) en priorité, replie sur `{ email: patient.email, role: 'patient' }` uniquement si aucun `User` n'a ce `patient_id` peuplé — même principe que `portal.controller.js::findPatient` depuis R-07. Appliqué aux deux branches de `remove()` (désactivation via `findOneAndUpdate`, suppression via `deleteOne`).
 
-```js
-const linkedUser = await User.findOne({ patient_id: patient._id, role: 'patient' })
-  || await User.findOne({ email: patient.email, role: 'patient' });
-```
+Testé dans `backend/tests/removeCascadePatientId.test.js` (3 sous-tests) : reproduit explicitement le scénario exact du ticket 0008 (email divergent entre `Patient` et `User`, `patient_id` peuplé) et confirme que la cascade réussit désormais au lieu d'échouer silencieusement ; confirme aussi que le repli par email fonctionne toujours quand `patient_id` n'est pas peuplé ; couvre la branche désactivation en plus de la branche suppression. Suite complète (125 tests) verte. Branche `fix/ticket-0010-remove-cascade-patient-id`.
 
-Points à trancher avant d'implémenter (pas encore fait, volontairement laissé à une passe dédiée) :
-- Faut-il journaliser une anomalie (`DATA_ANOMALY`, même pattern que le repli de `portal.controller.js`) quand ni `patient_id` ni email ne résolvent, pour éviter de reproduire silencieusement un futur ticket 0008 ?
-- Le même problème existe-t-il ailleurs dans le contrôleur (`activate`, `activateAdmin`, etc.) ou seulement dans `remove()` — pas vérifié dans cette passe, à auditer avant de corriger.
+Points volontairement non traités dans ce correctif (hors du périmètre demandé, à reconsidérer séparément si besoin) :
+- Pas de journalisation d'anomalie (`DATA_ANOMALY`) quand ni `patient_id` ni email ne résolvent — `remove()` continue silencieusement dans ce cas résiduel, comme avant. Pourrait valoir un ticket dédié si jugé utile.
+- Pas d'audit des autres endroits de `patients.controller.js` (`activate`, `activateAdmin`, etc.) pour la même fragilité — ce ticket portait spécifiquement sur `remove()`, seul point confirmé impliqué dans le ticket 0008.
