@@ -72,6 +72,32 @@ exports.createVente = async (req, res, next) => {
     const { client, mode_paiement, items = [] } = req.body;
     const year = new Date().getFullYear();
     const numero = `VNT-${year}-${String(Date.now()).slice(-5)}`;
+
+    // Même garde-fou que dispenser() (T4.3 / R-04b) : vérifier tout le stock
+    // nécessaire avant d'écrire quoi que ce soit, plutôt que de décrémenter
+    // certains articles puis échouer sur les suivants.
+    const medsById = new Map();
+    for (const item of items) {
+      if (!medsById.has(item.medicament_id)) {
+        const med = await Medication.findById(item.medicament_id);
+        if (med) medsById.set(item.medicament_id, med);
+      }
+    }
+    const insuffisants = [];
+    for (const item of items) {
+      const med = medsById.get(item.medicament_id);
+      const quantite = Math.abs(item.quantite || 0);
+      if (med && quantite > 0 && med.stock_actuel < quantite) {
+        insuffisants.push(`${med.nom_commercial} (stock: ${med.stock_actuel}, requis: ${quantite})`);
+      }
+    }
+    if (insuffisants.length) {
+      return res.status(400).json({
+        success: false,
+        message: `Stock insuffisant pour cette vente : ${insuffisants.join(', ')}.`,
+      });
+    }
+
     // Décrémenter le stock pour chaque article vendu
     for (const item of items) {
       await Medication.findByIdAndUpdate(item.medicament_id, {

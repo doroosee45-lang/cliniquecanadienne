@@ -1,6 +1,11 @@
 // T9.5 (Finding B, groupe 3, dernier) — couverture fonctionnelle des
 // fonctions create/add jamais testées : pharmacie (créations restantes),
 // hospitalisation (create, addNote). Même priorité que les groupes 1-2.
+//
+// createVente décrémentait le stock sans aucune vérification de suffisance
+// (contrairement à dispenser(), corrigé pour T4.3/R-04b) — repéré en testant
+// ce groupe, corrigé après coup avec le même garde-fou : vérifier tout le
+// stock nécessaire avant d'écrire quoi que ce soit.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -46,6 +51,17 @@ test('couverture fonctionnelle — pharmacie, hospitalisation (base réelle)', {
       assert.equal(body.vente.total, 1000);
       const freshMed = await Medication.findById(med._id);
       assert.equal(freshMed.stock_actuel, 25, '30 - 5 = 25');
+    });
+
+    await t.test('pharmacy.controller.createVente refuse la vente si le stock est insuffisant, sans rien décrémenter', async () => {
+      const med = await Medication.create({ nom_commercial: `T95G3-VenteInsuf-${stamp}`, stock_actuel: 3, forme: 'comprime' });
+      cleanup.push(() => Medication.findByIdAndDelete(med._id));
+
+      const { status, body } = await call(pharmaC.createVente, { body: { client: 'T95G3 Client', mode_paiement: 'especes', items: [{ medicament_id: med._id, quantite: 10, prix_unitaire: 200 }] }, user });
+      assert.equal(status, 400);
+      assert.match(body.message, /Stock insuffisant/);
+      const freshMed = await Medication.findById(med._id);
+      assert.equal(freshMed.stock_actuel, 3, 'le stock ne doit pas bouger si la vente est refusée');
     });
 
     await t.test('pharmacy.controller.uploadPhoto met à jour le champ photo du médicament', async () => {
