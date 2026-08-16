@@ -660,10 +660,16 @@ export default function Patient() {
       setModalNouv(false);
       resetForm();
       setCredsModal({
-        patient:     result.patient,
-        email:       result.patient?.email || '',
-        password:    result.mot_de_passe_temp || '',
-        emailEnvoye: result.email_envoye,
+        patient:        result.patient,
+        email:          result.patient?.email || '',
+        // R-08b — plus de mot de passe temporaire à transmettre : si
+        // l'email a échoué, le seul recours est de communiquer le lien
+        // d'activation lui-même (le patient choisit son mot de passe en le
+        // suivant), pas un identifiant à copier-coller.
+        lienActivation: (!result.email_envoye && result.patient?.token_activation)
+          ? `${window.location.origin}/activate/${result.patient.token_activation}`
+          : '',
+        emailEnvoye:    result.email_envoye,
       });
     } catch (errData) {
       if (errData?.redirect === 'update') {
@@ -1835,7 +1841,7 @@ export default function Patient() {
               <div style={{ background: credsModal.emailEnvoye ? '#F0FDF4' : '#FFF7ED', border:`1.5px solid ${credsModal.emailEnvoye ? '#BBF7D0' : '#FED7AA'}`, borderRadius:12, padding:'12px 16px', fontSize:13, color: credsModal.emailEnvoye ? '#166534' : '#9A3412', fontWeight:600 }}>
                 {credsModal.emailEnvoye
                   ? `📧 Email d'activation envoyé à ${credsModal.email}`
-                  : '⚠️ Email non envoyé (SMTP non configuré) — utilisez les identifiants ci-dessous'}
+                  : '⚠️ Email non envoyé (SMTP non configuré) — transmettez le lien d\'activation ci-dessous'}
               </div>
 
               {/* Identifiants */}
@@ -1857,30 +1863,24 @@ export default function Patient() {
                     </div>
                   </div>
 
-                  {/* Mot de passe */}
-                  {credsModal.password && (
+                  {/* Lien d'activation — R-08b : plus de mot de passe à transmettre,
+                      le patient choisit le sien en suivant ce lien. Affiché
+                      seulement quand l'email n'a pas pu partir tout seul. */}
+                  {credsModal.lienActivation && (
                     <div>
-                      <div style={{ fontSize:11, color:'#6B7A99', marginBottom:4 }}>Mot de passe temporaire</div>
+                      <div style={{ fontSize:11, color:'#6B7A99', marginBottom:4 }}>Lien d'activation (l'email n'a pas pu être envoyé)</div>
                       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        <code style={{ flex:1, background:'#EFF6FF', padding:'8px 12px', borderRadius:8, fontSize:15, fontWeight:800, color:'#1B4F9E', border:'1px solid #BFDBFE', letterSpacing:2 }}>
-                          {credsModal.password}
+                        <code style={{ flex:1, background:'#EFF6FF', padding:'8px 12px', borderRadius:8, fontSize:12, fontWeight:600, color:'#1B4F9E', border:'1px solid #BFDBFE', wordBreak:'break-all' }}>
+                          {credsModal.lienActivation}
                         </code>
-                        <button onClick={() => { navigator.clipboard.writeText(credsModal.password); toast.success('Mot de passe copié !'); }}
+                        <button onClick={() => { navigator.clipboard.writeText(credsModal.lienActivation); toast.success('Lien copié !'); }}
                           style={{ padding:'8px 12px', background:'#EFF6FF', color:'#1B4F9E', border:'1px solid #BFDBFE', borderRadius:8, cursor:'pointer', fontSize:12, fontWeight:700, whiteSpace:'nowrap' }}>
                           📋 Copier
                         </button>
                       </div>
-                      <div style={{ fontSize:11, color:'#9CA3AF', marginTop:6 }}>⚠️ Le patient devra changer ce mot de passe à la première connexion.</div>
+                      <div style={{ fontSize:11, color:'#9CA3AF', marginTop:6 }}>⚠️ Transmettez ce lien au patient — il choisira lui-même son mot de passe en le suivant. Valable 24h.</div>
                     </div>
                   )}
-
-                  {/* Copier tout */}
-                  <button onClick={() => {
-                    navigator.clipboard.writeText(`Email : ${credsModal.email}\nMot de passe : ${credsModal.password}`);
-                    toast.success('Identifiants copiés !');
-                  }} style={{ padding:'9px 16px', background:'linear-gradient(135deg,#0B1E3B,#1B4F9E)', color:'#fff', border:'none', borderRadius:10, cursor:'pointer', fontWeight:700, fontSize:13 }}>
-                    📋 Copier les deux identifiants
-                  </button>
                 </div>
               )}
 
@@ -1892,7 +1892,9 @@ export default function Patient() {
                     setPatientSaving(true);
                     try {
                       const { data } = await api.put(`/patients/${credsModal.patient._id}/activate-admin`);
-                      toast.success('✅ Compte activé — le patient peut se connecter maintenant');
+                      toast.success(data.lien_renvoye
+                        ? '✅ Dossier activé — un nouveau lien a été envoyé au patient pour définir son mot de passe'
+                        : '✅ Compte activé — le patient peut se connecter maintenant');
                       setCredsModal(c => ({ ...c, patient: data.patient }));
                       dispatch(fetchPatients({ page: 1, limit: 100 }));
                     } catch (e) {
@@ -1902,12 +1904,12 @@ export default function Patient() {
                     }
                   }}
                   style={{ padding:'10px 20px', background:'linear-gradient(135deg,#059669,#10B981)', color:'#fff', border:'none', borderRadius:10, cursor: patientSaving ? 'not-allowed' : 'pointer', fontWeight:700, fontSize:14, opacity: patientSaving ? 0.6 : 1, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-                  {patientSaving ? '⏳ Activation...' : '⚡ Activer maintenant (sans email)'}
+                  {patientSaving ? '⏳ Activation...' : '⚡ Activer le dossier maintenant'}
                 </button>
               )}
               {credsModal.patient?.actif && (
                 <div style={{ background:'#F0FDF4', border:'1.5px solid #BBF7D0', borderRadius:10, padding:'10px 16px', fontSize:13, fontWeight:700, color:'#166534', textAlign:'center' }}>
-                  ✅ Compte déjà actif — connexion possible
+                  ✅ Dossier actif — connexion au portail possible dès que le patient a défini son mot de passe
                 </div>
               )}
 

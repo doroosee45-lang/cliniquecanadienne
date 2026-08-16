@@ -23,7 +23,10 @@ const sendEmail = async ({ to, subject, html }) => {
   return info;
 };
 
-const sendActivationEmail = async ({ email, prenom, nom, token, motDePasse }) => {
+// R-08b — plus de mot de passe temporaire généré côté serveur : le patient
+// choisit lui-même son mot de passe en suivant le lien (une seule étape,
+// pas d'identifiant à transmettre en clair par email).
+const sendActivationEmail = async ({ email, prenom, nom, token }) => {
   const lien = `${process.env.CLIENT_URL}/activate/${token}`;
   const html = `
   <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
@@ -35,19 +38,8 @@ const sendActivationEmail = async ({ email, prenom, nom, token, motDePasse }) =>
       <h2 style="color:#0B1E3B;font-size:18px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
       <p style="color:#374151;font-size:14px;line-height:1.7;">
         Votre dossier patient <strong>(${nom} ${prenom})</strong> a été créé avec succès dans notre système.
-        Pour accéder au portail patient et consulter votre dossier, activez votre compte en cliquant ci-dessous.
+        Pour accéder au portail patient, activez votre compte et choisissez votre mot de passe en cliquant ci-dessous.
       </p>
-      <div style="background:#EEF4FF;border-radius:10px;padding:18px;margin:22px 0;border-left:4px solid #1B4F9E;">
-        <div style="font-size:12px;color:#6B7A99;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">
-          Vos identifiants temporaires
-        </div>
-        <div style="font-size:15px;color:#0B1E3B;font-weight:700;font-family:monospace;letter-spacing:1px;">
-          Mot de passe : ${motDePasse}
-        </div>
-        <div style="color:#6B7A99;font-size:11px;margin-top:6px;">
-          ⚠ Vous devrez changer ce mot de passe lors de votre première connexion.
-        </div>
-      </div>
       <div style="text-align:center;margin:28px 0;">
         <a href="${lien}"
           style="display:inline-block;background:#0EA5A0;color:#fff;text-decoration:none;

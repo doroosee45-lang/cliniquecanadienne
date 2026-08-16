@@ -20,7 +20,7 @@ const EXEMPT_FILES = new Set(['messages.routes.js', 'notifications.routes.js', '
 const EXEMPT_LINE_PATTERNS = [
   /router\.post\('\/login'/, /router\.post\('\/forgot-password'/, /router\.post\('\/reset-password/,
   /router\.post\('\/google'/, /router\.post\('\/logout'/, /router\.get\('\/me'/, /router\.put\('\/password'/,
-  /router\.get\('\/activate\/:token'/,
+  /router\.get\('\/activate\/:token'/, /router\.post\('\/activate\/:token'/,
 ];
 
 function routeFiles() {

@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const Patient = require('../models/Patient');
 const User    = require('../models/User');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
-const { sendActivationEmail } = require('../utils/mail');
+const mail = require('../utils/mail');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 // R-08a — superadmin/adminclinique/medecin/infirmier/sage_femme voient le
@@ -28,23 +28,6 @@ const RESTRICTED_FIELDS = {
   comptable:      `${DEMO_FIELDS} assurances`,
 };
 const fieldsFor = (role) => RESTRICTED_FIELDS[role] || null;
-
-const generateTempPassword = () => {
-  const upper  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const lower  = 'abcdefghijklmnopqrstuvwxyz';
-  const digits = '0123456789';
-  const all    = upper + lower + digits;
-  const ri     = (max) => crypto.randomInt(max);
-  let pwd = upper[ri(26)] + lower[ri(26)] + digits[ri(10)];
-  for (let i = 3; i < 8; i++) pwd += all[ri(all.length)];
-  // Fisher-Yates shuffle avec CSPRNG
-  const arr = pwd.split('');
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = crypto.randomInt(i + 1);
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr.join('');
-};
 
 // ── GET ALL ──────────────────────────────────────────────────────────────────
 exports.getAll = async (req, res, next) => {
@@ -108,8 +91,9 @@ exports.create = async (req, res, next) => {
       });
     }
 
-    // ② Génération mot de passe temporaire (crypté) + token d'activation
-    const motDePasseClair = generateTempPassword();
+    // ② Token d'activation — R-08b : plus de mot de passe généré ici, le
+    // patient choisit le sien en suivant le lien (voir exports.activate /
+    // exports.setPasswordAndActivate).
     const tokenActivation = crypto.randomBytes(32).toString('hex');
     const tokenExpire     = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 h
 
@@ -124,18 +108,18 @@ exports.create = async (req, res, next) => {
 
     const patient = await Patient.create(patientData);
 
-    // ② bis — Création du compte User (role=patient) lié au dossier
-    // Vérifie qu'un User avec ce mail n'existe pas déjà
+    // ② bis — Création du compte User (role=patient) lié au dossier, sans
+    // mot de passe (schéma : optionnel depuis le support des comptes
+    // Google) — inutilisable pour se connecter tant que le patient n'a pas
+    // suivi le lien d'activation et défini le sien.
     if (patient.email && !(await User.findOne({ email: patient.email }))) {
       await User.create({
         email:                patient.email,
-        password:             motDePasseClair, // haché par le pre-save hook User
         nom:                  patient.nom,
         prenom:               patient.prenom,
         role:                 'patient',
         telephone:            patient.telephone || '',
         statut:               'inactif',       // activé lors du clic sur le lien
-        must_change_password: true,
         patient_id:           patient._id,     // T2.2 — lien direct dossier ↔ compte
       });
     }
@@ -144,12 +128,11 @@ exports.create = async (req, res, next) => {
     let emailEnvoye = false;
     if (patient.email) {
       try {
-        await sendActivationEmail({
+        await mail.sendActivationEmail({
           email:      patient.email,
           prenom:     patient.prenom,
           nom:        patient.nom,
           token:      tokenActivation,
-          motDePasse: motDePasseClair,
         });
         emailEnvoye = true;
       } catch (mailErr) {
@@ -188,15 +171,10 @@ exports.create = async (req, res, next) => {
     emitActivity({ module: 'patients', action: 'Nouveau patient', detail: `${patient.prenom} ${patient.nom} (${patient.numero_dossier})`, icon: '👤', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
 
-    // Le mot de passe temporaire en clair n'est renvoyé au front que si
-    // l'email d'activation n'a pas pu être envoyé — sinon il transiterait
-    // inutilement dans la réponse HTTP (logs, outils réseau) alors que le
-    // canal de distribution prévu (email) a déjà fait son travail.
     res.status(201).json({
       success:           true,
       patient,
       email_envoye:      emailEnvoye,
-      mot_de_passe_temp: emailEnvoye ? undefined : motDePasseClair,
       message:           emailEnvoye
         ? `Dossier créé avec succès. Un email d'activation a été envoyé à ${patient.email}.`
         : `Dossier créé. Email d'activation non envoyé (SMTP non configuré).`,
@@ -220,25 +198,59 @@ exports.activate = async (req, res, next) => {
       });
     }
 
+    // R-08b — ne fait plus qu'assurer la validité du lien : ne consomme
+    // rien, n'active rien. L'activation réelle se fait par
+    // exports.setPasswordAndActivate, une fois le mot de passe soumis —
+    // sinon un simple rafraîchissement de cette page invaliderait le lien
+    // avant même que le patient ait pu choisir son mot de passe.
+    res.json({
+      success: true,
+      prenom:  patient.prenom,
+      nom:     patient.nom,
+    });
+  } catch (err) { next(err); }
+};
+
+// ── DÉFINIR LE MOT DE PASSE + ACTIVER (public, via lien email) ───────────────
+exports.setPasswordAndActivate = async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    const patient = await Patient.findOne({
+      token_activation:        token,
+      token_activation_expire: { $gt: new Date() },
+    });
+    if (!patient) {
+      return res.status(400).json({ success: false, message: 'Lien d\'activation invalide ou expiré.' });
+    }
+    if (!password) {
+      return res.status(400).json({ success: false, message: 'Mot de passe requis.' });
+    }
+
+    const user = await User.findOne({ email: patient.email, role: 'patient' });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Compte utilisateur introuvable pour ce dossier.' });
+    }
+
+    // La complexité (majuscule + chiffre, 6 caractères min) est appliquée
+    // par le validateur du modèle User.password (R-16) — ce save() la
+    // déclenche automatiquement, aucune règle à dupliquer ici.
+    user.password = password;
+    user.statut   = 'actif';
+    await user.save();
+
     patient.actif                   = true;
     patient.token_activation        = undefined;
     patient.token_activation_expire = undefined;
     await patient.save();
-
-    // Activer le compte User correspondant
-    if (patient.email) {
-      await User.findOneAndUpdate(
-        { email: patient.email, role: 'patient' },
-        { statut: 'actif' }
-      );
-    }
 
     await logAction({
       action:    'ACTIVATE',
       module:    'patients',
       entite_id: patient._id,
       ip:        req.ip,
-      message:   `Compte patient activé : ${patient.nom} ${patient.prenom} (${patient.numero_dossier})`,
+      message:   `Compte patient activé (mot de passe défini par le patient) : ${patient.nom} ${patient.prenom} (${patient.numero_dossier})`,
     });
 
     res.json({
@@ -248,7 +260,14 @@ exports.activate = async (req, res, next) => {
       prenom:     patient.prenom,
       nom:        patient.nom,
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    // Erreur de validation Mongoose (complexité du mot de passe) — message
+    // clair plutôt que l'erreur brute du validateur.
+    if (err.name === 'ValidationError' && err.errors?.password) {
+      return res.status(400).json({ success: false, message: err.errors.password.message });
+    }
+    next(err);
+  }
 };
 
 // ── ACTIVATE DIRECT (admin, sans email) ──────────────────────────────────────
@@ -257,17 +276,38 @@ exports.activateAdmin = async (req, res, next) => {
     const patient = await Patient.findById(req.params.id);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
 
-    patient.actif                   = true;
-    patient.statut                  = 'actif';
-    patient.token_activation        = undefined;
-    patient.token_activation_expire = undefined;
+    patient.actif  = true;
+    patient.statut = 'actif';
     await patient.save();
 
+    let lienRenvoye = false;
     if (patient.email) {
-      await User.findOneAndUpdate(
-        { email: patient.email, role: 'patient' },
-        { statut: 'actif' }
-      );
+      const user = await User.findOne({ email: patient.email, role: 'patient' }).select('+password');
+      if (user) {
+        user.statut = 'actif';
+        // R-08b — dossier activé tout de suite pour le staff, mais si ce
+        // compte n'a encore aucun mot de passe utilisable, "actif" et
+        // "peut se connecter au portail" restent deux états distincts :
+        // on renvoie un nouveau lien plutôt que de régénérer un mot de
+        // passe temporaire (ce que R-08b cherche justement à éliminer).
+        if (!user.password) {
+          const tokenActivation = crypto.randomBytes(32).toString('hex');
+          patient.token_activation        = tokenActivation;
+          patient.token_activation_expire = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          await patient.save();
+          try {
+            await mail.sendActivationEmail({ email: patient.email, prenom: patient.prenom, nom: patient.nom, token: tokenActivation });
+            lienRenvoye = true;
+          } catch (mailErr) {
+            console.error('[MAIL ERROR]', mailErr.message);
+          }
+        } else {
+          patient.token_activation        = undefined;
+          patient.token_activation_expire = undefined;
+          await patient.save();
+        }
+        await user.save();
+      }
     }
 
     await logAction({
@@ -276,10 +316,17 @@ exports.activateAdmin = async (req, res, next) => {
       module:      'patients',
       entite_id:   patient._id,
       ip:          req.ip,
-      message:     `Compte patient activé manuellement : ${patient.nom} ${patient.prenom} (${patient.numero_dossier}) par ${req.user.prenom} ${req.user.nom}`,
+      message:     `Compte patient activé manuellement : ${patient.nom} ${patient.prenom} (${patient.numero_dossier}) par ${req.user.prenom} ${req.user.nom}${lienRenvoye ? ' — nouveau lien envoyé (pas encore de mot de passe)' : ''}`,
     });
 
-    res.json({ success: true, patient, message: 'Compte patient activé directement.' });
+    res.json({
+      success: true,
+      patient,
+      lien_renvoye: lienRenvoye,
+      message: lienRenvoye
+        ? 'Dossier activé. Le patient n\'a pas encore de mot de passe — un nouveau lien d\'activation lui a été envoyé.'
+        : 'Compte patient activé directement.',
+    });
   } catch (err) { next(err); }
 };
 
