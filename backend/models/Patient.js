@@ -22,6 +22,12 @@ const PatientSchema = new Schema({
   telephone: { type: String, trim: true },
   email: { type: String, lowercase: true, trim: true },
   photo: { type: String },
+  // Suite du balayage T5.2 — Patients.jsx collecte ces deux champs depuis
+  // toujours et les affiche sur la fiche patient, mais ni l'un ni l'autre
+  // n'était déclaré ici : silencieusement supprimés par Mongoose à chaque
+  // création (la fiche affichait "—" quoi que le personnel ait saisi).
+  nationalite: { type: String, trim: true },
+  situation_mat: { type: String, trim: true },
   adresse: {
     rue: String,
     ville: String,
