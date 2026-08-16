@@ -34,6 +34,11 @@ const ImagingResultSchema = new Schema({
   date_realisation:       Date,
   date_rapport:           Date,
   date_validation:        Date,
+  // AUDIT-02 — Radiology.jsx envoie ce champ depuis toujours (code de
+  // signature du radiologue à la validation) ; jamais déclaré ici, donc
+  // silencieusement supprimé par Mongoose malgré l'interface qui l'affiche
+  // comme acquis (currentExamen.signature).
+  signature:              String,
 
   compte_rendu:           String,
   conclusion:             String,

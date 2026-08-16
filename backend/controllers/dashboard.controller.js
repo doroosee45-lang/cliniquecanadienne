@@ -8,10 +8,12 @@
 // "n'existe pas"), elles renvoyaient juste 0/vide en permanence — chaque
 // rôle voyait donc un tableau de bord silencieusement faux. Toutes les
 // requêtes ci-dessous ont été réalignées sur les schémas réels ; les KPI
-// pour lesquels aucune donnée n'est réellement modélisée (dépenses,
-// ventes comptoir pharmacie, planning infirmier détaillé, échecs de
-// connexion) sont désormais des zéros EXPLICITES et commentés, plutôt que
-// des zéros accidentels indiscernables d'une vraie absence d'activité.
+// pour lesquels aucune donnée n'est réellement modélisée (ventes comptoir
+// pharmacie, planning infirmier détaillé) sont désormais des zéros
+// EXPLICITES et commentés, plutôt que des zéros accidentels indiscernables
+// d'une vraie absence d'activité. Dépenses et échecs de connexion étaient
+// dans ce même cas jusqu'à AUDIT-04 — Depense et le journal LOGIN_ECHEC
+// existent désormais et sont réellement agrégés ci-dessous.
 const Patient        = require('../models/Patient');
 const Appointment    = require('../models/Appointment');
 const Consultation   = require('../models/Consultation');
@@ -26,6 +28,14 @@ const User           = require('../models/User');
 const Staff          = require('../models/Staff');
 const Room           = require('../models/Room');
 const Conversation   = require('../models/Conversation');
+// AUDIT-04 — Depense/Commande/AuditLog n'existaient pas (ou n'étaient pas
+// encore alimentés) quand les stubs ci-dessous ont été écrits ; ils le sont
+// désormais (finance.controller.js::createDepense, pharmacy.controller.js::
+// createCommande, logAction sur chaque échec de connexion dans
+// auth.controller.js).
+const Depense        = require('../models/Depense');
+const Commande       = require('../models/Commande');
+const AuditLog       = require('../models/AuditLog');
 
 // ─── Helpers ──────────────────────────────────────────────────
 const todayRange = () => {
@@ -84,9 +94,8 @@ exports.superAdminStats = async (req, res, next) => {
       Appointment.countDocuments({}),
       Invoice.aggregate([{ $match:{ statut:{ $in:['emise','partiellement_payee'] } }}, { $group:{ _id:null, total:{ $sum:'$montant_restant' }}}]),
       Invoice.aggregate([{ $match:{ statut:'payee', date_facture:{ $gte: new Date(new Date().getFullYear(),new Date().getMonth(),1) }}}, { $group:{ _id:null, total:{ $sum:'$montant_paye' }}}]),
-      // Dépenses de clinique : aucun modèle dédié n'existe actuellement
-      // (Invoice ne sert qu'à la facturation patient) — 0 explicite.
-      Promise.resolve([]),
+      // AUDIT-04 — Depense.date/montant, même fenêtre "ce mois-ci" que le CA ci-dessus.
+      Depense.aggregate([{ $match:{ date:{ $gte: new Date(new Date().getFullYear(),new Date().getMonth(),1) }}}, { $group:{ _id:null, total:{ $sum:'$montant' }}}]),
       User.aggregate([{ $group:{ _id:'$role', count:{ $sum:1 }}}]),
       // CA 12 mois
       Invoice.aggregate([
@@ -94,8 +103,12 @@ exports.superAdminStats = async (req, res, next) => {
         { $group:{ _id:{ $month:'$date_facture' }, total:{ $sum:'$montant_paye' }}},
         { $sort:{ '_id':1 }},
       ]),
-      // Dépenses 12 mois — idem, non modélisé
-      Promise.resolve([]),
+      // AUDIT-04 — Dépenses 12 mois, même forme que le CA 12 mois ci-dessus.
+      Depense.aggregate([
+        { $match:{ date:{ $gte: last12months() }}},
+        { $group:{ _id:{ $month:'$date' }, total:{ $sum:'$montant' }}},
+        { $sort:{ '_id':1 }},
+      ]),
       // Alertes critiques système
       LabResult.aggregate([
         { $match:{ est_critique:true, acquitte_par:null }},
@@ -106,9 +119,11 @@ exports.superAdminStats = async (req, res, next) => {
       Patient.countDocuments({ createdAt:{ $gte:start, $lte:end }}),
       Consultation.countDocuments({ date_consultation:{ $gte:start, $lte:end }}),
       Hospitalization.countDocuments({ date_entree:{ $gte:start, $lte:end }}),
-      // Aucun compteur de tentatives de connexion échouées n'est encore
-      // persisté sur User — 0 explicite (voir rapport d'audit : à implémenter).
-      Promise.resolve(0),
+      // AUDIT-04 — journal LOGIN_ECHEC (auth.controller.js), même fenêtre
+      // "aujourd'hui" que patients_auj/consultations_auj/admissions_auj
+      // ci-dessus, plutôt que la somme de User.tentatives_echouees (un
+      // compteur courant remis à zéro à la connexion, pas un journal daté).
+      AuditLog.countDocuments({ action:'LOGIN_ECHEC', createdAt:{ $gte:start, $lte:end }}),
       User.countDocuments({ statut:'suspendu' }),
     ]);
 
@@ -190,13 +205,13 @@ exports.adminCliniqueStats = async (req, res, next) => {
       Surgery.countDocuments({ date_intervention_prev:{ $gte:start,$lte:end }, statut:{ $in:['opere','suivi_postop','cloture'] } }),
       Ordonnance.countDocuments({ createdAt:{ $gte:start,$lte:end }}),
       Invoice.aggregate([{ $match:{ statut:'payee', date_facture:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant_paye' }}}]),
-      // Dépenses clinique : non modélisé
-      Promise.resolve([]),
+      // AUDIT-04 — Depense.date/montant, même fenêtre "aujourd'hui" que le revenu ci-dessus.
+      Depense.aggregate([{ $match:{ date:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant' }}}]),
       Invoice.aggregate([{ $match:{ statut:{ $in:['emise','partiellement_payee'] } }},{ $group:{ _id:null,total:{ $sum:'$montant_restant' }}}]),
       Medication.countDocuments({ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }, date_peremption:{ $gt: new Date() }}),
       Medication.countDocuments({ date_peremption:{ $lte: new Date() }}),
-      // Commandes fournisseurs : non persistées en base actuellement (voir pharmacy.controller.js::getCommandes)
-      Promise.resolve(0),
+      // AUDIT-04 — Commande.statut hors "recu"/"annule" = encore en attente d'une action.
+      Commande.countDocuments({ statut:{ $nin:['recu','annule'] }}),
       User.countDocuments({ role:'medecin', statut:'actif' }),
       User.countDocuments({ role:'infirmier', statut:'actif' }),
       User.countDocuments({ role:'laborantin', statut:'actif' }),
@@ -551,8 +566,8 @@ exports.comptableStats = async (req, res, next) => {
       chart_revenus,
     ] = await Promise.all([
       Invoice.aggregate([{ $match:{ statut:'payee', date_facture:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant_paye' }}}]),
-      // Dépenses clinique : non modélisé
-      Promise.resolve([]),
+      // AUDIT-04 — Depense.date/montant, même fenêtre "aujourd'hui" que le revenu ci-dessus.
+      Depense.aggregate([{ $match:{ date:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant' }}}]),
       Invoice.aggregate([{ $match:{ statut:{ $in:['emise','partiellement_payee'] } }},{ $group:{ _id:null,total:{ $sum:'$montant_restant' }}}]),
       Invoice.aggregate([{ $match:{ statut:{ $in:['emise','partiellement_payee'] } }},{ $group:{ _id:null,total:{ $sum:'$montant_assurance' }}}]),
       // Factures ayant reçu au moins un paiement aujourd'hui (les paiements

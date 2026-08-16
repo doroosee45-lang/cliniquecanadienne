@@ -91,6 +91,12 @@ const UserSchema = new mongoose.Schema({
   },
   specialite:  String,
   telephone:   String,
+  // AUDIT-01 — Administration.jsx envoie ce champ (select "Service /
+  // Département") depuis toujours ; jamais déclaré ici, donc silencieusement
+  // supprimé par Mongoose à chaque création/modification de compte. Chaîne
+  // libre (valeurs prédéfinies côté frontend), pas une référence vers
+  // Service — cohérent avec ce que le formulaire envoie réellement.
+  service:     { type: String, default: '' },
   statut:      { type: String, enum: ['actif','inactif','suspendu'], default: 'actif' },
   avatar:      { type: String, default: '' },        // déjà présent ✅
   couleur_theme: { type: String, default: '#2563eb' },
