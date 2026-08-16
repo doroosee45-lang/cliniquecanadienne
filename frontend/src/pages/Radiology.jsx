@@ -391,7 +391,7 @@ export default function Imagerie() {
       if (search) p.set("q", search);
       if (filterStatut) p.set("statut", filterStatut);
       if (filterType)   p.set("type_categorie", filterType);
-      const { data } = await api.get(`/imagerie?${p}`);
+      const { data } = await api.get(`/radiology?${p}`);
       setExamens(data.examens || data.results || data.data || []);
       setTotal(data.total || 0);
     } catch (err) {
@@ -405,7 +405,7 @@ export default function Imagerie() {
   // ── Load stats ────────────────────────────────────────────
   const loadStats = useCallback(async () => {
     try {
-      const { data } = await api.get("/imagerie/stats");
+      const { data } = await api.get("/radiology/stats");
       setKpis(data.kpis || kpis);
       if (data.chart) setChartData(data.chart);
     } catch {
@@ -423,7 +423,7 @@ export default function Imagerie() {
 
   const loadExamen = useCallback(async (id) => {
     try {
-      const { data } = await api.get(`/imagerie/${id}`);
+      const { data } = await api.get(`/radiology/${id}`);
       setCurrent(data.examen || data);
     } catch {
       setCurrent(DEMO_EXAMENS.find(x=>x._id===id) || null);
@@ -464,7 +464,7 @@ export default function Imagerie() {
         patient_nom: selectedPatient ? `${selectedPatient.prenom} ${selectedPatient.nom}`.trim() : "",
         medecin_prescripteur_nom: formExamen.medecin_prescripteur,
       };
-      const { data } = await api.post("/imagerie", payload);
+      const { data } = await api.post("/radiology", payload);
       toast.success(`✅ Examen ${data.examen?.numero || data.result?.numero || "créé"} avec succès`);
       setModalNouv(false);
       setFormExamen(EMPTY_EXAMEN);
@@ -481,7 +481,7 @@ export default function Imagerie() {
     try {
       const fd = new FormData();
       uploadedImages.forEach(f => fd.append('images', f));
-      const { data } = await api.post(`/imagerie/${currentExamen._id}/images`, fd, {
+      const { data } = await api.post(`/radiology/${currentExamen._id}/images`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setCurrent(prev => ({ ...prev, images: data.images || [] }));
@@ -499,7 +499,7 @@ export default function Imagerie() {
     if (!currentExamen) return;
     setSaving(true);
     try {
-      await api.put(`/imagerie/${currentExamen._id}/cr`, formCR);
+      await api.put(`/radiology/${currentExamen._id}/cr`, formCR);
       toast.success("✅ Compte rendu enregistré");
       setCurrent(prev => ({ ...prev, ...formCR, statut:"realise" }));
       setModalCR(false);
@@ -517,7 +517,7 @@ export default function Imagerie() {
     if (!currentExamen) return;
     setSaving(true);
     try {
-      await api.put(`/imagerie/${currentExamen._id}/validation`, formValid);
+      await api.put(`/radiology/${currentExamen._id}/validation`, formValid);
       toast.success("🏅 Examen validé par le radiologue");
       setCurrent(prev => ({ ...prev, ...formValid, statut:"valide" }));
       setModalValid(false);
@@ -534,7 +534,7 @@ export default function Imagerie() {
     if (!currentExamen) return;
     setSaving(true);
     try {
-      await api.put(`/imagerie/${currentExamen._id}`, { ...currentExamen, ...updates });
+      await api.put(`/radiology/${currentExamen._id}`, { ...currentExamen, ...updates });
       toast.success("✅ Enregistré");
       setCurrent(prev => ({ ...prev, ...updates }));
       loadExamens();
