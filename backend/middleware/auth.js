@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { logAction } = require('../utils/helpers');
 
 exports.protect = async (req, res, next) => {
   let token;
@@ -26,8 +27,20 @@ exports.protect = async (req, res, next) => {
   }
 };
 
-exports.authorize = (...roles) => (req, res, next) => {
+exports.authorize = (...roles) => async (req, res, next) => {
   if (!roles.includes(req.user.role)) {
+    // R-09 — jusqu'ici ce refus n'était jamais journalisé : la règle "Accès
+    // refusé" de audit.controller.js::getSuspects cherchait une action
+    // ACCESS_DENIED qu'aucun code n'écrivait réellement en base.
+    const module = (req.baseUrl || req.originalUrl || '').replace(/^\/api\/?/, '').split('/')[0] || 'inconnu';
+    await logAction({
+      utilisateur: req.user._id,
+      action: 'ACCESS_DENIED',
+      module,
+      ip: req.ip,
+      message: `Accès refusé — rôle "${req.user.role}" sur ${req.method} ${req.originalUrl}`,
+      statut: 'echec',
+    });
     return res.status(403).json({
       success: false,
       message: `Le rôle "${req.user.role}" n'est pas autorisé à accéder à cette ressource.`,
