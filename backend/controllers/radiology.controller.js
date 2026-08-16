@@ -69,8 +69,7 @@ exports.getAll = async (req, res, next) => {
       .limit(parseInt(limit));
 
     const list = raw.map(normalize);
-    // retourner les deux clés pour compatibilité frontend
-    res.json({ success: true, total, results: list, examens: list });
+    res.json({ success: true, total, examens: list });
   } catch (err) { next(err); }
 };
 
@@ -132,7 +131,7 @@ exports.create = async (req, res, next) => {
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'radiology', entite_id: result._id, ip: req.ip });
     emitActivity({ module: 'radiology', action: 'Nouvel examen imagerie', detail: `${payload.patient_nom || ''} — ${payload.type_examen || ''}`, icon: '🩻', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
-    res.status(201).json({ success: true, result, examen: result });
+    res.status(201).json({ success: true, examen: result });
   } catch (err) { next(err); }
 };
 
