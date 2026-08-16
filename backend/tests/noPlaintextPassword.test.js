@@ -1,20 +1,27 @@
-// T3.3 — mot_de_passe_temp ne doit apparaître dans la réponse de création
-// de patient QUE si l'envoi d'email a échoué (email_envoye:false). Déjà
-// corrigé dans une phase antérieure (patients.controller.js) — ce test
-// n'y touche pas, il vérifie/documente le comportement réellement en place,
-// pour les deux branches possibles selon que l'envoi SMTP réussit ou non.
+// T3.3, réécrit — R-08b (Phase 7) a supprimé mot_de_passe_temp de la
+// réponse de création de patient dans tous les cas : le patient définit
+// désormais lui-même son mot de passe via le lien d'activation, il n'y a
+// plus de mot de passe généré côté serveur à transmettre, ni par email ni
+// dans la réponse JSON. L'ancienne version de ce test vérifiait le
+// comportement inverse (mot_de_passe_temp attendu quand l'email échoue) —
+// obsolète depuis R-08b, remplacé ici pour vérifier explicitement
+// l'absence de tout mot de passe en clair, dans les deux cas (email envoyé
+// ou non), plutôt que de compter sur l'absence de régression future.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
-test('mot_de_passe_temp n\'est exposé que si l\'email d\'activation a échoué (T3.3)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
+test('aucun mot de passe en clair dans la réponse de création de patient (T3.3)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
   const Patient = require('../models/Patient');
   const User = require('../models/User');
   const patientsController = require('../controllers/patients.controller');
 
   const stamp = Date.now();
+  // Domaine _test.local : échoue systématiquement l'envoi SMTP réel (voir
+  // le reste de la suite) — exerce naturellement la branche email_envoye:false,
+  // celle où un mot de passe temporaire aurait historiquement été exposé.
   const email = `_t33-password-${stamp}@_test.local`;
   const req = {
     body: { nom: `Test${stamp}`, prenom: 'T33', date_naissance: '1990-01-01', sexe: 'F', email },
@@ -30,14 +37,19 @@ test('mot_de_passe_temp n\'est exposé que si l\'email d\'activation a échoué 
   try {
     assert.ok(response?.patient, `la création doit réussir : ${JSON.stringify(response)}`);
     assert.ok('email_envoye' in response, 'la réponse doit indiquer si l\'email est parti');
+    assert.equal(response.email_envoye, false, 'ce domaine de test doit faire échouer l\'envoi SMTP — sinon ce test ne couvre pas la branche visée');
 
-    if (response.email_envoye) {
-      assert.equal(response.mot_de_passe_temp, undefined,
-        'email envoyé avec succès → le mot de passe ne doit PAS apparaître dans la réponse JSON');
-    } else {
-      assert.ok(response.mot_de_passe_temp,
-        'email non envoyé → le mot de passe doit être présent (seul repli prévu, pour affichage en bannière à usage unique)');
-    }
+    // Aucun champ contenant un mot de passe en clair, sous quelque nom que
+    // ce soit — pas seulement l'ancien mot_de_passe_temp.
+    assert.equal(response.mot_de_passe_temp, undefined, 'mot_de_passe_temp ne doit plus jamais apparaître (R-08b)');
+    const suspectKeys = Object.keys(response).filter(k => /pass|mdp|motdepasse/i.test(k));
+    assert.deepEqual(suspectKeys, [], `aucune clé liée à un mot de passe ne doit apparaître dans la réponse : ${suspectKeys.join(', ')}`);
+
+    // Le compte créé ne doit avoir aucun mot de passe défini non plus — le
+    // patient le définit lui-même via le lien d'activation.
+    const user = await User.findOne({ email }).select('+password');
+    assert.ok(user, 'le compte User lié doit exister');
+    assert.equal(user.password, undefined, 'aucun mot de passe ne doit être défini à la création (R-08b)');
   } finally {
     await Patient.findByIdAndDelete(response?.patient?._id);
     await User.deleteOne({ email });
