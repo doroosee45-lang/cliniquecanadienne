@@ -1596,7 +1596,7 @@ const normalizeMed = (m) => ({
 
 const EMPTY_MED = { code:"", nom_commercial:"", dci:"", categorie:"", forme:"Comprimé", dosage:"", fabricant:"", fournisseur:"", prix_achat:0, prix_vente:0, stock_quantite:0, stock_minimum:50, stock_maximum:500, emplacement:"", lot:"", date_expiration:"", ordonnance:false };
 const EMPTY_MVT = { medicament_id:"", type:"entree", quantite:1, reference:"", notes:"", date_peremption_lot:"", lot:"" };
-const EMPTY_CMD = { fournisseur:"", date_livraison_souhaitee:"", notes:"", lignes:[{ id:1, nom:"", forme:"", dosage:"", quantite:1, prix_unitaire:0 }] };
+const EMPTY_CMD = { fournisseur:"", date_livraison_souhaitee:"", notes:"", lignes:[{ id:1, nom:"", forme:"", dosage:"", quantite:1, prix_unitaire:0, medicament:null }] };
 
 // ─── SVG Icons ──────────────────────────────────────────────
 const I = {
@@ -1767,6 +1767,7 @@ export default function Pharmacie() {
   const [modalEdit, setModalEdit] = useState(false);
   const [modalMvt,  setModalMvt]  = useState(false);
   const [modalCmd,  setModalCmd]  = useState(false);
+  const [modalReception, setModalReception] = useState(false);
   const [modalIACmd,setModalIACmd]= useState(false);
   const [modalInv,  setModalInv]  = useState(false);
   const [modalVente,setModalVente]= useState(false);
@@ -1775,6 +1776,8 @@ export default function Pharmacie() {
   const [formMed, setFormMed]   = useState(EMPTY_MED);
   const [formMvt, setFormMvt]   = useState(EMPTY_MVT);
   const [formCmd, setFormCmd]   = useState(EMPTY_CMD);
+  const [currentCmd, setCurrentCmd] = useState(null);
+  const [formReception, setFormReception] = useState([]);
 
   // Vente panier
   const [panier, setPanier]     = useState([{ id:Date.now(), med:null, quantite:1 }]);
@@ -2123,15 +2126,36 @@ ${lignes}
     setSaving(true);
     try {
       const { data } = await api.post("/pharmacy/commandes", formCmd);
-      toast.success("📦 Bon de commande créé");
-      setCmds(prev => [{...formCmd,_id:Date.now().toString(),numero:`BC-2025-000${prev.length+1}`,statut:"brouillon",date:new Date().toISOString(),...(data.commande||{})}, ...prev]);
+      toast.success(`📦 Bon de commande ${data.commande.numero} créé`);
+      setCmds(prev => [data.commande, ...prev]);
       setModalCmd(false);
       setFormCmd(EMPTY_CMD);
-    } catch {
-      toast.success("📦 Bon de commande créé (local)");
-      setCmds(prev => [{...formCmd,_id:Date.now().toString(),numero:`BC-2025-000${prev.length+1}`,statut:"brouillon",date:new Date().toISOString()}, ...prev]);
-      setModalCmd(false);
-      setFormCmd(EMPTY_CMD);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la création du bon de commande");
+    } finally { setSaving(false); }
+  };
+
+  const openReception = (c) => {
+    setCurrentCmd(c);
+    setFormReception(c.lignes.map(l => ({
+      nom: l.nom, restant: l.quantite - (l.quantite_recue || 0), quantite_recue: l.quantite - (l.quantite_recue || 0),
+    })));
+    setModalReception(true);
+  };
+
+  const submitReception = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const receptions = formReception
+        .map((l, index) => ({ index, quantite_recue: Number(l.quantite_recue) || 0 }))
+        .filter(r => r.quantite_recue > 0);
+      const { data } = await api.put(`/pharmacy/commandes/${currentCmd._id}/reception`, { receptions });
+      toast.success(data.commande.statut === "recu" ? "✅ Commande entièrement reçue — stock mis à jour" : "📥 Réception partielle enregistrée — stock mis à jour");
+      setCmds(prev => prev.map(c => c._id === data.commande._id ? { ...data.commande, date: data.commande.createdAt, nb_lignes: data.commande.lignes.length } : c));
+      setModalReception(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la réception");
     } finally { setSaving(false); }
   };
 
@@ -3166,8 +3190,8 @@ ${lignes}
                 <div className="ph-card">
                   <div className="ph-card-hdr"><h3>📦 Bons de commande ({commandes.length})</h3></div>
                   <div className="ph-tbl-wrap">
-                    <table className="ph-tbl" style={{ minWidth:450 }}>
-                      <thead><tr><th>N° Bon</th><th>Fournisseur</th><th>Lignes</th><th>Montant</th><th>Date</th><th>Statut</th></tr></thead>
+                    <table className="ph-tbl" style={{ minWidth:520 }}>
+                      <thead><tr><th>N° Bon</th><th>Fournisseur</th><th>Lignes</th><th>Montant</th><th>Date</th><th>Statut</th><th></th></tr></thead>
                       <tbody>
                         {(commandes.length>0?commandes:DEMO_COMMANDES).map(c=>(
                           <tr key={c._id}>
@@ -3177,6 +3201,11 @@ ${lignes}
                             <td style={{ fontWeight:600, fontSize:12 }}>{fmtCFA(c.montant)}</td>
                             <td style={{ fontSize:11, color:"var(--pm)" }}>{fmtDate(c.date)}</td>
                             <td><CmdBadge statut={c.statut} /></td>
+                            <td>
+                              {!["recu","annule"].includes(c.statut) && (
+                                <button type="button" className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} onClick={() => openReception(c)}>📥 Réceptionner</button>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -3833,14 +3862,27 @@ ${lignes}
             <div style={{ border:"1.5px solid var(--pbr)", borderRadius:12, overflow:"hidden", marginBottom:16 }}>
               <div style={{ background:"var(--ps)", padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:"1.5px solid var(--pbr)" }}>
                 <span style={{ fontSize:13, fontWeight:700, color:"var(--pn)" }}>Articles à commander</span>
-                <button type="button" className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} onClick={() => setFormCmd(f=>({...f,lignes:[...f.lignes,{id:Date.now(),nom:"",forme:"",dosage:"",quantite:1,prix_unitaire:0}]}))}>{I.plus} Ajouter ligne</button>
+                <button type="button" className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} onClick={() => setFormCmd(f=>({...f,lignes:[...f.lignes,{id:Date.now(),nom:"",forme:"",dosage:"",quantite:1,prix_unitaire:0,medicament:null}]}))}>{I.plus} Ajouter ligne</button>
               </div>
               <table className="ph-tbl" style={{ minWidth:580 }}>
                 <thead><tr><th>Médicament *</th><th>Forme</th><th>Dosage</th><th>Qté *</th><th>Prix unit. (CFA)</th><th>Sous-total</th><th></th></tr></thead>
                 <tbody>
                   {formCmd.lignes.map(l=>(
                     <tr key={l.id}>
-                      <td><input className="pinp" style={{ fontSize:12, padding:"6px 10px" }} list="meds-list" value={l.nom} onChange={e=>setFormCmd(f=>({...f,lignes:f.lignes.map(x=>x.id===l.id?{...x,nom:e.target.value}:x)}))} placeholder="Nom médicament" /></td>
+                      <td>
+                        <input className="pinp" style={{ fontSize:12, padding:"6px 10px" }} list="meds-list" value={l.nom} onChange={e=>{
+                          const val = e.target.value;
+                          const matched = meds.find(m => m.nom_commercial === val);
+                          setFormCmd(f=>({...f,lignes:f.lignes.map(x=>x.id===l.id?{
+                            ...x, nom: val,
+                            medicament: matched ? matched._id : undefined,
+                            forme: matched ? (matched.forme || x.forme) : x.forme,
+                            dosage: matched ? (matched.dosage || x.dosage) : x.dosage,
+                            prix_unitaire: matched ? (matched.prix_achat || x.prix_unitaire) : x.prix_unitaire,
+                          }:x)}));
+                        }} placeholder="Nom médicament" />
+                        {l.medicament && <div style={{ fontSize:10, color:"var(--pb)", marginTop:2 }}>🔗 Lié au stock — réception incrémentera cette fiche</div>}
+                      </td>
                       <td><input className="pinp" style={{ fontSize:12, padding:"6px 10px", width:100 }} value={l.forme} onChange={e=>setFormCmd(f=>({...f,lignes:f.lignes.map(x=>x.id===l.id?{...x,forme:e.target.value}:x)}))} placeholder="Comprimé" /></td>
                       <td><input className="pinp" style={{ fontSize:12, padding:"6px 10px", width:90 }} value={l.dosage} onChange={e=>setFormCmd(f=>({...f,lignes:f.lignes.map(x=>x.id===l.id?{...x,dosage:e.target.value}:x)}))} placeholder="500mg" /></td>
                       <td><input type="number" className="pinp" style={{ fontSize:12, padding:"6px 10px", width:70, textAlign:"center" }} min={1} value={l.quantite} onChange={e=>setFormCmd(f=>({...f,lignes:f.lignes.map(x=>x.id===l.id?{...x,quantite:Number(e.target.value)}:x)}))} /></td>
@@ -3865,6 +3907,35 @@ ${lignes}
               <button type="submit" className="pbtn pbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>{I.save} {saving?"Création...":"Créer le bon de commande"}</button>
             </div>
           </form>
+        </Modal>
+
+        {/* ═══ MODAL : RÉCEPTION COMMANDE ═══ */}
+        <Modal open={modalReception} onClose={() => setModalReception(false)} title={`📥 Réception — ${currentCmd?.numero || ""}`} wide>
+          {currentCmd && (
+            <form onSubmit={submitReception}>
+              <table className="ph-tbl" style={{ minWidth:480, marginBottom:16 }}>
+                <thead><tr><th>Article</th><th>Restant à recevoir</th><th>Reçu maintenant</th></tr></thead>
+                <tbody>
+                  {formReception.map((l, i) => (
+                    <tr key={i}>
+                      <td style={{ fontSize:12 }}>{l.nom || "—"}</td>
+                      <td style={{ textAlign:"center", fontSize:12, color:"var(--pm)" }}>{l.restant}</td>
+                      <td>
+                        <input type="number" className="pinp" style={{ fontSize:12, padding:"6px 10px", width:90, textAlign:"center" }}
+                          min={0} max={l.restant} value={l.quantite_recue}
+                          onChange={e => setFormReception(prev => prev.map((x,idx) => idx===i ? { ...x, quantite_recue: e.target.value } : x))} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ fontSize:11, color:"var(--pm)", marginBottom:16 }}>Les lignes sans médicament rattaché au stock (saisies en texte libre) sont marquées reçues mais ne modifient aucune fiche de stock.</div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="pbtn pbtn-ghost" onClick={() => setModalReception(false)}>Annuler</button>
+                <button type="submit" className="pbtn pbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>{I.save} {saving?"Enregistrement...":"Confirmer la réception"}</button>
+              </div>
+            </form>
+          )}
         </Modal>
 
         {/* ═══ MODAL : COMMANDE IA ═══ */}
