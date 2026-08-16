@@ -469,7 +469,7 @@ export default function Laboratoire() {
       const p = new URLSearchParams({ page, limit: 15 });
       if (search) p.set("q", search);
       if (filterStatut) p.set("statut", filterStatut);
-      const { data } = await api.get(`/laboratoire?${p}`);
+      const { data } = await api.get(`/laboratory?${p}`);
       setAnalyses(data.analyses || data.data || []);
       setTotal(data.total || 0);
     } catch {
@@ -481,7 +481,7 @@ export default function Laboratoire() {
   // ── Load stats ────────────────────────────────────────────
   const loadStats = useCallback(async () => {
     try {
-      const { data } = await api.get("/laboratoire/stats");
+      const { data } = await api.get("/laboratory/stats");
       setKpis(data.kpis || kpis);
     } catch {
       const d = DEMO_ANALYSES;
@@ -529,7 +529,7 @@ export default function Laboratoire() {
     if (formNouv.examens_demandes.length === 0) { toast.error("Veuillez sélectionner au moins un examen"); return; }
     setSaving(true);
     try {
-      const { data } = await api.post("/laboratoire", formNouv);
+      const { data } = await api.post("/laboratory", formNouv);
       toast.success(`✅ Analyse ${data.numero || "créée"} avec succès`);
       setModalNouv(false);
       setFormNouv(EMPTY_FORM);
@@ -559,7 +559,7 @@ export default function Laboratoire() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put(`/laboratoire/${currentAnalyse._id}/prelevement`, formPrelev);
+      await api.put(`/laboratory/${currentAnalyse._id}/prelevement`, formPrelev);
       toast.success("✅ Prélèvement enregistré");
     } catch {
       toast.success("✅ Prélèvement enregistré (local)");
@@ -580,7 +580,7 @@ export default function Laboratoire() {
       return { exam_id: eid, valeur, ref: ref.ref || "", unite: ref.unite || "", statut_res: "normal" };
     });
     try {
-      await api.put(`/laboratoire/${currentAnalyse._id}/resultats`, { resultats });
+      await api.put(`/laboratory/${currentAnalyse._id}/resultats`, { resultats });
       toast.success("✅ Résultats enregistrés");
     } catch {
       toast.success("✅ Résultats enregistrés (local)");
@@ -596,7 +596,7 @@ export default function Laboratoire() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put(`/laboratoire/${currentAnalyse._id}/validation`, { ...formValid });
+      await api.put(`/laboratory/${currentAnalyse._id}/validation`, { ...formValid });
       toast.success("🏷️ Analyse validée avec succès");
     } catch {
       toast.success("🏷️ Analyse validée (local)");

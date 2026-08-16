@@ -11,7 +11,6 @@ router.use('/recurring',        require('./recurring.routes'));
 router.use('/consultations',    require('./consultations.routes'));
 router.use('/hospitalization',  require('./hospitalization.routes'));
 router.use('/laboratory',       require('./laboratory.routes'));
-router.use('/laboratoire',      require('./laboratory.routes'));   // alias français
 router.use('/radiology',        require('./radiology.routes'));
 router.use('/imagerie',         require('./radiology.routes'));   // alias français
 router.use('/pharmacy',         require('./pharmacy.routes'));
