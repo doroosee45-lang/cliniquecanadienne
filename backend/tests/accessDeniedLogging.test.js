@@ -48,12 +48,21 @@ test('authorize() journalise les accès refusés (base réelle)', { skip: !proce
       assert.equal(after, before);
     });
 
-    await t.test('getSuspects fait remonter le refus journalisé', async () => {
+    await t.test('getSuspects fait remonter le refus journalisé une fois le seuil T9.2 atteint (≥5, agrégé par utilisateur)', async () => {
+      // T9.2 — un seul refus n'est plus assez pour apparaître (voir
+      // sweepFullPayloadT52.test.js / auditSuspectsThreshold.test.js pour le
+      // détail du changement) ; ce fichier reste focalisé sur la chaîne
+      // authorize() → AuditLog → getSuspects, donc on complète simplement
+      // jusqu'au seuil plutôt que de dupliquer les scénarios de seuil ici.
+      for (let i = 0; i < 4; i++) {
+        await AuditLog.create({ utilisateur: user._id, action: 'ACCESS_DENIED', module: 'finance', ip_address: '127.0.0.1', message: `Accès refusé — rôle "receptionniste" complément ${i}`, statut: 'echec' });
+      }
       let body = null;
       const res = { status: () => res, json: (d) => { body = d; } };
-      await auditC.getSuspects({}, res, () => {});
-      const found = body.suspects.some(s => s.type === 'Accès refusé' && s.utilisateur.includes('AccessDeniedT09'));
-      assert.ok(found, 'le refus journalisé doit apparaître dans /audit/suspects');
+      await auditC.getSuspects({}, res, (err) => { if (err) throw err; });
+      const found = body.suspects.find(s => s.type === 'Accès refusé répété' && s.utilisateur.includes('AccessDeniedT09'));
+      assert.ok(found, 'le refus journalisé doit apparaître dans /audit/suspects une fois le seuil atteint');
+      assert.match(found.description, /5 tentative/);
     });
   } finally {
     await AuditLog.deleteMany({ utilisateur: user._id });
