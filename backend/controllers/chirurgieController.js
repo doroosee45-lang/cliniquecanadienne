@@ -51,7 +51,7 @@ exports.getDossiers = async (req, res) => {
 
     const total = await DossierChirurgical.countDocuments(filter);
 
-    res.json({ success: true, dossiers, surgeries: dossiers, total, page: parseInt(page), pages: Math.ceil(total / limit) });
+    res.json({ success: true, dossiers, total, page: parseInt(page), pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
