@@ -35,10 +35,11 @@ exports.create = async (req, res, next) => {
 // ── UPDATE ───────────────────────────────────────────────────────────────────
 exports.update = async (req, res, next) => {
   try {
+    const avant = await RecurringProtocol.findById(req.params.id).lean();
     const protocol = await RecurringProtocol.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
       .populate('medecin', 'nom prenom specialite');
     if (!protocol) return res.status(404).json({ success: false, message: 'Protocole introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'recurring', entite_id: protocol._id, ip: req.ip, message: `Protocole récurrent modifié : ${protocol.titre}` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'recurring', entite_id: protocol._id, ip: req.ip, message: `Protocole récurrent modifié : ${protocol.titre}`, avant, apres: protocol });
     res.json({ success: true, protocol });
   } catch (err) { next(err); }
 };
@@ -46,8 +47,9 @@ exports.update = async (req, res, next) => {
 // ── DELETE (soft) ────────────────────────────────────────────────────────────
 exports.remove = async (req, res, next) => {
   try {
+    const avant = await RecurringProtocol.findById(req.params.id).lean();
     const protocol = await RecurringProtocol.findByIdAndUpdate(req.params.id, { actif: false });
-    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'recurring', entite_id: req.params.id, ip: req.ip, message: `Protocole récurrent archivé${protocol ? ` : ${protocol.titre}` : ''}` });
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'recurring', entite_id: req.params.id, ip: req.ip, message: `Protocole récurrent archivé${protocol ? ` : ${protocol.titre}` : ''}`, avant });
     res.json({ success: true, message: 'Protocole archivé.' });
   } catch (err) { next(err); }
 };
@@ -83,9 +85,10 @@ exports.planifier = async (req, res, next) => {
     const delta = protocol.frequence_jours || DELTAS[protocol.frequence] || 30;
     const newDate = new Date(date_heure);
     newDate.setDate(newDate.getDate() + delta);
-    await RecurringProtocol.findByIdAndUpdate(req.params.id, { prochaine_date: newDate });
+    const avant = protocol.toObject();
+    const updatedProtocol = await RecurringProtocol.findByIdAndUpdate(req.params.id, { prochaine_date: newDate }, { new: true });
 
-    await logAction({ utilisateur: req.user._id, action: 'PLANIFIER', module: 'recurring', entite_id: protocol._id, ip: req.ip, message: `RDV planifié pour ${protocol.titre}` });
+    await logAction({ utilisateur: req.user._id, action: 'PLANIFIER', module: 'recurring', entite_id: protocol._id, ip: req.ip, message: `RDV planifié pour ${protocol.titre}`, avant, apres: updatedProtocol });
     emitActivity({ module: 'appointments', action: 'RDV récurrent planifié', detail: protocol.titre, icon: '📅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
 

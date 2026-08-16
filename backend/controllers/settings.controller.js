@@ -20,10 +20,11 @@ exports.getAll = async (req, res, next) => {
 exports.upsert = async (req, res, next) => {
   try {
     const { cle, valeur, type, groupe, description } = req.body;
+    const avant = await Setting.findOne({ cle }).lean();
     const setting = await Setting.findOneAndUpdate(
       { cle }, { valeur, type, groupe, description }, { upsert: true, new: true }
     );
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE_SETTING', module: 'settings', ip: req.ip, message: `${cle} = ${valeur}` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE_SETTING', module: 'settings', ip: req.ip, message: `${cle} = ${valeur}`, avant, apres: setting });
     res.json({ success: true, setting });
   } catch (err) { next(err); }
 };
@@ -89,9 +90,10 @@ exports.createService = async (req, res, next) => {
 
 exports.updateService = async (req, res, next) => {
   try {
+    const avant = await Service.findById(req.params.id).lean();
     const service = await Service.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!service) return res.status(404).json({ success: false, message: 'Service introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'settings', entite_id: service._id, ip: req.ip, message: `Service modifié : ${service.nom}` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'settings', entite_id: service._id, ip: req.ip, message: `Service modifié : ${service.nom}`, avant, apres: service });
     res.json({ success: true, service });
   } catch (err) { next(err); }
 };

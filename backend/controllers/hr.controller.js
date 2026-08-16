@@ -113,11 +113,12 @@ exports.update = async (req, res, next) => {
   try {
     const body = { ...req.body };
     if (body.contrat) { body.type_contrat = body.contrat; delete body.contrat; }
+    const avant = await Staff.findById(req.params.id).lean();
     const staff = await Staff.findByIdAndUpdate(req.params.id, body, { new: true })
       .populate('utilisateur', 'nom prenom role email telephone specialite')
       .populate('service', 'nom');
     if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Fiche personnel modifiée : ${staff.prenom || ''} ${staff.nom || ''}`.trim() });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Fiche personnel modifiée : ${staff.prenom || ''} ${staff.nom || ''}`.trim(), avant, apres: staff });
     res.json({ success: true, staff: normalizeStaff(staff.toObject()) });
   } catch (err) { next(err); }
 };
@@ -177,6 +178,7 @@ exports.updateLeaveStatus = async (req, res, next) => {
     if (conge.statut !== 'en_attente') {
       return res.status(400).json({ success: false, message: 'Cette demande a déjà été traitée.' });
     }
+    const avant = staff.toObject();
 
     conge.statut = statut;
     conge.approuve_par = req.user._id;
@@ -184,7 +186,7 @@ exports.updateLeaveStatus = async (req, res, next) => {
       staff.conges_restants = Math.max(0, (staff.conges_restants || 0) - conge.nb_jours);
     }
     await staff.save();
-    await logAction({ utilisateur: req.user._id, action: statut === 'approuve' ? 'LEAVE_APPROVE' : 'LEAVE_REFUSE', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Congé ${statut === 'approuve' ? 'approuvé' : 'refusé'} — ${staff.prenom || ''} ${staff.nom || ''}`.trim() });
+    await logAction({ utilisateur: req.user._id, action: statut === 'approuve' ? 'LEAVE_APPROVE' : 'LEAVE_REFUSE', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Congé ${statut === 'approuve' ? 'approuvé' : 'refusé'} — ${staff.prenom || ''} ${staff.nom || ''}`.trim(), avant, apres: staff });
     emitDashboardUpdate();
     res.json({ success: true, staff });
   } catch (err) { next(err); }
