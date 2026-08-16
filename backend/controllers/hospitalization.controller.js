@@ -152,7 +152,7 @@ exports.create = async (req, res, next) => {
     emitActivity({ module: 'hospitalization', action: 'Nouvelle admission', detail: `${pat?.prenom || ''} ${pat?.nom || ''} — Lit ${lit_numero}`, icon: '🛏️', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
 
-    res.status(201).json({ success: true, hospitalization: hosp, hospitalisation: hosp });
+    res.status(201).json({ success: true, hospitalization: hosp });
   } catch (err) { next(err); }
 };
 
