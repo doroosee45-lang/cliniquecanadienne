@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const c      = require('../controllers/urgencesController');
+const c      = require('../controllers/ambulances.controller');
 const { protect, authorize } = require('../middleware/auth');
 
 const CAN = ['superadmin','adminclinique','medecin','infirmier','sage_femme'];
