@@ -302,8 +302,8 @@ function ModalDossier({ onClose, saving }) {
         <div className="ped-modal-body">
           <div style={{ fontSize:13, fontWeight:700, color:"var(--pg)", marginBottom:10 }}>🧒 Identité de l'enfant</div>
           <div className="pg2">
-            <div className="pfield"><label className="plabel">Nom *</label><input className="pinput" placeholder="Ex: Mbarga" value={form.nom} onChange={e => setForm({...form,nom:e.target.value})}/></div>
-            <div className="pfield"><label className="plabel">Prénom</label><input className="pinput" placeholder="Ex: Théo" value={form.prenom} onChange={e => setForm({...form,prenom:e.target.value})}/></div>
+            <div className="pfield"><label className="plabel">Nom *</label><input className="pinput" placeholder="Nom de famille" value={form.nom} onChange={e => setForm({...form,nom:e.target.value})}/></div>
+            <div className="pfield"><label className="plabel">Prénom</label><input className="pinput" placeholder="Prénom" value={form.prenom} onChange={e => setForm({...form,prenom:e.target.value})}/></div>
             <div className="pfield"><label className="plabel">Date de naissance *</label><input className="pinput" type="date" value={form.date_naissance} onChange={e => setForm({...form,date_naissance:e.target.value})}/></div>
             <div className="pfield"><label className="plabel">Sexe</label>
               <select className="pselect" value={form.sexe} onChange={e => setForm({...form,sexe:e.target.value})}>
@@ -319,7 +319,7 @@ function ModalDossier({ onClose, saving }) {
           </div>
           <div style={{ fontSize:13, fontWeight:700, color:"var(--pg)", margin:"12px 0 10px" }}>👨‍👩‍👦 Parents / Tuteurs</div>
           <div className="pg2">
-            <div className="pfield"><label className="plabel">Nom parent / tuteur</label><input className="pinput" placeholder="Ex: Paul Mbarga" value={form.parent_nom} onChange={e => setForm({...form,parent_nom:e.target.value})}/></div>
+            <div className="pfield"><label className="plabel">Nom parent / tuteur</label><input className="pinput" placeholder="Nom complet du parent ou tuteur" value={form.parent_nom} onChange={e => setForm({...form,parent_nom:e.target.value})}/></div>
             <div className="pfield"><label className="plabel">Téléphone</label><input className="pinput" placeholder="06-XX-XX-XX" value={form.parent_tel} onChange={e => setForm({...form,parent_tel:e.target.value})}/></div>
           </div>
           <div style={{ fontSize:13, fontWeight:700, color:"var(--pg)", margin:"12px 0 10px" }}>🏥 Informations médicales</div>

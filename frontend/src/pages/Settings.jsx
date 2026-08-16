@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback, createContext, useContext } from "react";
 import api from "../api";
 import toast from "react-hot-toast";
 import { Settings as SettingsIcon } from 'lucide-react';
@@ -239,6 +239,47 @@ const INTEGRATIONS = [
   { nom:"Stripe / Paiement CB",  statut:"déconnecté",  icon:"💳", desc:"Paiement carte bancaire international",    color:"#DC2626" },
 ];
 
+// T9-formulaires — SaveBtn/ParamRow déclarés au niveau module (pas dans
+// Settings()) : une nouvelle identité de fonction à chaque frappe (setValues
+// → re-render) démontait/remontait chaque ligne de paramètre, faisant perdre
+// le focus après chaque caractère — impact maximal ici (~59 usages). L'état
+// de sauvegarde (savingKey/saved/saveKey), auparavant capturé par closure,
+// passe maintenant par ce petit contexte plutôt que par 59 sites d'appel à
+// modifier un par un.
+const SettingsSaveCtx = createContext(null);
+
+const SaveBtn = ({ cle, type = "string" }) => {
+  const { savingKey, saved, saveKey } = useContext(SettingsSaveCtx);
+  return (
+    <button
+      className="sbtn sbtn-ghost sbtn-sm"
+      disabled={savingKey === cle}
+      title="Enregistrer"
+      style={{ padding:"6px 10px" }}
+      onClick={() => saveKey(cle, type)}
+    >
+      {savingKey === cle ? "..." : saved[cle] ? "✅" : I.save}
+    </button>
+  );
+};
+
+const ParamRow = ({ cle, label, desc, type = "string", children }) => {
+  const { saved } = useContext(SettingsSaveCtx);
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 0", borderBottom:"1px solid #F3F7FF" }}>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:13, fontWeight:600, color:"var(--sn)" }}>{label}</div>
+        {desc && <div style={{ fontSize:11, color:"var(--sm)", marginTop:2 }}>{desc}</div>}
+      </div>
+      <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+        {children}
+        <SaveBtn cle={cle} type={type} />
+        {saved[cle] && <span className="saved-dot" />}
+      </div>
+    </div>
+  );
+};
+
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function Settings() {
   const [active, setActive]       = useState("clinique");
@@ -391,34 +432,6 @@ export default function Settings() {
     } catch { toast.error("Erreur lors de la sauvegarde"); }
     finally { setSaving(false); }
   };
-
-  // ── Bouton save rapide par clé ────────────────────────────
-  const SaveBtn = ({ cle, type = "string" }) => (
-    <button
-      className="sbtn sbtn-ghost sbtn-sm"
-      disabled={savingKey === cle}
-      title="Enregistrer"
-      style={{ padding:"6px 10px" }}
-      onClick={() => saveKey(cle, type)}
-    >
-      {savingKey === cle ? "..." : saved[cle] ? "✅" : I.save}
-    </button>
-  );
-
-  // ── Ligne de paramètre générique ──────────────────────────
-  const ParamRow = ({ cle, label, desc, type = "string", children }) => (
-    <div style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 0", borderBottom:"1px solid #F3F7FF" }}>
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontSize:13, fontWeight:600, color:"var(--sn)" }}>{label}</div>
-        {desc && <div style={{ fontSize:11, color:"var(--sm)", marginTop:2 }}>{desc}</div>}
-      </div>
-      <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
-        {children}
-        <SaveBtn cle={cle} type={type} />
-        {saved[cle] && <span className="saved-dot" />}
-      </div>
-    </div>
-  );
 
   // ─────────────────────────────────────────────────────────
   if (loading) return (
@@ -1788,7 +1801,9 @@ export default function Settings() {
 
           {/* ── CONTENT ── */}
           <main className="set-content">
-            {renderSection()}
+            <SettingsSaveCtx.Provider value={{ savingKey, saved, saveKey }}>
+              {renderSection()}
+            </SettingsSaveCtx.Provider>
           </main>
         </div>
       </div>

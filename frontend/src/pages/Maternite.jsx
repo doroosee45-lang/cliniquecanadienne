@@ -238,11 +238,11 @@ function ModalDossier({ onClose, saving }) {
           <div className="mat-g2">
             <div className="mat-field">
               <label className="mat-label">Nom *</label>
-              <input className="mat-input" placeholder="Ex: Diallo" value={form.patient_nom} onChange={e=>setForm({...form,patient_nom:e.target.value})}/>
+              <input className="mat-input" placeholder="Nom de famille" value={form.patient_nom} onChange={e=>setForm({...form,patient_nom:e.target.value})}/>
             </div>
             <div className="mat-field">
               <label className="mat-label">Prénom *</label>
-              <input className="mat-input" placeholder="Ex: Aminata" value={form.patient_prenom} onChange={e=>setForm({...form,patient_prenom:e.target.value})}/>
+              <input className="mat-input" placeholder="Prénom" value={form.patient_prenom} onChange={e=>setForm({...form,patient_prenom:e.target.value})}/>
             </div>
           </div>
           <div className="mat-g2">
@@ -285,6 +285,13 @@ function ModalDossier({ onClose, saving }) {
   );
 }
 
+// T9-formulaires — déclaré au niveau module (pas dans ModalCPN) : une
+// nouvelle identité de fonction à chaque frappe démontait/remontait chaque
+// champ enveloppé, faisant perdre le focus après chaque caractère.
+const F = ({label,children}) => (
+  <div className="mat-field">{label&&<label className="mat-label">{label}</label>}{children}</div>
+);
+
 // ─── MODAL CPN ───────────────────────────────────────────────
 function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
   const dispatch = useDispatch();
@@ -323,9 +330,6 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
     }
   };
 
-  const F = ({label,children}) => (
-    <div className="mat-field">{label&&<label className="mat-label">{label}</label>}{children}</div>
-  );
   return (
     <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
