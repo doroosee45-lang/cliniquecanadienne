@@ -125,9 +125,10 @@ exports.addPayment = async (req, res, next) => {
     if (montant > invoice.montant_restant)
       return res.status(400).json({ success: false, message: 'Montant supérieur au solde restant.' });
 
+    const avant = invoice.toObject();
     invoice.paiements.push({ montant, mode, reference, enregistre_par: req.user._id });
     await invoice.save();
-    await logAction({ utilisateur: req.user._id, action: 'PAYMENT', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Paiement ${montant} (${mode})` });
+    await logAction({ utilisateur: req.user._id, action: 'PAYMENT', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Paiement ${montant} (${mode})`, avant, apres: invoice });
     emitActivity({ module: 'finance', action: 'Paiement reçu', detail: `${Number(montant).toLocaleString('fr-FR')} CFA — ${mode}`, icon: '✅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
     res.json({ success: true, invoice });
@@ -224,11 +225,12 @@ exports.payerSalaire = async (req, res, next) => {
     if (salaire.statut === 'paye') {
       return res.status(400).json({ success: false, message: 'Ce salaire a déjà été payé.' });
     }
+    const avant = salaire.toObject();
     salaire.statut = 'paye';
     salaire.date_paiement = new Date();
     salaire.paye_par = req.user._id;
     await salaire.save();
-    await logAction({ utilisateur: req.user._id, action: 'PAYMENT', module: 'finance', entite_id: salaire._id, ip: req.ip, message: `Salaire payé — ${salaire.net} CFA (${salaire.mois})` });
+    await logAction({ utilisateur: req.user._id, action: 'PAYMENT', module: 'finance', entite_id: salaire._id, ip: req.ip, message: `Salaire payé — ${salaire.net} CFA (${salaire.mois})`, avant, apres: salaire });
     emitDashboardUpdate();
     res.json({ success: true, salaire });
   } catch (err) { next(err); }

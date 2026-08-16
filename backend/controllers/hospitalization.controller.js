@@ -158,12 +158,13 @@ exports.create = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
+    const avant = await Hospitalization.findById(req.params.id);
     const hosp = await Hospitalization.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: false })
       .populate('patient', 'nom prenom numero_dossier')
       .populate('medecin_responsable', 'nom prenom')
       .populate('chambre', 'numero type');
     if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip, avant, apres: hosp });
     emitDashboardUpdate();
     res.json({ success: true, hospitalization: hosp });
   } catch (err) { next(err); }
@@ -182,6 +183,7 @@ exports.addNote = async (req, res, next) => {
 
 exports.discharge = async (req, res, next) => {
   try {
+    const avant = await Hospitalization.findById(req.params.id);
     const hosp = await Hospitalization.findByIdAndUpdate(
       req.params.id,
       { ...req.body, statut: 'sorti', date_sortie: new Date() },
@@ -215,7 +217,7 @@ exports.discharge = async (req, res, next) => {
         });
       }
     }
-    await logAction({ utilisateur: req.user._id, action: 'DISCHARGE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'DISCHARGE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip, avant, apres: hosp });
     emitActivity({ module: 'hospitalization', action: 'Sortie patient', detail: `${pat?.prenom || ''} ${pat?.nom || ''}`, icon: '🚪', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
     res.json({ success: true, hospitalization: hosp });
