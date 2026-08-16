@@ -8,6 +8,27 @@ const { logAction, paginate, createNotification } = require('../utils/helpers');
 const { sendActivationEmail } = require('../utils/mail');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
+// R-08a — superadmin/adminclinique/medecin/infirmier/sage_femme voient le
+// dossier complet ; les 5 autres rôles autorisés à lire /patients n'ont un
+// besoin métier réel que des champs administratifs/démographiques liés à
+// leur activité, jamais des champs cliniques (antecedents_medicaux,
+// antecedents_familiaux, notes) — matrice validée avec l'utilisateur.
+// null = aucune restriction (dossier complet).
+const DEMO_FIELDS = 'nom prenom numero_dossier date_naissance sexe telephone email photo adresse statut createdAt';
+const RESTRICTED_FIELDS = {
+  // Risque clinique immédiat (prélèvement) → groupe sanguin + allergies.
+  laborantin:     `${DEMO_FIELDS} groupe_sanguin allergies`,
+  // Risque clinique immédiat (produit de contraste) → allergies.
+  radiologue:     `${DEMO_FIELDS} allergies`,
+  // Risque clinique immédiat (interactions) → allergies.
+  pharmacien:     `${DEMO_FIELDS} allergies`,
+  // Accueil/orientation → assurances, contact d'urgence, médecin référent.
+  receptionniste: `${DEMO_FIELDS} assurances contact_urgence medecin_referent`,
+  // Facturation → assurances uniquement.
+  comptable:      `${DEMO_FIELDS} assurances`,
+};
+const fieldsFor = (role) => RESTRICTED_FIELDS[role] || null;
+
 const generateTempPassword = () => {
   const upper  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const lower  = 'abcdefghijklmnopqrstuvwxyz';
@@ -33,11 +54,13 @@ exports.getAll = async (req, res, next) => {
     if (statut) filter.statut = statut;
     if (q) filter.$text = { $search: q };
 
+    const fields = fieldsFor(req.user.role);
+    let query = Patient.find(filter).sort('-createdAt');
+    if (fields) query = query.select(fields);
+    if (!fields || fields.includes('medecin_referent')) query = query.populate('medecin_referent', 'nom prenom');
+
     const total    = await Patient.countDocuments(filter);
-    const patients = await paginate(
-      Patient.find(filter).populate('medecin_referent', 'nom prenom').sort('-createdAt'),
-      page, limit
-    );
+    const patients = await paginate(query, page, limit);
     res.json({ success: true, total, count: patients.length, patients });
   } catch (err) { next(err); }
 };
@@ -45,9 +68,16 @@ exports.getAll = async (req, res, next) => {
 // ── GET ONE ──────────────────────────────────────────────────────────────────
 exports.getOne = async (req, res, next) => {
   try {
-    const patient = await Patient.findById(req.params.id)
-      .populate('medecin_referent', 'nom prenom specialite')
-      .populate('cree_par', 'nom prenom role');
+    const fields = fieldsFor(req.user.role);
+    let query = Patient.findById(req.params.id);
+    if (fields) query = query.select(fields);
+    if (!fields || fields.includes('medecin_referent')) query = query.populate('medecin_referent', 'nom prenom specialite');
+    // cree_par (audit de création) : métadonnée administrative interne,
+    // réservée aux rôles à accès complet — pas de besoin métier identifié
+    // pour laborantin/radiologue/pharmacien/receptionniste/comptable.
+    if (!fields) query = query.populate('cree_par', 'nom prenom role');
+
+    const patient = await query;
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
     res.json({ success: true, patient });
   } catch (err) { next(err); }
