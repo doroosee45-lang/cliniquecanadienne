@@ -21,13 +21,6 @@ const ConsultationSchema = new Schema({
   diagnostic: String,
   diagnostic_code: String,
   recommandations: String,
-  prescriptions: [{
-    medicament_nom: String,
-    posologie: String,
-    duree: String,
-    quantite: Number,
-    notes: String,
-  }],
   statut: { type: String, enum: ['en_cours','terminee','suspendue'], default: 'en_cours' },
   ia_suggestions: [{ diagnostic: String, confidence: Number }],
 }, { timestamps: true });
