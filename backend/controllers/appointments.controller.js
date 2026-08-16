@@ -1,9 +1,24 @@
 const Appointment = require('../models/Appointment');
 const Patient     = require('../models/Patient');
 const User        = require('../models/User');
+const Service     = require('../models/Service');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
-const { sendAppointmentEmail } = require('../utils/mail');
+const { sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail } = require('../utils/mail');
+
+// Résout patient/médecin/service en une fois pour les notifications RDV —
+// partagé entre create() et update() plutôt que dupliqué.
+const resolveApptContacts = async (appt) => {
+  const [patient, medecinDoc, serviceDoc] = await Promise.all([
+    Patient.findById(appt.patient).select('nom prenom email').lean(),
+    User.findById(appt.medecin).select('nom prenom specialite').lean(),
+    appt.service ? Service.findById(appt.service).select('nom').lean() : null,
+  ]);
+  const medecinNom = medecinDoc
+    ? `Dr ${medecinDoc.prenom} ${medecinDoc.nom}${medecinDoc.specialite ? ` (${medecinDoc.specialite})` : ''}`
+    : '—';
+  return { patient, medecinNom, serviceNom: serviceDoc?.nom || '' };
+};
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -73,14 +88,8 @@ exports.create = async (req, res, next) => {
     // Envoi email de confirmation au patient (non bloquant)
     let emailEnvoye = false;
     try {
-      const [patient, medecinDoc] = await Promise.all([
-        Patient.findById(appt.patient).select('nom prenom email').lean(),
-        User.findById(appt.medecin).select('nom prenom specialite').lean(),
-      ]);
+      const { patient, medecinNom, serviceNom } = await resolveApptContacts(appt);
       if (patient?.email) {
-        const medecinNom = medecinDoc
-          ? `Dr ${medecinDoc.prenom} ${medecinDoc.nom}${medecinDoc.specialite ? ` (${medecinDoc.specialite})` : ''}`
-          : '—';
         await sendAppointmentEmail({
           email:         patient.email,
           prenom:        patient.prenom,
@@ -88,6 +97,7 @@ exports.create = async (req, res, next) => {
           date_heure:    appt.date_heure,
           medecin:       medecinNom,
           type:          appt.type,
+          service:       serviceNom,
           motif:         appt.motif,
           duree_minutes: appt.duree_minutes,
         });
@@ -104,10 +114,50 @@ exports.create = async (req, res, next) => {
 exports.update = async (req, res, next) => {
   try {
     const avant = await Appointment.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Rendez-vous introuvable.' });
     const appt = await Appointment.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    if (!appt) return res.status(404).json({ success: false, message: 'Rendez-vous introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: appt._id, ip: req.ip, avant, apres: appt });
-    res.json({ success: true, appointment: appt });
+
+    // Rendez-vous reporté (date/heure modifiée) ou nouvellement confirmé :
+    // notification email au patient + synchronisation temps réel de tous
+    // les clients connectés (dashboard.jsx, calendrier, etc. — déjà
+    // câblés sur dashboard:refresh via useRealtimeRefresh, aucun nouveau
+    // canal nécessaire).
+    const estReporte  = avant.date_heure.getTime() !== new Date(appt.date_heure).getTime();
+    const estConfirme = !estReporte && avant.statut !== 'confirme' && appt.statut === 'confirme';
+    let notificationEnvoyee = null;
+
+    if (estReporte || estConfirme) {
+      emitActivity({
+        module: 'appointments',
+        action: estReporte ? 'Rendez-vous reporté' : 'Rendez-vous confirmé',
+        detail: appt.type,
+        icon: estReporte ? '🔄' : '✅',
+        userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}`,
+      });
+      emitDashboardUpdate();
+
+      try {
+        const { patient, medecinNom, serviceNom } = await resolveApptContacts(appt);
+        if (patient?.email) {
+          // Décidé ici, avant la tentative d'envoi : reflète la logique
+          // métier (fallait-il notifier ?), pas la remise SMTP effective
+          // (non bloquante, hors du contrôle de l'app — cf. sendEmail).
+          notificationEnvoyee = estReporte ? 'reporte' : 'confirme';
+          const payload = {
+            email: patient.email, prenom: patient.prenom, nom: patient.nom,
+            date_heure: appt.date_heure, medecin: medecinNom, type: appt.type,
+            service: serviceNom, motif: appt.motif, duree_minutes: appt.duree_minutes,
+          };
+          if (estReporte) await sendAppointmentRescheduledEmail(payload);
+          else             await sendAppointmentConfirmedEmail(payload);
+        }
+      } catch (mailErr) {
+        console.error('[MAIL RDV update]', mailErr.message);
+      }
+    }
+
+    res.json({ success: true, appointment: appt, notification_envoyee: notificationEnvoyee });
   } catch (err) { next(err); }
 };
 

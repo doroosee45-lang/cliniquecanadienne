@@ -271,6 +271,155 @@ const sendAppointmentEmail = async ({ email, prenom, nom, date_heure, medecin, t
   });
 };
 
+const APPT_TYPE_LABELS = {
+  consultation: 'Consultation', suivi: 'Suivi médical', urgence: 'Urgence',
+  bilan: 'Bilan de santé', vaccination: 'Vaccination', prevention: 'Prévention',
+};
+
+/**
+ * Envoie la confirmation explicite d'un rendez-vous déjà existant (transition
+ * de statut vers "confirmé", distincte de l'email d'enregistrement envoyé à
+ * la création — cf. appointments.controller.js::update).
+ * @param {{ email, prenom, nom, date_heure, medecin, type, service, motif, duree_minutes }} opts
+ */
+const sendAppointmentConfirmedEmail = async ({ email, prenom, nom, date_heure, medecin, type, service, motif, duree_minutes }) => {
+  const dateObj  = new Date(date_heure);
+  const dateStr  = dateObj.toLocaleDateString('fr-FR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  const heureStr = dateObj.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+  const typeLabel = APPT_TYPE_LABELS[type] || type || 'Rendez-vous';
+
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#ECFDF5;border-left:4px solid #059669;border-radius:8px;padding:14px 18px;margin-bottom:24px;">
+        <div style="font-size:11px;color:#065F46;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Rendez-vous confirmé</div>
+        <div style="font-size:20px;font-weight:800;color:#0B1E3B;margin-top:4px;">✅ Votre rendez-vous a été confirmé</div>
+      </div>
+      <h2 style="color:#0B1E3B;font-size:17px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Votre rendez-vous a été confirmé. Voici le récapitulatif :
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;width:40%;">📅 Date</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;text-transform:capitalize;">${dateStr}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🕐 Heure</td>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;">${heureStr} (durée : ${duree_minutes || 30} min)</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">👨‍⚕️ Médecin</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:600;">${medecin || '—'}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🩺 Type</td>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;">${typeLabel}</td>
+        </tr>
+        ${service ? `
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🏥 Service</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;">${service}</td>
+        </tr>` : ''}
+        ${motif ? `
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:12px;color:#6B7A99;font-weight:700;">📝 Motif</td>
+          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:13px;color:#374151;">${motif}</td>
+        </tr>` : ''}
+      </table>
+    </div>
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: `Rendez-vous confirmé — ${dateStr} — Clinique Canadienne`,
+    html,
+  });
+};
+
+/**
+ * Envoie une notification de modification (date/heure) d'un rendez-vous
+ * existant. cf. appointments.controller.js::update.
+ * @param {{ email, prenom, nom, date_heure, medecin, type, service, motif, duree_minutes }} opts
+ */
+const sendAppointmentRescheduledEmail = async ({ email, prenom, nom, date_heure, medecin, type, service, motif, duree_minutes }) => {
+  const dateObj  = new Date(date_heure);
+  const dateStr  = dateObj.toLocaleDateString('fr-FR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  const heureStr = dateObj.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+  const typeLabel = APPT_TYPE_LABELS[type] || type || 'Rendez-vous';
+
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#FFF7ED;border-left:4px solid #D97706;border-radius:8px;padding:14px 18px;margin-bottom:24px;">
+        <div style="font-size:11px;color:#92400E;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Rendez-vous modifié</div>
+        <div style="font-size:20px;font-weight:800;color:#0B1E3B;margin-top:4px;">🔄 Votre rendez-vous a été modifié</div>
+      </div>
+      <h2 style="color:#0B1E3B;font-size:17px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Votre rendez-vous a été modifié. La nouvelle date de votre rendez-vous est le
+        <strong style="text-transform:capitalize;">${dateStr}</strong> à <strong>${heureStr}</strong>
+        ${medecin ? `avec le <strong>${medecin}</strong>` : ''}.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;width:40%;">📅 Nouvelle date</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;text-transform:capitalize;">${dateStr}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🕐 Nouvelle heure</td>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;">${heureStr} (durée : ${duree_minutes || 30} min)</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">👨‍⚕️ Médecin</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:600;">${medecin || '—'}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🩺 Type</td>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;">${typeLabel}</td>
+        </tr>
+        ${service ? `
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🏥 Service</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;">${service}</td>
+        </tr>` : ''}
+        ${motif ? `
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:12px;color:#6B7A99;font-weight:700;">📝 Motif</td>
+          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:13px;color:#374151;">${motif}</td>
+        </tr>` : ''}
+      </table>
+      <div style="background:#FFFBEB;border-left:4px solid #F59E0B;border-radius:8px;padding:14px 18px;margin-top:8px;">
+        <p style="color:#92400E;font-size:13px;margin:0;line-height:1.6;">
+          ⚠️ La date précédente n'est plus valable. Merci de noter la nouvelle date ci-dessus.
+        </p>
+      </div>
+    </div>
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: `Rendez-vous modifié — nouvelle date ${dateStr} — Clinique Canadienne`,
+    html,
+  });
+};
+
 /**
  * Envoie un rappel de rendez-vous au patient par email (R-10a).
  * @param {{ email, prenom, nom, date_heure, medecin, type, motif }} opts
@@ -330,4 +479,4 @@ const sendReminderEmail = async ({ email, prenom, nom, date_heure, medecin, type
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendReminderEmail };
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail };
