@@ -123,9 +123,10 @@ exports.create = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
+    const avant = await Consultation.findById(req.params.id).lean();
     const consultation = await Consultation.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!consultation) return res.status(404).json({ success: false, message: 'Consultation introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'consultations', entite_id: consultation._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'consultations', entite_id: consultation._id, ip: req.ip, avant, apres: consultation });
     res.json({ success: true, consultation });
   } catch (err) { next(err); }
 };
@@ -134,7 +135,7 @@ exports.remove = async (req, res, next) => {
   try {
     const c = await Consultation.findByIdAndDelete(req.params.id);
     if (!c) return res.status(404).json({ success: false, message: 'Consultation introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'consultations', entite_id: req.params.id, ip: req.ip, message: `Consultation supprimée — patient ${c.patient}` });
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'consultations', entite_id: req.params.id, ip: req.ip, message: `Consultation supprimée — patient ${c.patient}`, avant: c });
     res.json({ success: true, message: 'Consultation supprimée.' });
   } catch (err) { next(err); }
 };

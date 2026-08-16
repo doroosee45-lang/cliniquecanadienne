@@ -155,6 +155,7 @@ exports.updateProfile = async (req, res, next) => {
   try {
     const patient = await findPatient(req.user);
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+    const avant = patient.toObject();
 
     // Champs modifiables par le patient lui-même
     const allowed = ['telephone', 'adresse', 'contact_urgence'];
@@ -172,6 +173,7 @@ exports.updateProfile = async (req, res, next) => {
       utilisateur: req.user._id, action: 'UPDATE', module: 'portal',
       entite_id: patient._id, ip: req.ip,
       message: `Patient ${patient.nom} ${patient.prenom} a mis à jour son profil`,
+      avant, apres: updated,
     });
 
     res.json({ success: true, patient: updated });
@@ -193,6 +195,13 @@ exports.changePassword = async (req, res, next) => {
     user.must_change_password = false;
     await user.save();
 
+    // T9.3 — pas de avant/apres ici, volontairement : le seul champ modifié
+    // est `password` (hash bcrypt), et `must_change_password`. Journaliser un
+    // instantané avant/après stockerait le hash de l'ancien ET du nouveau mot
+    // de passe dans AuditLog, ce que R-08b/T3.3 ont justement cherché à
+    // éliminer pour le mot de passe en clair — même logique appliquée ici par
+    // précaution au hash, qui n'a pas besoin de circuler dans les logs pour
+    // que cette action reste traçable (le message suffit).
     await logAction({
       utilisateur: req.user._id, action: 'UPDATE_PASSWORD', module: 'portal',
       ip: req.ip, message: `Patient ${user.email} a changé son mot de passe`,

@@ -103,9 +103,10 @@ exports.create = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
+    const avant = await Appointment.findById(req.params.id).lean();
     const appt = await Appointment.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!appt) return res.status(404).json({ success: false, message: 'Rendez-vous introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: appt._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: appt._id, ip: req.ip, avant, apres: appt });
     res.json({ success: true, appointment: appt });
   } catch (err) { next(err); }
 };
@@ -114,7 +115,7 @@ exports.remove = async (req, res, next) => {
   try {
     const appt = await Appointment.findByIdAndDelete(req.params.id);
     if (!appt) return res.status(404).json({ success: false, message: 'Rendez-vous introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'appointments', entite_id: req.params.id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'appointments', entite_id: req.params.id, ip: req.ip, avant: appt });
     res.json({ success: true, message: 'Rendez-vous supprimé.' });
   } catch (err) { next(err); }
 };
