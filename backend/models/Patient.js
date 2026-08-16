@@ -11,8 +11,14 @@ const PatientSchema = new Schema({
   numero_dossier: { type: String, unique: true },
   nom: { type: String, required: true, trim: true },
   prenom: { type: String, required: true, trim: true },
-  date_naissance: { type: Date, required: true },
-  sexe: { type: String, enum: ['M', 'F'], required: true },
+  // T3.1 — un dossier créé automatiquement à l'inscription Google n'a ni
+  // date de naissance ni sexe (Google ne les fournit pas) : plutôt que
+  // d'inventer une valeur clinique, ces deux champs deviennent optionnels
+  // uniquement quand profil_a_completer est vrai. La création normale
+  // (réceptionniste, admin) reste inchangée : les deux restent obligatoires.
+  date_naissance: { type: Date, required: function () { return !this.profil_a_completer; } },
+  sexe: { type: String, enum: ['M', 'F'], required: function () { return !this.profil_a_completer; } },
+  profil_a_completer: { type: Boolean, default: false },
   telephone: { type: String, trim: true },
   email: { type: String, lowercase: true, trim: true },
   photo: { type: String },
