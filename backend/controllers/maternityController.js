@@ -118,9 +118,10 @@ exports.create = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
+    const avant = await Pregnancy.findById(req.params.id).lean();
     const g = await Pregnancy.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Dossier de grossesse ${g.numero} modifié` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Dossier de grossesse ${g.numero} modifié`, avant, apres: g });
     res.json({ success: true, grossesse: g });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -152,9 +153,10 @@ exports.addEcho = async (req, res) => {
 // ── Salle de travail ──────────────────────────────────────────────────────────
 exports.updateTravail = async (req, res) => {
   try {
+    const avant = await Pregnancy.findById(req.params.id).lean();
     const g = await Pregnancy.findByIdAndUpdate(req.params.id, { salle_travail: { ...req.body, en_travail: true } }, { new: true });
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Admission en salle de travail — dossier ${g.numero}` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Admission en salle de travail — dossier ${g.numero}`, avant, apres: g });
     res.json({ success: true, grossesse: g });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -235,9 +237,10 @@ exports.createNewborn = async (req, res) => {
 
 exports.updateNewborn = async (req, res) => {
   try {
+    const avant = await Newborn.findById(req.params.id).lean();
     const nb = await Newborn.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!nb) return res.status(404).json({ message: 'Nouveau-né introuvable' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: nb._id, ip: req.ip, message: `Dossier nouveau-né ${nb.numero} modifié` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: nb._id, ip: req.ip, message: `Dossier nouveau-né ${nb.numero} modifié`, avant, apres: nb });
     res.json({ success: true, nouveau_ne: nb });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

@@ -137,9 +137,10 @@ exports.create = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
+    const avant = await ImagingResult.findById(req.params.id).lean();
     const examen = await ImagingResult.findByIdAndUpdate(req.params.id, req.body, { new: true }).lean();
     if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'radiology', entite_id: examen._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'radiology', entite_id: examen._id, ip: req.ip, avant, apres: examen });
     res.json({ success: true, examen: normalize(examen) });
   } catch (err) { next(err); }
 };
@@ -147,13 +148,14 @@ exports.update = async (req, res, next) => {
 exports.saveCR = async (req, res, next) => {
   try {
     const { compte_rendu, conclusion, recommandations, observations, incidents, operateur, date_realisation, anomalie_detectee } = req.body;
+    const avant = await ImagingResult.findById(req.params.id).lean();
     const examen = await ImagingResult.findByIdAndUpdate(
       req.params.id,
       { compte_rendu, conclusion, recommandations, observations, incidents, operateur, date_realisation, anomalie_detectee, statut: 'realise', date_rapport: new Date() },
       { new: true }
     ).lean();
     if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'CR', module: 'radiology', entite_id: examen._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'CR', module: 'radiology', entite_id: examen._id, ip: req.ip, avant, apres: examen });
     res.json({ success: true, examen: normalize(examen) });
   } catch (err) { next(err); }
 };
@@ -169,13 +171,14 @@ exports.validation = async (req, res, next) => {
       radiologue_nom = radiologue || `${req.user.prenom || ''} ${req.user.nom || ''}`.trim();
       radiologue_id  = req.user._id;
     }
+    const avant = await ImagingResult.findById(req.params.id).lean();
     const examen = await ImagingResult.findByIdAndUpdate(
       req.params.id,
       { radiologue: radiologue_id, radiologue_nom, date_validation: date_validation || new Date(), signature, statut: 'valide' },
       { new: true }
     ).lean();
     if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'VALIDATE', module: 'radiology', entite_id: examen._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'VALIDATE', module: 'radiology', entite_id: examen._id, ip: req.ip, avant, apres: examen });
     emitDashboardUpdate();
     res.json({ success: true, examen: normalize(examen) });
   } catch (err) { next(err); }
@@ -193,6 +196,7 @@ exports.uploadImages = async (req, res, next) => {
       taille:    f.size,
     }));
 
+    const avant = await ImagingResult.findById(req.params.id).lean();
     const examen = await ImagingResult.findByIdAndUpdate(
       req.params.id,
       { $push: { images: { $each: nouvelles } } },
@@ -200,7 +204,7 @@ exports.uploadImages = async (req, res, next) => {
     ).lean();
     if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
 
-    await logAction({ utilisateur: req.user._id, action: 'UPLOAD_IMAGES', module: 'radiology', entite_id: examen._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'UPLOAD_IMAGES', module: 'radiology', entite_id: examen._id, ip: req.ip, avant, apres: examen });
     res.json({ success: true, images: examen.images, examen: normalize(examen) });
   } catch (err) { next(err); }
 };
@@ -208,13 +212,14 @@ exports.uploadImages = async (req, res, next) => {
 exports.rapport = async (req, res, next) => {
   try {
     const { compte_rendu, conclusion, anomalie_detectee, ia_anomalie, ia_confidence, ia_details } = req.body;
+    const avant = await ImagingResult.findById(req.params.id).lean();
     const examen = await ImagingResult.findByIdAndUpdate(
       req.params.id,
       { compte_rendu, conclusion, anomalie_detectee, ia_anomalie, ia_confidence, ia_details, radiologue: req.user._id, date_rapport: new Date(), statut: 'rapporte' },
       { new: true }
     ).lean();
     if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'RAPPORT', module: 'radiology', entite_id: examen._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'RAPPORT', module: 'radiology', entite_id: examen._id, ip: req.ip, avant, apres: examen });
     res.json({ success: true, examen: normalize(examen) });
   } catch (err) { next(err); }
 };

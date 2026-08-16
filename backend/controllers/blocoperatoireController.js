@@ -162,6 +162,7 @@ exports.saveCR = async (req, res, next) => {
     const { diagnostic_postop, resume, cr_detail, recommandations, saignement_ml, materiel_implante, incidents } = req.body;
     const dossier = await DossierChirurgical.findById(req.params.id);
     if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
+    const avant = dossier.toObject();
 
     if (diagnostic_postop)  dossier.diagnostic_final   = diagnostic_postop;
     if (cr_detail || resume)dossier.cr_operatoire       = cr_detail || resume;
@@ -170,7 +171,7 @@ exports.saveCR = async (req, res, next) => {
     if (dossier.statut === 'opere') dossier.statut = 'suivi_postop';
 
     await dossier.save();
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire', entite_id: dossier._id, ip: req.ip, message: `CR opératoire enregistré — ${dossier.patient_nom}` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire', entite_id: dossier._id, ip: req.ip, message: `CR opératoire enregistré — ${dossier.patient_nom}`, avant, apres: dossier });
 
     res.json({ success: true, intervention: dossier });
   } catch (err) { next(err); }
@@ -181,6 +182,7 @@ exports.saveReveil = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
     if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
+    const avant = dossier.toObject();
 
     const { etat_patient, observations, complications, temperature, tension_sys, tension_dia, pouls } = req.body;
     const reveilNote = `Réveil: état=${etat_patient||'stable'}, T°=${temperature||'—'}, TA=${tension_sys||'—'}/${tension_dia||'—'}, Pouls=${pouls||'—'}. ${observations||''}`;
@@ -189,7 +191,7 @@ exports.saveReveil = async (req, res, next) => {
       dossier.nb_complications += complications.length;
     }
     await dossier.save();
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire', entite_id: dossier._id, ip: req.ip, message: `Réveil enregistré — ${dossier.patient_nom}` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire', entite_id: dossier._id, ip: req.ip, message: `Réveil enregistré — ${dossier.patient_nom}`, avant, apres: dossier });
 
     res.json({ success: true, intervention: dossier });
   } catch (err) { next(err); }
@@ -242,6 +244,7 @@ exports.scheduleIntervention = async (req, res, next) => {
 
     const dossier = await DossierChirurgical.findById(dossier_id);
     if (!dossier) return res.status(404).json({ success: false, message: 'Dossier chirurgical introuvable.' });
+    const avant = dossier.toObject();
 
     dossier.salle_prevue            = salle;
     dossier.date_intervention_prev  = new Date(date_intervention);
@@ -257,6 +260,10 @@ exports.scheduleIntervention = async (req, res, next) => {
       utilisateur: req.user._id, action: 'CREATE', module: 'blocoperatoire',
       entite_id: dossier._id, ip: req.ip,
       message: `Intervention programmée au bloc — Salle ${salle} — ${dossier.patient_nom}`,
+      // Action historiquement étiquetée CREATE, mais programme un dossier
+      // chirurgical déjà existant (dossier_id) — une vraie modification de
+      // données pré-existantes, donc avant/apres pertinent malgré le label.
+      avant, apres: dossier,
     });
 
     const populated = await DossierChirurgical.findById(dossier._id)
@@ -279,6 +286,7 @@ exports.updateIntervention = async (req, res, next) => {
     const update = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
 
+    const avant = await DossierChirurgical.findById(req.params.id).lean();
     const dossier = await DossierChirurgical.findByIdAndUpdate(
       req.params.id, update, { new: true, runValidators: true }
     )
@@ -291,6 +299,7 @@ exports.updateIntervention = async (req, res, next) => {
       utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire',
       entite_id: dossier._id, ip: req.ip,
       message: `Intervention mise à jour — ${dossier.patient_nom}`,
+      avant, apres: dossier,
     });
 
     res.json({ success: true, intervention: dossier });

@@ -100,11 +100,12 @@ exports.create = async (req, res) => {
 // ── PUT /echographie/:id
 exports.update = async (req, res) => {
   try {
+    const avant = await Echographie.findById(req.params.id).lean();
     const demande = await Echographie.findByIdAndUpdate(
       req.params.id, req.body, { new: true, runValidators: true }
     );
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
-    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Demande d'échographie ${demande.numero} modifiée` });
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Demande d'échographie ${demande.numero} modifiée`, avant, apres: demande });
     emitDashboardUpdate();
     res.json({ success: true, demande });
   } catch (err) {
@@ -116,13 +117,14 @@ exports.update = async (req, res) => {
 exports.planifier = async (req, res) => {
   try {
     const { date_planif, echographiste, salle } = req.body;
+    const avant = await Echographie.findById(req.params.id).lean();
     const demande = await Echographie.findByIdAndUpdate(
       req.params.id,
       { statut: 'planifiee', date_planif, echographiste, salle },
       { new: true }
     );
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
-    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Échographie ${demande.numero} planifiée — ${echographiste || 'à assigner'}` });
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Échographie ${demande.numero} planifiée — ${echographiste || 'à assigner'}`, avant, apres: demande });
     res.json({ success: true, demande });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -138,9 +140,10 @@ exports.saveRapport = async (req, res) => {
       update.rapport_statut = rapport_statut;
       if (rapport_statut === 'valide') update.statut = 'validee';
     }
+    const avant = await Echographie.findById(req.params.id).lean();
     const demande = await Echographie.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
-    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Rapport d'échographie ${demande.numero} enregistré${rapport_statut === 'valide' ? ' et validé' : ''}` });
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Rapport d'échographie ${demande.numero} enregistré${rapport_statut === 'valide' ? ' et validé' : ''}`, avant, apres: demande });
     res.json({ success: true, demande });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -150,11 +153,12 @@ exports.saveRapport = async (req, res) => {
 // ── PUT /echographie/:id/annuler
 exports.annuler = async (req, res) => {
   try {
+    const avant = await Echographie.findById(req.params.id).lean();
     const demande = await Echographie.findByIdAndUpdate(
       req.params.id, { statut: 'annulee' }, { new: true }
     );
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
-    await logAction({ utilisateur: req.user?._id, action: 'CANCEL', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Demande d'échographie ${demande.numero} annulée` });
+    await logAction({ utilisateur: req.user?._id, action: 'CANCEL', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Demande d'échographie ${demande.numero} annulée`, avant, apres: demande });
     res.json({ success: true, demande });
   } catch (err) {
     res.status(500).json({ message: err.message });

@@ -143,6 +143,7 @@ exports.create = async (req, res, next) => {
 exports.validate = async (req, res, next) => {
   try {
     const { resultats, commentaires, est_critique, valeurs_critiques } = req.body;
+    const avant = await LabResult.findById(req.params.id).lean();
     const result = await LabResult.findByIdAndUpdate(
       req.params.id,
       { resultats, commentaires, est_critique, valeurs_critiques, statut: 'valide', validateur: req.user._id, date_validation: new Date() },
@@ -160,20 +161,21 @@ exports.validate = async (req, res, next) => {
         priorite: 'critique',
       });
     }
-    await logAction({ utilisateur: req.user._id, action: 'VALIDATE', module: 'laboratory', entite_id: result._id, ip: req.ip, message: `Validation résultat${est_critique ? ' CRITIQUE' : ''}` });
+    await logAction({ utilisateur: req.user._id, action: 'VALIDATE', module: 'laboratory', entite_id: result._id, ip: req.ip, message: `Validation résultat${est_critique ? ' CRITIQUE' : ''}`, avant, apres: result });
     res.json({ success: true, result });
   } catch (err) { next(err); }
 };
 
 exports.acquit = async (req, res, next) => {
   try {
+    const avant = await LabResult.findById(req.params.id).lean();
     const result = await LabResult.findByIdAndUpdate(
       req.params.id,
       { acquitte_par: req.user._id, acquitte_at: new Date() },
       { new: true }
     );
     if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'ACQUIT', module: 'laboratory', entite_id: result._id, ip: req.ip, message: `Résultat critique acquitté${result.est_critique ? ' (CRITIQUE)' : ''}` });
+    await logAction({ utilisateur: req.user._id, action: 'ACQUIT', module: 'laboratory', entite_id: result._id, ip: req.ip, message: `Résultat critique acquitté${result.est_critique ? ' (CRITIQUE)' : ''}`, avant, apres: result });
     res.json({ success: true, result });
   } catch (err) { next(err); }
 };

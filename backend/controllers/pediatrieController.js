@@ -136,9 +136,10 @@ exports.create = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
+    const avant = await Child.findById(req.params.id).lean();
     const child = await Child.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Dossier pédiatrique ${child.numero} modifié` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Dossier pédiatrique ${child.numero} modifié`, avant, apres: child });
     emitDashboardUpdate();
     res.json({ success: true, enfant: child });
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -238,9 +239,10 @@ exports.createConsultation = async (req, res) => {
 
 exports.updateConsultation = async (req, res) => {
   try {
+    const avant = await PediatricConsultation.findById(req.params.id).lean();
     const c = await PediatricConsultation.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!c) return res.status(404).json({ message: 'Consultation introuvable' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: c._id, ip: req.ip, message: `Consultation pédiatrique ${c.numero} modifiée` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: c._id, ip: req.ip, message: `Consultation pédiatrique ${c.numero} modifiée`, avant, apres: c });
     res.json({ success: true, consultation: c });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };

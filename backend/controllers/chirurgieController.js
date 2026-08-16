@@ -171,6 +171,7 @@ exports.updateDossier = async (req, res) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
     if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
+    const avant = dossier.toObject();
 
     Object.assign(dossier, req.body);
     if (req.body.ia_risque_score !== undefined) {
@@ -179,7 +180,7 @@ exports.updateDossier = async (req, res) => {
     dossier.updated_at = Date.now();
     await dossier.save();
 
-    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Dossier chirurgical ${dossier.numero} modifié` });
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Dossier chirurgical ${dossier.numero} modifié`, avant, apres: dossier });
     res.json(dossier);
   } catch (err) {
     res.status(500).json({ message: err.message });

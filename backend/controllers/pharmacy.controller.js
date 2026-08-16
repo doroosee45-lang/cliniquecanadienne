@@ -130,6 +130,7 @@ exports.receptionCommande = async (req, res, next) => {
     if (['recu', 'annule'].includes(commande.statut)) {
       return res.status(400).json({ success: false, message: 'Cette commande est déjà reçue ou annulée.' });
     }
+    const avant = commande.toObject();
 
     const { receptions } = req.body; // [{ index, quantite_recue }]
     for (const r of (receptions || [])) {
@@ -154,7 +155,7 @@ exports.receptionCommande = async (req, res, next) => {
     if (totalRecu) commande.date_reception = new Date();
 
     await commande.save();
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: commande._id, ip: req.ip, message: `Réception ${commande.statut === 'recu' ? 'complète' : 'partielle'} — ${commande.numero}` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: commande._id, ip: req.ip, message: `Réception ${commande.statut === 'recu' ? 'complète' : 'partielle'} — ${commande.numero}`, avant, apres: commande });
     emitDashboardUpdate();
     res.json({ success: true, commande });
   } catch (err) { next(err); }
@@ -188,9 +189,10 @@ exports.create = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
+    const avant = await Medication.findById(req.params.id).lean();
     const med = await Medication.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!med) return res.status(404).json({ success: false, message: 'Médicament introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: med._id, ip: req.ip, message: `Fiche médicament modifiée : ${med.nom_commercial}` });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: med._id, ip: req.ip, message: `Fiche médicament modifiée : ${med.nom_commercial}`, avant, apres: med });
     res.json({ success: true, medication: med });
   } catch (err) { next(err); }
 };
@@ -213,6 +215,7 @@ exports.mouvement = async (req, res, next) => {
 
     if (['sortie','dispensation','perte','peremption'].includes(type) && med.stock_actuel < quantite)
       return res.status(400).json({ success: false, message: 'Stock insuffisant.' });
+    const avant = med.toObject();
 
     const delta = ['entree','retour'].includes(type) ? quantite : -quantite;
     med.stock_actuel += delta;
@@ -222,7 +225,7 @@ exports.mouvement = async (req, res, next) => {
     else if (med.statut === 'rupture') med.statut = 'disponible';
 
     await med.save();
-    await logAction({ utilisateur: req.user._id, action: 'STOCK_MOUVEMENT', module: 'pharmacy', entite_id: med._id, ip: req.ip, message: `${type} x${quantite} — ${med.nom_commercial}` });
+    await logAction({ utilisateur: req.user._id, action: 'STOCK_MOUVEMENT', module: 'pharmacy', entite_id: med._id, ip: req.ip, message: `${type} x${quantite} — ${med.nom_commercial}`, avant, apres: med });
     emitActivity({ module: 'pharmacy', action: `Mouvement stock (${type})`, detail: `${med.nom_commercial} ×${quantite}`, icon: type === 'entree' ? '📦' : '💊', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
     res.json({ success: true, medication: med });
@@ -246,6 +249,7 @@ exports.dispenser = async (req, res, next) => {
     if (!prescription) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
     if (prescription.statut !== 'active')
       return res.status(400).json({ success: false, message: 'Ordonnance déjà dispensée ou expirée.' });
+    const avant = prescription.toObject();
 
     // Seules les lignes reliées à une fiche Medication (catalogue) impactent le
     // stock — une ligne saisie en texte libre (medicament_nom sans medicament)
@@ -303,7 +307,7 @@ exports.dispenser = async (req, res, next) => {
     prescription.interactions_detectees = detectInteractions(meds);
 
     await prescription.save();
-    await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: prescription._id, ip: req.ip });
+    await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: prescription._id, ip: req.ip, avant, apres: prescription });
     emitActivity({ module: 'pharmacy', action: 'Dispensation ordonnance', detail: prescription.numero_rx, icon: '💊', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
     res.json({ success: true, prescription });
