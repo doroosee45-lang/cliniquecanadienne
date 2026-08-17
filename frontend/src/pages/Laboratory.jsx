@@ -11,6 +11,7 @@ import { FlaskConical, Plus, Printer } from 'lucide-react';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import { REF_VALUES, deriveCriticalPayload } from '../utils/labResultats';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -376,28 +377,10 @@ const EXAM_CATALOGUE = {
   },
 };
 
-// ─── REFERENCE VALUES ───────────────────────────────────────
-const REF_VALUES = {
-  nfs:            { label: "NFS", unite: "", ref: "Voir détails" },
-  groupe:         { label: "Groupe sanguin", unite: "", ref: "A/B/AB/O Rh±" },
-  hb:             { label: "Hémoglobine", unite: "g/dL", ref: "12.0 – 17.5" },
-  vs:             { label: "VS", unite: "mm/h", ref: "H:<10 F:<15" },
-  glycemie:       { label: "Glycémie", unite: "g/L", ref: "0.70 – 1.10" },
-  creatinine:     { label: "Créatinine", unite: "mg/L", ref: "7 – 13" },
-  uree:           { label: "Urée", unite: "g/L", ref: "0.15 – 0.45" },
-  cholesterol:    { label: "Cholestérol", unite: "g/L", ref: "< 2.0" },
-  triglycerides:  { label: "Triglycérides", unite: "g/L", ref: "0.40 – 1.50" },
-  transaminases:  { label: "ASAT/ALAT", unite: "UI/L", ref: "< 40" },
-  goutte_epaisse: { label: "Goutte épaisse", unite: "", ref: "Négatif" },
-  test_palu:      { label: "Test paludisme", unite: "", ref: "Négatif" },
-  exam_selles:    { label: "Examen selles", unite: "", ref: "Normal" },
-  vih:            { label: "VIH", unite: "", ref: "Non réactif" },
-  hep_b:          { label: "AgHBs", unite: "", ref: "Non réactif" },
-  hep_c:          { label: "Hépatite C", unite: "", ref: "Non réactif" },
-  syphilis:       { label: "Syphilis", unite: "", ref: "Non réactif" },
-  ecbu:           { label: "ECBU", unite: "UFC/mL", ref: "< 100 000" },
-  bandelette:     { label: "Bandelette", unite: "", ref: "Normal" },
-};
+// REF_VALUES et deriveCriticalPayload importés de ../utils/labResultats —
+// extraits pour être réellement testables côté backend (voir
+// auditP6-1CriticalNotificationE2E.test.js), au lieu de rester une logique
+// purement locale à cette page qu'aucun test ne pouvait exercer.
 
 // ─── DEMO DATA ───────────────────────────────────────────────
 const DEMO_ANALYSES = [];
@@ -608,11 +591,7 @@ export default function Laboratoire() {
   const validerAnalyse = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const resultatsCritiques = asArr(currentAnalyse.resultats).filter(r => r.statut_res === "critique");
-    const est_critique = resultatsCritiques.length > 0;
-    const valeurs_critiques = resultatsCritiques
-      .map(r => `${REF_VALUES[r.exam_id]?.label || r.exam_id} : ${r.valeur}${REF_VALUES[r.exam_id]?.unite ? ' ' + REF_VALUES[r.exam_id].unite : ''} (normale : ${r.ref || '—'})`)
-      .join(' ; ');
+    const { est_critique, valeurs_critiques } = deriveCriticalPayload(asArr(currentAnalyse.resultats), REF_VALUES);
     // technicien/biologiste restent des champs de formulaire locaux
     // uniquement : LabResult.validate() ne les persiste pas (technicien est
     // un ObjectId ref User côté schéma, pas un nom libre ; biologiste n'est
