@@ -51,15 +51,28 @@ exports.createUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 — liste blanche : seuls les champs réellement envoyés par le
+// formulaire Administration.jsx (EMPTY_USER) sont modifiables ici. Avant ce
+// correctif, req.body était transmis quasi tel quel (seuls mot_de_passe et
+// password étaient retirés) — un appel direct à cette route (superadmin
+// uniquement, mais sans aucune défense en profondeur) pouvait positionner
+// must_change_password, patient_id, tentatives_echouees, verrouille_jusqu_a,
+// reset_password_token/expire, googleId ou preferences sans validation.
+const USER_UPDATE_FIELDS = ['prenom', 'nom', 'email', 'telephone', 'role', 'service', 'statut'];
+
 exports.updateUser = async (req, res, next) => {
   try {
     // Même correctif que createUser — le formulaire d'édition réutilise le
     // même champ `mot_de_passe` (vide = ne pas changer, non vide = réinitialiser).
-    const { mot_de_passe, password: _ignored, ...data } = req.body;
+    const { mot_de_passe } = req.body;
     const password = mot_de_passe || undefined;
+    const data = {};
+    for (const field of USER_UPDATE_FIELDS) {
+      if (req.body[field] !== undefined) data[field] = req.body[field];
+    }
     const avant = await User.findById(req.params.id).select('role statut email').lean();
     if (!avant) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
-    const user = await User.findByIdAndUpdate(req.params.id, data, { new: true });
+    const user = await User.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (password) { user.password = password; await user.save(); }
     // Modification de compte utilisateur — traçabilité renforcée si le rôle
     // ou le statut change (élévation de privilèges, suspension...).
