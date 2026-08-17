@@ -140,6 +140,36 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+exports.prelever = async (req, res, next) => {
+  try {
+    const { type_echantillon, preleveur, observations_prelevement } = req.body;
+    const avant = await LabResult.findById(req.params.id).lean();
+    const result = await LabResult.findByIdAndUpdate(
+      req.params.id,
+      { type_echantillon, preleveur, observations_prelevement, statut: 'preleve', date_prelevement: new Date() },
+      { new: true }
+    );
+    if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'PRELEVEMENT', module: 'laboratory', entite_id: result._id, ip: req.ip, message: 'Prélèvement enregistré', avant, apres: result });
+    res.json({ success: true, result });
+  } catch (err) { next(err); }
+};
+
+exports.saisirResultats = async (req, res, next) => {
+  try {
+    const { resultats } = req.body;
+    const avant = await LabResult.findById(req.params.id).lean();
+    const result = await LabResult.findByIdAndUpdate(
+      req.params.id,
+      { resultats, statut: 'termine', date_resultat: new Date() },
+      { new: true }
+    );
+    if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'RESULTATS', module: 'laboratory', entite_id: result._id, ip: req.ip, message: 'Résultats saisis', avant, apres: result });
+    res.json({ success: true, result });
+  } catch (err) { next(err); }
+};
+
 exports.validate = async (req, res, next) => {
   try {
     const { resultats, commentaires, est_critique, valeurs_critiques } = req.body;
