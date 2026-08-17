@@ -366,11 +366,10 @@ export default function IntelligenceArtificielle() {
   const [section, setSection] = useState("assistant");
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
-  const [chatMessages, setChatMessages] = useState([
-    { role:"bot", content:"Bonjour ! Je suis votre assistant IA médical. Posez-moi des questions sur les patients, analyses, rapports ou la gestion de la clinique.", time:"09:00" },
+  const [chatMessages] = useState([
+    { role:"bot", content:"Cette fonctionnalité est en cours de développement. Aucune donnée réelle n'est utilisée dans cette démonstration.", time:"09:00" },
   ]);
   const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
   const [kbSearch, setKbSearch] = useState("");
   const chatEndRef = useRef(null);
 
@@ -522,33 +521,14 @@ export default function IntelligenceArtificielle() {
   };
 
   // ── Chat ──────────────────────────────────────────────────
-  const CHAT_RESPONSES = {
-    "patient":  "Voici un résumé rapide :\n• **24 patients actifs** suivis cette semaine\n• 3 patients avec alertes médicales actives\n• Prochains RDV : 8 aujourd'hui\n\nVoulez-vous accéder au dossier d'un patient spécifique ?",
-    "labo":     "Derniers résultats biologiques :\n• Jean Dupont — Glycémie anormale (7.8 mmol/L)\n• Paul Nguema — NFS : anémie légère (Hb 10.2 g/dL)\n• Marie Paul — Bilan hormonal en attente\n\n2 résultats urgents à traiter.",
-    "facture":  "Factures impayées :\n• 3 factures non réglées depuis > 30 jours\n• Total : **510 000 CFA**\n• Dont : chirurgie Dupont (225 000 CFA)\n\nSouhaitez-vous générer les relances automatiques ?",
-    "rapport":  "Génération du rapport mensuel en cours…\n\n📊 Le rapport Mai 2025 comprend :\n• 48 consultations · 12 hospitalisations\n• 6 interventions chirurgicales\n• CA : 4 850 000 CFA\n\n✅ Rapport PDF prêt à télécharger.",
-    "hospit":   "Patients hospitalisés aujourd'hui :\n• Paul Nguema — Service Chirurgie, Chambre 102A\n• Fatou Bongo — Service Pédiatrie, Chambre 205B\n\n2 entrées prévues cet après-midi.",
-    "default":  "Je traite votre demande… Pouvez-vous préciser davantage ? Je peux vous aider avec :\n• Analyse d'un dossier patient\n• Résultats biologiques\n• Gestion des rendez-vous\n• Rapports et statistiques\n• Factures et finances",
-  };
-  const getResponse = (msg) => {
-    const m = msg.toLowerCase();
-    if (m.includes("patient") || m.includes("dossier")) return CHAT_RESPONSES["patient"];
-    if (m.includes("labo") || m.includes("résultat") || m.includes("analyse")) return CHAT_RESPONSES["labo"];
-    if (m.includes("facture") || m.includes("payé") || m.includes("finance")) return CHAT_RESPONSES["facture"];
-    if (m.includes("rapport") || m.includes("mensuel") || m.includes("statistique")) return CHAT_RESPONSES["rapport"];
-    if (m.includes("hospit") || m.includes("hospitalisé")) return CHAT_RESPONSES["hospit"];
-    return CHAT_RESPONSES["default"];
-  };
-  const sendChat = async () => {
-    if (!chatInput.trim() || chatLoading) return;
-    const msg = chatInput.trim();
-    setChatMessages(p => [...p, { role:"user", content:msg, time:now() }]);
-    setChatInput("");
-    setChatLoading(true);
-    await new Promise(r => setTimeout(r, 1400 + Math.random()*600));
-    setChatMessages(p => [...p, { role:"bot", content:getResponse(msg), time:now() }]);
-    setChatLoading(false);
-  };
+  // A-1 (audit Phases 2-9) — neutralisé, pas implémenté : ce chat n'a jamais
+  // été relié à un backend (aucune route /ai/chat n'existe — voir
+  // backend/routes/ai.routes.js) et répondait avec des données patient et
+  // des valeurs cliniques entièrement inventées (CHAT_RESPONSES, supprimé).
+  // Pattern identique à AUDIT-03 (Settings.jsx) et AUDIT-07 (Messages.jsx
+  // compose) : on neutralise plutôt que de construire un backend. L'onglet
+  // reste visible ; l'input et le bouton d'envoi sont désactivés ci-dessous
+  // et n'ont plus de handler d'envoi.
 
   // ── Export journal IA (PDF) ───────────────────────────────
   const exportHistoriqueIA = useCallback(() => {
@@ -1272,25 +1252,15 @@ export default function IntelligenceArtificielle() {
                             </div>
                           </div>
                         ))}
-                        {chatLoading && (
-                          <div className="chat-msg bot">
-                            <div className="chat-avatar">🤖</div>
-                            <div className="chat-bubble" style={{ display:"flex", alignItems:"center", gap:5, padding:"12px 16px" }}>
-                              <span className="typing-dot"/><span className="typing-dot"/><span className="typing-dot"/>
-                            </div>
-                          </div>
-                        )}
                         <div ref={chatEndRef} />
                       </div>
                       <div className="chat-input-row">
-                        <input className="chat-input" placeholder="Posez votre question à l'IA…" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} />
-                        <button className="ibtn ibtn-teal ibtn-sm" onClick={sendChat} disabled={chatLoading || !chatInput.trim()}>{I.send}</button>
+                        <input className="chat-input" placeholder="Fonctionnalité en cours de développement — aucune donnée réelle" value={chatInput} onChange={e => setChatInput(e.target.value)} disabled title="Fonctionnalité en cours de développement — aucune donnée réelle" />
+                        <button className="ibtn ibtn-teal ibtn-sm" disabled title="Fonctionnalité en cours de développement — aucune donnée réelle">{I.send}</button>
                       </div>
                     </div>
-                    <div style={{ padding:"10px 16px 16px", display:"flex", flexWrap:"wrap", gap:6 }}>
-                      {["Résume le dossier de Jean Dupont","Derniers résultats labo ?","Patients hospitalisés aujourd'hui ?","Génère le rapport mensuel","Factures impayées ?"].map(s => (
-                        <button key={s} className="chip" onClick={() => { setChatInput(s); }}>{s}</button>
-                      ))}
+                    <div style={{ padding:"10px 16px 16px", fontSize:12, color:"var(--cm)" }}>
+                      🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.
                     </div>
                   </div>
                 )}
@@ -1316,25 +1286,15 @@ export default function IntelligenceArtificielle() {
                         </div>
                       </div>
                     ))}
-                    {chatLoading && (
-                      <div className="chat-msg bot">
-                        <div className="chat-avatar">🤖</div>
-                        <div className="chat-bubble" style={{ display:"flex", alignItems:"center", gap:5, padding:"12px 16px" }}>
-                          <span className="typing-dot"/><span className="typing-dot"/><span className="typing-dot"/>
-                        </div>
-                      </div>
-                    )}
                     <div ref={chatEndRef} />
                   </div>
                   <div className="chat-input-row">
-                    <input className="chat-input" placeholder="Posez votre question à l'IA médicale…" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} />
-                    <button className="ibtn ibtn-teal" onClick={sendChat} disabled={chatLoading || !chatInput.trim()}>{I.send} Envoyer</button>
+                    <input className="chat-input" placeholder="Fonctionnalité en cours de développement — aucune donnée réelle" value={chatInput} onChange={e => setChatInput(e.target.value)} disabled title="Fonctionnalité en cours de développement — aucune donnée réelle" />
+                    <button className="ibtn ibtn-teal" disabled title="Fonctionnalité en cours de développement — aucune donnée réelle">{I.send} Envoyer</button>
                   </div>
                 </div>
-                <div style={{ padding:"10px 16px 16px", display:"flex", flexWrap:"wrap", gap:6 }}>
-                  {["Résume le dossier de Jean Dupont","Derniers résultats labo anormaux","Patients hospitalisés aujourd'hui","Génère le rapport mensuel mai 2025","Montre les factures impayées","Prévisions d'affluence cette semaine"].map(s => (
-                    <button key={s} className="chip" onClick={() => setChatInput(s)}>{s}</button>
-                  ))}
+                <div style={{ padding:"10px 16px 16px", fontSize:12, color:"var(--cm)" }}>
+                  🚧 Cette fonctionnalité est en cours de développement. Aucune donnée réelle n'est utilisée dans cette démonstration.
                 </div>
               </div>
             </div>
