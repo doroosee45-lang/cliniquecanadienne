@@ -109,12 +109,26 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 — liste blanche : avant ce correctif, req.body était transmis
+// quasi tel quel à Staff.findByIdAndUpdate. salaire_base (donnée
+// financière), matricule (identifiant auto-généré), et les sous-documents
+// planning/conges/competences (gérés par des routes dédiées ailleurs dans
+// ce contrôleur) étaient donc modifiables via ce seul endpoint générique,
+// sans validation (runValidators absent) ni contrôle particulier.
+const STAFF_UPDATE_FIELDS = [
+  'prenom', 'nom', 'email', 'telephone', 'sexe', 'date_naissance', 'nationalite',
+  'departement', 'adresse', 'poste', 'service', 'date_embauche', 'type_contrat', 'statut',
+];
+
 exports.update = async (req, res, next) => {
   try {
-    const body = { ...req.body };
-    if (body.contrat) { body.type_contrat = body.contrat; delete body.contrat; }
+    const body = {};
+    for (const field of STAFF_UPDATE_FIELDS) {
+      if (req.body[field] !== undefined) body[field] = req.body[field];
+    }
+    if (req.body.contrat !== undefined) body.type_contrat = req.body.contrat;
     const avant = await Staff.findById(req.params.id).lean();
-    const staff = await Staff.findByIdAndUpdate(req.params.id, body, { new: true })
+    const staff = await Staff.findByIdAndUpdate(req.params.id, body, { new: true, runValidators: true })
       .populate('utilisateur', 'nom prenom role email telephone specialite')
       .populate('service', 'nom');
     if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
