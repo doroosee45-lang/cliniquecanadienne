@@ -43,3 +43,7 @@ Thumbs.db
 # ===== UPLOADS (fichiers uploadés par les users) =====
 uploads/
 public/uploads/
+
+# ===== SAUVEGARDES (T9.11, backend/utils/backup.js) =====
+# Contiennent des données patient en clair (EJSON) — jamais versionnées.
+backend/backups/
