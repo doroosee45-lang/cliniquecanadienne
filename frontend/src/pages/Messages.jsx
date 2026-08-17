@@ -365,14 +365,14 @@ const buildDemoConvs = (userId) => [];
 const buildDemoMessages = (convId, userId) => {
   const msgs = {
     c1: [
-      { _id:"m1", contenu:"Bonjour Dr. Martin, les résultats du bilan préopératoire de M. Dupont viennent d'arriver.", expediteur:{ _id:"u1", prenom:"Sophie", nom:"Martin", role:"medecin" }, date_envoi:"2025-06-01T09:45:00", lu:true, reactions:["👍"] },
+      { _id:"m1", contenu:"Bonjour Dr. Martin, les résultats du bilan préopératoire de M. Dupont viennent d'arriver.", expediteur:{ _id:"u1", prenom:"Sophie", nom:"Martin", role:"medecin" }, date_envoi:"2025-06-01T09:45:00", lu:true, reactions:[{ emoji:"👍", utilisateur:"u1" }] },
       { _id:"m2", contenu:"Parfait, je les examine. Hb à 12.5, c'est limite mais acceptable. La glycémie à jeun est un peu élevée à 7.2 mmol/L.", expediteur:{ _id:"me", prenom:"Moi", nom:"", role:"medecin" }, date_envoi:"2025-06-01T09:52:00", lu:true, reactions:[] },
       { _id:"m3", contenu:"Je recommande de contacter l'anesthésiste avant de confirmer l'intervention du 10 juin.", expediteur:{ _id:"u1", prenom:"Sophie", nom:"Martin", role:"medecin" }, date_envoi:"2025-06-01T10:05:00", lu:false, reactions:[] },
       { _id:"m4", contenu:"Résultats du patient Dupont reçus. Hb : 12.5 g/dL — à discuter avant l'intervention.", expediteur:{ _id:"u1", prenom:"Sophie", nom:"Martin", role:"medecin" }, date_envoi:"2025-06-01T10:30:00", lu:false, reactions:[], type_special:"resultat" },
     ],
     c2: [
       { _id:"m1", contenu:"Bonjour, la réunion de direction est reportée à jeudi 14h. Pouvez-vous confirmer votre présence ?", expediteur:{ _id:"u2", prenom:"Alain", nom:"Koumba", role:"admin" }, date_envoi:"2025-06-01T09:15:00", lu:true, reactions:[] },
-      { _id:"m2", contenu:"Confirmé, je serai présent. Merci pour l'information.", expediteur:{ _id:"me", prenom:"Moi", nom:"", role:"medecin" }, date_envoi:"2025-06-01T09:18:00", lu:true, reactions:["✅"] },
+      { _id:"m2", contenu:"Confirmé, je serai présent. Merci pour l'information.", expediteur:{ _id:"me", prenom:"Moi", nom:"", role:"medecin" }, date_envoi:"2025-06-01T09:18:00", lu:true, reactions:[{ emoji:"✅", utilisateur:"me" }] },
     ],
     c3: [
       { _id:"m1", contenu:"Bonsoir docteur, le patient en chambre 12 présente une fièvre à 39.2°C depuis 18h.", expediteur:{ _id:"u3", prenom:"Marie", nom:"Nzigou", role:"infirmier" }, date_envoi:"2025-05-31T22:10:00", lu:false, reactions:[] },
@@ -627,8 +627,26 @@ export default function Messagerie() {
       loadConvs();
     };
 
+    // AUDIT-07 — réactions et suppressions émises par le backend (emitTo,
+    // même canal que message:new) : les autres membres de la conversation
+    // ouverte doivent les recevoir sans recharger la page.
+    const handleReaction = ({ conversationId, msgId, reactions }) => {
+      if (selectedRef.current?._id !== conversationId) return;
+      setMessages(prev => prev.map(m => m._id === msgId ? { ...m, reactions } : m));
+    };
+    const handleDeleted = ({ conversationId, msgId }) => {
+      if (selectedRef.current?._id !== conversationId) return;
+      setMessages(prev => prev.filter(m => m._id !== msgId));
+    };
+
     socket.on('message:new', handleNewMsg);
-    return () => socket.off('message:new', handleNewMsg);
+    socket.on('message:reaction', handleReaction);
+    socket.on('message:deleted', handleDeleted);
+    return () => {
+      socket.off('message:new', handleNewMsg);
+      socket.off('message:reaction', handleReaction);
+      socket.off('message:deleted', handleDeleted);
+    };
   }, [socket, loadConvs, me._id]);
 
   // ── Open conversation ─────────────────────────────────────
@@ -698,36 +716,42 @@ export default function Messagerie() {
   };
 
   // ── Send new message (compose) ────────────────────────────
-  const sendNewMsg = async (e) => {
+  // AUDIT-07 — neutralisé, pas implémenté : "objet + priorité + tous les
+  // employés" reste une décision produit non tranchée. Aucun appel vers
+  // /messages/compose (n'a jamais existé côté backend) ; les deux boutons
+  // déclencheurs sont désactivés (voir plus haut), ceci est un filet de
+  // sécurité si jamais le formulaire était quand même soumis.
+  const sendNewMsg = (e) => {
     e.preventDefault();
-    try {
-      await api.post("/messages/compose", newMsgForm);
-      toast.success("✅ Message envoyé avec succès");
-    } catch { toast.success("✅ Message envoyé (local)"); }
-    setShowNewMsg(false);
-    setNewMsgForm({ destinataire:"", objet:"", contenu:"", priorite:"normale" });
+    toast.error("Fonctionnalité momentanément indisponible.");
   };
 
   // ── Create group ──────────────────────────────────────────
   const createGroup = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/messages/groups", newGrpForm);
+      const { data } = await api.post("/messages/groups", newGrpForm);
+      setGroups(prev => [{ _id: data.conversation._id, nom: data.conversation.nom, membres: data.conversation.membres.length, icon:"💬", dernierMsg:"Groupe créé" }, ...prev]);
       toast.success("✅ Groupe créé");
-    } catch { toast.success("✅ Groupe créé (local)"); }
-    setGroups(prev => [{ _id:`g_${Date.now()}`, nom:newGrpForm.nom, membres:newGrpForm.membres.length, icon:"💬", dernierMsg:"Groupe créé" }, ...prev]);
-    setShowNewGrp(false);
-    setNewGrpForm({ nom:"", membres:[], description:"" });
+      setShowNewGrp(false);
+      setNewGrpForm({ nom:"", membres:[], description:"" });
+    } catch {
+      toast.error("Erreur lors de la création du groupe.");
+    }
   };
 
   // ── Toggle reaction ───────────────────────────────────────
+  // AUDIT-07 — plus d'optimisme silencieux : l'état local n'est mis à jour
+  // qu'avec la réponse réelle du serveur (source de vérité), jamais avant.
+  // En cas d'échec, rien n'a été modifié localement — pas de fausse réussite
+  // à annuler, et une erreur est affichée.
   const toggleReaction = async (msgId, emoji) => {
-    setMessages(prev => prev.map(m => {
-      if (m._id !== msgId) return m;
-      const has = m.reactions?.includes(emoji);
-      return { ...m, reactions: has ? m.reactions.filter(r => r !== emoji) : [...(m.reactions||[]), emoji] };
-    }));
-    try { await api.post(`/messages/reactions/${msgId}`, { emoji }); } catch {}
+    try {
+      const { data } = await api.post(`/messages/reactions/${msgId}`, { emoji });
+      setMessages(prev => prev.map(m => m._id === msgId ? { ...m, reactions: data.reactions } : m));
+    } catch {
+      toast.error("Impossible d'ajouter la réaction.");
+    }
   };
 
   // ── Mark notif read ───────────────────────────────────────
@@ -818,13 +842,19 @@ export default function Messagerie() {
   };
 
   // ── Delete message ────────────────────────────────────────
+  // AUDIT-07 — retrait de l'état local uniquement après confirmation
+  // serveur (plus de retrait optimiste silencieux) ; erreur affichée sinon.
   const deleteMsg = async (msgId) => {
-    setMessages(prev => prev.filter(m => m._id !== msgId));
-    if (playingId === msgId) {
-      currentAudioRef.current?.pause();
-      setPlayingId(null);
+    try {
+      await api.delete(`/messages/${msgId}`);
+      setMessages(prev => prev.filter(m => m._id !== msgId));
+      if (playingId === msgId) {
+        currentAudioRef.current?.pause();
+        setPlayingId(null);
+      }
+    } catch {
+      toast.error("Impossible de supprimer ce message.");
     }
-    try { await api.delete(`/messages/${msgId}`); } catch {}
   };
 
   // ── Filtered convs ────────────────────────────────────────
@@ -879,7 +909,7 @@ export default function Messagerie() {
                 <Bell size={14} />
                 {notifsNonLues > 0 && <span aria-hidden="true" style={{ position:"absolute", top:-6, right:-6, width:18, height:18, background:"#DC2626", color:"#fff", borderRadius:"50%", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{notifsNonLues}</span>}
               </button>
-              <Button icon={Plus} onClick={() => setShowNewMsg(true)}>Nouveau message</Button>
+              <Button icon={Plus} disabled title="Fonctionnalité momentanément indisponible">Nouveau message</Button>
             </>
           }
         />
@@ -998,7 +1028,7 @@ export default function Messagerie() {
                     <div style={{ fontWeight:700, fontSize:16, color:"var(--cn)", marginBottom:6 }}>Sélectionnez une conversation</div>
                     <div style={{ fontSize:13, color:"var(--cm)" }}>Choisissez une conversation dans la liste<br />ou démarrez un nouveau message.</div>
                   </div>
-                  <button className="cbtn cbtn-teal" onClick={() => setShowNewMsg(true)}>{I.plus} Nouveau message</button>
+                  <button className="cbtn cbtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.plus} Nouveau message</button>
                 </div>
               ) : (
                 <>
@@ -1178,11 +1208,16 @@ export default function Messagerie() {
                                     </span>
                                   )}
                                 </div>
-                                {/* Reactions */}
+                                {/* Reactions — {emoji, utilisateur} par entrée (AUDIT-07),
+                                    regroupées par emoji pour l'affichage (compteur si >1). */}
                                 {msg.reactions?.length > 0 && (
                                   <div className="reactions" style={{ justifyContent: isMe ? "flex-end" : "flex-start" }}>
-                                    {msg.reactions.map(r => (
-                                      <span key={r} className="react-pill" onClick={() => toggleReaction(msg._id, r)}>{r}</span>
+                                    {Object.entries(
+                                      msg.reactions.reduce((acc, r) => { acc[r.emoji] = (acc[r.emoji] || 0) + 1; return acc; }, {})
+                                    ).map(([emoji, count]) => (
+                                      <span key={emoji} className="react-pill" onClick={() => toggleReaction(msg._id, emoji)}>
+                                        {emoji}{count > 1 ? ` ${count}` : ''}
+                                      </span>
                                     ))}
                                   </div>
                                 )}

@@ -75,3 +75,95 @@ exports.getMessages = async (req, res, next) => {
     res.json({ success: true, messages: conv.messages });
   } catch (err) { next(err); }
 };
+
+// AUDIT-07 — POST /messages/groups. Réutilise Conversation (type:'groupe'),
+// aucun nouveau modèle. Le créateur est toujours ajouté aux membres, même
+// s'il ne s'est pas sélectionné lui-même côté formulaire.
+exports.createGroup = async (req, res, next) => {
+  try {
+    const { nom, membres = [], description } = req.body;
+    if (!nom || !nom.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom du groupe est requis.' });
+    }
+    if (!Array.isArray(membres) || membres.length === 0) {
+      return res.status(400).json({ success: false, message: 'Au moins un membre est requis.' });
+    }
+
+    const membresUniques = [...new Set([req.user._id.toString(), ...membres.map(String)])];
+    const conv = await Conversation.create({
+      type: 'groupe',
+      nom: nom.trim(),
+      description,
+      membres: membresUniques,
+      created_by: req.user._id,
+    });
+    await conv.populate('membres', 'nom prenom role avatar');
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'messages', entite_id: conv._id, ip: req.ip, message: `Groupe créé : ${conv.nom}` });
+
+    res.status(201).json({ success: true, conversation: conv });
+  } catch (err) { next(err); }
+};
+
+// AUDIT-07 — POST /messages/reactions/:msgId. Toggle : même emoji par le
+// même utilisateur sur le même message → ajout la première fois, retrait la
+// seconde. Le message est retrouvé par son propre _id (pas besoin de
+// l'id de conversation dans l'URL, cohérent avec l'appel déjà existant côté
+// frontend) ; la conversation qui le contient est recherchée d'abord sans
+// filtre de membre pour distinguer "message inexistant" (404) de "existe
+// mais accès refusé" (403).
+exports.toggleReaction = async (req, res, next) => {
+  try {
+    const { emoji } = req.body;
+    if (!emoji) return res.status(400).json({ success: false, message: 'emoji requis.' });
+
+    const conv = await Conversation.findOne({ 'messages._id': req.params.msgId });
+    if (!conv) return res.status(404).json({ success: false, message: 'Message introuvable.' });
+    const msg = conv.messages.id(req.params.msgId);
+    if (!msg) return res.status(404).json({ success: false, message: 'Message introuvable.' });
+
+    const estMembre = conv.membres.some(m => m.toString() === req.user._id.toString());
+    if (!estMembre) return res.status(403).json({ success: false, message: 'Accès refusé.' });
+
+    const idx = msg.reactions.findIndex(r => r.emoji === emoji && r.utilisateur.toString() === req.user._id.toString());
+    let action;
+    if (idx === -1) { msg.reactions.push({ emoji, utilisateur: req.user._id }); action = 'ajoutee'; }
+    else { msg.reactions.splice(idx, 1); action = 'retiree'; }
+    await conv.save();
+
+    // reactions complet (pas juste le delta) — évite de dupliquer la logique
+    // de toggle côté client pour les autres membres qui reçoivent l'évènement.
+    emitTo(`conversation:${conv._id}`, 'message:reaction', {
+      conversationId: conv._id, msgId: msg._id, reactions: msg.reactions, action,
+    });
+
+    res.json({ success: true, reactions: msg.reactions, action });
+  } catch (err) { next(err); }
+};
+
+// AUDIT-07 — DELETE /messages/:msgId. Suppression réservée à l'auteur du
+// message (pas à tout membre de la conversation, décision explicite).
+// Distingue 404 (message inexistant) de 403 (existe mais pas le droit —
+// non-membre ou membre non-auteur), comme demandé.
+exports.deleteMessage = async (req, res, next) => {
+  try {
+    const conv = await Conversation.findOne({ 'messages._id': req.params.msgId });
+    if (!conv) return res.status(404).json({ success: false, message: 'Message introuvable.' });
+    const msg = conv.messages.id(req.params.msgId);
+    if (!msg) return res.status(404).json({ success: false, message: 'Message introuvable.' });
+
+    const estMembre = conv.membres.some(m => m.toString() === req.user._id.toString());
+    if (!estMembre) return res.status(403).json({ success: false, message: 'Accès refusé.' });
+
+    if (msg.expediteur.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: "Seul l'auteur peut supprimer ce message." });
+    }
+
+    msg.deleteOne();
+    await conv.save();
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: conv._id, ip: req.ip, message: 'Message supprimé' });
+
+    emitTo(`conversation:${conv._id}`, 'message:deleted', { conversationId: conv._id, msgId: req.params.msgId });
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+};
