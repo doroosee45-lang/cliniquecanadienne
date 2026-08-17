@@ -50,6 +50,12 @@ const emitActivity = (activity) => {
  * Déclenche un re-fetch léger côté client.
  */
 const emitDashboardUpdate = () => {
+  // T9.9 — invalide le cache court des stats dashboard à chaque évènement
+  // métier connu, plutôt que de compter uniquement sur l'expiration passive
+  // du TTL (30s) : un client qui reçoit dashboard:refresh et re-fetch
+  // immédiatement après doit voir la donnée à jour, pas l'ancienne servie
+  // depuis le cache pour encore quelques secondes.
+  require('./dashboardCache').invalidateStatsCache();
   if (!_io) return;
   _io.emit('dashboard:refresh');
 };
