@@ -5,6 +5,7 @@ const Service     = require('../models/Service');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail } = require('../utils/mail');
+const { logger } = require('../utils/logger');
 
 // Résout patient/médecin/service en une fois pour les notifications RDV —
 // partagé entre create() et update() plutôt que dupliqué.
@@ -104,7 +105,7 @@ exports.create = async (req, res, next) => {
         emailEnvoye = true;
       }
     } catch (mailErr) {
-      console.error('[MAIL RDV]', mailErr.message);
+      logger.error('[MAIL RDV] Échec envoi email confirmation', { error: mailErr.message });
     }
 
     res.status(201).json({ success: true, appointment: appt, email_envoye: emailEnvoye });
@@ -161,7 +162,7 @@ exports.update = async (req, res, next) => {
           else             await sendAppointmentConfirmedEmail(payload);
         }
       } catch (mailErr) {
-        console.error('[MAIL RDV update]', mailErr.message);
+        logger.error('[MAIL RDV update] Échec envoi email de mise à jour', { error: mailErr.message });
       }
     }
 

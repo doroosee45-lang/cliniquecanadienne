@@ -19,9 +19,10 @@ const errorHandler   = require('./middleware/errorHandler');
 const routes         = require('./routes');
 const { setIO }      = require('./utils/socket');
 const { startReminderJob } = require('./utils/appointmentReminders');
+const { logger, captureException } = require('./utils/logger');
 
 connectDB().catch(err => {
-  console.error('Connexion MongoDB échouée au démarrage:', err.message);
+  logger.error('Connexion MongoDB échouée au démarrage', { error: err.message });
   process.exit(1);
 });
 
@@ -193,7 +194,7 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
-  console.log(`Serveur démarré sur le port ${PORT} [${process.env.NODE_ENV}] — Socket.IO actif`);
+  logger.info('Serveur démarré', { port: PORT, env: process.env.NODE_ENV });
   startReminderJob();
 });
 
@@ -209,10 +210,12 @@ httpServer.listen(PORT, () => {
 // process ne redémarre pas seul : voir le rapport d'audit, section Reprise
 // après incident.
 process.on('unhandledRejection', (reason) => {
-  console.error('[FATAL] Promesse rejetée non gérée :', reason);
+  logger.error('[FATAL] Promesse rejetée non gérée', { reason: reason instanceof Error ? reason.message : reason, stack: reason instanceof Error ? reason.stack : undefined });
+  captureException(reason instanceof Error ? reason : new Error(String(reason)));
   process.exit(1);
 });
 process.on('uncaughtException', (err) => {
-  console.error('[FATAL] Exception non interceptée :', err);
+  logger.error('[FATAL] Exception non interceptée', { error: err.message, stack: err.stack });
+  captureException(err);
   process.exit(1);
 });

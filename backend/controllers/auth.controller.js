@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { logAction, sendTokenCookie } = require('../utils/helpers');
 const { sendPasswordResetEmail } = require('../utils/mail');
+const { logger } = require('../utils/logger');
 
 // T3.4 — verrouillage de compte après échecs répétés.
 const MAX_TENTATIVES   = 5;
@@ -81,7 +82,7 @@ exports.forgotPassword = async (req, res, next) => {
       user.reset_password_token  = undefined;
       user.reset_password_expire = undefined;
       await user.save({ validateBeforeSave: false });
-      console.error('[MAIL] Erreur envoi reset password:', mailErr.message);
+      logger.error('[MAIL] Erreur envoi reset password', { error: mailErr.message, email: user.email });
     }
 
     await logAction({ utilisateur: user._id, action: 'FORGOT_PASSWORD', module: 'auth', ip: req.ip, message: `Demande reset mdp: ${user.email}` });

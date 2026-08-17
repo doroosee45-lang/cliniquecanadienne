@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Patient = require('../models/Patient');
 const { sendTokenCookie } = require('../utils/helpers');
 const { OAuth2Client } = require('google-auth-library');
+const { logger, captureException } = require('../utils/logger');
 
 // T3.2 — google-auth-library était déclarée en dépendance mais jamais
 // utilisée : le contrôleur appelait directement l'endpoint userinfo avec le
@@ -113,7 +114,8 @@ const googleLogin = async (req, res) => {
     return sendTokenCookie(user, 200, res);
 
   } catch (err) {
-    console.error('[googleLogin] Erreur :', err.message);
+    logger.error('[googleLogin] Erreur', { error: err.message, stack: err.stack });
+    captureException(err, { controller: 'googleAuth.controller', action: 'googleLogin' });
     return res.status(500).json({ success: false, message: 'Erreur serveur lors de la connexion Google.' });
   }
 };

@@ -7,6 +7,7 @@ const User    = require('../models/User');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
 const mail = require('../utils/mail');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { logger } = require('../utils/logger');
 
 // R-08a — superadmin/adminclinique/medecin/infirmier/sage_femme voient le
 // dossier complet ; les 5 autres rôles autorisés à lire /patients n'ont un
@@ -136,7 +137,7 @@ exports.create = async (req, res, next) => {
         });
         emailEnvoye = true;
       } catch (mailErr) {
-        console.error('[MAIL ERROR]', mailErr.message);
+        logger.error('[MAIL ERROR] Échec envoi email patient', { error: mailErr.message });
         // Log d'erreur + notification admin
         await logAction({
           utilisateur: req.user._id,
@@ -299,7 +300,7 @@ exports.activateAdmin = async (req, res, next) => {
             await mail.sendActivationEmail({ email: patient.email, prenom: patient.prenom, nom: patient.nom, token: tokenActivation });
             lienRenvoye = true;
           } catch (mailErr) {
-            console.error('[MAIL ERROR]', mailErr.message);
+            logger.error('[MAIL ERROR] Échec envoi email patient', { error: mailErr.message });
           }
         } else {
           patient.token_activation        = undefined;
