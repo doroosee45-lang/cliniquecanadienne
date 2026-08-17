@@ -493,6 +493,63 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
   );
 }
 
+// ─── MODAL Mesure de croissance ───────────────────────────────
+function ModalMesure({ enfant, patientNom, onClose, saving }) {
+  const dispatch = useDispatch();
+  const [form, setForm] = useState({ poids:"", taille:"", perimetre_cranien:"", date: new Date().toISOString().slice(0,10) });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  const submit = async () => {
+    if (!enfant?._id) { toast.error("Sélectionnez d'abord un patient"); return; }
+    const poidsNum = parseFloat(form.poids);
+    const tailleNum = parseFloat(form.taille);
+    if (!form.poids || isNaN(poidsNum) || poidsNum <= 0) { toast.error("Veuillez saisir un poids valide (> 0 kg)"); return; }
+    if (!form.taille || isNaN(tailleNum) || tailleNum <= 0) { toast.error("Veuillez saisir une taille valide (> 0 cm)"); return; }
+    const body = { poids: poidsNum, taille: tailleNum, date: form.date || new Date().toISOString().slice(0,10) };
+    if (form.perimetre_cranien) {
+      const pcNum = parseFloat(form.perimetre_cranien);
+      if (!isNaN(pcNum) && pcNum > 0) body.perimetre_cranien = pcNum;
+    }
+    const result = await dispatch(addMesureCroissance({ id: enfant._id, body }));
+    if (addMesureCroissance.fulfilled.match(result)) {
+      toast.success(`➕ Mesure enregistrée pour ${patientNom}`);
+      onClose();
+    } else {
+      toast.error(result.payload || "Erreur enregistrement");
+    }
+  };
+
+  return (
+    <div className="ped-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div ref={boxRef} className="ped-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+        <div className="ped-modal-hdr">
+          <h2 id={titleId}>📏 Nouvelle mesure — {patientNom}</h2>
+          <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
+        </div>
+        <div className="ped-modal-body">
+          <div className="pg3">
+            <div className="pfield"><label className="plabel">Poids (kg) *</label><input type="number" min="0.1" step="0.1" className="pinput" placeholder="Ex: 12.5" value={form.poids} onChange={e=>setForm({...form,poids:e.target.value})}/></div>
+            <div className="pfield"><label className="plabel">Taille (cm) *</label><input type="number" min="1" step="0.1" className="pinput" placeholder="Ex: 85" value={form.taille} onChange={e=>setForm({...form,taille:e.target.value})}/></div>
+            <div className="pfield"><label className="plabel">Périmètre crânien (cm)</label><input type="number" min="0" step="0.1" className="pinput" placeholder="Optionnel" value={form.perimetre_cranien} onChange={e=>setForm({...form,perimetre_cranien:e.target.value})}/></div>
+          </div>
+          <div className="pfield"><label className="plabel">Date de la mesure</label><input type="date" className="pinput" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></div>
+          <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:8 }}>
+            <button className="pbtn pbtn-ghost" onClick={onClose}>Annuler</button>
+            <button className="pbtn pbtn-green" onClick={submit} disabled={saving}>{saving?"⏳ Enregistrement...":"💾 Enregistrer"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN ────────────────────────────────────────────────────
 export default function Pediatrie() {
   const navigate = useNavigate();
@@ -510,6 +567,7 @@ export default function Pediatrie() {
   const [tab, setTab]               = useState("dashboard");
   const [isMobile, setIsMobile]     = useState(false);
   const [modal, setModal]           = useState(null);
+  const [mesureModalOpen, setMesureModalOpen] = useState(false);
   const [selectedEnfant, setSelectedEnfant] = useState(null);
   const [enfantDossier, setEnfantDossier]   = useState(null);
   const [filterAge, setFilterAge]   = useState("tous");
@@ -882,7 +940,7 @@ export default function Pediatrie() {
                   <div className="ped-card fu">
                     <div className="ped-card-hdr">
                       <div><h3>📊 Historique des mesures</h3><p>{selectedEnfant.prenom} {selectedEnfant.nom}</p></div>
-                      <button className="pbtn pbtn-green pbtn-sm" onClick={() => dispatch(addMesureCroissance({ id:selectedEnfant._id, body:{ poids:0, taille:0 } })).then(() => toast.success("➕ Mesure enregistrée"))}>➕ Ajouter</button>
+                      <button className="pbtn pbtn-green pbtn-sm" onClick={() => setMesureModalOpen(true)}>➕ Ajouter</button>
                     </div>
                     <div style={{ padding:14 }}>
                       <div style={{ display:"grid", gridTemplateColumns:"auto 1fr 1fr 1fr 1fr", gap:"0 12px", padding:"8px 6px", background:"#F0FDF4", borderRadius:10, marginBottom:6, fontSize:11, fontWeight:700, color:"var(--pm)", textTransform:"uppercase" }}>
@@ -1381,6 +1439,14 @@ export default function Pediatrie() {
           enfant={selectedEnfant}
           patientNom={selectedEnfant ? `${selectedEnfant.prenom||""} ${selectedEnfant.nom}`.trim() : "Patient"}
           onClose={closeModal}
+          saving={saving}
+        />
+      )}
+      {mesureModalOpen && selectedEnfant && (
+        <ModalMesure
+          enfant={selectedEnfant}
+          patientNom={`${selectedEnfant.prenom||""} ${selectedEnfant.nom}`.trim()}
+          onClose={() => setMesureModalOpen(false)}
           saving={saving}
         />
       )}

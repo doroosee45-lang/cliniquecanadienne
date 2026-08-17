@@ -107,6 +107,17 @@ test('couverture fonctionnelle — échographie, maternité, pédiatrie (base r�
       assert.equal(body.enfant.mesures_croissance[0].imc, 15, 'imc = poids / taille² = 15 / 1² = 15');
       assert.equal(body.enfant.poids_actuel, 15);
       assert.equal(body.enfant.taille_actuelle, 100);
+
+      // Relecture fraîche depuis la base (hors document mongoose en mémoire) — confirme
+      // que ce ne sont pas des valeurs factices poids:0/taille:0 qui ont été persistées
+      // (régression P6-4 : bouton "Ajouter" sans formulaire écrivait poids:0, taille:0).
+      const fresh = await Child.findById(child._id).lean();
+      assert.equal(fresh.mesures_croissance.length, 1);
+      assert.equal(fresh.mesures_croissance[0].poids, 15);
+      assert.equal(fresh.mesures_croissance[0].taille, 100);
+      assert.equal(fresh.mesures_croissance[0].imc, 15);
+      assert.notEqual(fresh.mesures_croissance[0].poids, 0);
+      assert.notEqual(fresh.mesures_croissance[0].taille, 0);
     });
 
     await t.test('pediatrieController.addMaladieChron enregistre la maladie et passe le dossier en statut chronique', async () => {
