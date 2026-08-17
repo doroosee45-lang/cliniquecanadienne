@@ -10,6 +10,8 @@ router.get('/catalogue',        protect, authorize(...CAN_READ),                
 router.get('/',                 protect, authorize(...CAN_READ),                   labC.getAll);
 router.post('/',                protect, authorize('superadmin','medecin','infirmier'), labC.create);
 router.get('/:id',              protect, authorize(...CAN_READ),                   labC.getOne);
+router.put('/:id/prelevement',  protect, authorize('superadmin','medecin','infirmier','laborantin'), labC.prelever);
+router.put('/:id/resultats',    protect, authorize('superadmin','laborantin'),     labC.saisirResultats);
 router.put('/:id/validate',     protect, authorize('superadmin','laborantin'),     labC.validate);
 router.put('/:id/acquit',       protect, authorize('superadmin','medecin'),        labC.acquit);
 

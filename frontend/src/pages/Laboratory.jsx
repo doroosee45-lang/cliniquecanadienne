@@ -459,7 +459,7 @@ export default function Laboratoire() {
   const [formNouv,  setFormNouv]  = useState(EMPTY_FORM);
   const [formRes,   setFormRes]   = useState({});
   const [formValid, setFormValid] = useState(EMPTY_RESULTAT_FORM);
-  const [formPrelev,setFormPrelev]= useState({ type_echantillon:"sang", preleveur:"", observations:"" });
+  const [formPrelev,setFormPrelev]= useState({ type_echantillon:"sang", preleveur:"", observations_prelevement:"" });
   const [patients, setPatients]   = useState([]);
 
   // ── Load analyses ─────────────────────────────────────────
@@ -559,15 +559,16 @@ export default function Laboratoire() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put(`/laboratory/${currentAnalyse._id}/prelevement`, formPrelev);
+      const { data } = await api.put(`/laboratory/${currentAnalyse._id}/prelevement`, formPrelev);
       toast.success("✅ Prélèvement enregistré");
-    } catch {
-      toast.success("✅ Prélèvement enregistré (local)");
+      setCurrentAnalyse(prev => ({ ...prev, ...(data.result || {}) }));
+      setAnalyses(prev => prev.map(a => a._id === currentAnalyse._id ? { ...a, statut: "preleve" } : a));
+      setModalPrelevement(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'enregistrement du prélèvement");
+    } finally {
+      setSaving(false);
     }
-    setCurrentAnalyse(prev => ({ ...prev, ...formPrelev, statut: "preleve", date_prelevement: new Date().toISOString() }));
-    setAnalyses(prev => prev.map(a => a._id === currentAnalyse._id ? { ...a, statut: "preleve" } : a));
-    setModalPrelevement(false);
-    setSaving(false);
   };
 
   // ── Saisir résultats ──────────────────────────────────────
@@ -580,15 +581,16 @@ export default function Laboratoire() {
       return { exam_id: eid, valeur, ref: ref.ref || "", unite: ref.unite || "", statut_res: "normal" };
     });
     try {
-      await api.put(`/laboratory/${currentAnalyse._id}/resultats`, { resultats });
+      const { data } = await api.put(`/laboratory/${currentAnalyse._id}/resultats`, { resultats });
       toast.success("✅ Résultats enregistrés");
-    } catch {
-      toast.success("✅ Résultats enregistrés (local)");
+      setCurrentAnalyse(prev => ({ ...prev, ...(data.result || {}) }));
+      setAnalyses(prev => prev.map(a => a._id === currentAnalyse._id ? { ...a, statut: "termine" } : a));
+      setModalResultats(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'enregistrement des résultats");
+    } finally {
+      setSaving(false);
     }
-    setCurrentAnalyse(prev => ({ ...prev, resultats, statut: "termine", date_resultat: new Date().toISOString() }));
-    setAnalyses(prev => prev.map(a => a._id === currentAnalyse._id ? { ...a, statut: "termine" } : a));
-    setModalResultats(false);
-    setSaving(false);
   };
 
   // ── Valider ───────────────────────────────────────────────
@@ -596,16 +598,32 @@ export default function Laboratoire() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put(`/laboratory/${currentAnalyse._id}/validation`, { ...formValid });
+      const { data } = await api.put(`/laboratory/${currentAnalyse._id}/validate`, { ...formValid });
       toast.success("🏷️ Analyse validée avec succès");
-    } catch {
-      toast.success("🏷️ Analyse validée (local)");
+      setCurrentAnalyse(prev => ({ ...prev, ...formValid, ...(data.result || {}) }));
+      setAnalyses(prev => prev.map(a => a._id === currentAnalyse._id ? { ...a, statut: "valide" } : a));
+      setModalValider(false);
+      loadStats();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la validation de l'analyse");
+    } finally {
+      setSaving(false);
     }
-    setCurrentAnalyse(prev => ({ ...prev, ...formValid, statut: "valide", date_validation: new Date().toISOString() }));
-    setAnalyses(prev => prev.map(a => a._id === currentAnalyse._id ? { ...a, statut: "valide" } : a));
-    setModalValider(false);
-    setSaving(false);
-    loadStats();
+  };
+
+  // ── Acquitter un résultat critique ────────────────────────
+  const acquitterResultat = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.put(`/laboratory/${currentAnalyse._id}/acquit`);
+      toast.success("✅ Résultat critique acquitté");
+      setCurrentAnalyse(prev => ({ ...prev, ...(data.result || {}) }));
+      setAnalyses(prev => prev.map(a => a._id === currentAnalyse._id ? { ...a, acquitte_par: data.result?.acquitte_par, acquitte_at: data.result?.acquitte_at } : a));
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'acquittement du résultat critique");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Toggle examen ─────────────────────────────────────────
@@ -950,15 +968,26 @@ export default function Laboratoire() {
                 </div>
 
                 {/* Alerte critique */}
-                {hasCritique && (
+                {(hasCritique || currentAnalyse.est_critique) && (
                   <div className="al-danger" style={{ display:"flex", alignItems:"flex-start", gap:12, marginBottom:20 }}>
                     {I.alert}
-                    <div>
+                    <div style={{ flex:1 }}>
                       <strong style={{ color:"#B91C1C", fontSize:13 }}>⚡ VALEURS CRITIQUES DÉTECTÉES</strong>
                       <div style={{ fontSize:12, color:"#DC2626", marginTop:4 }}>
                         Résultats hors valeurs de référence critiques — Contacter le médecin prescripteur immédiatement.
                         {currentAnalyse.commentaire_biologiste && <div style={{ marginTop:4, fontStyle:"italic" }}>{currentAnalyse.commentaire_biologiste}</div>}
                       </div>
+                      {currentAnalyse.est_critique && (
+                        currentAnalyse.acquitte_par ? (
+                          <div style={{ fontSize:11, color:"#059669", fontWeight:600, marginTop:8 }}>
+                            ✅ Résultat critique acquitté{currentAnalyse.acquitte_at ? ` le ${fmtDateTime(currentAnalyse.acquitte_at)}` : ""}
+                          </div>
+                        ) : (
+                          <button className="lbtn lbtn-danger lbtn-sm" style={{ marginTop:8 }} disabled={saving} onClick={acquitterResultat}>
+                            ⚠️ {saving ? "Acquittement..." : "Acquitter le résultat critique"}
+                          </button>
+                        )
+                      )}
                     </div>
                   </div>
                 )}
@@ -1555,7 +1584,7 @@ export default function Laboratoire() {
               </div>
               <div>
                 <label className="llbl">Observations / Conditions de prélèvement</label>
-                <textarea className="linp" rows={3} placeholder="Ex: À jeun depuis 12h, patient agité, veine difficile..." value={formPrelev.observations} onChange={e => setFormPrelev(f=>({...f,observations:e.target.value}))} />
+                <textarea className="linp" rows={3} placeholder="Ex: À jeun depuis 12h, patient agité, veine difficile..." value={formPrelev.observations_prelevement} onChange={e => setFormPrelev(f=>({...f,observations_prelevement:e.target.value}))} />
               </div>
               <div style={{ display:"flex", gap:10 }}>
                 <button type="button" className="lbtn lbtn-ghost" onClick={() => setModalPrelevement(false)}>Annuler</button>

@@ -17,6 +17,8 @@ const LabResultSchema = new Schema({
   date_prescription:    { type: Date, default: Date.now },
   date_demande:         Date,
   date_realisation:     Date,
+  date_prelevement:     Date,
+  date_resultat:        Date,
   date_validation:      Date,
 
   resultats:            mongoose.Schema.Types.Mixed,
