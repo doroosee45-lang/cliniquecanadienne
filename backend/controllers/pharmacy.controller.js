@@ -273,8 +273,13 @@ exports.dispenser = async (req, res, next) => {
   try {
     const prescription = await Prescription.findById(req.params.id);
     if (!prescription) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
-    if (prescription.statut !== 'active')
-      return res.status(400).json({ success: false, message: 'Ordonnance déjà dispensée ou expirée.' });
+    // P7-3 : le flux normal de publication (prescriptions.controller.js::publier)
+    // fait transitionner brouillon → 'publiee' directement, sans jamais passer
+    // par 'active'. N'accepter que 'active' rendait donc toute dispensation
+    // impossible en pratique — 'active' reste accepté pour compatibilité avec
+    // d'éventuelles ordonnances créées directement dans cet état (legacy/tests).
+    if (!['active', 'publiee'].includes(prescription.statut))
+      return res.status(400).json({ success: false, message: 'Ordonnance non dispensable dans son état actuel.' });
     const avant = prescription.toObject();
 
     // Seules les lignes reliées à une fiche Medication (catalogue) impactent le
