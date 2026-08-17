@@ -1785,6 +1785,12 @@ export default function Pharmacie() {
   const [modePaiement, setModePaiement] = useState("especes");
   const [rxNum, setRxNum]       = useState("");
 
+  // P7-3 : ordonnance réellement chargée depuis /pharmacy/prescriptions,
+  // mémorisée pour appeler pharmacy.dispenser() (et non une vente comptoir
+  // générique) à la validation du formulaire.
+  const [selectedRx, setSelectedRx]   = useState(null);
+  const [searchingRx, setSearchingRx] = useState(false);
+
   // Recherche intelligente médicament dans le panier
   const [panierSearch, setPanierSearch] = useState({});
   const [panierOpen, setPanierOpen]     = useState({});
@@ -1994,6 +2000,56 @@ export default function Pharmacie() {
     } finally { setSaving(false); }
   };
 
+  // ── Recherche d'ordonnance (P7-3) ─────────────────────────────
+  // Charge une ordonnance publiée réelle depuis le backend et remplit le
+  // panier avec ses lignes, pour une dispensation réelle (pharmacy.dispenser)
+  // à la validation — au lieu de la vente comptoir générique.
+  const searchOrdonnance = async () => {
+    const num = rxNum.trim();
+    if (!num) { toast.error("Veuillez saisir un numéro d'ordonnance"); return; }
+    setSearchingRx(true);
+    try {
+      const { data } = await api.get("/pharmacy/prescriptions?statut=publiee");
+      const list = data.prescriptions || [];
+      const found = list.find(p => (p.numero_rx || "").toLowerCase() === num.toLowerCase());
+      if (!found) {
+        toast.error("Ordonnance introuvable (ou non publiée).");
+        setSelectedRx(null);
+        return;
+      }
+
+      // Reconstituer les lignes du panier depuis l'ordonnance. Les lignes
+      // reliées à une fiche Medication sont enrichies (prix, stock) pour
+      // l'affichage ; les lignes texte libre restent affichées sans prix —
+      // dispenser() ne décrémente de toute façon que les lignes cataloguées.
+      const lignes = found.lignes || [];
+      const items = await Promise.all(lignes.map(async (l) => {
+        const medId = l.medicament ? String(l.medicament) : null;
+        let med = medId ? meds.find(m => m._id === medId) : null;
+        if (!med && medId) {
+          try {
+            const r = await api.get(`/pharmacy/${medId}`);
+            med = normalizeMed(r.data.medication || {});
+          } catch { med = null; }
+        }
+        if (!med) {
+          med = { _id: medId, nom_commercial: l.medicament_nom || "Médicament", dosage: "", prix_vente: 0, stock_quantite: 999999, stock_minimum: 0 };
+        }
+        return { id: `${Date.now()}-${Math.random()}`, med, quantite: Math.max(1, Math.abs(l.quantite || 1)) };
+      }));
+
+      setPanier(items.length ? items : [{ id:Date.now(), med:null, quantite:1 }]);
+      setPanierSearch({}); setPanierOpen({});
+      setSelectedRx(found);
+      toast.success(`🔍 Ordonnance ${found.numero_rx} chargée`);
+    } catch {
+      toast.error("Erreur réseau lors de la recherche de l'ordonnance.");
+      setSelectedRx(null);
+    } finally {
+      setSearchingRx(false);
+    }
+  };
+
   // ── Vente ──────────────────────────────────────────────────
   const createVente = async (e) => {
     e.preventDefault();
@@ -2015,6 +2071,32 @@ export default function Pharmacie() {
       })),
       total,
     });
+
+    // ── Ordonnance chargée : dispensation réelle via pharmacy.dispenser() ──
+    // dispenser() décrémente déjà le stock lui-même (voir controller) : on
+    // n'appelle donc PAS /pharmacy/ventes ici, pour ne pas déduire le stock
+    // deux fois pour la même transaction. Erreur réelle affichée en cas
+    // d'échec (pas de faux succès sur une action médicale réelle).
+    if (selectedRx) {
+      try {
+        const { data } = await api.put(`/pharmacy/prescriptions/${selectedRx._id}/dispenser`);
+        setVenteTicket(buildTicket(data.prescription?.numero_rx));
+        toast.success(`✅ Ordonnance ${data.prescription?.numero_rx || selectedRx.numero_rx} dispensée — ${fmtCFA(total)}`);
+        loadMeds(); loadStats();
+        setPanier([{id:Date.now(),med:null,quantite:1}]);
+        setPanierSearch({}); setPanierOpen({});
+        setClientNom(""); setRxNum(""); setSelectedRx(null);
+        setModalVente(false);
+        setModalTicket(true);
+      } catch (err) {
+        toast.error(err.response?.data?.message || "Échec de la dispensation de l'ordonnance.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // ── Vente comptoir directe (comportement existant, inchangé) ──
     try {
       const { data } = await api.post("/pharmacy/ventes", { client:clientNom, mode_paiement:modePaiement, items:items.map(it=>({medicament_id:it.med._id,quantite:it.quantite,prix_unitaire:it.med.prix_vente})) });
       setVenteTicket(buildTicket(data.vente?.numero));
@@ -3658,9 +3740,21 @@ ${lignes}
                   <div style={{ fontSize:13, fontWeight:700, color:"var(--pn)", marginBottom:10 }}>📋 Dispensation sur ordonnance</div>
                   <label className="plbl">N° Ordonnance</label>
                   <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-                    <input className="pinp" value={rxNum} onChange={e=>setRxNum(e.target.value)} placeholder="ORD-2025-XXXXX" style={{ flex:1 }} />
-                    <button type="button" className="pbtn pbtn-primary pbtn-sm" onClick={() => toast.success("🔍 Ordonnance chargée")}>{I.search}</button>
+                    <input
+                      className="pinp"
+                      value={rxNum}
+                      onChange={e=>{ setRxNum(e.target.value); if (selectedRx) setSelectedRx(null); }}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); searchOrdonnance(); } }}
+                      placeholder="RX-2025-XXXXX"
+                      style={{ flex:1 }}
+                    />
+                    <button type="button" className="pbtn pbtn-primary pbtn-sm" disabled={searchingRx} onClick={searchOrdonnance}>{I.search}</button>
                   </div>
+                  {selectedRx && (
+                    <div style={{ fontSize:11, fontWeight:700, color:"var(--pg)", marginBottom:10 }}>
+                      ✓ {selectedRx.numero_rx} — {selectedRx.patient?.prenom || ""} {selectedRx.patient?.nom || ""} ({(selectedRx.lignes||[]).length} ligne{(selectedRx.lignes||[]).length>1?"s":""})
+                    </div>
+                  )}
                   <label className="plbl">Type de dispensation</label>
                   <select className="pinp">
                     <option>Dispensation complète</option>
