@@ -269,12 +269,16 @@ const EMPTY_SUPPLIER = { nom:"", contact:"", telephone:"", email:"", adresse:"",
 function Modal({ open, onClose, title, children, maxWidth = 620 }) {
   const boxRef = useRef(null);
   const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
-    if (open) boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose, open]);
+  }, []);
+  useEffect(() => {
+    if (open) boxRef.current?.focus();
+  }, [open]);
   if (!open) return null;
   return (
     <div className="mov" onClick={(e) => e.target === e.currentTarget && onClose()}>
