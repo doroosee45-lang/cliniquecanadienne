@@ -181,6 +181,58 @@ exports.addNote = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// P7-2 — sous-ressources du dossier de séjour (constantes, traitements,
+// examens, visites, prescriptions saisies en cours de séjour). Même schéma
+// GET (liste triée -date desc) / POST (push + save + logAction) pour les 5,
+// sur le modèle de addNote ci-dessus — fabriqué une fois pour éviter de
+// dupliquer 5 fois la même mécanique.
+// field  : nom du tableau sur HospitalizationSchema
+// singular/plural : clés de la réponse JSON (POST retourne { [singular]: item },
+//   GET retourne { [plural]: [...] }) — alignées sur ce que le frontend lit déjà
+//   (data.constante/data.constantes, data.traitement/data.traitements, etc.)
+function makeSubResource(field, singular, plural, { withAuteur = false } = {}) {
+  return {
+    get: async (req, res, next) => {
+      try {
+        const hosp = await Hospitalization.findById(req.params.id).select(field).lean();
+        if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
+        const items = [...(hosp[field] || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+        res.json({ success: true, [plural]: items });
+      } catch (err) { next(err); }
+    },
+    add: async (req, res, next) => {
+      try {
+        const hosp = await Hospitalization.findById(req.params.id);
+        if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
+        const entry = { ...req.body, date: req.body.date || new Date() };
+        if (withAuteur) entry.auteur = req.user._id;
+        hosp[field].push(entry);
+        await hosp.save();
+        const created = hosp[field][hosp[field].length - 1];
+        await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip, message: `${singular} ajouté(e) au dossier de séjour` });
+        res.status(201).json({ success: true, [singular]: created });
+      } catch (err) { next(err); }
+    },
+  };
+}
+
+const constanteRes    = makeSubResource('constantes', 'constante', 'constantes', { withAuteur: true });
+const traitementRes   = makeSubResource('traitements', 'traitement', 'traitements');
+const examenRes       = makeSubResource('examens', 'examen', 'examens');
+const visiteRes       = makeSubResource('visites', 'visite', 'visites');
+const prescriptionRes = makeSubResource('prescriptions_sejour', 'prescription', 'prescriptions');
+
+exports.getConstantes          = constanteRes.get;
+exports.addConstante           = constanteRes.add;
+exports.getTraitements         = traitementRes.get;
+exports.addTraitement          = traitementRes.add;
+exports.getExamens             = examenRes.get;
+exports.addExamen              = examenRes.add;
+exports.getVisites             = visiteRes.get;
+exports.addVisite              = visiteRes.add;
+exports.getPrescriptionsSejour = prescriptionRes.get;
+exports.addPrescriptionSejour  = prescriptionRes.add;
+
 exports.discharge = async (req, res, next) => {
   try {
     const avant = await Hospitalization.findById(req.params.id);
