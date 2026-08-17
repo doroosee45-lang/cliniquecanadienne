@@ -650,3 +650,22 @@ exports.getStats = async (req, res, next) => {
     res.json({ success:true, stats:{ kpis:{ patients, rdv, consultations }, alertes:[], chart:{} }});
   } catch (err) { next(err); }
 };
+
+// T9.9 — cache court (30s, node-cache) sur les 9 agrégats de tableau de
+// bord. Réassigné ici, après toutes les définitions, plutôt que décoré au
+// niveau des routes : exports.getStats ci-dessus lit exports.<role>Stats
+// au moment de l'appel (pas à l'import), donc cette réassignation couvre
+// aussi bien un appel direct à /dashboard/medecin qu'un appel via le
+// dispatcher générique /dashboard — sans dupliquer la logique de cache
+// aux deux endroits. medecinStats/receptionnisteStats sont personnalisés
+// (filtrent par req.user._id) : clé de cache par utilisateur, pas globale.
+const { cacheStats } = require('../utils/dashboardCache');
+exports.superAdminStats     = cacheStats('superAdminStats',     false, exports.superAdminStats);
+exports.adminCliniqueStats  = cacheStats('adminCliniqueStats',  false, exports.adminCliniqueStats);
+exports.medecinStats        = cacheStats('medecinStats',        true,  exports.medecinStats);
+exports.infirmierStats      = cacheStats('infirmierStats',      false, exports.infirmierStats);
+exports.laborantinStats     = cacheStats('laborantinStats',     false, exports.laborantinStats);
+exports.pharmacienStats     = cacheStats('pharmacienStats',     false, exports.pharmacienStats);
+exports.receptionnisteStats = cacheStats('receptionnisteStats', true,  exports.receptionnisteStats);
+exports.comptableStats      = cacheStats('comptableStats',      false, exports.comptableStats);
+exports.radiologueStats     = cacheStats('radiologueStats',     false, exports.radiologueStats);
