@@ -134,10 +134,20 @@ exports.create = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+// AUDIT-P2-1 (groupe 2) — patient_id/numero/created_by identifient le
+// dossier. vaccinations/mesures_croissance/maladies_chroniques sont des
+// sous-tableaux gérés par addVaccination/addMesureCroissance/
+// addMaladieChron (chacun avec sa propre validation, cf. P6-4 pour
+// mesures_croissance) — les laisser passer par cette édition générique
+// permettrait d'écraser tout l'historique en un seul appel.
+const CHILD_BLOCKED_FIELDS = ['patient_id', 'numero', 'created_by', 'vaccinations', 'mesures_croissance', 'maladies_chroniques'];
+
 exports.update = async (req, res) => {
   try {
     const avant = await Child.findById(req.params.id).lean();
-    const child = await Child.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!CHILD_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const child = await Child.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Dossier pédiatrique ${child.numero} modifié`, avant, apres: child });
     emitDashboardUpdate();
@@ -237,10 +247,16 @@ exports.createConsultation = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+// AUDIT-P2-1 (groupe 2) — child_id/numero/created_by identifient la
+// consultation et son dossier enfant.
+const PEDCONSULT_BLOCKED_FIELDS = ['child_id', 'numero', 'created_by'];
+
 exports.updateConsultation = async (req, res) => {
   try {
     const avant = await PediatricConsultation.findById(req.params.id).lean();
-    const c = await PediatricConsultation.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!PEDCONSULT_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const c = await PediatricConsultation.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!c) return res.status(404).json({ message: 'Consultation introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: c._id, ip: req.ip, message: `Consultation pédiatrique ${c.numero} modifiée`, avant, apres: c });
     res.json({ success: true, consultation: c });

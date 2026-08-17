@@ -213,10 +213,19 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 (groupe 2) — stock_actuel/mouvements sont gérés par
+// mouvement()/dispenser()/receptionCommande(), qui journalisent chaque
+// changement avec sa raison ; les laisser passer par cette édition
+// générique de fiche produit permettrait de modifier le stock sans aucune
+// traçabilité de mouvement.
+const MED_BLOCKED_FIELDS = ['stock_actuel', 'mouvements'];
+
 exports.update = async (req, res, next) => {
   try {
     const avant = await Medication.findById(req.params.id).lean();
-    const med = await Medication.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!MED_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const med = await Medication.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!med) return res.status(404).json({ success: false, message: 'Médicament introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: med._id, ip: req.ip, message: `Fiche médicament modifiée : ${med.nom_commercial}`, avant, apres: med });
     res.json({ success: true, medication: med });

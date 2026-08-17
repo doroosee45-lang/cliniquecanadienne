@@ -54,17 +54,31 @@ test('donnees_avant/donnees_apres — hospitalisation, prescriptions, finance (b
     });
 
     await t.test('prescriptions.update et .cancel journalisent avant/apres', async () => {
+      // AUDIT-P2-1 (groupe 2) — prescriptions.controller.js::update ne
+      // laisse plus passer `statut` (liste noire dédiée, protège la machine
+      // à états publier()/dispenser()/cancel() — voir
+      // auditP2-1MassAssignmentClinical.test.js). Ce test vérifiait à
+      // l'origine le logging avant/apres sur un changement de statut via
+      // update() ; adapté pour vérifier ce même logging sur un champ
+      // toujours légitime (date_expiration), .cancel() restant le seul
+      // chemin valide vers 'annulee'.
+      // PrescriptionSchema.pre('save') écrase toujours date_expiration à la
+      // création (isNew) — on relit la vraie valeur persistée plutôt que de
+      // supposer que celle passée à create() est respectée.
+      const nouvelleExpiration = new Date(Date.now() + 20 * 86400000);
       const rx = await Prescription.create({ patient: patient._id, medecin: user._id, lignes: [{ medicament_nom: 'Test', quantite: 1 }], statut: 'active' });
       cleanup.push(() => Prescription.findByIdAndDelete(rx._id));
+      const ancienneExpiration = rx.date_expiration;
 
-      await prescC.update({ params: { id: rx._id }, body: { statut: 'brouillon' }, user, ip: '127.0.0.1' }, noop, () => {});
+      await prescC.update({ params: { id: rx._id }, body: { date_expiration: nouvelleExpiration, statut: 'brouillon' }, user, ip: '127.0.0.1' }, noop, () => {});
       let log = await AuditLog.findOne({ module: 'prescriptions', action: 'UPDATE', entite_id: rx._id.toString() }).sort('-createdAt');
-      assert.equal(log.donnees_avant.statut, 'active');
-      assert.equal(log.donnees_apres.statut, 'brouillon');
+      assert.equal(new Date(log.donnees_avant.date_expiration).getTime(), ancienneExpiration.getTime());
+      assert.equal(new Date(log.donnees_apres.date_expiration).getTime(), nouvelleExpiration.getTime());
+      assert.equal(log.donnees_apres.statut, 'active', 'statut ne doit pas être modifiable via update() — envoyé dans le même appel, doit rester inchangé');
 
       await prescC.cancel({ params: { id: rx._id }, user, ip: '127.0.0.1' }, noop, () => {});
       log = await AuditLog.findOne({ module: 'prescriptions', action: 'CANCEL', entite_id: rx._id.toString() }).sort('-createdAt');
-      assert.equal(log.donnees_avant.statut, 'brouillon');
+      assert.equal(log.donnees_avant.statut, 'active');
       assert.equal(log.donnees_apres.statut, 'annulee');
     });
 

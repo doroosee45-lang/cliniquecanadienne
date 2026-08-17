@@ -166,6 +166,11 @@ exports.createDossier = async (req, res) => {
   }
 };
 
+// AUDIT-P2-1 (groupe 2) — numero/patient_id identifient le dossier ;
+// Object.assign(dossier, req.body) les laissait auparavant réassignables
+// comme n'importe quel autre champ.
+const DOSSIER_CHIR_BLOCKED_FIELDS = ['numero', 'patient_id'];
+
 // Mise à jour d'un dossier
 exports.updateDossier = async (req, res) => {
   try {
@@ -173,7 +178,9 @@ exports.updateDossier = async (req, res) => {
     if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
     const avant = dossier.toObject();
 
-    Object.assign(dossier, req.body);
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!DOSSIER_CHIR_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    Object.assign(dossier, data);
     if (req.body.ia_risque_score !== undefined) {
       dossier.ia_risque_niveau = updateIaNiveau(req.body.ia_risque_score);
     }

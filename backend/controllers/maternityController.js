@@ -116,10 +116,23 @@ exports.create = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+// AUDIT-P2-1 (groupe 2) — patient_id/numero/created_by identifient le
+// dossier. cpns/echographies/consultations_postnatales/salle_travail sont
+// des sous-tableaux/sous-objet gérés par addCPN/addEcho/addPostnatal/
+// updateTravail (chacun avec sa propre logique d'ajout) — les laisser
+// passer par cette édition générique permettrait d'écraser tout
+// l'historique de suivi d'un seul appel.
+const PREGNANCY_BLOCKED_FIELDS = [
+  'patient_id', 'numero', 'created_by',
+  'cpns', 'echographies', 'consultations_postnatales', 'salle_travail',
+];
+
 exports.update = async (req, res) => {
   try {
     const avant = await Pregnancy.findById(req.params.id).lean();
-    const g = await Pregnancy.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!PREGNANCY_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const g = await Pregnancy.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Dossier de grossesse ${g.numero} modifié`, avant, apres: g });
     res.json({ success: true, grossesse: g });
@@ -235,10 +248,21 @@ exports.createNewborn = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+// AUDIT-P2-1 (groupe 2) — identifiants/liens (numero, accouchement_id,
+// grossesse_id, patient_id, created_by, child_id) ne doivent pas être
+// réassignables via l'édition générique ; child_id est explicitement posé
+// une seule fois par la création dédiée du dossier pédiatrique (R-10d, cf.
+// commentaire du modèle) pour empêcher d'en créer un second par erreur —
+// le laisser passer ici casserait cette garantie. vaccinations est un
+// sous-tableau géré ailleurs.
+const NEWBORN_BLOCKED_FIELDS = ['numero', 'accouchement_id', 'grossesse_id', 'patient_id', 'created_by', 'child_id', 'vaccinations'];
+
 exports.updateNewborn = async (req, res) => {
   try {
     const avant = await Newborn.findById(req.params.id).lean();
-    const nb = await Newborn.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!NEWBORN_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const nb = await Newborn.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!nb) return res.status(404).json({ message: 'Nouveau-né introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: nb._id, ip: req.ip, message: `Dossier nouveau-né ${nb.numero} modifié`, avant, apres: nb });
     res.json({ success: true, nouveau_ne: nb });

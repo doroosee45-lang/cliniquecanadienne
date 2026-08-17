@@ -156,10 +156,18 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 (groupe 2) — patient identifie le séjour ; aucun formulaire
+// d'édition (dossier, adresse, changement de chambre, sortie) ne le
+// réassigne. runValidators activé (désactivé jusqu'ici sans raison
+// documentée) pour que statut/etat_patient respectent leurs enums.
+const HOSP_BLOCKED_FIELDS = ['patient'];
+
 exports.update = async (req, res, next) => {
   try {
     const avant = await Hospitalization.findById(req.params.id);
-    const hosp = await Hospitalization.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: false })
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!HOSP_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const hosp = await Hospitalization.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true })
       .populate('patient', 'nom prenom numero_dossier')
       .populate('medecin_responsable', 'nom prenom')
       .populate('chambre', 'numero type');

@@ -135,10 +135,19 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 (groupe 2) — statut/date_validation/signature sont gérés par
+// le circuit de validation dédié (validate(), qui pose la signature et
+// déclenche la notification d'anomalie) ; les laisser passer par cette
+// édition générique permettrait de valider un examen sans jamais passer
+// par ce circuit. patient et numero identifient l'examen.
+const IMAGING_BLOCKED_FIELDS = ['patient', 'numero', 'statut', 'date_validation', 'signature'];
+
 exports.update = async (req, res, next) => {
   try {
     const avant = await ImagingResult.findById(req.params.id).lean();
-    const examen = await ImagingResult.findByIdAndUpdate(req.params.id, req.body, { new: true }).lean();
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!IMAGING_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const examen = await ImagingResult.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true }).lean();
     if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'radiology', entite_id: examen._id, ip: req.ip, avant, apres: examen });
     res.json({ success: true, examen: normalize(examen) });
