@@ -57,10 +57,25 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 (groupe 2) — statut/dispensee_par/date_dispensation/publie_*
+// sont la machine à états que publier()/dispenser()/cancel()/renouveler()
+// gèrent avec leurs propres effets de bord (email, notification, contrôle
+// de stock — cf. P7-3). Les laisser passer par cette édition générique
+// permettrait de contourner entièrement ce circuit (ex. passer directement
+// à 'dispensee' sans jamais toucher au stock). patient/medecin/consultation
+// identifient l'ordonnance et son origine ; numero_rx est auto-généré.
+const RX_BLOCKED_FIELDS = [
+  'patient', 'medecin', 'consultation', 'numero_rx', 'statut',
+  'dispensee_par', 'date_dispensation', 'publie_at', 'publie_par',
+  'email_patient_envoye', 'notif_patient_envoyee',
+];
+
 exports.update = async (req, res, next) => {
   try {
     const avant = await Prescription.findById(req.params.id);
-    const prescription = await Prescription.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!RX_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const prescription = await Prescription.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!prescription) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'prescriptions', entite_id: prescription._id, ip: req.ip, message: `Ordonnance ${prescription.numero_rx} modifiée`, avant, apres: prescription });
     res.json({ success: true, prescription });

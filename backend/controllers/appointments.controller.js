@@ -111,11 +111,19 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 (groupe 2) — patient/created_by identifient le RDV et son
+// auteur ; les reporter/réassigner via cette mise à jour générique n'a
+// aucun cas d'usage légitime (contrairement à medecin/statut, qui changent
+// réellement via "reporter"/confirmer/annuler dans Appointments.jsx).
+const APPT_BLOCKED_FIELDS = ['patient', 'created_by'];
+
 exports.update = async (req, res, next) => {
   try {
     const avant = await Appointment.findById(req.params.id).lean();
     if (!avant) return res.status(404).json({ success: false, message: 'Rendez-vous introuvable.' });
-    const appt = await Appointment.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!APPT_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const appt = await Appointment.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: appt._id, ip: req.ip, avant, apres: appt });
 
     // Rendez-vous reporté (date/heure modifiée) ou nouvellement confirmé :

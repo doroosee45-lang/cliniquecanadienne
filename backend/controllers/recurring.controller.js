@@ -32,11 +32,17 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 (groupe 2) — created_by identifie l'auteur du protocole ;
+// nb_patients est un compteur dérivé, pas un champ de formulaire.
+const RECURRING_BLOCKED_FIELDS = ['created_by', 'nb_patients'];
+
 // ── UPDATE ───────────────────────────────────────────────────────────────────
 exports.update = async (req, res, next) => {
   try {
     const avant = await RecurringProtocol.findById(req.params.id).lean();
-    const protocol = await RecurringProtocol.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!RECURRING_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const protocol = await RecurringProtocol.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true })
       .populate('medecin', 'nom prenom specialite');
     if (!protocol) return res.status(404).json({ success: false, message: 'Protocole introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'recurring', entite_id: protocol._id, ip: req.ip, message: `Protocole récurrent modifié : ${protocol.titre}`, avant, apres: protocol });

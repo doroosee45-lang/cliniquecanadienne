@@ -330,11 +330,21 @@ exports.activateAdmin = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 (constat original) — actif/token_activation* sont gérés par
+// le circuit d'activation dédié (activate/setPasswordAndActivate/
+// activateAdmin) ; les laisser passer par cette édition générique
+// permettrait à médecin/infirmier/réceptionniste (CAN_WRITE) de forcer
+// l'activation d'un compte portail en contournant ce circuit. statut et
+// cree_par ne doivent pas non plus être réassignables ici.
+const PATIENT_BLOCKED_FIELDS = ['numero_dossier', 'actif', 'token_activation', 'token_activation_expire', 'statut', 'cree_par', 'ip_creation'];
+
 // ── UPDATE ───────────────────────────────────────────────────────────────────
 exports.update = async (req, res, next) => {
   try {
     const avant   = await Patient.findById(req.params.id);
-    const patient = await Patient.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!PATIENT_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const patient = await Patient.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'patients', entite_id: patient._id, ip: req.ip, avant, apres: patient });
     res.json({ success: true, patient });

@@ -121,10 +121,16 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-P2-1 (groupe 2) — patient/medecin identifient la consultation ;
+// aucun formulaire d'édition ne les réassigne.
+const CONSULT_BLOCKED_FIELDS = ['patient', 'medecin'];
+
 exports.update = async (req, res, next) => {
   try {
     const avant = await Consultation.findById(req.params.id).lean();
-    const consultation = await Consultation.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!CONSULT_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    const consultation = await Consultation.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!consultation) return res.status(404).json({ success: false, message: 'Consultation introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'consultations', entite_id: consultation._id, ip: req.ip, avant, apres: consultation });
     res.json({ success: true, consultation });
