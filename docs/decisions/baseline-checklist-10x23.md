@@ -6,8 +6,8 @@
 
 ## Méthode et niveau de preuve
 
-- **Live-testé** : 13 des 23 modules ont été vérifiés par appels HTTP réels contre le serveur en fonctionnement, avec un compte de test par rôle (`tests/accessMatrix.test.js`, Phase 2) — 154 combinaisons, 0 écart. *(Corrigé de « 14 » à « 13 » lors du rejeu Phase 3 — comptage erroné dans la version initiale, cf. section de rejeu ci-dessous.)*
-- **Vérifié statiquement** : les 10 modules restants sont vérifiés par lecture directe et fraîche (pas de mémoire) des tableaux `authorize(...)` de chaque fichier de route, recoupée avec les menus frontend (`App.jsx`, `Sidebar.jsx`). Non exécuté en HTTP réel dans le cadre de ce document — à faire si une preuve live est requise. *(Corrigé de « 9 » à « 10 ».)*
+- **Live-testé** : à l'origine 13 des 23 modules (`tests/accessMatrix.test.js`, Phase 2, contre un serveur démarré à la main — 154 combinaisons, 0 écart). **Rejeu Phase 10.1** (`tests/baselineChecklistPhase10.test.js`) : les 10 modules restants sont passés à Live via un serveur isolé démarré/arrêté automatiquement par le test lui-même (`tests/helpers/isolatedServer.js` — jamais le cluster Atlas partagé, jamais dépendant d'un `npm run dev` oublié), avec 11 comptes de test (10 rôles professionnels + patient, patient inclus délibérément sur les 23 modules pour vérifier son exclusion). Les 13 modules déjà Live ont été re-confirmés dans la même exécution — aucune régression. **23/23 modules sont donc désormais Live-testés.**
+- **Vérifié statiquement** : obsolète — plus aucun module dans cet état depuis le rejeu Phase 10.1 (voir tableau de rejeu en fin de document).
 - **Légende** : `OK` = accès conforme à la fonction du rôle (pas nécessairement accès total — un accès en lecture seule pour un rôle consultatif est un `OK`, pas un `Partiel`). `Partiel` = accès réel mais notablement restreint par rapport à un rôle voisin, ou fonctionnalité du **module** elle-même incomplète indépendamment du rôle. `KO` = aucun accès — **par conception**, pas une anomalie, sauf mention contraire explicite.
 
 ## Regroupement des 23 modules
@@ -29,22 +29,22 @@ Colonnes : **SA**=superadmin **AC**=adminclinique **ME**=médecin **IN**=infirmi
 | Pharmacie | OK | OK | Partiel³ | Partiel³ | KO | KO | KO | OK | KO | KO | Live |
 | Hospitalisation | OK | OK | OK | OK | KO | KO | KO | KO | KO | KO | Live |
 | Chirurgie & Bloc opératoire | OK | OK | OK | Partiel⁴ | KO | KO | KO | KO | KO | KO | Live |
-| Urgences & Ambulances | OK | OK | OK | OK | OK | KO | KO | KO | KO | KO | Statique |
-| Maternité | OK | OK | OK | OK | OK | KO | KO | KO | KO | KO | Statique |
-| Pédiatrie | OK | OK | OK | OK | OK | KO | KO | KO | KO | KO | Statique |
+| Urgences & Ambulances | OK | OK | OK | OK | OK | KO | KO | KO | KO | KO | Live (10.1) |
+| Maternité | OK | OK | OK | OK | OK | KO | KO | KO | KO | KO | Live (10.1) |
+| Pédiatrie | OK | OK | OK | OK | OK | KO | KO | KO | KO | KO | Live (10.1) |
 | Laboratoire | OK | Partiel² | Partiel³ | Partiel³ | KO | OK | KO | KO | KO | KO | Live |
 | Imagerie / Radiologie | OK | Partiel² | Partiel³ | Partiel³ | KO | KO | OK | KO | KO | KO | Live |
-| Échographie | OK | OK | OK | OK | OK | KO | OK | KO | KO | KO | Statique |
+| Échographie | OK | OK | OK | OK | OK | KO | OK | KO | KO | KO | Live (10.1) |
 | Finance & Facturation | OK | OK | KO | KO | KO | KO | KO | KO | OK | KO | Live |
 | Ressources Humaines | OK | OK | Partiel⁵ | Partiel⁵ | Partiel⁵ | Partiel⁵ | Partiel⁵ | Partiel⁵ | Partiel⁵ | Partiel⁵ | Live |
-| Messagerie | OK | OK | OK | OK | OK | OK | OK | OK | OK | OK | Statique⁶ |
-| Notifications | OK | OK | OK | OK | OK | OK | OK | OK | OK | OK | Statique⁶ |
+| Messagerie | OK | OK | OK | OK | OK | OK | OK | OK | OK | OK | Live (10.1)⁶ |
+| Notifications | OK | OK | OK | OK | OK | OK | OK | OK | OK | OK | Live (10.1)⁶ |
 | Tableau de bord | OK | OK | OK | OK | OK | OK | OK | OK | OK | OK | Live |
-| Intelligence Artificielle | OK | OK | OK | Partiel⁷ | KO | KO | KO | KO | KO | KO | Statique |
-| Analytics | OK | OK | KO | KO | KO | KO | KO | KO | KO | KO | Statique |
-| Journal d'audit | OK | OK | KO | KO | KO | KO | KO | KO | KO | KO | Live |
-| Archivage | OK⁸ | OK⁸ | KO | KO | KO | KO | KO | KO | KO | KO | Statique |
-| Administration & Paramètres | OK | Partiel⁹ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Statique |
+| Intelligence Artificielle | OK | OK | OK | Partiel⁷ | KO | KO | KO | KO | KO | KO | Live (10.1) |
+| Analytics | OK | OK | KO | KO | KO | KO | KO | KO | KO | KO | Live (10.1) |
+| Journal d'audit | OK | OK¹¹ | KO | KO | KO | KO | KO | KO | KO | KO | Live (10.1)¹¹ |
+| Archivage | OK⁸ | OK⁸ | KO | KO | KO | KO | KO | KO | KO | KO | Live (10.1) |
+| Administration & Paramètres | OK | Partiel⁹ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Partiel¹⁰ | Live (10.1) |
 
 ## Notes
 
@@ -58,6 +58,9 @@ Colonnes : **SA**=superadmin **AC**=adminclinique **ME**=médecin **IN**=infirmi
 8. **Archivage — `OK` d'accès, mais module limité** — SA/AC ont un accès complet à ce qui existe ; la fonctionnalité elle-même n'est qu'un index de recherche, pas un vrai cycle chaud/froid (cf. ticket de décision 0001 sur ce sujet, distinct de ce document). Distinction volontaire : le rôle a un accès `OK`, c'est le **module** qui est `Partiel` fonctionnellement — non mélangé dans cette matrice pour ne pas fausser la lecture par rôle.
 9. **Adminclinique sur Administration** — accès à tout sauf la création/modification des comptes utilisateurs, réservée à `superadmin` seul.
 10. **Tous les autres rôles sur Administration** — lecture des données de référence uniquement (services, chambres, assurances), nécessaires à leurs propres formulaires métier ; aucun droit de gestion.
+11. **Adminclinique sur Journal d'audit — ÉCART EXPLIQUÉ, laissé en l'état par décision utilisateur (clôture Phase 10.1).** Cette ligne affirmait `OK` pour `adminclinique` sans qu'aucun test live n'ait jamais exercé ce module (absent de `accessMatrix.test.js`, Phase 2 — vérifié directement dans son code source). Le rejeu Phase 10.1 confirme que `audit.routes.js` restreint en réalité les 5 routes à `superadmin` seul.
+   **Origine confirmée** (vérification demandée explicitement par l'utilisateur avant la fusion de la branche T10.1, pour écarter l'hypothèse d'une décision Phase 7 actée puis jamais appliquée au code) : recherche exhaustive dans l'historique git — aucune tâche nommée « T7.3 » n'existe. En revanche, commit `1b02505` (`fix(audit): restrict access to superadmin only (R-01b, P7.1 decision)`, 16/08/2026), message : *« App.jsx's route guard only ever allowed superadmin onto the Audit page, but audit.routes.js's ADMIN list also accepted adminclinique at the API level... Decision from the user: align the backend down to superadmin-only rather than opening the frontend up. »* — une décision utilisateur réelle et explicite, distincte de « T7.3 », référencée `R-01b`/« P7.1 decision » (étiquetage interne incohérent : le corps du commit dit « P7.1 », le nom de branche `feature/P7.4-audit-superadmin-only` dit « P7.4 » — aucun des deux n'est « T7.3 »).
+   **Ce commit est postérieur à la rédaction de ce document** (`e4cb3d5`, 15/08/2026 18:35, antérieur de plusieurs heures à `1b02505`, 16/08/2026 08:25) : la cellule `OK` ci-dessus n'est donc pas une régression de code non appliquée, mais une affirmation du document jamais mise à jour après une décision ultérieure et délibérée. Décision utilisateur (clôture Phase 10.1) : laisser la cellule en l'état pour l'instant plutôt que de corriger le document maintenant — dette documentée, pas reperdue.
 
 ## Écarts trouvés en construisant cette matrice
 
@@ -98,3 +101,16 @@ Question posée en clôture de Phase 3 : ce rejeu a-t-il fait passer l'un de ces
 | Administration & Paramètres | Statique | Statique — inchangé |
 
 Ces 10 modules restent une dette de preuve ouverte (mentionnée dès la version initiale de ce document : « à faire si une preuve live est requise ») — non traitée en Phase 3, dont le périmètre ne portait pas sur ces modules.
+
+## Rejeu — Phase 10.1 (dette de preuve soldée, 23/23 modules Live)
+
+Rejeu demandé explicitement en clôture de Phase 9 : « la Phase 10.1 va rejouer la même checklist de baseline, autant repartir sur une base propre ». Exécuté via `tests/baselineChecklistPhase10.test.js`, sur un serveur + MongoDB isolés démarrés et arrêtés automatiquement par le test (`tests/helpers/isolatedServer.js`) — jamais le cluster Atlas partagé, contrairement à `accessMatrix.test.js` qui dépend d'un serveur démarré manuellement.
+
+**Résultat : 27/27 sous-tests passent.** Les 10 modules « Vérifié statiquement » passent tous à Live ; les 13 déjà Live sont re-confirmés sans régression ; un sous-test dédié confirme qu'aucun des 21 modules professionnels stricts (hors Messagerie/Notifications, note 6) n'est accessible au rôle `patient`.
+
+**Deux écarts détectés en construisant la table de test, tous deux documentés plutôt que résolus silencieusement :**
+
+1. **Messagerie/Notifications — faux positif, résolu.** Le brouillon initial du test excluait `patient` de l'accès autorisé sur ces deux modules, en écho au principe général « le rôle patient ne doit jamais accéder à un module professionnel ». Le test a échoué (`patient` obtient bien 200). Vérification : ce comportement est **documenté et voulu** (note 6, déjà présente dans ce document avant Phase 10.1) — la portée est appliquée au niveau contrôleur (`membres`/`destinataire: req.user._id`), pas au niveau route. Le test a été corrigé pour refléter ce comportement documenté ; aucun changement de code.
+2. **Journal d'audit / adminclinique — écart réel, expliqué, laissé en l'état par décision utilisateur.** Voir note 11 ci-dessus : `audit.routes.js` ne restreint qu'à `superadmin`, contrairement à la cellule `OK` affirmée pour `adminclinique` depuis la version initiale de ce document. Vérification demandée avant la fusion de la branche T10.1 (« T7.3 avait-il déjà tranché cette question sans que ce soit appliqué au code ? ») : aucune tâche « T7.3 » ne référence ce sujet, mais le commit `1b02505` (16/08/2026, `R-01b`/« P7.1 decision ») documente une décision utilisateur réelle et antérieure à ce jour de restreindre délibérément l'accès à `superadmin` seul — postérieure à la rédaction de ce document (15/08/2026), qui n'a simplement jamais été mis à jour depuis. Décision de clôture Phase 10.1 : cellule laissée en l'état pour l'instant (ni code ni document modifiés au-delà de cette note), dette documentée plutôt que reperdue.
+
+**Constat complémentaire (hors modèle rôle × module, pas une cellule de cette matrice) :** aucun couplage applicatif réel n'existe entre Urgences et Hospitalisation malgré `Urgence.decision`/`Urgence.statut` suggérant le contraire — voir [ticket 0018](../tickets/0018-urgences-hospitalisation-no-coupling.md) et le test de verrouillage `tests/crossModuleUrgencesHospitalisationIsolationT101.test.js`.
