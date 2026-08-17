@@ -61,6 +61,12 @@ const PatientSchema = new Schema({
   cree_par: { type: Schema.Types.ObjectId, ref: 'User' },
   ip_creation: String,
   notes: String,
+  // T9.13 — anonymisation (alternative à la suppression physique, voir
+  // utils/patientAnonymization.js). anonymise_par n'est pas required : le
+  // champ n'est renseigné que par le seul chemin qui pose anonymise:true.
+  anonymise: { type: Boolean, default: false },
+  anonymise_at: Date,
+  anonymise_par: { type: Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
 PatientSchema.pre('save', async function (next) {

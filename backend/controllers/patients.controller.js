@@ -424,6 +424,19 @@ exports.remove = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// T9.13 — anonymisation, alternative à la suppression physique. Contrairement
+// à la désactivation ci-dessus (remove(), qui ne touche que le Patient et le
+// compte User), anonymize() scrube aussi les copies d'identité dupliquées
+// dans les 8 collections liées (voir utils/patientAnonymization.js pour le
+// détail complet de la procédure et son raisonnement).
+exports.anonymize = async (req, res, next) => {
+  try {
+    const { anonymizePatient } = require('../utils/patientAnonymization');
+    const result = await anonymizePatient(req.params.id, { utilisateur: req.user._id, ip: req.ip });
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+};
+
 // ── SEARCH ───────────────────────────────────────────────────────────────────
 exports.search = async (req, res, next) => {
   try {

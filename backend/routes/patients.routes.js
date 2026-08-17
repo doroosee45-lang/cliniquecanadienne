@@ -24,5 +24,6 @@ router.put('/:id/activate-admin', protect, authorize(...CAN_WRITE), patC.activat
 router.put('/:id',     protect, authorize(...CAN_WRITE),      patC.update);
 router.post('/:id/photo', protect, authorize(...CAN_WRITE), uploadPatientPhoto.single('photo'), patC.uploadPhoto);
 router.delete('/:id',  protect, authorize('superadmin', 'adminclinique'), patC.remove);
+router.put('/:id/anonymize', protect, authorize('superadmin', 'adminclinique'), patC.anonymize);
 
 module.exports = router;
