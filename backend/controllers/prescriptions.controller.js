@@ -4,6 +4,7 @@ const User         = require('../models/User');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate, emitTo } = require('../utils/socket');
 const { sendPrescriptionEmail } = require('../utils/mail');
+const { logger } = require('../utils/logger');
 const { detectInteractions } = require('../utils/drugInteractions');
 
 exports.getAll = async (req, res, next) => {
@@ -133,7 +134,7 @@ exports.publier = async (req, res, next) => {
         emailEnvoye = true;
         rx.email_patient_envoye = true;
       } catch (mailErr) {
-        console.error('[MAIL prescription]', mailErr.message);
+        logger.error('[MAIL prescription] Échec envoi email ordonnance', { error: mailErr.message });
       }
     }
 

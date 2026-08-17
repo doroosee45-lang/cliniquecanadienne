@@ -6,6 +6,7 @@ const cron = require('node-cron');
 const Appointment = require('../models/Appointment');
 const mail = require('./mail');
 const { logAction } = require('./helpers');
+const { logger, captureException } = require('./logger');
 
 // Statuts pour lesquels un rappel a encore du sens — un RDV déjà arrivé,
 // en cours, terminé, reporté ou annulé n'en a plus besoin.
@@ -42,7 +43,7 @@ async function sendTomorrowReminders() {
       sent++;
     } catch (err) {
       failed++;
-      console.error(`[reminders] Échec envoi rappel RDV ${appt._id} :`, err.message);
+      logger.error('[reminders] Échec envoi rappel RDV', { appointmentId: appt._id.toString(), error: err.message });
     }
   }
 
@@ -59,7 +60,10 @@ async function sendTomorrowReminders() {
 // depuis server.js ; désactivable en test/CI en ne l'appelant simplement pas.
 function startReminderJob() {
   cron.schedule('0 8 * * *', () => {
-    sendTomorrowReminders().catch(err => console.error('[reminders] Erreur job rappels RDV :', err.message));
+    sendTomorrowReminders().catch(err => {
+      logger.error('[reminders] Erreur job rappels RDV', { error: err.message, stack: err.stack });
+      captureException(err, { job: 'appointmentReminders' });
+    });
   });
 }
 

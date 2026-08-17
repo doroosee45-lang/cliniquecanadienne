@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { logger } = require('./logger');
 
 const getTransporter = () =>
   nodemailer.createTransport({
@@ -10,8 +11,7 @@ const getTransporter = () =>
 
 const sendEmail = async ({ to, subject, html }) => {
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
-    console.warn(`[MAIL] SMTP non configuré — email simulé → ${to}`);
-    console.log(`[MAIL] Sujet : ${subject}`);
+    logger.warn('[MAIL] SMTP non configuré — email simulé', { to, subject });
     return { simulated: true };
   }
   const info = await getTransporter().sendMail({

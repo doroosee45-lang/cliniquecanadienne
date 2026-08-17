@@ -1,6 +1,7 @@
 const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
 const { emitTo } = require('./socket');
+const { logger } = require('./logger');
 
 const logAction = async ({ utilisateur, action, module, entite_id, ip, ua, avant, apres, message, statut = 'succes' }) => {
   try {
@@ -17,7 +18,7 @@ const logAction = async ({ utilisateur, action, module, entite_id, ip, ua, avant
       statut,
     });
   } catch (e) {
-    console.error('Audit log error:', e.message);
+    logger.error('Audit log error', { error: e.message, action, module });
   }
 };
 
@@ -27,7 +28,7 @@ const createNotification = async ({ destinataire, type = 'info', titre, message,
     // Push en temps réel vers la room privée de l'utilisateur destinataire
     emitTo(`user:${destinataire}`, 'notification:new', notif);
   } catch (e) {
-    console.error('Notification error:', e.message);
+    logger.error('Notification error', { error: e.message, destinataire, type });
   }
 };
 
