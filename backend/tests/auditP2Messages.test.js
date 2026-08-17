@@ -1,0 +1,100 @@
+// AUDIT-07 — messages.controller.js est réellement utilisé (Messages.jsx
+// appelle bien ces 4 endpoints) mais n'avait aucune couverture de test.
+// Couvre explicitement le scoping par utilisateur (une conversation n'est
+// visible/accessible qu'à ses membres, vérifié via 403 sur un tiers) en
+// plus du comportement fonctionnel — c'est le seul des 3 contrôleurs
+// AUDIT-07 où l'accès est scopé par appartenance plutôt que par rôle.
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const mongoose = require('mongoose');
+
+test('messages.controller — les 4 endpoints réellement utilisés (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
+  await mongoose.connect(process.env.MONGO_URI);
+  const msgC = require('../controllers/messages.controller');
+  const Conversation = require('../models/Conversation');
+  const User = require('../models/User');
+
+  const stamp = Date.now();
+  const userA = await User.create({ email: `_msg-a-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'A', prenom: 'MsgA', role: 'medecin', statut: 'actif' });
+  const userB = await User.create({ email: `_msg-b-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'B', prenom: 'MsgB', role: 'infirmier', statut: 'actif' });
+  const userTiers = await User.create({ email: `_msg-c-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'C', prenom: 'MsgTiers', role: 'medecin', statut: 'actif' });
+
+  const call = async (fn, req) => {
+    let status = 200, body = null;
+    const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
+    await fn(req, res, (err) => { if (err) throw err; });
+    return { status, body };
+  };
+
+  const cleanup = [
+    () => User.findByIdAndDelete(userA._id),
+    () => User.findByIdAndDelete(userB._id),
+    () => User.findByIdAndDelete(userTiers._id),
+  ];
+
+  try {
+    let convId;
+
+    await t.test('getOrCreate — crée une conversation directe, idempotent au second appel', async () => {
+      const { status, body } = await call(msgC.getOrCreate, { user: userA, body: { userId: userB._id.toString() } });
+      assert.equal(status, 200);
+      assert.equal(body.conversation.type, 'direct');
+      assert.equal(body.conversation.membres.length, 2);
+      convId = body.conversation._id;
+      cleanup.push(() => Conversation.findByIdAndDelete(convId));
+
+      // Rappel avec la même paire — ne doit pas créer une seconde conversation.
+      const { body: body2 } = await call(msgC.getOrCreate, { user: userA, body: { userId: userB._id.toString() } });
+      assert.equal(body2.conversation._id.toString(), convId.toString(), 'un second appel avec la même paire doit renvoyer la conversation existante, pas en créer une nouvelle');
+      const total = await Conversation.countDocuments({ membres: { $all: [userA._id, userB._id] } });
+      assert.equal(total, 1, 'une seule conversation directe doit exister pour cette paire');
+    });
+
+    await t.test('getConversations — scopé au membre courant (userA la voit, userTiers non)', async () => {
+      const { body: bodyA } = await call(msgC.getConversations, { user: userA });
+      assert.ok(bodyA.conversations.some(c => c._id.toString() === convId.toString()), 'userA doit voir la conversation dont il est membre');
+
+      const { body: bodyTiers } = await call(msgC.getConversations, { user: userTiers });
+      assert.ok(!bodyTiers.conversations.some(c => c._id.toString() === convId.toString()), 'userTiers ne doit pas voir une conversation dont il n\'est pas membre');
+    });
+
+    await t.test('sendMessage — persiste le message, refuse un non-membre (403)', async () => {
+      const { status, body } = await call(msgC.sendMessage, { user: userA, params: { id: convId }, body: { contenu: `Bonjour ${stamp}` } });
+      assert.equal(status, 200);
+      assert.equal(body.message.contenu, `Bonjour ${stamp}`);
+      // expediteur est peuplé (nom/prenom/avatar/role) par sendMessage avant réponse.
+      assert.equal(body.message.expediteur._id.toString(), userA._id.toString());
+
+      const relu = await Conversation.findById(convId).lean();
+      assert.equal(relu.messages.length, 1, 'le message doit être réellement persisté en base');
+      assert.equal(relu.messages[0].contenu, `Bonjour ${stamp}`);
+
+      // Autorisation : un tiers non membre ne doit pas pouvoir écrire dans la conversation.
+      let statusTiers;
+      const resTiers = { status: (c) => { statusTiers = c; return resTiers; }, json: () => {} };
+      await msgC.sendMessage({ user: userTiers, params: { id: convId }, body: { contenu: 'Intrusion' } }, resTiers, (e) => { if (e) throw e; });
+      assert.equal(statusTiers, 403, 'un utilisateur non membre de la conversation doit recevoir 403');
+      const apresIntrusion = await Conversation.findById(convId).lean();
+      assert.equal(apresIntrusion.messages.length, 1, 'le message du tiers non autorisé ne doit pas avoir été ajouté');
+    });
+
+    await t.test('getMessages — marque comme lu pour le lecteur, refuse un non-membre (403)', async () => {
+      const { status, body } = await call(msgC.getMessages, { user: userB, params: { id: convId } });
+      assert.equal(status, 200);
+      assert.equal(body.messages.length, 1);
+
+      const relu = await Conversation.findById(convId).lean();
+      const luPar = relu.messages[0].lu_par.map(id => id.toString());
+      assert.ok(luPar.includes(userB._id.toString()), 'userB doit être ajouté à lu_par après avoir lu la conversation');
+
+      let statusTiers;
+      const resTiers = { status: (c) => { statusTiers = c; return resTiers; }, json: () => {} };
+      await msgC.getMessages({ user: userTiers, params: { id: convId } }, resTiers, (e) => { if (e) throw e; });
+      assert.equal(statusTiers, 403, 'un utilisateur non membre ne doit pas pouvoir lire la conversation');
+    });
+  } finally {
+    for (const fn of cleanup) await fn();
+    await mongoose.disconnect();
+  }
+});
