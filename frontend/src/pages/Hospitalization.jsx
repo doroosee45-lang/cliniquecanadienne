@@ -701,11 +701,36 @@ export default function Hospitalisation() {
   };
 
   // ── ENREGISTRER SORTIE ────────────────────────────────────
+  // P7-1 — passait par updateHosp() → PUT /hospitalization/:id, une route qui
+  // n'a jamais existé (404 systématique) : la sortie réelle (libération du
+  // lit, notification patient — logique déjà correcte côté discharge()) n'était
+  // donc jamais atteinte. Appelle maintenant le bon endpoint.
   const enregistrerSortie = async (e) => {
     e.preventDefault();
-    await updateHosp({ statut:"sorti", ...formSortie });
-    setModalSortie(false);
-    loadAllForKpis();
+    if (!currentHosp) return;
+    setSaving(true);
+    const toastId = toast.loading("🚪 Enregistrement de la sortie...");
+    try {
+      const { data } = await api.put(`/hospitalization/${currentHosp._id}/discharge`, formSortie);
+      const updated = normalizeHosp(data.hospitalization || data.hospitalisation || data.data || { ...currentHosp, statut:"sorti", ...formSortie });
+
+      setCurrentHosp(updated);
+      setHosps(prev => prev.map(h => h._id === currentHosp._id ? updated : h));
+
+      toast.success("✅ Sortie du patient enregistrée", { id: toastId });
+      setModalSortie(false);
+
+      // Le lit vient d'être libéré côté serveur (discharge()) — recharger
+      // la liste des chambres/lits pour refléter la disponibilité.
+      loadLits();
+      loadHosps();
+      loadAllForKpis();
+    } catch(err) {
+      const errMsg = err?.response?.data?.message || "Erreur serveur";
+      toast.error(`❌ ${errMsg}`, { id: toastId });
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Compteurs dérivés ─────────────────────────────────────

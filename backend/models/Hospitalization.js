@@ -11,6 +11,61 @@ const NoteSchema = new Schema({
   contenu: String,
 }, { _id: false });
 
+// P7-2 — sous-documents du dossier de séjour, même principe que NoteSchema
+// ci-dessus. _id conservé (contrairement à NoteSchema) : chaque entrée doit
+// être identifiable individuellement en réponse de POST/GET (clé React côté
+// front, retour de l'élément créé côté API).
+const ConstanteSchema = new Schema({
+  date:        { type: Date, default: Date.now },
+  auteur:      { type: Schema.Types.ObjectId, ref: 'User' },
+  temperature: Number,
+  tension_sys: Number,
+  tension_dia: Number,
+  fc:          Number,
+  spo2:        Number,
+  poids:       Number,
+  note_med:    String,
+  note_inf:    String,
+});
+
+const TraitementSchema = new Schema({
+  date:       { type: Date, default: Date.now },
+  medicament: String,
+  dose:       String,
+  heure:      String,
+  voie:       String,
+  personnel:  String,
+  statut:     String,
+});
+
+const ExamenSchema = new Schema({
+  date:        { type: Date, default: Date.now },
+  type:        String,
+  designation: String,
+  statut:      String,
+  resultat:    String,
+});
+
+const VisiteSchema = new Schema({
+  date:          { type: Date, default: Date.now },
+  visiteur:      String,
+  heure_entree:  String,
+  heure_sortie:  String,
+  note:          String,
+});
+
+// Nommée "PrescriptionSejour" (et non "Prescription") pour ne pas entrer en
+// collision avec le vrai modèle Prescription (document séparé, ailleurs dans
+// l'app) : ceci ne représente qu'une entrée légère de prescription saisie
+// directement dans le dossier de séjour, pas une ordonnance formelle.
+const PrescriptionSejourSchema = new Schema({
+  date:        { type: Date, default: Date.now },
+  type:        String,
+  designation: String,
+  posologie:   String,
+  medecin:     String,
+});
+
 const HospitalizationSchema = new Schema({
   patient:              { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
   chambre:              { type: Schema.Types.ObjectId, ref: 'Room' },
@@ -35,6 +90,20 @@ const HospitalizationSchema = new Schema({
   batiment:             String,
   contact_urgence:      String,
   tel_urgence:          String,
+  // P7-1 — champs saisis par le formulaire de sortie (frontend EMPTY_SORTIE)
+  // mais absents du schéma : silencieusement perdus par findByIdAndUpdate
+  // jusqu'ici. heure_sortie/recommandations/rdv_controle en texte libre ;
+  // etat_patient contraint à l'enum affiché par le <select> du formulaire.
+  heure_sortie:         String,
+  etat_patient:         { type: String, enum: ['gueri','ameliore','stable','transfere','deces'] },
+  recommandations:      String,
+  rdv_controle:         String,
+  // P7-2 — dossier de séjour : sous-ressources exposées via GET/POST dédiés
+  constantes:           [ConstanteSchema],
+  traitements:          [TraitementSchema],
+  examens:              [ExamenSchema],
+  visites:              [VisiteSchema],
+  prescriptions_sejour: [PrescriptionSejourSchema],
 }, { timestamps: true });
 
 // T9.8 — aucun index avant ce correctif (constaté en T2.4) : toute requête
