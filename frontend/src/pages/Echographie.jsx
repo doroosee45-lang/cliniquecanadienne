@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   fetchEchographieStats, fetchDemandes, createDemande,
-  selectDemandesList,
+  planifierDemande, saveRapport, annulerDemande,
+  selectDemandesList, selectEchographieSaving,
 } from "../store/slices/echographieSlice";
 import { Activity, Plus } from 'lucide-react';
 import Hero from '../components/UI/Hero';
@@ -580,9 +581,18 @@ function Dashboard({ demandes }) {
 // ─── DEMANDES D'EXAMEN ────────────────────────────────────────
 function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const saving   = useSelector(selectEchographieSaving);
   const [filtre, setFiltre] = useState("tous");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
+
+  const handleAnnuler = (d) => {
+    if (!d?._id) return;
+    if (!window.confirm(`Annuler la demande ${d.numero} ? Cette action est définitive.`)) return;
+    dispatch(annulerDemande(d._id));
+    setSelected(null);
+  };
 
   const filtered = demandes.filter(d => {
     const matchFiltre = filtre==="tous" || d.statut===filtre || d.priorite===filtre;
@@ -702,6 +712,9 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
             <button className="cbtn cbtn-ghost cbtn-sm" onClick={()=>setSelected(null)}>Fermer</button>
             {selected.statut==="planifiee" && <button className="cbtn cbtn-teal cbtn-sm" onClick={()=>{setSelected(null);setMainTab("realisation");}}>▶ Commencer l'examen</button>}
             {selected.rapport_statut==="valide" && <button className="cbtn cbtn-green cbtn-sm">📄 Voir le rapport</button>}
+            {selected.statut!=="annulee" && selected.statut!=="validee" && (
+              <button className="cbtn cbtn-danger cbtn-sm" disabled={saving} onClick={()=>handleAnnuler(selected)} style={{ marginLeft:"auto" }}>🚫 Annuler la demande</button>
+            )}
           </div>
         </Modal>
       )}
@@ -709,10 +722,74 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
   );
 }
 
+// ─── MODAL PLANIFIER EXAMEN ────────────────────────────────────
+function PlanifierModal({ open, onClose, candidats, saving }) {
+  const dispatch = useDispatch();
+  const [demandeId, setDemandeId]   = useState("");
+  const [datePlanif, setDatePlanif] = useState(now());
+  const [echographiste, setEchographiste] = useState(ECHOGRAPHISTES[0]);
+  const [salle, setSalle]           = useState(SALLES[0]);
+
+  useEffect(() => {
+    if (open) setDemandeId(candidats[0]?._id || "");
+  }, [open, candidats]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!demandeId) return;
+    dispatch(planifierDemande({
+      id: demandeId,
+      body: { date_planif: datePlanif, echographiste, salle },
+    }));
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="➕ Planifier un examen" maxWidth={520}>
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom:14 }}>
+          <label className="clbl req">Demande à planifier</label>
+          <select className="cinp" required value={demandeId} onChange={e=>setDemandeId(e.target.value)}>
+            {candidats.length===0 && <option value="">— Aucune demande en attente —</option>}
+            {candidats.map(d=>(
+              <option key={d._id} value={d._id}>{d.numero} — {d.patient} — {d.type}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <label className="clbl req">Date et heure</label>
+          <input type="datetime-local" className="cinp" required value={datePlanif} onChange={e=>setDatePlanif(e.target.value)} />
+        </div>
+        <div className="echo-g2-sm" style={{ marginBottom:14 }}>
+          <div>
+            <label className="clbl req">Échographiste</label>
+            <select className="cinp" value={echographiste} onChange={e=>setEchographiste(e.target.value)}>
+              {ECHOGRAPHISTES.map(e=><option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="clbl req">Salle</label>
+            <select className="cinp" value={salle} onChange={e=>setSalle(e.target.value)}>
+              {SALLES.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:10 }}>
+          <button type="button" className="cbtn cbtn-ghost" onClick={onClose}>Annuler</button>
+          <button type="submit" className="cbtn cbtn-teal" disabled={!demandeId || saving} style={{ marginLeft:"auto" }}>📅 Planifier</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 // ─── PLANNING ─────────────────────────────────────────────────
 function Planning({ demandes }) {
+  const saving = useSelector(selectEchographieSaving);
   const [vue, setVue] = useState("semaine");
+  const [modalPlan, setModalPlan] = useState(false);
   const planifiees = demandes.filter(d => d.statut==="planifiee" && d.date_planif);
+  const candidats   = demandes.filter(d => d.statut==="en_attente");
 
   const heures = ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"];
   const jours  = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
@@ -730,8 +807,10 @@ function Planning({ demandes }) {
             <span key={s} className="cbdg teal">{s}</span>
           ))}
         </div>
-        <button className="cbtn cbtn-teal" style={{ marginLeft:"auto" }}>+ Planifier examen</button>
+        <button className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} onClick={()=>setModalPlan(true)}>+ Planifier examen</button>
       </div>
+
+      <PlanifierModal open={modalPlan} onClose={()=>setModalPlan(false)} candidats={candidats} saving={saving} />
 
       <div className="echo-card">
         <div className="echo-card-hdr">
@@ -804,6 +883,8 @@ function Planning({ demandes }) {
 // ─── RÉALISATION EXAMEN ───────────────────────────────────────
 function Realisation({ demandes }) {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const saving   = useSelector(selectEchographieSaving);
   const [step, setStep] = useState(0);
   const [selectedDemande, setSelectedDemande] = useState(demandes.find(d=>d.statut==="planifiee")||null);
   const [typeEcho, setTypeEcho] = useState(null);
@@ -820,8 +901,66 @@ function Realisation({ demandes }) {
     { label:"Validation",        icon:"✅" },
   ];
 
-  const selDem = selectedDemande;
+  // Reflète en direct l'état stocké côté serveur (redux) plutôt que la
+  // sélection figée au moment du clic, pour que Valider/Rejeter opèrent sur
+  // les dernières valeurs (rapport_texte, conclusion...) déjà enregistrées.
+  const selDem = selectedDemande?._id
+    ? (demandes.find(d=>d._id===selectedDemande._id) || selectedDemande)
+    : selectedDemande;
   const te = typeEcho ? TYPES_ECHO.find(t=>t.id===typeEcho) : (selDem ? TYPES_ECHO.find(t=>t.label===selDem.type) : null);
+
+  // Construit un texte de rapport structuré à partir des observations
+  // saisies organe par organe au step 4 du wizard.
+  const buildRapportTexte = () => {
+    if (!te) return "";
+    return te.subtypes.map(organe => {
+      const taille    = observations[`${organe}_taille`]    || "non renseigné";
+      const aspect    = observations[`${organe}_aspect`]    || "non renseigné";
+      const anomalies = observations[`${organe}_anomalies`] || "RAS";
+      return `${organe} :\n- Taille / Dimensions : ${taille}\n- Aspect général : ${aspect}\n- Anomalies : ${anomalies}`;
+    }).join("\n\n");
+  };
+
+  const handleSoumettreRapport = () => {
+    if (selDem?._id) {
+      dispatch(saveRapport({
+        id: selDem._id,
+        body: {
+          rapport_texte:   buildRapportTexte(),
+          conclusion:      observations.conclusion || "",
+          recommandations: [observations.recommandations, observations.examens_compl].filter(Boolean).join(" | "),
+          rapport_statut:  "en_validation",
+        },
+      }));
+    }
+    setStep(5);
+  };
+
+  const handleValiderRapport = () => {
+    if (!selDem?._id) return;
+    dispatch(saveRapport({
+      id: selDem._id,
+      body: {
+        rapport_texte:   selDem.rapport_texte   ?? buildRapportTexte(),
+        conclusion:      selDem.conclusion      ?? (observations.conclusion || ""),
+        recommandations: selDem.recommandations ?? (observations.recommandations || ""),
+        rapport_statut:  "valide",
+      },
+    }));
+  };
+
+  const handleRejeterRapport = () => {
+    if (!selDem?._id) return;
+    dispatch(saveRapport({
+      id: selDem._id,
+      body: {
+        rapport_texte:   selDem.rapport_texte   ?? buildRapportTexte(),
+        conclusion:      selDem.conclusion      ?? (observations.conclusion || ""),
+        recommandations: selDem.recommandations ?? (observations.recommandations || ""),
+        rapport_statut:  "rejete",
+      },
+    }));
+  };
 
   return (
     <div className="fu">
@@ -1131,7 +1270,10 @@ function Realisation({ demandes }) {
                       <select className="cinp" style={{ width:"auto" }}>
                         {RADIOLOGUES.map(r=><option key={r}>{r}</option>)}
                       </select>
-                      <button className="cbtn cbtn-primary cbtn-sm">🔐 Signer</button>
+                      <button className="cbtn cbtn-primary cbtn-sm" disabled title="Signature électronique indisponible : le modèle Echographie ne comporte aucun champ de signature côté backend (contrairement à ImagingResult.signature) et le contrôleur ne l'accepte pas. Utilisez la validation du rapport à l'étape suivante.">🔐 Signer</button>
+                    </div>
+                    <div style={{ fontSize:10.5, color:"var(--cm)", marginTop:6, maxWidth:340 }}>
+                      Signature électronique non prise en charge par le backend actuellement — utilisez « Valider le rapport » à l'étape suivante pour acter la validation.
                     </div>
                   </div>
                   <div style={{ textAlign:"right" }}>
@@ -1144,7 +1286,7 @@ function Realisation({ demandes }) {
           </div>
           <div style={{ display:"flex", gap:10 }}>
             <button className="cbtn cbtn-ghost" onClick={()=>setStep(3)}>← Retour</button>
-            <button className="cbtn cbtn-teal" onClick={()=>setStep(5)}>Soumettre à validation →</button>
+            <button className="cbtn cbtn-teal" disabled={saving} onClick={handleSoumettreRapport}>Soumettre à validation →</button>
           </div>
         </div>
       )}
@@ -1179,9 +1321,14 @@ function Realisation({ demandes }) {
                   ))}
                 </div>
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  <button className="cbtn cbtn-green">✅ Valider le rapport</button>
-                  <button className="cbtn cbtn-danger">❌ Rejeter</button>
+                  <button className="cbtn cbtn-green" disabled={!selDem?._id || saving} onClick={handleValiderRapport}>✅ Valider le rapport</button>
+                  <button className="cbtn cbtn-danger" disabled={!selDem?._id || saving} onClick={handleRejeterRapport}>❌ Rejeter</button>
                 </div>
+                {selDem?.rapport_statut && (
+                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:8 }}>
+                    Statut actuel du rapport : <strong style={{ color:"var(--cn)" }}>{STATUTS_RAPPORT.find(s=>s.v===selDem.rapport_statut)?.l || selDem.rapport_statut}</strong>
+                  </div>
+                )}
               </div>
             </div>
             <div className="echo-card">
@@ -1209,10 +1356,11 @@ function Realisation({ demandes }) {
               </div>
             </div>
           </div>
-          <div style={{ display:"flex", gap:10 }}>
+          <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
             <button className="cbtn cbtn-ghost" onClick={()=>setStep(4)}>← Modifier le rapport</button>
-            <button className="cbtn cbtn-primary">🖨️ Imprimer le rapport</button>
-            <button className="cbtn cbtn-ghost">📧 Envoyer par email</button>
+            <button className="cbtn cbtn-primary" onClick={()=>window.print()}>🖨️ Imprimer le rapport</button>
+            <button className="cbtn cbtn-ghost" disabled title="Envoi par email indisponible : aucune route backend d'envoi d'email n'existe pour le module Échographie.">📧 Envoyer par email</button>
+            <span style={{ fontSize:10.5, color:"var(--cm)" }}>L'envoi par email n'est pas encore disponible pour ce module.</span>
           </div>
         </div>
       )}
