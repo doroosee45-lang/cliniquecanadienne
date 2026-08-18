@@ -30,6 +30,13 @@ test('T9.10 — logger structuré et intégration Sentry gated', async (t) => {
 
   await t.test('le format JSON de production sérialise correctement message + métadonnées', () => {
     delete require.cache[require.resolve('../utils/logger')];
+    // AUDIT-B5 — logger.js lit désormais NODE_ENV via config/env.js, qui fige
+    // sa valeur au premier require() (comportement voulu en production : ces
+    // variables ne changent jamais en cours de process réel). Ce test simule
+    // un changement d'environnement en cours de run, donc doit aussi vider le
+    // cache de config/env.js — sinon logger.js recharge un module frais mais
+    // qui lit un config/env.js resté figé sur la valeur d'avant.
+    delete require.cache[require.resolve('../config/env')];
     const originalEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
     const winston = require('winston');
@@ -47,6 +54,11 @@ test('T9.10 — logger structuré et intégration Sentry gated', async (t) => {
     logger.info('Message de test T9.10', { patientId: 'abc123', action: 'test' });
     logger.remove(streamTransport);
     process.env.NODE_ENV = originalEnv;
+    // Ne pas laisser config/env.js figé sur 'production' pour le reste du
+    // process si d'autres tests de ce fichier (ou un futur ajout) le
+    // requièrent ensuite.
+    delete require.cache[require.resolve('../config/env')];
+    delete require.cache[require.resolve('../utils/logger')];
 
     const parsed = JSON.parse(captured.trim());
     assert.equal(parsed.message, 'Message de test T9.10');

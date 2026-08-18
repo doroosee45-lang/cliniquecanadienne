@@ -4,6 +4,7 @@ const Patient = require('../models/Patient');
 const { sendTokenCookie } = require('../utils/helpers');
 const { OAuth2Client } = require('google-auth-library');
 const { logger, captureException } = require('../utils/logger');
+const env = require('../config/env');
 
 // T3.2 — google-auth-library était déclarée en dépendance mais jamais
 // utilisée : le contrôleur appelait directement l'endpoint userinfo avec le
@@ -12,7 +13,7 @@ const { logger, captureException } = require('../utils/logger');
 // Google valide émis pour n'importe quelle autre application tierce était
 // donc accepté ici aussi (risque de confused deputy). getTokenInfo() utilise
 // l'endpoint officiel de vérification de jeton et permet de vérifier `aud`.
-const oauthClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const oauthClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
 // T3.1 — Un compte Google auto-inscrit (role:'patient') n'avait jusqu'ici
 // jamais de dossier Patient associé : le portail répondait 404 dès la
@@ -55,7 +56,7 @@ const googleLogin = async (req, res) => {
     } catch (err) {
       return res.status(401).json({ success: false, message: 'Token Google invalide ou expiré.' });
     }
-    if (process.env.GOOGLE_CLIENT_ID && tokenInfo.aud !== process.env.GOOGLE_CLIENT_ID) {
+    if (env.GOOGLE_CLIENT_ID && tokenInfo.aud !== env.GOOGLE_CLIENT_ID) {
       return res.status(401).json({ success: false, message: 'Token Google invalide (audience incorrecte).' });
     }
 

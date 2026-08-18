@@ -4,11 +4,12 @@
 // migrate-*.js — jamais chargés par server.js, où la sortie console brute
 // reste l'UX correcte pour un développeur qui lance le script à la main).
 const winston = require('winston');
+const env = require('../config/env');
 
-const isProd = process.env.NODE_ENV === 'production';
+const isProd = env.NODE_ENV === 'production';
 
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
+  level: env.LOG_LEVEL,
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
@@ -27,9 +28,9 @@ const logger = winston.createLogger({
 // qu'un SENTRY_DSN est fourni en variable d'environnement : aucune autre
 // modification de code ne sera nécessaire pour l'activer.
 let sentryEnabled = false;
-if (process.env.SENTRY_DSN) {
+if (env.SENTRY_DSN) {
   const Sentry = require('@sentry/node');
-  Sentry.init({ dsn: process.env.SENTRY_DSN, environment: process.env.NODE_ENV || 'development' });
+  Sentry.init({ dsn: env.SENTRY_DSN, environment: env.NODE_ENV });
   sentryEnabled = true;
   logger.info('Sentry initialisé (SENTRY_DSN détecté)');
 } else {
