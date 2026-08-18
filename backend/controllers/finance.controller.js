@@ -2,7 +2,7 @@ const Invoice = require('../models/Invoice');
 const Depense = require('../models/Depense');
 const Salaire = require('../models/Salaire');
 const Staff = require('../models/Staff');
-const { logAction, paginate } = require('../utils/helpers');
+const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 // Mapper Invoice (modèle) → objet frontend
@@ -27,7 +27,7 @@ exports.getAll = async (req, res, next) => {
     const filter = {};
     const statutRevMap = { non_paye:'emise', paye:'payee', partiellement_paye:'partiellement_payee', annule:'annulee' };
     if (statut) filter.statut = statutRevMap[statut] || statut;
-    if (patient) filter.$or = [{ patient }, { patient_nom: { $regex: patient, $options: 'i' } }];
+    if (patient) filter.$or = [{ patient }, { patient_nom: { $regex: escapeRegex(patient), $options: 'i' } }];
     const total = await Invoice.countDocuments(filter);
     const raw = await paginate(
       Invoice.find(filter)

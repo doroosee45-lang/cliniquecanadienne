@@ -1,7 +1,7 @@
 const DossierChirurgical = require('../models/DossierChirurgical');
 const Patient = require('../models/Patient');
 const User    = require('../models/User');
-const { logAction } = require('../utils/helpers');
+const { logAction, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
 
@@ -35,11 +35,14 @@ exports.getPlanning = async (req, res, next) => {
 
     if (statut) filter.statut = toModelStatut(statut);
     if (salle)  filter.salle_prevue = salle;
-    if (q) filter.$or = [
-      { patient_nom:        { $regex: q, $options: 'i' } },
-      { type_intervention:  { $regex: q, $options: 'i' } },
-      { numero:             { $regex: q, $options: 'i' } },
-    ];
+    if (q) {
+      const qRe = escapeRegex(q);
+      filter.$or = [
+        { patient_nom:        { $regex: qRe, $options: 'i' } },
+        { type_intervention:  { $regex: qRe, $options: 'i' } },
+        { numero:             { $regex: qRe, $options: 'i' } },
+      ];
+    }
     if (date) {
       const debut = new Date(date); debut.setHours(0, 0, 0, 0);
       const fin   = new Date(date); fin.setHours(23, 59, 59, 999);

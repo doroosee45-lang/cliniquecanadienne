@@ -1,6 +1,6 @@
 const Urgence   = require('../models/Urgence');
 const { emitDashboardUpdate } = require('../utils/socket');
-const { logAction } = require('../utils/helpers');
+const { logAction, escapeRegex } = require('../utils/helpers');
 
 const normalize = (u) => ({
   ...u.toObject({ virtuals: true }),
@@ -76,11 +76,14 @@ exports.getAll = async (req, res) => {
   try {
     const { page = 1, limit = 20, q, niveau_triage, statut, patient } = req.query;
     const filter = {};
-    if (q) filter.$or = [
-      { patient_nom: { $regex: q, $options: 'i' } },
-      { numero:      { $regex: q, $options: 'i' } },
-      { motif:       { $regex: q, $options: 'i' } },
-    ];
+    if (q) {
+      const qRe = escapeRegex(q);
+      filter.$or = [
+        { patient_nom: { $regex: qRe, $options: 'i' } },
+        { numero:      { $regex: qRe, $options: 'i' } },
+        { motif:       { $regex: qRe, $options: 'i' } },
+      ];
+    }
     if (niveau_triage) filter.niveau_triage = niveau_triage;
     if (statut)        filter.statut        = statut;
     if (patient)       filter.patient       = patient;

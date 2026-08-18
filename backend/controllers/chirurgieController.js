@@ -7,7 +7,7 @@ const Patient = require('../models/Patient');
 const User = require('../models/User');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
-const { logAction } = require('../utils/helpers');
+const { logAction, escapeRegex } = require('../utils/helpers');
 
 // Génération du numéro de dossier : CHIR-YYYY-XXXX
 // Compteur atomique — l'ancien pattern findOne().sort() pouvait attribuer le
@@ -36,10 +36,11 @@ exports.getDossiers = async (req, res) => {
     if (statut) filter.statut = statut;
     if (patient_id) filter.patient_id = patient_id;
     if (q) {
+      const qRe = escapeRegex(q);
       filter.$or = [
-        { patient_nom: { $regex: q, $options: 'i' } },
-        { diagnostic_chirurgical: { $regex: q, $options: 'i' } },
-        { numero: { $regex: q, $options: 'i' } }
+        { patient_nom: { $regex: qRe, $options: 'i' } },
+        { diagnostic_chirurgical: { $regex: qRe, $options: 'i' } },
+        { numero: { $regex: qRe, $options: 'i' } }
       ];
     }
 
