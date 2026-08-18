@@ -1896,7 +1896,13 @@ export default function RendezVous() {
                   <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setModalDetail(false); setModalReport(true); }}>
                     📅 Reporter
                   </button>
-                  <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => toast.success("📱 SMS envoyé")}>
+                  {/* AUDIT-P7-8 — aucune passerelle SMS n'est intégrée à ce jour
+                      (identifiants Twilio en commentaire dans .env, jamais
+                      renseignés ; le paquet `twilio` n'est même pas installé) :
+                      construire un vrai envoi dépasse le périmètre d'un
+                      correctif de bouton factice. Neutralisé plutôt que
+                      simulé, même traitement que AUDIT-03/AUDIT-07. */}
+                  <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>
                     {I.sms} Envoyer SMS
                   </button>
                   <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => window.print()}>
