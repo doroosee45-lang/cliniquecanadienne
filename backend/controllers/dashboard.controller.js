@@ -374,20 +374,38 @@ exports.medecinStats = async (req, res, next) => {
 // pas un bug de requête) — voir rapport d'audit, section Infirmier.
 exports.infirmierStats = async (req, res, next) => {
   try {
-    const [patients_surveilles] = await Promise.all([
-      Hospitalization.countDocuments({ statut:'en_cours' }),
-    ]);
+    const hospitalises = await Hospitalization.find({ statut:'en_cours' }).select('patient').lean();
+    const patientIds = hospitalises.map(h => h.patient).filter(Boolean);
+
+    // AUDIT-A-6 — alertes était un tableau vide codé en dur alors que
+    // laborantinStats (juste en dessous) calcule déjà les mêmes résultats
+    // labo critiques non acquittés pour son propre tableau de bord : les
+    // données existaient, seule la requête manquait ici. Restreint aux
+    // patients actuellement hospitalisés (statut:'en_cours') — une
+    // infirmière ne surveille que ses patients du moment, pas tous les
+    // résultats critiques du système (portée volontairement plus étroite
+    // que laborantinStats, qui les voit tous).
+    const alertes_raw = patientIds.length
+      ? await LabResult.find({ patient:{ $in: patientIds }, est_critique:true, acquitte_par:null })
+          .populate('patient','nom prenom').populate('examen','nom').limit(10)
+      : [];
+
+    const alertes = alertes_raw.map(a => ({
+      type: 'error',
+      msg: `${a.patient?.nom||'Patient'} — ${a.examen?.nom || 'Résultat'} : CRITIQUE`,
+      heure: 'Urgent',
+    }));
 
     res.json({ success:true, stats:{
       kpis:{
-        patients_surveilles,
+        patients_surveilles: hospitalises.length,
         soins_auj: 0,
         temperatures_a_prendre: 0,
         pansements: 0,
         medicaments_a_distribuer: 0,
         constantes_a_noter: 0,
       },
-      alertes: [],
+      alertes,
       planning: [],
     }});
   } catch (err) { next(err); }
