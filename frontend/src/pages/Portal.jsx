@@ -734,7 +734,11 @@ export default function MonEspacePatient() {
                   <div className="ep-card fu">
                     <div className="ep-card-hdr"><h3>🆘 Contact d'urgence</h3></div>
                     <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
-                      {[["Nom", patient.contact_urgence?.nom||PATIENT.contact_urgence.nom],["Téléphone", patient.contact_urgence?.telephone||PATIENT.contact_urgence.tel],["Lien de parenté", patient.contact_urgence?.relation||PATIENT.contact_urgence.lien]].map(([lbl,val])=>(
+                      {/* AUDIT-P3-2 — patient.contact_urgence est dérivé de reduxPatient.contact_urgence
+                          || {} (jamais null), donc un contact réellement vide retombait
+                          silencieusement sur la fiche de démo codée en dur ("Marc Mercier") au
+                          lieu d'indiquer que le champ n'est pas renseigné. */}
+                      {[["Nom", patient.contact_urgence?.nom||"Non renseigné"],["Téléphone", patient.contact_urgence?.telephone||"Non renseigné"],["Lien de parenté", patient.contact_urgence?.relation||"Non renseigné"]].map(([lbl,val])=>(
                         <div key={lbl} className="ep-info-row">
                           <div className="lbl">{lbl}</div>
                           <div className="val">{val}</div>
