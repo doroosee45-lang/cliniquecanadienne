@@ -371,7 +371,14 @@ function ArchiveTable({ data, onView, onRestore, onDelete, selectedIds, onSelect
                     <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:11 }} title="Imprimer" onClick={() => toast.success(`🖨 Impression : ${d.reference}`)}>
                       {I.print}
                     </button>
-                    {d.statut !== "restauré" && (
+                    {/* AUDIT-11 (Vague 2, A-2) — archive.controller.js::restore
+                        ne réactive le dossier d'origine que pour
+                        source_model==='Patient' (voir le contrôleur) ; pour
+                        les 6 autres catégories, seul le statut de
+                        l'ArchiveEntry lui-même change, sans effet dans le
+                        module d'origine — bouton retiré pour ces cas plutôt
+                        que laissé à produire un succès trompeur. */}
+                    {d.statut !== "restauré" && d.source_model === "Patient" && (
                       <button className="abtn abtn-success abtn-sm" style={{ fontSize:11 }} title="Restaurer" onClick={() => onRestore(d)}>
                         {I.restore}
                       </button>
@@ -516,13 +523,17 @@ export default function Archivage() {
   const handleDelete = (arc) => { setCurrentArc(arc); setModalDelete(true); };
 
   const confirmRestore = async () => {
+    // AUDIT-11 (Vague 2, A-2) — la branche d'échec affichait le même succès
+    // que la branche réussie ("restauré (local)"), quelle que soit la
+    // cause réelle de l'échec (réseau, 404, autorisation...). Avec le
+    // bouton désormais restreint à source_model==='Patient' (seul chemin
+    // qui a un effet réel), un échec doit rester un échec visible.
     const result = await dispatch(restoreArchive({ id: currentArc._id, motif: restoreMotif }));
     if (restoreArchive.fulfilled.match(result)) {
       toast.success(`✅ Dossier ${currentArc.reference} restauré`);
       setArchives(prev => prev.map(a => a._id === currentArc._id ? { ...a, statut:"restauré" } : a));
     } else {
-      toast.success(`✅ ${currentArc.reference} restauré (local)`);
-      setArchives(prev => prev.map(a => a._id === currentArc._id ? { ...a, statut:"restauré" } : a));
+      toast.error(`❌ Échec de la restauration de ${currentArc.reference}`);
     }
     setModalRestore(false);
   };
@@ -1326,7 +1337,11 @@ export default function Archivage() {
               <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
                 <button className="abtn abtn-ghost" onClick={() => { setModalView(false); toast.success(`📥 Export complet : ${currentArc.reference}`); }}>{I.download} Télécharger tout</button>
                 <button className="abtn abtn-ghost" onClick={() => toast.success(`🖨 Impression : ${currentArc.reference}`)}>{I.print} Imprimer</button>
-                {currentArc.statut !== "restauré" && (
+                {/* AUDIT-11 (Vague 2, A-2) — même restriction que dans
+                    ArchiveTable : seul source_model==='Patient' réactive
+                    réellement le dossier d'origine (archive.controller.js
+                    ::restore). */}
+                {currentArc.statut !== "restauré" && currentArc.source_model === "Patient" && (
                   <button className="abtn abtn-success" onClick={() => { setModalView(false); handleRestore(currentArc); }}>{I.restore} Restaurer</button>
                 )}
               </div>
