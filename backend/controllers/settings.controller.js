@@ -36,6 +36,18 @@ exports.getUsers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-11 (audit complet post-Phase 10) — liste blanche partagée par
+// createUser ET updateUser : seuls les champs réellement envoyés par le
+// formulaire Administration.jsx (EMPTY_USER) sont acceptables ici. Avant ce
+// correctif, createUser transmettait req.body quasi tel quel (seuls
+// mot_de_passe et password en étaient retirés) — un appel direct à cette
+// route (superadmin uniquement, mais sans aucune défense en profondeur)
+// pouvait positionner directement role, must_change_password, patient_id,
+// tentatives_echouees, verrouille_jusqu_a, reset_password_token/expire,
+// googleId ou preferences dès la création du compte. updateUser avait déjà
+// reçu ce correctif lors de P2-1 ; createUser avait été manqué.
+const USER_WRITABLE_FIELDS = ['prenom', 'nom', 'email', 'telephone', 'role', 'service', 'statut'];
+
 exports.createUser = async (req, res, next) => {
   try {
     // Suite du balayage T5.2 — Administration.jsx envoie le mot de passe
@@ -43,22 +55,16 @@ exports.createUser = async (req, res, next) => {
     // (req.body) ignorait silencieusement ce champ, créant un compte sans
     // aucun mot de passe utilisable (le champ est requis à la création côté
     // formulaire, mais jamais réellement enregistré).
-    const { mot_de_passe, ...body } = req.body;
-    if (mot_de_passe) body.password = mot_de_passe;
+    const body = {};
+    for (const field of USER_WRITABLE_FIELDS) {
+      if (req.body[field] !== undefined) body[field] = req.body[field];
+    }
+    if (req.body.mot_de_passe) body.password = req.body.mot_de_passe;
     const user = await User.create(body);
     await logAction({ utilisateur: req.user._id, action: 'CREATE_USER', module: 'admin', ip: req.ip, message: `Nouvel utilisateur: ${user.email}` });
     res.status(201).json({ success: true, user });
   } catch (err) { next(err); }
 };
-
-// AUDIT-P2-1 — liste blanche : seuls les champs réellement envoyés par le
-// formulaire Administration.jsx (EMPTY_USER) sont modifiables ici. Avant ce
-// correctif, req.body était transmis quasi tel quel (seuls mot_de_passe et
-// password étaient retirés) — un appel direct à cette route (superadmin
-// uniquement, mais sans aucune défense en profondeur) pouvait positionner
-// must_change_password, patient_id, tentatives_echouees, verrouille_jusqu_a,
-// reset_password_token/expire, googleId ou preferences sans validation.
-const USER_UPDATE_FIELDS = ['prenom', 'nom', 'email', 'telephone', 'role', 'service', 'statut'];
 
 exports.updateUser = async (req, res, next) => {
   try {
@@ -67,7 +73,7 @@ exports.updateUser = async (req, res, next) => {
     const { mot_de_passe } = req.body;
     const password = mot_de_passe || undefined;
     const data = {};
-    for (const field of USER_UPDATE_FIELDS) {
+    for (const field of USER_WRITABLE_FIELDS) {
       if (req.body[field] !== undefined) data[field] = req.body[field];
     }
     const avant = await User.findById(req.params.id).select('role statut email').lean();
