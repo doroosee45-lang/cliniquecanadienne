@@ -227,11 +227,15 @@ const TYPE_CHAMBRE = {
   vip:      "VIP",
 };
 
+// AUDIT-P7-4 — 'nettoyage' n'existe pas dans l'enum réel Room.lits.statut
+// (backend/models/Room.js : libre/occupe/maintenance/reserve) ; ce n'était
+// jamais visible tant que /chambres (route morte) ne renvoyait aucune donnée
+// réelle. Renommé en 'maintenance' pour correspondre au schéma.
 const STATUT_LIT = {
-  libre:      { cls:"green",  label:"Libre" },
-  occupe:     { cls:"red",    label:"Occupé" },
-  reserve:    { cls:"orange", label:"Réservé" },
-  nettoyage:  { cls:"purple", label:"En nettoyage" },
+  libre:       { cls:"green",  label:"Libre" },
+  occupe:      { cls:"red",    label:"Occupé" },
+  reserve:     { cls:"orange", label:"Réservé" },
+  maintenance: { cls:"purple", label:"Maintenance" },
 };
 
 const PROVENANCE = {
@@ -497,10 +501,26 @@ export default function Hospitalisation() {
     }
   }, []);
 
+  // AUDIT-P7-4 — /chambres n'existe dans aucune route backend (seul
+  // /hospitalization/rooms existe réellement) : cet appel échouait
+  // systématiquement (catch → []), l'onglet "Chambres & Lits" affichant
+  // en permanence "Aucune chambre configurée". Room.lits est un tableau de
+  // lits par chambre, aplati ici en une liste plate de lits pour ne pas
+  // toucher le rendu existant (regroupement par service, faute de champ
+  // "bâtiment" sur le schéma Room).
   const loadLits = useCallback(async () => {
     try {
-      const { data } = await api.get("/chambres");
-      setLits(data.chambres || data.data || data.lits || []);
+      const { data } = await api.get("/hospitalization/rooms");
+      const flat = (data.rooms || []).flatMap(room => (room.lits || []).map(bed => ({
+        _id: bed._id,
+        statut: bed.statut,
+        type: bed.type,
+        chambre: room.numero,
+        lit: bed.numero,
+        batiment: room.service?.nom || "Service non assigné",
+        patient: bed.patient_actuel ? `${bed.patient_actuel.prenom||""} ${bed.patient_actuel.nom||""}`.trim() : null,
+      })));
+      setLits(flat);
     } catch {
       setLits([]);
     }
@@ -1010,8 +1030,8 @@ export default function Hospitalisation() {
                     {[
                       { cls:"green",  val: lits.filter(l=>l.statut==="libre").length,     label:"Lits libres",   icon:"✅" },
                       { cls:"red",    val: lits.filter(l=>l.statut==="occupe").length,    label:"Lits occupés",  icon:"🔴" },
-                      { cls:"orange", val: lits.filter(l=>l.statut==="reserve").length,   label:"Réservés",      icon:"📋" },
-                      { cls:"purple", val: lits.filter(l=>l.statut==="nettoyage").length, label:"Nettoyage",     icon:"🧹" },
+                      { cls:"orange", val: lits.filter(l=>l.statut==="reserve").length,     label:"Réservés",      icon:"📋" },
+                      { cls:"purple", val: lits.filter(l=>l.statut==="maintenance").length, label:"Maintenance",   icon:"🧹" },
                     ].map((k,i) => (
                       <div key={i} className={`ho-kpi ${k.cls} hofu`}>
                         <div style={{ fontSize:22, marginBottom:8 }}>{k.icon}</div>
@@ -1044,8 +1064,14 @@ export default function Hospitalisation() {
                               </div>
                               <div style={{ fontSize:11, color:"var(--cm)", marginBottom:6 }}>{TYPE_CHAMBRE[l.type] || l.type || "Standard"}</div>
                               {l.patient && <div style={{ fontSize:12, fontWeight:600, color:"var(--hr)" }}>👤 {l.patient}</div>}
+                              {/* AUDIT-P7-4 — cette carte était inatteignable tant que /chambres
+                                  (route morte) ne renvoyait jamais de lits réels : ce bouton n'a
+                                  jamais été vu par personne. Neutralisé plutôt que laissé actif
+                                  avec un faux succès maintenant que les données sont réelles —
+                                  l'admission réelle passe déjà par le formulaire dédié
+                                  (tab "Nouvelle admission"), pas construit ici. */}
                               {l.statut === "libre" && (
-                                <button className="hbtn hbtn-success hbtn-sm" style={{ marginTop:8, width:"100%" }} onClick={() => toast.success(`Lit ${l.chambre || l.numero} réservé`)}>
+                                <button className="hbtn hbtn-success hbtn-sm" disabled title="Utilisez le formulaire d'admission pour affecter un lit" style={{ marginTop:8, width:"100%", opacity:.5, cursor:"not-allowed" }}>
                                   Affecter un patient
                                 </button>
                               )}
