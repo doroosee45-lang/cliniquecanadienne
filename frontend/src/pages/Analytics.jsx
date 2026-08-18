@@ -10,6 +10,7 @@ import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 import { BarChart3, Printer, Download } from 'lucide-react';
 import Hero, { HeroButton } from '../components/UI/Hero';
@@ -412,6 +413,119 @@ export default function Analytics() {
     toast.success(`📄 PDF exporté : ${filename}`);
   };
 
+  // AUDIT-11 (Vague 2, W4) — chaque bouton "Export Excel"/"Export CSV" de
+  // cette page se contentait de toast.success(...) sans jamais générer de
+  // fichier. Même pattern que exportFinanceExcel (Finance.jsx) pour Excel
+  // (XLSX.utils.book_new / aoa_to_sheet / writeFile) et que exportCSV
+  // (Archive.jsx) pour CSV (échappement virgule/guillemet/retour-ligne, BOM
+  // UTF-8 pour compatibilité Excel).
+  const downloadCSV = (headers, rows, filename) => {
+    const escape = (v) => {
+      const s = String(v ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [headers.map(escape).join(','), ...rows.map(r => r.map(escape).join(','))];
+    const bom = '﻿';
+    const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportMedicalExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const revData = [['Service', 'Revenus (CFA)'], ...DEMO_REVENUS_BAR.labels.map((lbl, i) => [lbl, DEMO_REVENUS_BAR.data[i] ?? 0])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(revData), 'Revenus par source');
+    const pathData = [['Rang', 'Pathologie', 'Nombre', '%'], ...DEMO_PATHOLOGIES.map((p, i) => [i + 1, p.maladie, p.nb, p.pct])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pathData), 'Pathologies');
+    const filename = `analytics-medical-${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`📊 Excel exporté : ${filename}`);
+  };
+
+  const exportMedecinsExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const data = [
+      ['Rang', 'Médecin', 'Spécialité', 'Consultations', 'Taux satisfaction (%)'],
+      ...DEMO_MEDECINS.map((m, i) => [i + 1, m.nom, m.specialite, m.consultations, m.taux]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Activité médecins');
+    const filename = `analytics-medecins-${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`📊 Excel exporté : ${filename}`);
+  };
+
+  const exportFinancialEvolutionExcel = () => {
+    const labels = reduxFinancialData?.financial?.labels || MOIS;
+    const ca = reduxFinancialData?.financial?.ca || [];
+    const dep = reduxFinancialData?.financial?.depenses || [];
+    const ben = reduxFinancialData?.financial?.benefice || [];
+    const data = [['Mois', 'Chiffre d\'affaires (CFA)', 'Dépenses (CFA)', 'Bénéfice (CFA)'], ...labels.map((l, i) => [l, ca[i] ?? 0, dep[i] ?? 0, ben[i] ?? 0])];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Évolution financière');
+    const filename = `analytics-evolution-financiere-${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`📊 Excel exporté : ${filename}`);
+  };
+
+  // Table financière détaillée — la même construction sert Excel et CSV,
+  // les deux boutons partagent les mêmes lignes/en-têtes.
+  const financialTableRows = () => {
+    const total = DEMO_REVENUS_BAR.data.reduce((a, b) => a + b, 0) || 1;
+    return DEMO_REVENUS_BAR.labels.map((lbl, i) => {
+      const val = DEMO_REVENUS_BAR.data[i] ?? 0;
+      return [lbl, val, Math.round((val / total) * 100)];
+    });
+  };
+  const exportFinancialTableExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const data = [['Service', 'Revenus (CFA)', 'Part (%)'], ...financialTableRows()];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Tableau financier');
+    const filename = `analytics-tableau-financier-${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`📊 Excel exporté : ${filename}`);
+  };
+  const exportFinancialTableCSV = () => {
+    downloadCSV(['Service', 'Revenus (CFA)', 'Part (%)'], financialTableRows(), `analytics-tableau-financier-${new Date().toISOString().split('T')[0]}.csv`);
+    toast.success('📁 CSV exporté');
+  };
+
+  // Export global (section "Exportation des rapports") — classeur multi-
+  // feuilles couvrant KPIs + les mêmes données que les exports par section
+  // ci-dessus, même principe que exportFinanceExcel (Finance.jsx, 4 feuilles).
+  const exportGlobalExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const beneficePctCalc = kpi.ca_total > 0 ? Math.round((kpi.benefice / kpi.ca_total) * 100) : 0;
+    const kpiData = [
+      ['Indicateur', 'Valeur'],
+      ['Patients total', kpi.patients_total ?? 0],
+      ['Consultations', kpi.consultations_total ?? 0],
+      ['CA total (CFA)', kpi.ca_total ?? 0],
+      ['Dépenses (CFA)', kpi.depenses ?? 0],
+      ['Bénéfice (CFA)', kpi.benefice ?? 0],
+      ['Marge nette (%)', beneficePctCalc],
+      ['Factures impayées (CFA)', kpi.factures_impayees ?? 0],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kpiData), 'KPIs');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Service', 'Revenus (CFA)', 'Part (%)'], ...financialTableRows()]), 'Tableau financier');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Rang', 'Médecin', 'Spécialité', 'Consultations', 'Taux satisfaction (%)'], ...DEMO_MEDECINS.map((m, i) => [i + 1, m.nom, m.specialite, m.consultations, m.taux])]), 'Médecins');
+    const filename = `analytics-rapport-complet-${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`📊 Rapport Excel exporté : ${filename}`);
+  };
+  const exportGlobalCSV = () => {
+    downloadCSV(['Indicateur', 'Valeur'], [
+      ['Patients total', kpi.patients_total ?? 0],
+      ['Consultations', kpi.consultations_total ?? 0],
+      ['CA total (CFA)', kpi.ca_total ?? 0],
+      ['Dépenses (CFA)', kpi.depenses ?? 0],
+      ['Bénéfice (CFA)', kpi.benefice ?? 0],
+    ], `analytics-rapport-complet-${new Date().toISOString().split('T')[0]}.csv`);
+    toast.success('📁 Rapport CSV exporté');
+  };
+
   const loading = reduxLoading || reduxKpiLoading;
 
   const periodes = [
@@ -799,7 +913,7 @@ export default function Analytics() {
                 <div className="anl-card-hdr">
                   <div><h3>{I.money} Revenus par source médicale</h3><p>Répartition du chiffre d'affaires</p></div>
                   <div style={{ display:"flex", gap:6 }}>
-                    <button className="abtn abtn-ghost abtn-sm" onClick={() => toast.success("📊 Export Excel")}>📊 Excel</button>
+                    <button className="abtn abtn-ghost abtn-sm" onClick={exportMedicalExcel}>📊 Excel</button>
                     <button className="abtn abtn-ghost abtn-sm" onClick={() => toast.success("📄 Export PDF")}>{I.dl} PDF</button>
                   </div>
                 </div>
@@ -845,7 +959,7 @@ export default function Analytics() {
               <div className="anl-card fu">
                 <div className="anl-card-hdr">
                   <div><h3>👨‍⚕️ Activité détaillée des médecins</h3><p>Performance individuelle</p></div>
-                  <button className="abtn abtn-ghost abtn-sm" onClick={() => toast.success("📊 Export Excel — Activité médecins")}>📊 Exporter</button>
+                  <button className="abtn abtn-ghost abtn-sm" onClick={exportMedecinsExcel}>📊 Exporter</button>
                 </div>
                 <div style={{ overflowX:"auto" }}>
                   <table className="anl-tbl">
@@ -900,7 +1014,7 @@ export default function Analytics() {
                 <div className="anl-card fu">
                   <div className="anl-card-hdr">
                     <div><h3>{I.trend} Évolution financière mensuelle</h3><p>CA vs Dépenses vs Bénéfice</p></div>
-                    <button className="abtn abtn-ghost abtn-sm" onClick={() => toast.success("📊 Export Excel")}>{I.dl} Excel</button>
+                    <button className="abtn abtn-ghost abtn-sm" onClick={exportFinancialEvolutionExcel}>{I.dl} Excel</button>
                   </div>
                   <div style={{ padding:20 }}>
                     <LineChart
@@ -955,8 +1069,8 @@ export default function Analytics() {
                 <div className="anl-card-hdr">
                   <div><h3>💹 Tableau financier détaillé</h3></div>
                   <div style={{ display:"flex", gap:6 }}>
-                    <button className="abtn abtn-ghost abtn-sm" onClick={() => toast.success("📊 Export Excel")}>{I.dl} Excel</button>
-                    <button className="abtn abtn-ghost abtn-sm" onClick={() => toast.success("📁 Export CSV")}>📁 CSV</button>
+                    <button className="abtn abtn-ghost abtn-sm" onClick={exportFinancialTableExcel}>{I.dl} Excel</button>
+                    <button className="abtn abtn-ghost abtn-sm" onClick={exportFinancialTableCSV}>📁 CSV</button>
                   </div>
                 </div>
                 <div style={{ overflowX:"auto" }}>
@@ -1177,8 +1291,8 @@ export default function Analytics() {
                 <div style={{ padding:20, display:"flex", gap:12, flexWrap:"wrap" }}>
                   {[
                     { icon:"📄", label:"Rapport complet PDF",  fn:()=>toast.success("📄 Rapport PDF généré"), cls:"abtn-teal" },
-                    { icon:"📊", label:"Export Excel",          fn:()=>toast.success("📊 Export Excel généré"), cls:"abtn-primary" },
-                    { icon:"📁", label:"Export CSV",            fn:()=>toast.success("📁 Export CSV généré"),  cls:"abtn-ghost" },
+                    { icon:"📊", label:"Export Excel",          fn:exportGlobalExcel, cls:"abtn-primary" },
+                    { icon:"📁", label:"Export CSV",            fn:exportGlobalCSV,  cls:"abtn-ghost" },
                     { icon:"🖨",  label:"Impression",            fn:()=>window.print(),                         cls:"abtn-ghost" },
                     { icon:"📧", label:"Envoyer par e-mail",    fn:()=>toast.success("📧 Rapport envoyé par email"), cls:"abtn-ghost" },
                   ].map((b,i)=>(
