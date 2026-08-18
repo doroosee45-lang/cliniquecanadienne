@@ -61,4 +61,11 @@ dossierChirurgicalSchema.pre('save', function(next) {
   next();
 });
 
+// AUDIT-B2 — patient_id n'avait aucun index malgré un filtrage fréquent par
+// ce champ (chirurgieController.js::getDossiers) ; composé avec created_at
+// (l'ordre de tri utilisé par la même requête), même pattern déjà en place
+// sur les modèles comparables (Consultation, Hospitalization, Invoice,
+// LabResult, Prescription : { patient: 1, <date>: -1 }).
+dossierChirurgicalSchema.index({ patient_id: 1, created_at: -1 });
+
 module.exports = mongoose.model('DossierChirurgical', dossierChirurgicalSchema);
