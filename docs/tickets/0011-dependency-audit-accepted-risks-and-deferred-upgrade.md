@@ -38,6 +38,12 @@ Trois éléments restent, chacun nécessitant un arbitrage plutôt qu'une correc
 
 **À planifier :** tâche dédiée, sur sa propre branche, avec validation manuelle des flux de navigation et de contrôle d'accès par rôle dans un vrai navigateur avant fusion.
 
+## 4. `uuid`/`hyperid` (backend, transitif via `autocannon`) — risque accepté, devDependency de test uniquement
+
+**Ajouté :** Phase 10.2 (`npm install --save-dev autocannon`, test de charge). `npm audit` signale `uuid <11.1.1` (défaut de vérification de limites de buffer quand un `buf` est fourni explicitement, `GHSA-w5hq-g745-h8pq`, sévérité modérée), tiré transitivement par `hyperid` → `autocannon`. Correctif disponible uniquement via `autocannon@2.0.1` (changement cassant).
+
+**Décision :** risque accepté, pas de correctif forcé. `autocannon` est une `devDependency` (jamais publiée en production), utilisée uniquement pour générer de la charge HTTP contre le serveur isolé local de `tests/loadTestT102.test.js` — jamais exposée à une entrée utilisateur externe non fiable ; le code applicatif ne fournit jamais lui-même de `buf` à `uuid`, c'est un détail interne d'`autocannon`/`hyperid`.
+
 ## Liens
 
 - [[T5.2]] — le correctif `date_echeance` d'`Invoice.js` vérifié pendant la mise à jour Mongoose
