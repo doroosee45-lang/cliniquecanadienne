@@ -757,16 +757,26 @@ export default function JournalAudit() {
     toast.success('📋 Export CSV téléchargé');
   }, [getExportEvents, exportForm]);
 
+  // AUDIT-11 (Vague 2, A-3) — décision explicite après investigation :
+  // aucune politique de rétention réelle n'existe nulle part (pas de
+  // Setting, pas d'index TTL sur AuditLog, et docs/decisions/
+  // T9.11-backup-restore-procedure.md admet explicitement que la rétention
+  // n'a jamais été traitée). L'ancien texte affirmait un archivage
+  // automatique après 12 mois et une conservation de 5 ans minimum — aucun
+  // des deux n'existe côté backend. audit.controller.js::archiveLogs ne
+  // fait qu'un COMPTAGE (AuditLog.countDocuments), ne déplace ni ne
+  // supprime jamais rien. Reformulé en estimation plutôt qu'implémenté une
+  // vraie purge sur la base de seuils jamais validés par personne.
   const handleArchive = async () => {
     setModalArchive(false);
-    const tid = toast.loading("🗄️ Archivage en cours...");
+    const tid = toast.loading("🔍 Estimation en cours...");
     try {
       const { data } = await api.post('/audit/archive', { duree: archiveDuree });
       toast.dismiss(tid);
-      toast.success(`✅ Archivage traité — ${data.count || 0} entrée(s) archivable(s)`);
+      toast.success(`✅ ${data.count || 0} entrée(s) plus ancienne(s) que le seuil sélectionné — aucune suppression ni déplacement effectué`);
     } catch {
       toast.dismiss(tid);
-      toast.error("Erreur lors de l'archivage");
+      toast.error("Erreur lors de l'estimation");
     }
   };
 
@@ -793,7 +803,7 @@ export default function JournalAudit() {
                 {refreshing ? "Actualisation..." : "Actualiser"}
               </button>
               <button className="hero-btn-ghost" onClick={() => setModalArchive(true)}>
-                <ArchiveIcon size={14} /> Archiver
+                <ArchiveIcon size={14} /> Estimer l'archivage
               </button>
               <Button icon={Download} onClick={() => setModalExport(true)}>Exporter</Button>
             </>
@@ -1441,18 +1451,30 @@ export default function JournalAudit() {
                 <div className="aud-card aufu">
                   <div className="aud-card-hdr"><h3>🗄️ Conservation & Archivage</h3></div>
                   <div style={{ padding: 16 }}>
+                    {/* AUDIT-11 (Vague 2, A-3) — "Politique actuelle" retirée
+                        de cette liste : même affirmation fictive que celle
+                        corrigée dans la modale (aucune politique de
+                        rétention n'existe réellement, cf. handleArchive
+                        ci-dessus). Les lignes restantes affichent "—" quand
+                        la donnée n'existe pas plutôt que d'inventer une
+                        valeur — laissées telles quelles. */}
                     {[
-                      { label: "Politique actuelle", val: "Conservation 1 an", color: "var(--at)" },
                       { label: "Total événements", val: `${events.length + (stats.total_logs || 0)} entrées`, color: "var(--ab)" },
                       { label: "Espace utilisé", val: "—", color: "var(--ao)" },
                       { label: "Dernier archivage", val: "—", color: "var(--ag)" },
-                      { label: "Prochain archivage", val: "—", color: "var(--cm)" },
                     ].map(r => (
                       <div key={r.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: "#F8FAFD", borderRadius: 8, marginBottom: 8 }}>
                         <span style={{ fontSize: 12, color: "var(--cm)" }}>{r.label}</span>
                         <strong style={{ fontSize: 12, color: r.color }}>{r.val}</strong>
                       </div>
                     ))}
+                    {/* AUDIT-11 — trouvé en marge de A-3, non traité, hors
+                        périmètre de cette décision : "Utilisation stockage
+                        2.4%" est une valeur codée en dur (pas de requête
+                        réelle derrière), et "Sauvegarder" est un bouton
+                        entièrement factice (toast sans aucun appel réseau).
+                        Même famille de bug que les constats déjà mis en
+                        attente pour une Vague 2bis — signalé, pas corrigé. */}
                     <div style={{ marginTop: 12 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
                         <span style={{ color: "var(--cm)" }}>Utilisation stockage</span>
@@ -1462,7 +1484,7 @@ export default function JournalAudit() {
                     </div>
                     <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                       <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} onClick={() => setModalArchive(true)}>
-                        {I.archive} Archiver maintenant
+                        {I.archive} Estimer le volume
                       </button>
                       <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} onClick={() => toast.success("📦 Sauvegarde externe lancée...")}>
                         {I.dl} Sauvegarder
@@ -1642,29 +1664,27 @@ export default function JournalAudit() {
           </div>
         </Modal>
 
-        {/* ═══ MODAL : ARCHIVAGE ═══ */}
-        <Modal open={modalArchive} onClose={() => setModalArchive(false)} title={<>{I.archive} Archivage du journal</>} maxWidth={480}>
+        {/* ═══ MODAL : ESTIMATION DU VOLUME ARCHIVABLE ═══ */}
+        <Modal open={modalArchive} onClose={() => setModalArchive(false)} title={<>{I.archive} Estimer le volume archivable</>} maxWidth={480}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div className="al-ia">
-              <strong style={{ color: "#1E40AF", fontSize: 13 }}>ℹ️ Politique d'archivage automatique</strong>
+              <strong style={{ color: "#1E40AF", fontSize: 13 }}>ℹ️ Aucune politique de rétention n'est définie pour l'instant</strong>
               <div style={{ fontSize: 12, color: "#3B82F6", marginTop: 6 }}>
-                Les journaux de plus de 12 mois sont archivés automatiquement. Les archives sont compressées et conservées pendant 5 ans minimum.
+                Cet écran compte les entrées du journal plus anciennes qu'un seuil que vous choisissez — à titre indicatif uniquement. Aucune suppression ni déplacement n'est effectué.
               </div>
             </div>
             <div>
-              <label className="albl">Durée de conservation avant archivage</label>
+              <label className="albl">Seuil d'ancienneté à estimer</label>
               <select className="ainp" value={archiveDuree} onChange={e => setArchiveDuree(e.target.value)}>
-                <option value="1an">1 an (politique actuelle)</option>
-                <option value="3ans">3 ans</option>
-                <option value="5ans">5 ans</option>
-                <option value="illimite">Conservation illimitée (aucun archivage)</option>
+                <option value="1an">Plus de 1 an</option>
+                <option value="3ans">Plus de 3 ans</option>
+                <option value="5ans">Plus de 5 ans</option>
+                <option value="illimite">Aucun seuil</option>
               </select>
             </div>
             {[
               ["Total logs actifs", `${events.length} entrée(s) chargée(s)`],
-              ["Politique sélectionnée", archiveDuree === '1an' ? '> 12 mois archivés' : archiveDuree === '3ans' ? '> 36 mois archivés' : archiveDuree === '5ans' ? '> 60 mois archivés' : 'Aucun archivage'],
-              ["Destination", "Serveur backup local + Cloud"],
-              ["Durée estimée", "2-5 minutes"],
+              ["Seuil sélectionné", archiveDuree === '1an' ? '> 12 mois' : archiveDuree === '3ans' ? '> 36 mois' : archiveDuree === '5ans' ? '> 60 mois' : 'Aucun'],
             ].map(([lbl, val]) => (
               <div key={lbl} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "#F8FAFD", borderRadius: 8, fontSize: 12 }}>
                 <span style={{ color: "var(--cm)" }}>{lbl}</span>
@@ -1673,13 +1693,13 @@ export default function JournalAudit() {
             ))}
             {archiveDuree === 'illimite' && (
               <div className="al-ia" style={{ fontSize: 12 }}>
-                ℹ️ <strong>Conservation illimitée sélectionnée</strong> — Aucun log ne sera archivé.
+                ℹ️ <strong>Aucun seuil sélectionné</strong> — l'estimation portera sur 0 entrée.
               </div>
             )}
             <div style={{ display: "flex", gap: 10 }}>
               <button className="abtn abtn-ghost" onClick={() => setModalArchive(false)}>Annuler</button>
               <button className="abtn abtn-primary" style={{ marginLeft: "auto" }} onClick={handleArchive} disabled={archiveDuree === 'illimite'}>
-                {I.archive} Lancer l'archivage
+                {I.archive} Estimer le volume
               </button>
             </div>
           </div>
