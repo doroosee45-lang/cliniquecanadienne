@@ -144,11 +144,12 @@ router.post('/depenses',           protect, authorize(...CAN_ACCESS), finC.creat
 router.get('/salaires',            protect, authorize(...CAN_ACCESS), finC.getSalaires);
 router.put('/salaires/:id/payer',  protect, authorize(...CAN_ACCESS), finC.payerSalaire);
 router.get('/assurances',          protect, authorize(...CAN_ACCESS), finC.getAssurances);
-router.post('/caisse',    protect, authorize(...CAN_ACCESS), (req, res) => res.json({ success: true, message: 'Enregistré.' }));
+router.post('/caisse',    protect, authorize(...CAN_ACCESS), finC.caisse);
 
 router.get('/',             protect, authorize(...CAN_ACCESS), finC.getAll);
 router.post('/',            protect, authorize(...CAN_ACCESS), finC.create);
 router.get('/:id',          protect, authorize(...CAN_ACCESS), finC.getOne);
+router.put('/:id',          protect, authorize(...CAN_ACCESS), finC.updateStatut);
 router.post('/:id/paiement',protect, authorize(...CAN_ACCESS), finC.addPayment);
 
 module.exports = router;
