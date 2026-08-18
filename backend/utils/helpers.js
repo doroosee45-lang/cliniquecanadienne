@@ -63,4 +63,13 @@ const paginate = (query, page = 1, limit = 20) => {
   return query.skip(skip).limit(parseInt(limit));
 };
 
-module.exports = { logAction, createNotification, sendTokenCookie, paginate };
+// AUDIT-11 (audit complet post-Phase 10) — extrait de patients.controller.js
+// (seul endroit qui l'avait, avant cette généralisation) : un terme de
+// recherche utilisateur passé tel quel dans un $regex Mongo permet une
+// construction de motif arbitraire (ReDoS via des motifs pathologiques du
+// type (a+)+, ou des correspondances non voulues via des métacaractères
+// comme . ou |). Échapper les métacaractères regex avant de construire le
+// filtre, jamais interpréter l'entrée comme un motif.
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex };

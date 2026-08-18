@@ -4,7 +4,7 @@ const Newborn   = require('../models/Newborn');
 const Child     = require('../models/Child');
 const Patient   = require('../models/Patient');
 const { emitDashboardUpdate } = require('../utils/socket');
-const { logAction } = require('../utils/helpers');
+const { logAction, escapeRegex } = require('../utils/helpers');
 
 // ── Stats / KPIs ─────────────────────────────────────────────────────────────
 exports.getStats = async (req, res) => {
@@ -58,12 +58,15 @@ exports.getAll = async (req, res) => {
     const { page = 1, limit = 50, q = '', statut = '' } = req.query;
     const filter = {};
     if (statut) filter.statut = statut;
-    if (q) filter.$or = [
-      { patient_nom: { $regex: q, $options: 'i' } },
-      { patient_prenom: { $regex: q, $options: 'i' } },
-      { numero: { $regex: q, $options: 'i' } },
-      { telephone: { $regex: q, $options: 'i' } },
-    ];
+    if (q) {
+      const qRe = escapeRegex(q);
+      filter.$or = [
+        { patient_nom: { $regex: qRe, $options: 'i' } },
+        { patient_prenom: { $regex: qRe, $options: 'i' } },
+        { numero: { $regex: qRe, $options: 'i' } },
+        { telephone: { $regex: qRe, $options: 'i' } },
+      ];
+    }
     const total      = await Pregnancy.countDocuments(filter);
     const grossesses = await Pregnancy.find(filter)
       .populate('patient_id', 'nom prenom numero_dossier')
@@ -192,7 +195,7 @@ exports.getDeliveries = async (req, res) => {
   try {
     const { limit = 50, q = '' } = req.query;
     const filter = {};
-    if (q) filter.patient_nom = { $regex: q, $options: 'i' };
+    if (q) filter.patient_nom = { $regex: escapeRegex(q), $options: 'i' };
     const accouchements = await Delivery.find(filter).sort('-date_heure').limit(parseInt(limit));
     const total = await Delivery.countDocuments(filter);
     res.json({ success: true, accouchements, total });
@@ -225,7 +228,7 @@ exports.getNewborns = async (req, res) => {
   try {
     const { limit = 50, q = '' } = req.query;
     const filter = {};
-    if (q) filter.$or = [{ prenom: { $regex: q, $options: 'i' } }, { mere_nom: { $regex: q, $options: 'i' } }];
+    if (q) { const qRe = escapeRegex(q); filter.$or = [{ prenom: { $regex: qRe, $options: 'i' } }, { mere_nom: { $regex: qRe, $options: 'i' } }]; }
     const nouveaunes = await Newborn.find(filter).sort('-date_naissance').limit(parseInt(limit));
     const total = await Newborn.countDocuments(filter);
     res.json({ success: true, nouveaunes, total });

@@ -1,7 +1,7 @@
 const Child                  = require('../models/Child');
 const PediatricConsultation  = require('../models/PediatricConsultation');
 const { emitDashboardUpdate } = require('../utils/socket');
-const { logAction } = require('../utils/helpers');
+const { logAction, escapeRegex } = require('../utils/helpers');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function ageEnAns(ddn) {
@@ -84,12 +84,15 @@ exports.getAll = async (req, res) => {
     const { page = 1, limit = 50, q = '', statut = '', age = '' } = req.query;
     const filter = {};
     if (statut) filter.statut = statut;
-    if (q) filter.$or = [
-      { nom:    { $regex: q, $options: 'i' } },
-      { prenom: { $regex: q, $options: 'i' } },
-      { numero: { $regex: q, $options: 'i' } },
-      { parent_nom: { $regex: q, $options: 'i' } },
-    ];
+    if (q) {
+      const qRe = escapeRegex(q);
+      filter.$or = [
+        { nom:    { $regex: qRe, $options: 'i' } },
+        { prenom: { $regex: qRe, $options: 'i' } },
+        { numero: { $regex: qRe, $options: 'i' } },
+        { parent_nom: { $regex: qRe, $options: 'i' } },
+      ];
+    }
     if (age === 'nourr') {
       const limit1 = new Date(); limit1.setFullYear(limit1.getFullYear() - 1);
       filter.date_naissance = { $gte: limit1 };
@@ -211,10 +214,13 @@ exports.getConsultations = async (req, res) => {
     const filter = {};
     if (type) filter.type = type;
     if (child_id) filter.child_id = child_id;
-    if (q) filter.$or = [
-      { patient_nom: { $regex: q, $options: 'i' } },
-      { diagnostic:  { $regex: q, $options: 'i' } },
-    ];
+    if (q) {
+      const qRe = escapeRegex(q);
+      filter.$or = [
+        { patient_nom: { $regex: qRe, $options: 'i' } },
+        { diagnostic:  { $regex: qRe, $options: 'i' } },
+      ];
+    }
     const consultations = await PediatricConsultation.find(filter)
       .sort('-date')
       .limit(parseInt(limit))

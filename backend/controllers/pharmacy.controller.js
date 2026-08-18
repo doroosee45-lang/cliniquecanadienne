@@ -1,7 +1,7 @@
 const Medication = require('../models/Medication');
 const Prescription = require('../models/Prescription');
 const Commande = require('../models/Commande');
-const { logAction, paginate } = require('../utils/helpers');
+const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
 
@@ -10,12 +10,15 @@ exports.getAll = async (req, res, next) => {
     const { page = 1, limit = 30, q, statut, alerte, categorie } = req.query;
     const filter = {};
     if (statut) filter.statut = statut;
-    if (categorie) filter.categorie = { $regex: categorie, $options: 'i' };
-    if (q) filter.$or = [
-      { nom_commercial: { $regex: q, $options: 'i' } },
-      { dci: { $regex: q, $options: 'i' } },
-      { fabricant: { $regex: q, $options: 'i' } },
-    ];
+    if (categorie) filter.categorie = { $regex: escapeRegex(categorie), $options: 'i' };
+    if (q) {
+      const qRe = escapeRegex(q);
+      filter.$or = [
+        { nom_commercial: { $regex: qRe, $options: 'i' } },
+        { dci: { $regex: qRe, $options: 'i' } },
+        { fabricant: { $regex: qRe, $options: 'i' } },
+      ];
+    }
     if (alerte === 'stock' || alerte === 'rupture') filter.$expr = { $lte: ['$stock_actuel', '$seuil_alerte'] };
     if (alerte === 'peremption') {
       const in30days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);

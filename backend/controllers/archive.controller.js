@@ -9,7 +9,7 @@ const DossierChirurgical = require('../models/DossierChirurgical');
 const Invoice         = require('../models/Invoice');
 const Prescription    = require('../models/Prescription');
 const Setting         = require('../models/Setting');
-const { logAction }   = require('../utils/helpers');
+const { logAction, escapeRegex } = require('../utils/helpers');
 
 // ─── Seuils d'archivage automatique (en jours) ────────────────
 const SEUILS = {
@@ -189,11 +189,14 @@ exports.getAll = async (req, res, next) => {
   try {
     const { page = 1, limit = 15, q, categorie, service, date_debut, date_fin, statut } = req.query;
     const filter = {};
-    if (q)         filter.$or = [
-      { titre:       { $regex: q, $options: 'i' } },
-      { patient_nom: { $regex: q, $options: 'i' } },
-      { description: { $regex: q, $options: 'i' } },
-    ];
+    if (q) {
+      const qRe = escapeRegex(q);
+      filter.$or = [
+        { titre:       { $regex: qRe, $options: 'i' } },
+        { patient_nom: { $regex: qRe, $options: 'i' } },
+        { description: { $regex: qRe, $options: 'i' } },
+      ];
+    }
     if (categorie) filter.categorie = categorie;
     if (statut)    filter.statut    = statut;
     if (date_debut || date_fin) {
