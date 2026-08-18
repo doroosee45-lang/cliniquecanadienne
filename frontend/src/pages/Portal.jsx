@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useId } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
+import toast from 'react-hot-toast';
+import { useAuth } from '../contexts/AuthContext';
 import {
   fetchPortalMe, fetchPortalAppointments, fetchPortalPrescriptions,
   fetchPortalLabResults, fetchPortalImaging, fetchPortalInvoices,
@@ -377,6 +380,8 @@ const ageCalc = (dob) => {
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function MonEspacePatient() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const { isMobile, isSmall } = useScreenSize();
   const RCSS = buildResponsiveCSS({ isMobile, isSmall });
 
@@ -472,6 +477,20 @@ export default function MonEspacePatient() {
     dispatch(markAllNotificationsRead());
   };
 
+  // AUDIT-11 (Vague 2, trouvé en marge de W1) — le bouton "Déconnexion" des
+  // actions rapides n'avait aucun handler, contrairement à la Sidebar où la
+  // déconnexion fonctionne réellement (useAuth().logout()). Pas une
+  // nouvelle fonctionnalité : réutilise exactement le même mécanisme déjà
+  // réel, avec le même filet de sécurité (Sidebar.jsx::handleLogout).
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch {
+      toast.error('Erreur lors de la déconnexion.');
+    }
+  };
+
   const handleUpdateProfil = async () => {
     const res = await dispatch(updatePortalProfile(profilForm));
     if (!res.error) { setProfilSuccess("Profil mis à jour !"); setTimeout(() => { setModalProfil(false); setProfilSuccess(""); }, 2000); }
@@ -529,7 +548,12 @@ export default function MonEspacePatient() {
               <button className="hero-btn-ghost" onClick={() => setModalProfil(true)} aria-label="Profil">
                 <Pencil size={14} /> {!isSmall && "Profil"}
               </button>
-              <Button icon={Calendar} onClick={() => setModalRdv(true)} aria-label={isSmall ? "Prendre RDV" : undefined}>{!isSmall ? "Prendre RDV" : ""}</Button>
+              {/* AUDIT-11 (Vague 2, W1) — prise de RDV désactivée : la
+                  modale ne postait vers aucune route réelle (pas de champs
+                  liés à un état, aucun POST /appointments côté portail).
+                  Câblage réel hors périmètre de cette vague (nouveaux
+                  endpoints, conflits de créneaux) — voir décision W1. */}
+              <Button icon={Calendar} disabled title="Fonctionnalité momentanément indisponible" aria-label={isSmall ? "Prendre RDV" : undefined}>{!isSmall ? "Prendre RDV" : ""}</Button>
             </>
           }
         />
@@ -662,7 +686,7 @@ export default function MonEspacePatient() {
                           </td>
                           <td style={{ fontSize:12 }}>{fmtDate(getOrdExpire(o))}</td>
                           <td><Badge cls="green">✓ Active</Badge></td>
-                          <td><button className="ebtn ebtn-ghost ebtn-sm">{I.dl} Télécharger</button></td>
+                          <td><button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Télécharger</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -677,7 +701,10 @@ export default function MonEspacePatient() {
             <div>
               <div className="ep-g11" style={{ marginBottom:20 }}>
                 <div className="ep-card fu">
-                  <div className="ep-card-hdr"><h3>👤 Informations personnelles</h3><button className="ebtn ebtn-ghost ebtn-sm">{I.edit} Modifier</button></div>
+                  {/* AUDIT-11 — dupliquait "Modifier profil" (actions
+                      rapides ci-dessous) sans handler propre ; pointe vers
+                      la même modale réelle plutôt que de rester inerte. */}
+                  <div className="ep-card-hdr"><h3>👤 Informations personnelles</h3><button className="ebtn ebtn-ghost ebtn-sm" onClick={() => setModalProfil(true)}>{I.edit} Modifier</button></div>
                   <div className="ep-g11s" style={{ padding:16 }}>
                     {[
                       ["Nom",              patient.nom],
@@ -727,7 +754,12 @@ export default function MonEspacePatient() {
                         </div>
                       )}
                       <div className="ep-info-row"><div className="lbl">Antécédents médicaux</div><div className="val">{Array.isArray(patient.antecedents_medicaux) ? patient.antecedents_medicaux.join(', ') || "—" : "—"}</div></div>
-                      <div className="ep-info-row"><div className="lbl">Antécédents</div><div className="val">Appendicectomie 2015</div></div>
+                      {/* AUDIT-11 (trouvé en marge de W1) — une ligne
+                          "Antécédents : Appendicectomie 2015" codée en dur
+                          était affichée ici, redondante avec le champ réel
+                          ci-dessus mais avec un contenu fabriqué présenté
+                          comme un fait médical du patient. Retirée, même
+                          raisonnement que le panneau "Recommandations IA". */}
                     </div>
                   </div>
                 </div>
@@ -739,9 +771,9 @@ export default function MonEspacePatient() {
                 <div style={{ padding:20, display:"flex", gap:12, flexWrap:"wrap" }}>
                   <button className="ebtn ebtn-ghost" onClick={() => setModalChangePwd(true)}>🔒 Changer mot de passe</button>
                   <button className="ebtn ebtn-ghost" onClick={() => setModalProfil(true)}>{I.edit} Modifier profil</button>
-                  <button className="ebtn ebtn-teal">🪪 Télécharger carte patient</button>
-                  <button className="ebtn ebtn-ghost">📋 Exporter dossier</button>
-                  <button className="ebtn ebtn-danger">🚪 Déconnexion</button>
+                  <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>🪪 Télécharger carte patient</button>
+                  <button className="ebtn ebtn-ghost" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>📋 Exporter dossier</button>
+                  <button className="ebtn ebtn-danger" onClick={handleLogout}>🚪 Déconnexion</button>
                 </div>
               </div>
             </div>
@@ -752,7 +784,7 @@ export default function MonEspacePatient() {
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 }}>
                 <div><div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Mes Rendez-vous</div><div style={{ fontSize:12, color:"var(--cm)" }}>{rdvs.length} rendez-vous au total</div></div>
-                <button className="ebtn ebtn-teal" onClick={() => setModalRdv(true)}>📅 Prendre un rendez-vous</button>
+                <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>📅 Prendre un rendez-vous</button>
               </div>
 
               {["confirme","passe"].map(statut => (
@@ -776,8 +808,8 @@ export default function MonEspacePatient() {
                             <td><Badge cls={statut === "confirme" ? "teal" : "gray"}>{statut === "confirme" ? "✓ Confirmé" : "Passé"}</Badge></td>
                             <td>
                               <div style={{ display:"flex", gap:6 }}>
-                                <button className="ebtn ebtn-ghost ebtn-sm">{I.dl} Conf.</button>
-                                {statut === "confirme" && <button className="ebtn ebtn-danger ebtn-sm">Annuler</button>}
+                                <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Conf.</button>
+                                {statut === "confirme" && <button className="ebtn ebtn-danger ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>Annuler</button>}
                               </div>
                             </td>
                           </tr>
@@ -807,7 +839,8 @@ export default function MonEspacePatient() {
                       </div>
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                         <Badge cls={st === "active" ? "green" : "gray"}>{st === "active" ? "✓ Active" : "Expirée"}</Badge>
-                        <button className="ebtn ebtn-ghost ebtn-sm">{I.dl} Télécharger</button>
+                        <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Télécharger</button>
+                        {/* "Imprimer" — même classe de bug (toast/action sans effet), hors périmètre W1, non traité ici. */}
                         <button className="ebtn ebtn-ghost ebtn-sm">{I.print} Imprimer</button>
                       </div>
                     </div>
@@ -841,7 +874,7 @@ export default function MonEspacePatient() {
                     </div>
                     <div style={{ display:"flex", gap:8 }}>
                       {a.est_critique && <Badge cls="red">⚠ Critique</Badge>}
-                      <button className="ebtn ebtn-ghost ebtn-sm">{I.dl} PDF</button>
+                      <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} PDF</button>
                     </div>
                   </div>
                   <div style={{ overflowX:"auto" }}>
@@ -898,8 +931,8 @@ export default function MonEspacePatient() {
                         {getImgConclusion(im)}
                       </div>
                       <div style={{ display:"flex", gap:8 }}>
-                        <button className="ebtn ebtn-teal ebtn-sm">👁 Visualiser</button>
-                        <button className="ebtn ebtn-ghost ebtn-sm">{I.dl} Rapport</button>
+                        <button className="ebtn ebtn-teal ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>👁 Visualiser</button>
+                        <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Rapport</button>
                       </div>
                     </div>
                   </div>
@@ -957,7 +990,7 @@ export default function MonEspacePatient() {
                       Total dû : <strong>{factures.filter(f=>getFacStatut(f)==="impayee").reduce((s,f)=>s+getFacMontant(f),0).toLocaleString("fr-FR")} CFA</strong>
                     </div>
                   </div>
-                  <button className="ebtn ebtn-danger ebtn-sm">💳 Payer en ligne</button>
+                  <button className="ebtn ebtn-danger ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>💳 Payer en ligne</button>
                 </div>
               )}
               <div className="ep-card fu">
@@ -974,8 +1007,8 @@ export default function MonEspacePatient() {
                           <td><Badge cls={getFacStatut(f) === "payee" ? "green" : "red"}>{getFacStatut(f) === "payee" ? "✓ Payée" : "⚠ Impayée"}</Badge></td>
                           <td>
                             <div style={{ display:"flex", gap:6 }}>
-                              <button className="ebtn ebtn-ghost ebtn-sm">{I.dl} Facture</button>
-                              {getFacStatut(f) === "impayee" && <button className="ebtn ebtn-teal ebtn-sm">💳 Payer</button>}
+                              <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Facture</button>
+                              {getFacStatut(f) === "impayee" && <button className="ebtn ebtn-teal ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>💳 Payer</button>}
                             </div>
                           </td>
                         </tr>
@@ -996,7 +1029,11 @@ export default function MonEspacePatient() {
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 }}>
                 <div><div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Messagerie Sécurisée</div><div style={{ fontSize:12, color:"var(--cm)" }}>{MESSAGES.filter(m=>!m.lu).length} message(s) non lu(s)</div></div>
-                <button className="ebtn ebtn-teal" onClick={() => setModalMsg(true)}>✉️ Nouveau message</button>
+                {/* AUDIT-11 (Vague 2, P3-3/W1) — messagerie du portail
+                    désactivée : décision déjà actée plus tôt dans le projet
+                    (neutraliser comme AUDIT-03/AUDIT-07), jamais réellement
+                    appliquée à cette page jusqu'ici. */}
+                <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>✉️ Nouveau message</button>
               </div>
               <div className="ep-card fu">
                 {MESSAGES.map(m => (
@@ -1119,26 +1156,13 @@ export default function MonEspacePatient() {
                     </div>
                   </div>
 
-                  {/* Recommandations IA */}
-                  <div className="ep-card fu">
-                    <div className="ep-card-hdr"><h3>💡 Recommandations IA</h3></div>
-                    <div style={{ padding:16, display:"flex", flexDirection:"column", gap:10 }}>
-                      {[
-                        ["🟠","Cholestérol","Votre cholestérol (5.9 mmol/L) dépasse la norme. Consultez votre médecin.","#D97706"],
-                        ["🟡","Ferritine","Ferritine basse détectée. Un suivi nutritionnel est conseillé.","#CA8A04"],
-                        ["🟢","Tension","Votre tension artérielle est dans les normes. Continuez vos habitudes.","#059669"],
-                        ["🔵","RDV","Prochaine consultation dans 8 jours. Préparez vos questions.","#1B4F9E"],
-                      ].map(([ico,titre,desc,col]) => (
-                        <div key={titre} style={{ display:"flex", gap:10, background:"#F8FAFD", borderRadius:12, padding:"11px 14px", borderLeft:`3px solid ${col}` }}>
-                          <span style={{ fontSize:15, flexShrink:0 }}>{ico}</span>
-                          <div>
-                            <div style={{ fontWeight:700, fontSize:12.5, color:"var(--cn)" }}>{titre}</div>
-                            <div style={{ fontSize:11.5, color:"var(--cm)", marginTop:2 }}>{desc}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  {/* AUDIT-11 (Vague 2, W1) — panneau "Recommandations IA"
+                      retiré : contenu clinique entièrement fabriqué (valeurs
+                      de laboratoire inventées, ex. "cholestérol 5.9 mmol/L"),
+                      sans aucun rapport avec les données réelles du patient
+                      affichées ailleurs sur cette même page. Présenter un
+                      faux conseil médical personnalisé est plus grave qu'un
+                      simple bouton inerte — retiré plutôt que désactivé. */}
                 </div>
               </div>
             </div>
@@ -1176,7 +1200,11 @@ export default function MonEspacePatient() {
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="ebtn ebtn-ghost" onClick={() => setModalRdv(false)}>Annuler</button>
-              <button className="ebtn ebtn-teal" style={{ marginLeft:"auto" }}>✓ Demander le rendez-vous</button>
+              {/* Filet de sécurité : le déclencheur qui ouvre cette modale
+                  est désactivé, mais si elle était atteinte autrement, ce
+                  bouton n'a jamais eu de handler réel — le laisser inerte
+                  plutôt que de lui ajouter une fausse action. */}
+              <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ marginLeft:"auto", opacity:.5, cursor:"not-allowed" }}>✓ Demander le rendez-vous</button>
             </div>
           </div>
         </Modal>
@@ -1195,7 +1223,7 @@ export default function MonEspacePatient() {
             <div><label className="elbl">Pièce jointe (optionnel)</label><input type="file" className="einp" style={{ padding:"6px 10px" }} /></div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="ebtn ebtn-ghost" onClick={() => setModalMsg(false)}>Annuler</button>
-              <button className="ebtn ebtn-teal" style={{ marginLeft:"auto" }}>📤 Envoyer</button>
+              <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ marginLeft:"auto", opacity:.5, cursor:"not-allowed" }}>📤 Envoyer</button>
             </div>
           </div>
         </Modal>
