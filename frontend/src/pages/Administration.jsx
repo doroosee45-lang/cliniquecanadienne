@@ -261,7 +261,7 @@ const DEMO_KPIS = {};
 const MONTHS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 const REVENUS_DATA = [];
 
-const EMPTY_USER = { prenom:"", nom:"", email:"", telephone:"", role:"medecin", service:"", statut:"actif", mot_de_passe:"" };
+const EMPTY_USER = { prenom:"", nom:"", email:"", telephone:"", role:"medecin", service:"", statut:"actif", mot_de_passe:"", must_change_password:false };
 const EMPTY_TASK = { titre:"", assignee:"", priorite:"normale", statut:"en_attente", echeance:"", categorie:"administratif", description:"" };
 const EMPTY_SUPPLIER = { nom:"", contact:"", telephone:"", email:"", adresse:"", produits:"" };
 
@@ -809,7 +809,7 @@ export default function Administration() {
                                 <td><Badge cls={sc.cls}>{sc.label}</Badge></td>
                                 <td>
                                   <div style={{ display:"flex", gap:6 }}>
-                                    <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setEditUser(u); setFormUser({ prenom:u.prenom, nom:u.nom, email:u.email, telephone:u.telephone, role:u.role, service:u.service, statut:u.statut, mot_de_passe:"" }); setModalUser(true); }}>
+                                    <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setEditUser(u); setFormUser({ prenom:u.prenom, nom:u.nom, email:u.email, telephone:u.telephone, role:u.role, service:u.service, statut:u.statut, mot_de_passe:"", must_change_password:!!u.must_change_password }); setModalUser(true); }}>
                                       {I.edit}
                                     </button>
                                     <button className="cbtn cbtn-ghost cbtn-sm" title="Réinitialiser mot de passe" onClick={() => resetPassword(u)}>
@@ -1476,6 +1476,10 @@ export default function Administration() {
                   <input type="password" className="cinp" required={!editUser} value={formUser.mot_de_passe} onChange={e => setFormUser(f=>({...f,mot_de_passe:e.target.value}))} placeholder="Minimum 8 caractères" />
                 </div>
               )}
+              <div style={{ gridColumn:"1/-1", display:"flex", alignItems:"center", gap:8 }}>
+                <input type="checkbox" id="must_change_password" checked={formUser.must_change_password} onChange={e => setFormUser(f=>({...f,must_change_password:e.target.checked}))} />
+                <label htmlFor="must_change_password" className="clbl" style={{ margin:0 }}>Forcer le changement de mot de passe à la première connexion</label>
+              </div>
             </div>
             <div style={{ display:"flex", gap:10, marginTop:20 }}>
               <button type="button" className="cbtn cbtn-ghost" onClick={() => { setModalUser(false); setEditUser(null); setFormUser(EMPTY_USER); }}>Annuler</button>

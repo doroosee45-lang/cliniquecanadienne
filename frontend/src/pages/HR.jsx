@@ -585,6 +585,16 @@ export default function RessourcesHumaines() {
       const newE = normalizeEmp(data.staff);
       setEmployes(prev => [newE, ...prev]);
       toast.success(`✅ Employé ${newE.prenom} ${newE.nom} créé`);
+      // AUDIT-P2-3 (ticket 0003, piste 1) — c'est la seule fois où ce mot de
+      // passe généré est visible : ni journalisé, ni stocké en clair, ni
+      // renvoyé à nouveau par un autre endpoint. Sans ce toast persistant,
+      // le compte reste inutilisable jusqu'à une réinitialisation manuelle.
+      if (data.temp_password) {
+        toast.success(
+          `🔑 Mot de passe temporaire pour ${newE.prenom} ${newE.nom} : ${data.temp_password}\nÀ communiquer à l'employé de façon sécurisée — il devra le changer à sa première connexion.`,
+          { duration: 30000 }
+        );
+      }
       setModalEmp(false);
       setFormEmp(EMPTY_EMP);
     } catch (err) {

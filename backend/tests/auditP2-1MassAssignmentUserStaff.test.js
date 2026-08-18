@@ -63,7 +63,10 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
         params: { id: userId },
         body: {
           prenom: 'Après', nom: 'Modifié', email: avant.email, telephone: '+242060000000', role: 'medecin', service: 'Chirurgie', statut: 'inactif',
-          // Champs hors liste blanche — ne doivent avoir strictement aucun effet.
+          // must_change_password (AUDIT-P2-3, ticket 0003 piste 2) est
+          // volontairement dans la liste blanche depuis ce correctif — testé
+          // séparément dans auditP2-3MustChangePasswordRH.test.js. Les
+          // autres restent hors liste blanche et ne doivent avoir aucun effet.
           must_change_password: true,
           tentatives_echouees: 999,
           patient_id: new mongoose.Types.ObjectId(),
@@ -75,7 +78,7 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
       assert.equal(status, 200);
 
       const fresh = await User.findById(userId).lean();
-      assert.equal(fresh.must_change_password, false, 'must_change_password ne doit pas être modifiable via cet endpoint');
+      assert.equal(fresh.must_change_password, true, 'must_change_password est désormais un champ légitime de cet endpoint (AUDIT-P2-3)');
       assert.equal(fresh.tentatives_echouees, 0, 'tentatives_echouees ne doit pas être modifiable via cet endpoint');
       assert.equal(fresh.patient_id, null, 'patient_id ne doit pas être modifiable via cet endpoint');
       assert.equal(fresh.verrouille_jusqu_a, null, 'verrouille_jusqu_a ne doit pas être modifiable via cet endpoint');
