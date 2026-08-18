@@ -1,6 +1,6 @@
 const ImagingResult = require('../models/ImagingResult');
 const ExamCatalogue = require('../models/ExamCatalogue');
-const { logAction, paginate } = require('../utils/helpers');
+const { logAction, createNotification, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
@@ -187,7 +187,24 @@ exports.validation = async (req, res, next) => {
       { new: true }
     ).lean();
     if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'VALIDATE', module: 'radiology', entite_id: examen._id, ip: req.ip, avant, apres: examen });
+
+    // AUDIT-A-5 — laboratory.controller.js::validate notifie le médecin
+    // prescripteur sur résultat critique (est_critique) ; radiology n'avait
+    // aucune notification équivalente à la validation, malgré
+    // anomalie_detectee (positionné par saveCR, avant cette validation) qui
+    // en est l'analogue exact côté imagerie — asymétrie entre deux
+    // circuits de validation par ailleurs très proches.
+    if (examen.anomalie_detectee && examen.medecin_prescripteur) {
+      await createNotification({
+        destinataire: examen.medecin_prescripteur,
+        type: 'critical',
+        titre: `🚨 Anomalie détectée — ${examen.patient_nom || 'Patient'}`,
+        message: examen.conclusion || examen.observations || 'Anomalie détectée à l\'examen d\'imagerie.',
+        priorite: 'critique',
+      });
+    }
+
+    await logAction({ utilisateur: req.user._id, action: 'VALIDATE', module: 'radiology', entite_id: examen._id, ip: req.ip, message: `Validation examen${examen.anomalie_detectee ? ' ANOMALIE' : ''}`, avant, apres: examen });
     emitDashboardUpdate();
     res.json({ success: true, examen: normalize(examen) });
   } catch (err) { next(err); }
