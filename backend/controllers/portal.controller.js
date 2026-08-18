@@ -71,12 +71,21 @@ exports.getAppointments = async (req, res, next) => {
 };
 
 // ── ORDONNANCES ───────────────────────────────────────────────────────────────
+// AUDIT-P7-7 — aucun filtre de statut : un brouillon (statut par défaut à la
+// création, avant que le médecin ne la publie) était visible au patient
+// comme n'importe quelle ordonnance réelle. 'active' est inclus en plus de
+// la liste 'publiee'/'dispensee'/'expiree' suggérée par l'audit initial :
+// c'est un état réellement atteint par de vraies ordonnances (seed.js,
+// plusieurs tests), pas un résidu — même défense en profondeur déjà
+// appliquée par prescriptions.controller.js::dispenser() (accepte
+// 'publiee' ET 'active', cf. audit2-9/P7-3). Exclut brouillon (le bug) et
+// annulee (ordonnance annulée, ne doit pas apparaître comme valide).
 exports.getPrescriptions = async (req, res, next) => {
   try {
     const patient = await findPatient(req.user);
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
-    const prescriptions = await Prescription.find({ patient: patient._id })
+    const prescriptions = await Prescription.find({ patient: patient._id, statut: { $in: ['active', 'publiee', 'dispensee', 'expiree'] } })
       .populate('medecin', 'nom prenom specialite')
       .populate('lignes.medicament', 'nom forme')
       .sort('-date_prescription')
