@@ -8,7 +8,8 @@ const Consultation = require('../models/Consultation');
 const Hospitalization = require('../models/Hospitalization');
 const Invoice      = require('../models/Invoice');
 const Room         = require('../models/Room');
-const { logAction } = require('../utils/helpers');
+const { logAction, createNotification } = require('../utils/helpers');
+const mail = require('../utils/mail');
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -88,6 +89,29 @@ exports.updateUser = async (req, res, next) => {
       apres: { role: user.role, statut: user.statut },
       message: `Utilisateur modifié : ${user.email}${avant.role !== user.role ? ` — rôle ${avant.role} → ${user.role}` : ''}${avant.statut !== user.statut ? ` — statut ${avant.statut} → ${user.statut}` : ''}${password ? ' — mot de passe réinitialisé' : ''}`,
     });
+
+    // AUDIT-A-4 — un changement de rôle (élévation/rétrogradation de
+    // privilèges) ou de statut (suspension...) était jusqu'ici invisible
+    // pour l'intéressé, qui ne l'apprenait qu'en tombant dessus par hasard.
+    // Suspendu = ne peut plus se connecter pour voir une notification
+    // in-app, d'où l'email en plus, réservé à ce cas précis.
+    if (avant.role !== user.role || avant.statut !== user.statut) {
+      const changements = [];
+      if (avant.role !== user.role) changements.push(`rôle : ${avant.role} → ${user.role}`);
+      if (avant.statut !== user.statut) changements.push(`statut : ${avant.statut} → ${user.statut}`);
+      const estSuspension = avant.statut !== user.statut && user.statut === 'suspendu';
+      await createNotification({
+        destinataire: user._id,
+        type:    estSuspension ? 'warning' : 'info',
+        titre:   'Votre compte a été modifié',
+        message: `Un administrateur a modifié votre compte (${changements.join(', ')}).`,
+        priorite: estSuspension ? 'haute' : 'normale',
+      });
+      if (estSuspension && user.email) {
+        await mail.sendAccountSuspendedEmail({ email: user.email, prenom: user.prenom, nom: user.nom });
+      }
+    }
+
     res.json({ success: true, user });
   } catch (err) { next(err); }
 };
