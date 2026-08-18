@@ -4,9 +4,10 @@
 // (motif pathologique type (a+)+) et de correspondances non voulues (. | etc
 // interprétés comme syntaxe regex plutôt que texte littéral). Le seul
 // endroit qui s'en protégeait déjà (patients.controller.js) l'a été
-// généralisé ici en utils/helpers.js::escapeRegex, appliqué à 7 des 8
-// occurrences trouvées (la 8e, urgencesController.js, est le travail actif
-// de l'utilisateur — non touchée, tracée au ticket 0019).
+// généralisé ici en utils/helpers.js::escapeRegex, appliqué aux 8
+// occurrences trouvées — y compris urgencesController.js, initialement
+// exclu par erreur de périmètre (confondu avec Urgences.jsx, seul fichier
+// réellement hors limites) puis débloqué explicitement (ticket 0019).
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -70,6 +71,46 @@ test('AUDIT-11 — recherche pharmacy.controller.js::getAll traite les métacara
       const { status, body } = await call(pharmC.getAll, { query: { q: `(a+)+${stamp}` } });
       assert.equal(status, 200, 'la requête ne doit jamais planter, même avec un motif regex-shaped en entrée');
       assert.equal(body.medications.length, 0, 'un motif qui ne correspond littéralement à aucun nom réel ne doit rien retourner');
+    });
+  } finally {
+    for (const fn of cleanup) await fn();
+    await mongoose.disconnect();
+  }
+});
+
+test('AUDIT-11 — recherche urgencesController.js::getAll traite les métacaractères comme du texte littéral (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
+  await mongoose.connect(process.env.MONGO_URI);
+  const urgC = require('../controllers/urgencesController');
+  const Urgence = require('../models/Urgence');
+
+  const stamp = Date.now();
+  const call = async (fn, req) => {
+    let status = 200, body = null;
+    const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
+    await fn(req, res, (err) => { if (err) throw err; });
+    return { status, body };
+  };
+
+  const cleanup = [];
+  try {
+    const urg = await Urgence.create({ patient_nom: `T11-Douleur (thoracique) ${stamp}`, motif: 'Douleur (thoracique) aiguë' });
+    cleanup.push(() => Urgence.findByIdAndDelete(urg._id));
+    const unrelated = await Urgence.create({ patient_nom: `T11-SansRapport-${stamp}-X`, motif: 'Entorse cheville' });
+    cleanup.push(() => Urgence.findByIdAndDelete(unrelated._id));
+
+    await t.test('recherche par parenthèses littérales trouve le bon dossier', async () => {
+      const { status, body } = await call(urgC.getAll, { query: { q: `(thoracique) ${stamp}` } });
+      assert.equal(status, 200);
+      const found = body.urgences.find(u => u._id.toString() === urg._id.toString());
+      assert.ok(found, 'la recherche avec des parenthèses littérales doit trouver le dossier dont le motif les contient réellement');
+      const foundUnrelated = body.urgences.find(u => u._id.toString() === unrelated._id.toString());
+      assert.equal(foundUnrelated, undefined, 'un dossier sans rapport ne doit pas apparaître');
+    });
+
+    await t.test('un motif regex-shaped dans la recherche ne casse pas la requête et ne matche rien de non pertinent', async () => {
+      const { status, body } = await call(urgC.getAll, { query: { q: `(a+)+${stamp}` } });
+      assert.equal(status, 200, 'la requête ne doit jamais planter, même avec un motif regex-shaped en entrée');
+      assert.equal(body.urgences.length, 0, 'un motif qui ne correspond littéralement à aucun dossier réel ne doit rien retourner');
     });
   } finally {
     for (const fn of cleanup) await fn();

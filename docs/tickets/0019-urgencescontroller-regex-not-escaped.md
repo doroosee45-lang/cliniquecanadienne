@@ -1,8 +1,12 @@
 # Ticket 0019 — `urgencesController.js` : recherche `$regex` non échappée sur entrée utilisateur (ReDoS)
 
-**Statut :** Ouvert — non corrigé (hors périmètre)
+**Statut :** Fermé — corrigé
 **Origine :** Audit complet post-Phase 10, section sécurité §9 (constat S2), généralisé en Vague 1 (`fix/audit11-regex-escape-generalization`)
-**Sévérité :** Moyenne — même nature que les 7 occurrences corrigées ailleurs dans cette même branche, mais ce fichier n'a pas été touché
+**Sévérité :** Moyenne — même nature que les 7 occurrences corrigées ailleurs dans la même branche
+
+## Clôture
+
+Ouvert initialement par erreur de périmètre : exclu par analogie avec `frontend/src/pages/Urgences.jsx` (hors limites, travail actif de l'utilisateur), en confondant ce fichier avec le contrôleur backend `urgencesController.js` — deux fichiers distincts. L'utilisateur a précisé explicitement que seul `Urgences.jsx` (frontend) est hors périmètre ; `urgencesController.js` (backend) ne l'est pas. Corrigé dans la foulée, même branche, même pattern que les 7 autres contrôleurs — voir commit correspondant.
 
 ## Constat
 
@@ -14,18 +18,14 @@
 { motif:       { $regex: q, $options: 'i' } },
 ```
 
-C'est exactement le même défaut que celui corrigé dans 7 autres contrôleurs (`archive.controller.js`, `blocoperatoireController.js`, `chirurgieController.js`, `finance.controller.js`, `maternityController.js`, `pediatrieController.js`, `pharmacy.controller.js`) via un nouvel utilitaire partagé `escapeRegex()` (`backend/utils/helpers.js`) : un terme de recherche construit comme un motif regex pathologique (ex. `(a+)+$`) peut dégrader les performances du serveur (ReDoS applicatif), et des métacaractères comme `.`/`|` produisent des correspondances non voulues.
+C'était exactement le même défaut que celui déjà corrigé dans 7 autres contrôleurs (`archive.controller.js`, `blocoperatoireController.js`, `chirurgieController.js`, `finance.controller.js`, `maternityController.js`, `pediatrieController.js`, `pharmacy.controller.js`) via l'utilitaire partagé `escapeRegex()` (`backend/utils/helpers.js`) : un terme de recherche construit comme un motif regex pathologique (ex. `(a+)+$`) peut dégrader les performances du serveur (ReDoS applicatif), et des métacaractères comme `.`/`|` produisent des correspondances non voulues.
 
-## Pourquoi non corrigé ici
+## Correctif appliqué
 
-`urgencesController.js` est le travail actif de l'utilisateur — contrainte permanente rappelée à plusieurs reprises tout au long de ce projet : ce fichier n'est jamais modifié dans le cadre des corrections d'audit, les constats y sont uniquement tracés en ticket.
-
-## Correctif à appliquer (une fois débloqué)
-
-Import déjà prêt à réutiliser tel quel :
+Identique au pattern des 7 autres contrôleurs :
 
 ```js
-const { escapeRegex } = require('../utils/helpers');
+const { logAction, escapeRegex } = require('../utils/helpers');
 // ...
 if (q) {
   const qRe = escapeRegex(q);
@@ -36,5 +36,3 @@ if (q) {
   ];
 }
 ```
-
-Identique au pattern déjà appliqué aux 7 autres contrôleurs — voir leur diff pour référence exacte.
