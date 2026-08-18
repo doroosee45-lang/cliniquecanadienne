@@ -508,10 +508,10 @@ export default function Imagerie() {
       setCurrent(prev => ({ ...prev, ...formCR, statut:"realise" }));
       setModalCR(false);
       loadExamens();
-    } catch {
-      setCurrent(prev => ({ ...prev, ...formCR, statut:"realise" }));
-      toast.success("✅ Compte rendu enregistré (local)");
-      setModalCR(false);
+    } catch (err) {
+      // AUDIT-P6-5 — même faux succès que Chirurgie.jsx : un compte rendu
+      // radiologique jamais réellement enregistré, affiché comme réussi.
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement du compte rendu");
     } finally { setSaving(false); }
   };
 
@@ -526,10 +526,12 @@ export default function Imagerie() {
       setCurrent(prev => ({ ...prev, ...formValid, statut:"valide" }));
       setModalValid(false);
       loadExamens();
-    } catch {
-      setCurrent(prev => ({ ...prev, ...formValid, statut:"valide" }));
-      toast.success("🏅 Examen validé (local)");
-      setModalValid(false);
+    } catch (err) {
+      // AUDIT-P6-5 — le pire cas de ce pattern sur cette page : une
+      // validation radiologique jamais réellement enregistrée en base
+      // n'a jamais pu déclencher la notification de résultat critique
+      // (cf. AUDIT-A-5), rendant les deux bugs liés en pratique.
+      toast.error(err?.response?.data?.message || "Erreur lors de la validation de l'examen");
     } finally { setSaving(false); }
   };
 
@@ -542,9 +544,9 @@ export default function Imagerie() {
       toast.success("✅ Enregistré");
       setCurrent(prev => ({ ...prev, ...updates }));
       loadExamens();
-    } catch {
-      setCurrent(prev => ({ ...prev, ...updates }));
-      toast.success("✅ Enregistré (local)");
+    } catch (err) {
+      // AUDIT-P6-5 — même faux succès.
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement");
     } finally { setSaving(false); }
   };
 

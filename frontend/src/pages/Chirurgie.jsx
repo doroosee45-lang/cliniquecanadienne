@@ -505,10 +505,11 @@ export default function Chirurgie() {
       setFormBilan(EMPTY_BILAN);
       loadDossier(currentDossier._id);
     } catch {
-      setBilan(prev => [...prev, { ...formBilan, _id: Date.now().toString() }]);
-      toast.success("✅ Examen ajouté (local)");
-      setModalBilan(false);
-      setFormBilan(EMPTY_BILAN);
+      // AUDIT-P6-5 — ce catch ajoutait l'examen en local (_id généré côté
+      // client) et affichait un succès malgré l'échec réel de l'API : la
+      // donnée n'existait jamais en base, disparaissait au moindre
+      // rechargement, sans que personne ne le sache. Donnée clinique.
+      toast.error("Erreur lors de l'ajout de l'examen");
     } finally { setSaving(false); }
   };
 
@@ -523,10 +524,9 @@ export default function Chirurgie() {
       setFormSuivi(EMPTY_SUIVI);
       loadDossier(currentDossier._id);
     } catch {
-      setSuivis(prev => [{ ...formSuivi, _id: Date.now().toString(), date_suivi: new Date().toISOString() }, ...prev]);
-      toast.success("✅ Suivi enregistré (local)");
-      setModalSuivi(false);
-      setFormSuivi(EMPTY_SUIVI);
+      // AUDIT-P6-5 — même faux succès qu'addBilan : suivi post-opératoire
+      // (température, tension, douleur...) jamais réellement enregistré.
+      toast.error("Erreur lors de l'enregistrement du suivi");
     } finally { setSaving(false); }
   };
 
@@ -543,10 +543,10 @@ export default function Chirurgie() {
       const ns = Math.min(99, (currentDossier.ia_risque_score || 50) + 15);
       setCurrentDossier(prev => ({ ...prev, ia_risque_score: ns, ia_risque_niveau: ns >= 70 ? "critique" : ns >= 50 ? "eleve" : "modere" }));
     } catch {
-      setComplications(prev => [...prev, { ...formComplic, _id: Date.now().toString() }]);
-      toast.success("⚠️ Complication déclarée (local)");
-      setModalComplic(false);
-      setFormComplic(EMPTY_COMPLIC);
+      // AUDIT-P6-5 — même faux succès : une complication chirurgicale
+      // déclarée puis jamais réellement enregistrée est le pire cas de ce
+      // pattern sur toute la page (donnée de sécurité patient).
+      toast.error("Erreur lors de la déclaration de la complication");
     } finally { setSaving(false); }
   };
 
