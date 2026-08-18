@@ -401,7 +401,7 @@ const EMPTY_FORM = {
 };
 
 const EMPTY_RESULTAT_FORM = {
-  commentaire_biologiste: "", technicien: "", biologiste: "",
+  commentaire_biologiste: "", technicien: "", biologiste: "", est_critique_confirme: false,
 };
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────
@@ -445,6 +445,20 @@ export default function Laboratoire() {
   const [formValid, setFormValid] = useState(EMPTY_RESULTAT_FORM);
   const [formPrelev,setFormPrelev]= useState({ type_echantillon:"sang", preleveur:"", observations_prelevement:"" });
   const [patients, setPatients]   = useState([]);
+
+  // Ré-ouverture de P6-1 : est_critique n'est plus une pure dérivation
+  // silencieuse — la case à cocher est pré-cochée depuis la détection
+  // automatique (rien n'est manqué par défaut), mais c'est son état au
+  // moment de la signature qui compte, pas le calcul en lui-même. Lu au
+  // moment où la modale s'ouvre (pas à l'ouverture du dossier) pour
+  // refléter les résultats réellement enregistrés à cet instant, y compris
+  // s'ils ont été modifiés depuis l'ouverture initiale du dossier.
+  useEffect(() => {
+    if (!modalValider) return;
+    const { est_critique } = deriveCriticalPayload(asArr(currentAnalyse?.resultats), REF_VALUES);
+    setFormValid(f => ({ ...f, est_critique_confirme: est_critique }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalValider]);
 
   // ── Load analyses ─────────────────────────────────────────
   const loadAnalyses = useCallback(async () => {
@@ -510,7 +524,7 @@ export default function Laboratoire() {
     });
     setFormRes(rf);
     setFormResStatut(rs);
-    setFormValid({ commentaire_biologiste: a.commentaire_biologiste || "", technicien: a.technicien || "", biologiste: a.biologiste || "" });
+    setFormValid({ commentaire_biologiste: a.commentaire_biologiste || "", technicien: a.technicien || "", biologiste: a.biologiste || "", est_critique_confirme: false });
   };
 
   // ── Create analyse ────────────────────────────────────────
@@ -584,14 +598,18 @@ export default function Laboratoire() {
   };
 
   // ── Valider ───────────────────────────────────────────────
-  // est_critique n'est pas une case à cocher séparée : il est dérivé des
-  // statut_res déjà saisis à l'étape "Résultats" (même source que hasCritique
-  // utilisé pour l'affichage ailleurs dans cette page), pour qu'il n'existe
-  // jamais deux versions divergentes de "ce résultat est-il critique ?".
+  // Ré-ouverture de P6-1 (décision explicite) : est_critique n'est plus la
+  // dérivation brute des statut_res — c'est une confirmation clinique
+  // explicite du biologiste (formValid.est_critique_confirme, une vraie
+  // case à cocher, pré-cochée par la détection automatique au moment où
+  // la modale s'ouvre mais modifiable dans les deux sens avant signature).
+  // valeurs_critiques reste dérivé : c'est un texte descriptif informatif
+  // pour le médecin notifié, pas la décision elle-même.
   const validerAnalyse = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const { est_critique, valeurs_critiques } = deriveCriticalPayload(asArr(currentAnalyse.resultats), REF_VALUES);
+    const { valeurs_critiques } = deriveCriticalPayload(asArr(currentAnalyse.resultats), REF_VALUES);
+    const est_critique = formValid.est_critique_confirme;
     // technicien/biologiste restent des champs de formulaire locaux
     // uniquement : LabResult.validate() ne les persiste pas (technicien est
     // un ObjectId ref User côté schéma, pas un nom libre ; biologiste n'est
@@ -602,7 +620,7 @@ export default function Laboratoire() {
       resultats: currentAnalyse.resultats,
       commentaires: formValid.commentaire_biologiste,
       est_critique,
-      valeurs_critiques,
+      valeurs_critiques: est_critique ? valeurs_critiques : "",
     };
     try {
       const { data } = await api.put(`/laboratory/${currentAnalyse._id}/validate`, payload);
@@ -1677,13 +1695,27 @@ export default function Laboratoire() {
                 if (critiques.length === 0) return null;
                 return (
                   <div style={{ background:"#FEF2F2", border:"1px solid #FCA5A5", borderRadius:10, padding:"10px 14px", fontSize:12.5, color:"#991B1B" }}>
-                    ⚡ <strong>{critiques.length} résultat(s) marqué(s) critique</strong> à l'étape de saisie — le médecin prescripteur sera notifié automatiquement à la validation :
+                    ⚡ <strong>{critiques.length} résultat(s) marqué(s) critique</strong> à l'étape de saisie :
                     <ul style={{ margin:"6px 0 0", paddingLeft:18 }}>
                       {critiques.map(r => <li key={r.exam_id}>{REF_VALUES[r.exam_id]?.label || r.exam_id} : {r.valeur} {REF_VALUES[r.exam_id]?.unite || ""}</li>)}
                     </ul>
                   </div>
                 );
               })()}
+              <label style={{ display:"flex", alignItems:"flex-start", gap:10, background:formValid.est_critique_confirme ? "#FEF2F2" : "#F8FAFC", border:`1.5px solid ${formValid.est_critique_confirme ? "#FCA5A5" : "#E2E8F0"}`, borderRadius:10, padding:"10px 14px", cursor:"pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={formValid.est_critique_confirme}
+                  onChange={e => setFormValid(f => ({ ...f, est_critique_confirme: e.target.checked }))}
+                  style={{ marginTop:2 }}
+                />
+                <span style={{ fontSize:12.5, color:formValid.est_critique_confirme ? "#991B1B" : "var(--ln)" }}>
+                  <strong>Résultat critique — notifier le médecin prescripteur.</strong>{" "}
+                  {asArr(currentAnalyse?.resultats).some(r => r.statut_res === "critique")
+                    ? "Pré-cochée d'après les résultats marqués critiques à la saisie — décochez si vous jugez, après relecture, qu'aucune notification n'est nécessaire."
+                    : "Aucun résultat n'a été marqué critique à la saisie — cochez ici si votre relecture clinique justifie tout de même une notification."}
+                </span>
+              </label>
               <div>
                 <label className="llbl">Technicien de laboratoire *</label>
                 <input className="linp" required placeholder="Nom du technicien" value={formValid.technicien} onChange={e => setFormValid(f=>({...f,technicien:e.target.value}))} />
