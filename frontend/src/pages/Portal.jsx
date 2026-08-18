@@ -1017,8 +1017,12 @@ export default function MonEspacePatient() {
                   </table>
                 </div>
                 <div style={{ padding:"12px 20px", borderTop:"1.5px solid var(--cbr)", display:"flex", justifyContent:"flex-end", gap:20, fontSize:13 }}>
-                  <span style={{ color:"var(--cm)" }}>Total payé : <strong style={{ color:"var(--cg)" }}>{FACTURES.filter(f=>f.statut==="payee").reduce((s,f)=>s+f.montant,0)}€</strong></span>
-                  <span style={{ color:"var(--cm)" }}>Restant dû : <strong style={{ color:"var(--cr)" }}>{FACTURES.filter(f=>f.statut==="impayee").reduce((s,f)=>s+f.montant,0)}€</strong></span>
+                  {/* AUDIT-P3-1 — ces totaux étaient calculés sur FACTURES (données de
+                      démo codées en dur), déconnectés des lignes réellement affichées
+                      ci-dessus (issues de `factures`) : le total ne correspondait jamais
+                      à ce que le patient voyait dans son propre tableau. */}
+                  <span style={{ color:"var(--cm)" }}>Total payé : <strong style={{ color:"var(--cg)" }}>{factures.filter(f=>getFacStatut(f)==="payee").reduce((s,f)=>s+(getFacMontant(f)||0),0).toLocaleString("fr-FR")} CFA</strong></span>
+                  <span style={{ color:"var(--cm)" }}>Restant dû : <strong style={{ color:"var(--cr)" }}>{factures.filter(f=>getFacStatut(f)==="impayee").reduce((s,f)=>s+(getFacMontant(f)||0),0).toLocaleString("fr-FR")} CFA</strong></span>
                 </div>
               </div>
             </div>
