@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchAnalyticsReport, fetchFinancialReport, fetchPatientStats, fetchKpis,
@@ -186,7 +186,12 @@ const I = {
 };
 
 // ─── Chart components ──────────────────────────────────────
-function LineChart({ labels, datasets, height = 200 }) {
+// AUDIT-F4 — enveloppés dans memo() : sans ça, chaque re-rendu du parent
+// démontait et recréait l'instance Chart.js entière (useEffect([labels,
+// data/datasets,...]) compare par référence). memo() seul ne suffit pas si
+// l'appelant continue de recréer des littéraux inline — cf. les
+// DEMO_*/useMemo aux points d'appel plus bas.
+const LineChart = memo(function LineChart({ labels, datasets, height = 200 }) {
   const ref = useRef(null);
   const cRef = useRef(null);
   useEffect(() => {
@@ -210,9 +215,9 @@ function LineChart({ labels, datasets, height = 200 }) {
     return () => { if (cRef.current) cRef.current.destroy(); };
   }, [labels, datasets]);
   return <canvas ref={ref} style={{ maxHeight: height }} />;
-}
+});
 
-function BarChart({ labels, data, colors, height = 180 }) {
+const BarChart = memo(function BarChart({ labels, data, colors, height = 180 }) {
   const ref = useRef(null);
   const cRef = useRef(null);
   useEffect(() => {
@@ -235,9 +240,9 @@ function BarChart({ labels, data, colors, height = 180 }) {
     return () => { if (cRef.current) cRef.current.destroy(); };
   }, [labels, data, colors]);
   return <canvas ref={ref} style={{ maxHeight: height }} />;
-}
+});
 
-function DonutChart({ labels, data, colors, height = 200 }) {
+const DonutChart = memo(function DonutChart({ labels, data, colors, height = 200 }) {
   const ref = useRef(null);
   const cRef = useRef(null);
   useEffect(() => {
@@ -256,7 +261,7 @@ function DonutChart({ labels, data, colors, height = 200 }) {
     return () => { if (cRef.current) cRef.current.destroy(); };
   }, [labels, data, colors]);
   return <canvas ref={ref} style={{ maxHeight: height }} />;
-}
+});
 
 // ─── KPI Card composant ──────────────────────────────────
 function KpiCard({ color, icon, value, label, sub, trend, trendUp, urgent, children }) {
@@ -291,6 +296,12 @@ function Badge({ cls, children }) { return <span className={`abdg ${cls}`}>{chil
 
 // ─── DEMO DATA ────────────────────────────────────────────
 const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+
+const JOURS_SEMAINE = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+const TEMPS_PRISE_CHARGE_DATASETS = [
+  { label:"Temps attente (min)", data:[18,22,35,28,25,15,10], borderColor:"#D97706", backgroundColor:"rgba(215,119,6,.1)", tension:.4, fill:true, pointRadius:4, pointBackgroundColor:"#D97706" },
+  { label:"Temps consultation (min)", data:[22,24,26,25,24,20,18], borderColor:"#1B4F9E", backgroundColor:"rgba(27,79,158,.06)", tension:.4, fill:false, borderDash:[5,5], pointRadius:3, pointBackgroundColor:"#1B4F9E" },
+];
 
 const DEMO_KPI = {};
 
@@ -344,16 +355,53 @@ export default function Analytics() {
   const kpi = reduxKpi || {};
 
   // ── Données graphiques depuis Redux ───────────────────────
-  const charts            = reduxChartData || {};
-  const DEMO_CONSULT_LINE = charts.consultations_par_mois || { labels: [], datasets: [] };
-  const DEMO_REVENUS_BAR  = charts.revenus_par_service    || { labels: [], data: [], colors: [] };
-  const DEMO_GENDER       = charts.repartition_genre      || { labels: [], data: [], colors: [] };
-  const DEMO_PHARMA_DONUT = charts.pharma_statut          || { labels: [], data: [], colors: [] };
-  const DEMO_PATHOLOGIES  = charts.top_pathologies        || [];
-  const DEMO_MEDECINS     = charts.top_medecins           || [];
-  const DEMO_ALERTES_MED  = charts.alertes_medicales      || [];
-  const DEMO_ALERTES_ADM  = charts.alertes_admin          || [];
-  const DEMO_PERF         = charts.perf_indicateurs       || [];
+  const charts = reduxChartData || {};
+  const DEMO_CONSULT_LINE = useMemo(
+    () => charts.consultations_par_mois || { labels: [], datasets: [] },
+    [charts.consultations_par_mois]
+  );
+  const DEMO_REVENUS_BAR = useMemo(
+    () => charts.revenus_par_service || { labels: [], data: [], colors: [] },
+    [charts.revenus_par_service]
+  );
+  const DEMO_GENDER = useMemo(
+    () => charts.repartition_genre || { labels: [], data: [], colors: [] },
+    [charts.repartition_genre]
+  );
+  const DEMO_PHARMA_DONUT = useMemo(
+    () => charts.pharma_statut || { labels: [], data: [], colors: [] },
+    [charts.pharma_statut]
+  );
+  const DEMO_PATHOLOGIES = useMemo(
+    () => charts.top_pathologies || [],
+    [charts.top_pathologies]
+  );
+  const DEMO_MEDECINS = useMemo(
+    () => charts.top_medecins || [],
+    [charts.top_medecins]
+  );
+  const DEMO_ALERTES_MED = useMemo(
+    () => charts.alertes_medicales || [],
+    [charts.alertes_medicales]
+  );
+  const DEMO_ALERTES_ADM = useMemo(
+    () => charts.alertes_admin || [],
+    [charts.alertes_admin]
+  );
+  const DEMO_PERF = useMemo(
+    () => charts.perf_indicateurs || [],
+    [charts.perf_indicateurs]
+  );
+
+  const financialEvolutionLabels = useMemo(
+    () => reduxFinancialData?.financial?.labels || MOIS,
+    [reduxFinancialData?.financial?.labels]
+  );
+  const financialEvolutionDatasets = useMemo(() => [
+    { label:"Chiffre d'affaires", data: reduxFinancialData?.financial?.ca       || [], borderColor:"#059669", backgroundColor:"rgba(5,150,105,.1)",    tension:.4, fill:false, pointRadius:4, pointBackgroundColor:"#059669" },
+    { label:"Dépenses",           data: reduxFinancialData?.financial?.depenses || [], borderColor:"#DC2626", backgroundColor:"rgba(220,38,38,.08)",   tension:.4, fill:false, borderDash:[4,4], pointRadius:3, pointBackgroundColor:"#DC2626" },
+    { label:"Bénéfice",           data: reduxFinancialData?.financial?.benefice || [], borderColor:"#0EA5A0", backgroundColor:"rgba(14,165,160,.12)",  tension:.4, fill:true,  pointRadius:4, pointBackgroundColor:"#0EA5A0" },
+  ], [reduxFinancialData?.financial?.ca, reduxFinancialData?.financial?.depenses, reduxFinancialData?.financial?.benefice]);
 
   // ── Export PDF ─────────────────────────────────────────────
   const exportAnalyticsPDF = () => {
@@ -1018,12 +1066,8 @@ export default function Analytics() {
                   </div>
                   <div style={{ padding:20 }}>
                     <LineChart
-                      labels={reduxFinancialData?.financial?.labels || MOIS}
-                      datasets={[
-                        { label:"Chiffre d'affaires", data: reduxFinancialData?.financial?.ca       || [], borderColor:"#059669", backgroundColor:"rgba(5,150,105,.1)",    tension:.4, fill:false, pointRadius:4, pointBackgroundColor:"#059669" },
-                        { label:"Dépenses",           data: reduxFinancialData?.financial?.depenses  || [], borderColor:"#DC2626", backgroundColor:"rgba(220,38,38,.08)",   tension:.4, fill:false, borderDash:[4,4], pointRadius:3, pointBackgroundColor:"#DC2626" },
-                        { label:"Bénéfice",           data: reduxFinancialData?.financial?.benefice  || [], borderColor:"#0EA5A0", backgroundColor:"rgba(14,165,160,.12)",  tension:.4, fill:true,  pointRadius:4, pointBackgroundColor:"#0EA5A0" },
-                      ]}
+                      labels={financialEvolutionLabels}
+                      datasets={financialEvolutionDatasets}
                       height={220}
                     />
                   </div>
@@ -1172,11 +1216,8 @@ export default function Analytics() {
                   <div className="anl-card-hdr"><div><h3>⏱ Temps de prise en charge</h3><p>Analyse des délais</p></div></div>
                   <div style={{ padding:20 }}>
                     <LineChart
-                      labels={["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"]}
-                      datasets={[
-                        { label:"Temps attente (min)", data:[18,22,35,28,25,15,10], borderColor:"#D97706", backgroundColor:"rgba(215,119,6,.1)", tension:.4, fill:true, pointRadius:4, pointBackgroundColor:"#D97706" },
-                        { label:"Temps consultation (min)", data:[22,24,26,25,24,20,18], borderColor:"#1B4F9E", backgroundColor:"rgba(27,79,158,.06)", tension:.4, fill:false, borderDash:[5,5], pointRadius:3, pointBackgroundColor:"#1B4F9E" },
-                      ]}
+                      labels={JOURS_SEMAINE}
+                      datasets={TEMPS_PRISE_CHARGE_DATASETS}
                       height={200}
                     />
                     <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:10, marginTop:16 }}>
