@@ -209,12 +209,20 @@ function ModalDossier({ onClose, saving }) {
   const [form, setForm] = useState({ patient_nom:"", patient_prenom:"", telephone:"", ddr:"", groupe_sanguin:"", medecin_responsable:"", antecedents_medicaux:"", facteurs_risque:[] });
   const boxRef = useRef(null);
   const titleId = useId();
+  // Extension du correctif fix/modal-focus-loss-on-keystroke : onClose est
+  // une closure inline recréée à chaque frappe (le formulaire est local à
+  // la modale ici, donc moins souvent reproductible qu'ailleurs, mais le
+  // même piège existe dès que le composant se re-rend pendant la saisie) —
+  // lu via une ref pour que cet effet ne se ré-exécute jamais après le
+  // montage et ne vole plus le focus du champ actif.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
     boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, []);
 
   const handleSubmit = async () => {
     if (!form.patient_nom || !form.ddr) { toast.error("Veuillez remplir les champs obligatoires"); return; }
@@ -303,12 +311,20 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
   });
   const boxRef = useRef(null);
   const titleId = useId();
+  // Extension du correctif fix/modal-focus-loss-on-keystroke : onClose est
+  // une closure inline recréée à chaque frappe (le formulaire est local à
+  // la modale ici, donc moins souvent reproductible qu'ailleurs, mais le
+  // même piège existe dès que le composant se re-rend pendant la saisie) —
+  // lu via une ref pour que cet effet ne se ré-exécute jamais après le
+  // montage et ne vole plus le focus du champ actif.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
     boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, []);
 
   const handleSubmit = async () => {
     if (!grossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
@@ -387,12 +403,20 @@ function ModalAccouchement({ grossesse, patienteNom, onClose, saving }) {
   });
   const boxRef = useRef(null);
   const titleId = useId();
+  // Extension du correctif fix/modal-focus-loss-on-keystroke : onClose est
+  // une closure inline recréée à chaque frappe (le formulaire est local à
+  // la modale ici, donc moins souvent reproductible qu'ailleurs, mais le
+  // même piège existe dès que le composant se re-rend pendant la saisie) —
+  // lu via une ref pour que cet effet ne se ré-exécute jamais après le
+  // montage et ne vole plus le focus du champ actif.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
     boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, []);
 
   const handleSubmit = async () => {
     if (!form.date_heure) { toast.error("Renseignez la date d'accouchement"); return; }

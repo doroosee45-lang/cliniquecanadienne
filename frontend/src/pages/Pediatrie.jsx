@@ -273,12 +273,20 @@ function ModalDossier({ onClose, saving }) {
   const [form, setForm] = useState({ nom:"", prenom:"", date_naissance:"", sexe:"M", parent_nom:"", parent_tel:"", groupe_sanguin:"", allergies:"", antecedents_medicaux:"" });
   const boxRef = useRef(null);
   const titleId = useId();
+  // Extension du correctif fix/modal-focus-loss-on-keystroke : onClose est
+  // une closure inline recréée à chaque frappe (le formulaire est local à
+  // la modale ici, donc moins souvent reproductible qu'ailleurs, mais le
+  // même piège existe dès que le composant se re-rend pendant la saisie) —
+  // lu via une ref pour que cet effet ne se ré-exécute jamais après le
+  // montage et ne vole plus le focus du champ actif.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
     boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, []);
 
   const submit = async () => {
     if (!form.nom || !form.date_naissance) { toast.error("Nom et date de naissance obligatoires"); return; }
@@ -341,12 +349,20 @@ function ModalConsultation({ enfant, patientNom, onClose, saving }) {
   const [form, setForm] = useState({ motif:"Fièvre", type:"consultation", temp:"", fc:"", fr:"", spo2:"", tension_sys:"", tension_dia:"", poids:"", etat_general:"bon", diagnostic:"", gravite:"normal", medicaments:"", posologie:"", conseils:"" });
   const boxRef = useRef(null);
   const titleId = useId();
+  // Extension du correctif fix/modal-focus-loss-on-keystroke : onClose est
+  // une closure inline recréée à chaque frappe (le formulaire est local à
+  // la modale ici, donc moins souvent reproductible qu'ailleurs, mais le
+  // même piège existe dès que le composant se re-rend pendant la saisie) —
+  // lu via une ref pour que cet effet ne se ré-exécute jamais après le
+  // montage et ne vole plus le focus du champ actif.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
     boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, []);
 
   const submit = async () => {
     if (!form.diagnostic) { toast.error("Veuillez saisir un diagnostic"); return; }
@@ -444,12 +460,20 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
   });
   const boxRef = useRef(null);
   const titleId = useId();
+  // Extension du correctif fix/modal-focus-loss-on-keystroke : onClose est
+  // une closure inline recréée à chaque frappe (le formulaire est local à
+  // la modale ici, donc moins souvent reproductible qu'ailleurs, mais le
+  // même piège existe dès que le composant se re-rend pendant la saisie) —
+  // lu via une ref pour que cet effet ne se ré-exécute jamais après le
+  // montage et ne vole plus le focus du champ actif.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
     boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, []);
 
   const submit = async () => {
     if (!enfant?._id) { toast.error("Sélectionnez un patient"); return; }
@@ -499,12 +523,20 @@ function ModalMesure({ enfant, patientNom, onClose, saving }) {
   const [form, setForm] = useState({ poids:"", taille:"", perimetre_cranien:"", date: new Date().toISOString().slice(0,10) });
   const boxRef = useRef(null);
   const titleId = useId();
+  // Extension du correctif fix/modal-focus-loss-on-keystroke : onClose est
+  // une closure inline recréée à chaque frappe (le formulaire est local à
+  // la modale ici, donc moins souvent reproductible qu'ailleurs, mais le
+  // même piège existe dès que le composant se re-rend pendant la saisie) —
+  // lu via une ref pour que cet effet ne se ré-exécute jamais après le
+  // montage et ne vole plus le focus du champ actif.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
     boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, []);
 
   const submit = async () => {
     if (!enfant?._id) { toast.error("Sélectionnez d'abord un patient"); return; }

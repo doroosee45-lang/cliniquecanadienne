@@ -1659,12 +1659,16 @@ function PhotoPicker({ preview, currentUrl, inputRef, onChange, onRemove }) {
 function Modal({ open, onClose, title, children, wide, narrow }) {
   const boxRef = useRef(null);
   const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
-    if (open) boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose, open]);
+  }, []);
+  useEffect(() => {
+    if (open) boxRef.current?.focus();
+  }, [open]);
   if (!open) return null;
   return (
     <div className="pmov" onClick={e => e.target === e.currentTarget && onClose()}>

@@ -341,12 +341,21 @@ function KpiCard({ color, icon, value, label, sub, urgent, onClick }) {
 function Modal({ open, onClose, title, children, maxWidth = 620 }) {
   const boxRef = useRef(null);
   const titleId = useId();
+  // onClose est une closure inline recréée à chaque rendu du parent (ex.
+  // à chaque frappe dans un champ du formulaire, via setFormPatient) — la
+  // garder hors du tableau de dépendances (via une ref) évite que cet
+  // effet se ré-exécute à chaque frappe et ne vole le focus du champ actif
+  // vers le conteneur de la modale.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
-    if (open) boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose, open]);
+  }, []);
+  useEffect(() => {
+    if (open) boxRef.current?.focus();
+  }, [open]);
   if (!open) return null;
   return (
     <div className="mov" onClick={(e) => e.target === e.currentTarget && onClose()}>
