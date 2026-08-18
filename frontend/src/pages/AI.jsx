@@ -386,7 +386,7 @@ export default function IntelligenceArtificielle() {
   const [formAllergiesPatient, setFormAllergiesPatient] = useState("");
 
   // Settings
-  const [settings, setSettings] = useState({
+  const AI_SETTINGS_DEFAULTS = {
     assistant_medical: true,
     analyse_labo: true,
     analyse_imagerie: true,
@@ -397,6 +397,18 @@ export default function IntelligenceArtificielle() {
     analyse_financiere: false,
     langue: "fr",
     niveau_assistance: "standard",
+  };
+  // AUDIT-11 (Vague 2, W3) — jusqu'ici jamais relu : localStorage.setItem
+  // était appelé au clic sur "Enregistrer", mais l'état initial ignorait
+  // systématiquement ce qui avait été sauvegardé, revenant aux valeurs par
+  // défaut à chaque rechargement de page. Le toast de succès n'aurait
+  // continué à mentir que sur un point différent (persistant mais jamais
+  // effectif) si ceci n'était pas corrigé en même temps.
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ai_settings');
+      return saved ? { ...AI_SETTINGS_DEFAULTS, ...JSON.parse(saved) } : AI_SETTINGS_DEFAULTS;
+    } catch { return AI_SETTINGS_DEFAULTS; }
   });
 
   // Alertes lues + données réelles
@@ -1514,12 +1526,18 @@ export default function IntelligenceArtificielle() {
                   <div className="al-ia" style={{ marginTop:8 }}>
                     <div style={{ fontSize:12, color:"#1E40AF" }}>🔒 Toutes les analyses IA sont tracées et archivées conformément aux normes RGPD et aux exigences médicales.</div>
                   </div>
+                  {/* AUDIT-11 (Vague 2, W3) — appelait PUT /ai/settings, une
+                      route qui n'a jamais existé côté backend (ai.routes.js) ;
+                      l'erreur était avalée (.catch(() => {})) et le toast de
+                      succès s'affichait quand même. La persistance
+                      localStorage, elle, est réelle — retiré uniquement
+                      l'appel serveur mort, gardé l'enregistrement local et
+                      son toast, qui reflète désormais un succès véritable. */}
                   <button className="ibtn ibtn-teal ibtn-sm" style={{ marginTop:4 }} disabled={savingSettings} onClick={async () => {
                     setSavingSettings(true);
                     try {
-                      await api.put('/ai/settings', settings).catch(() => {});
                       localStorage.setItem('ai_settings', JSON.stringify(settings));
-                      toast.success('✅ Paramètres IA enregistrés');
+                      toast.success('✅ Paramètres IA enregistrés (sur cet appareil)');
                     } finally { setSavingSettings(false); }
                   }}>
                     {savingSettings ? <><span className="spin" style={{ display:"inline-block" }}>{I.iaS}</span> Enregistrement…</> : <>{I.check} Enregistrer les paramètres</>}
