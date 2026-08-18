@@ -19,7 +19,12 @@ exports.getStats = async (req, res) => {
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const [actives, admissionsJour, sortiesJour, par_triage] = await Promise.all([
+    // AUDIT-B3 — seul ce bloc (attente/consultation/observation/critique +
+    // temps d'attente moyen) chargeait encore la collection filtrée en
+    // mémoire pour compter en JS ; par_triage et le graphique 6 mois
+    // utilisaient déjà .aggregate(). Fusionné dans une agrégation unique,
+    // même pattern que dashboard.controller.js/analytics.controller.js.
+    const [actives, admissionsJour, sortiesJour, par_triage, statsAgg] = await Promise.all([
       Urgence.countDocuments({ statut: { $nin: ['sorti','decede','transfere'] } }),
       Urgence.countDocuments({ date_arrivee: { $gte: today, $lt: tomorrow } }),
       Urgence.countDocuments({ date_sortie: { $gte: today, $lt: tomorrow }, statut: { $in: ['sorti','hospitalise','transfere','decede'] } }),
@@ -27,22 +32,34 @@ exports.getStats = async (req, res) => {
         { $match: { statut: { $nin: ['sorti','decede','transfere'] } } },
         { $group: { _id: '$niveau_triage', count: { $sum: 1 } } },
       ]),
+      Urgence.aggregate([
+        { $match: { statut: { $nin: ['sorti','decede','transfere'] } } },
+        { $group: {
+            _id: null,
+            attente:      { $sum: { $cond: [{ $in: ['$statut', ['attente','triage']] }, 1, 0] } },
+            consultation: { $sum: { $cond: [{ $in: ['$statut', ['consultation','soins']] }, 1, 0] } },
+            observation:  { $sum: { $cond: [{ $eq: ['$statut', 'observation'] }, 1, 0] } },
+            critique:     { $sum: { $cond: [{ $eq: ['$niveau_triage', 'rouge'] }, 1, 0] } },
+            tempsAttenteSum:   { $sum: { $cond: [
+                { $and: [{ $eq: ['$statut', 'attente'] }, { $ne: ['$date_arrivee', null] }] },
+                { $divide: [{ $subtract: ['$$NOW', '$date_arrivee'] }, 60000] },
+                0,
+            ] } },
+            tempsAttenteCount: { $sum: { $cond: [
+                { $and: [{ $eq: ['$statut', 'attente'] }, { $ne: ['$date_arrivee', null] }] }, 1, 0,
+            ] } },
+        } },
+      ]),
     ]);
 
-    const actuel = await Urgence.find({ statut: { $nin: ['sorti','decede','transfere'] } }).select('statut niveau_triage date_arrivee');
-    const attente     = actuel.filter(u => u.statut === 'attente' || u.statut === 'triage').length;
-    const consultation= actuel.filter(u => u.statut === 'consultation' || u.statut === 'soins').length;
-    const observation = actuel.filter(u => u.statut === 'observation').length;
-    const critique    = actuel.filter(u => u.niveau_triage === 'rouge').length;
+    const s = statsAgg[0] || { attente: 0, consultation: 0, observation: 0, critique: 0, tempsAttenteSum: 0, tempsAttenteCount: 0 };
+    const { attente, consultation, observation, critique } = s;
 
     const triageMap = {};
     par_triage.forEach(t => { triageMap[t._id] = t.count; });
 
     // Temps d'attente moyen (minutes)
-    const enAttente = actuel.filter(u => u.statut === 'attente' && u.date_arrivee);
-    const temps_attente_moy = enAttente.length > 0
-      ? Math.round(enAttente.reduce((s, u) => s + Math.floor((Date.now() - new Date(u.date_arrivee)) / 60000), 0) / enAttente.length)
-      : 0;
+    const temps_attente_moy = s.tempsAttenteCount > 0 ? Math.round(s.tempsAttenteSum / s.tempsAttenteCount) : 0;
 
     // Chart flux 6 derniers mois
     const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5); sixMonthsAgo.setDate(1); sixMonthsAgo.setHours(0,0,0,0);

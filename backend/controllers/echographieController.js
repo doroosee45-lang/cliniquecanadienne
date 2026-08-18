@@ -2,6 +2,10 @@ const Echographie = require('../models/Echographie');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction } = require('../utils/helpers');
 
+// AUDIT-B3 — chargeait toute la collection (hors annulées) en mémoire pour
+// compter/bucketer en JS, y compris le graphique 6 mois. Remplacé par des
+// agrégations ciblées, même pattern que dashboard.controller.js/
+// analytics.controller.js.
 // ── GET /echographie/stats
 exports.getStats = async (req, res) => {
   try {
@@ -9,35 +13,59 @@ exports.getStats = async (req, res) => {
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
 
-    const [all, planifAujourd_hui, realisAujourd_hui] = await Promise.all([
-      Echographie.find({ statut: { $ne: 'annulee' } }).select('statut priorite type createdAt updatedAt'),
+    const [kpisAgg, typeAgg, monthlyAgg, planifAujourd_hui, realisAujourd_hui] = await Promise.all([
+      Echographie.aggregate([
+        { $match: { statut: { $ne: 'annulee' } } },
+        { $group: {
+            _id: null,
+            total: { $sum: 1 },
+            en_attente: { $sum: { $cond: [{ $eq: ['$statut', 'en_attente'] }, 1, 0] } },
+            planifiees: { $sum: { $cond: [{ $eq: ['$statut', 'planifiee'] }, 1, 0] } },
+            realisees:  { $sum: { $cond: [{ $eq: ['$statut', 'realisee'] }, 1, 0] } },
+            validees:   { $sum: { $cond: [{ $eq: ['$statut', 'validee'] }, 1, 0] } },
+            urgentes:   { $sum: { $cond: [{ $eq: ['$priorite', 'urgente'] }, 1, 0] } },
+        } },
+      ]),
+      Echographie.aggregate([
+        { $match: { statut: { $ne: 'annulee' } } },
+        { $group: { _id: '$type', count: { $sum: 1 } } },
+      ]),
+      Echographie.aggregate([
+        { $match: { statut: { $ne: 'annulee' }, createdAt: { $gte: sixMonthsAgo } } },
+        { $group: { _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } }, count: { $sum: 1 } } },
+      ]),
       Echographie.countDocuments({ statut: 'planifiee', date_planif: { $gte: today, $lt: tomorrow } }),
       Echographie.countDocuments({ statut: { $in: ['realisee', 'validee'] }, updatedAt: { $gte: today } }),
     ]);
 
+    const k = kpisAgg[0] || { total: 0, en_attente: 0, planifiees: 0, realisees: 0, validees: 0, urgentes: 0 };
     const kpis = {
-      total:                   all.length,
-      en_attente:              all.filter(d => d.statut === 'en_attente').length,
-      planifiees:              all.filter(d => d.statut === 'planifiee').length,
-      realisees:               all.filter(d => d.statut === 'realisee').length,
-      validees:                all.filter(d => d.statut === 'validee').length,
-      urgentes:                all.filter(d => d.priorite === 'urgente').length,
+      total:                   k.total,
+      en_attente:              k.en_attente,
+      planifiees:              k.planifiees,
+      realisees:               k.realisees,
+      validees:                k.validees,
+      urgentes:                k.urgentes,
       planifiees_aujourd_hui:  planifAujourd_hui,
       realisees_aujourd_hui:   realisAujourd_hui,
     };
 
     const typeMap = {};
-    all.forEach(d => { if (d.type) typeMap[d.type] = (typeMap[d.type] || 0) + 1; });
+    typeAgg.forEach(t => { if (t._id) typeMap[t._id] = t.count; });
 
     const now = new Date();
     const labels = [];
     const data   = [];
     for (let i = 5; i >= 0; i--) {
       const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const end   = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
       labels.push(start.toLocaleString('fr-FR', { month: 'short' }));
-      data.push(all.filter(e => new Date(e.createdAt) >= start && new Date(e.createdAt) < end).length);
+      const entry = monthlyAgg.find(m => m._id.year === start.getFullYear() && m._id.month === start.getMonth() + 1);
+      data.push(entry ? entry.count : 0);
     }
 
     res.json({ success: true, kpis, typeMap, chart: { labels, data } });
