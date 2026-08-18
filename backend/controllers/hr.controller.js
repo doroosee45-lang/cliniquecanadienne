@@ -72,6 +72,13 @@ exports.create = async (req, res, next) => {
     if (date_naissance) staffData.date_naissance = date_naissance;
 
     // Créer/trouver un User si email fourni
+    // AUDIT-P2-3 (ticket 0003, piste 1) — le mot de passe généré ici n'était
+    // renvoyé nulle part (ni réponse, ni log, ni email) : aucune personne ne
+    // pouvait le connaître, rendant le compte inutilisable dès sa création
+    // tant qu'un admin ne passait pas explicitement par updateUser pour en
+    // fixer un connu. must_change_password force en plus son changement dès
+    // la première connexion (cohérent avec le flux patient existant).
+    let tempPassword = null;
     if (email) {
       staffData.email = email.toLowerCase();
       let user = await User.findOne({ email: email.toLowerCase() });
@@ -81,16 +88,18 @@ exports.create = async (req, res, next) => {
           radiologue:'radiologue', pharmacien:'pharmacien', sage_femme:'sage_femme',
           administratif:'receptionniste', aide_soignant:'infirmier', maintenance:'receptionniste',
         };
+        tempPassword = `Clinique${crypto.randomBytes(4).toString('hex')}!`;
         try {
           user = await User.create({
             email: email.toLowerCase(),
-            password: `Clinique${crypto.randomBytes(4).toString('hex')}!`,
+            password: tempPassword,
             nom: nom || '',
             prenom: prenom || '',
             role: roleMap[poste] || 'infirmier',
             telephone: telephone || '',
+            must_change_password: true,
           });
-        } catch (_) { /* email déjà pris ou erreur user — on continue sans lien user */ }
+        } catch (_) { tempPassword = null; /* email déjà pris ou erreur user — on continue sans lien user */ }
       }
       if (user) staffData.utilisateur = user._id;
     }
@@ -105,7 +114,7 @@ exports.create = async (req, res, next) => {
       .populate('service', 'nom')
       .lean();
 
-    res.status(201).json({ success: true, staff: normalizeStaff(populated) });
+    res.status(201).json({ success: true, staff: normalizeStaff(populated), temp_password: tempPassword || undefined });
   } catch (err) { next(err); }
 };
 

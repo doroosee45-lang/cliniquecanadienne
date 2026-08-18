@@ -42,11 +42,15 @@ exports.getUsers = async (req, res, next) => {
 // correctif, createUser transmettait req.body quasi tel quel (seuls
 // mot_de_passe et password en étaient retirés) — un appel direct à cette
 // route (superadmin uniquement, mais sans aucune défense en profondeur)
-// pouvait positionner directement role, must_change_password, patient_id,
-// tentatives_echouees, verrouille_jusqu_a, reset_password_token/expire,
-// googleId ou preferences dès la création du compte. updateUser avait déjà
-// reçu ce correctif lors de P2-1 ; createUser avait été manqué.
-const USER_WRITABLE_FIELDS = ['prenom', 'nom', 'email', 'telephone', 'role', 'service', 'statut'];
+// pouvait positionner directement role, patient_id, tentatives_echouees,
+// verrouille_jusqu_a, reset_password_token/expire, googleId ou preferences
+// dès la création du compte. updateUser avait déjà reçu ce correctif lors
+// de P2-1 ; createUser avait été manqué.
+// must_change_password (AUDIT-P2-3, ticket 0003 piste 2) est ajouté
+// explicitement : une case à cocher dédiée d'Administration.jsx le transmet
+// désormais, c'est un chemin d'écriture légitime pour ce champ précis — pas
+// un relâchement de la liste blanche.
+const USER_WRITABLE_FIELDS = ['prenom', 'nom', 'email', 'telephone', 'role', 'service', 'statut', 'must_change_password'];
 
 exports.createUser = async (req, res, next) => {
   try {
