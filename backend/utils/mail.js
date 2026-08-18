@@ -479,4 +479,45 @@ const sendReminderEmail = async ({ email, prenom, nom, date_heure, medecin, type
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail };
+/**
+ * Notifie un membre du personnel que son compte vient d'être suspendu
+ * (settings.controller.js::updateUser, AUDIT-A-4). Le seul canal fiable
+ * dans ce cas : une fois suspendu, l'intéressé ne peut plus se connecter
+ * pour voir la notification in-app.
+ * @param {{ email, prenom, nom }} opts
+ */
+const sendAccountSuspendedEmail = async ({ email, prenom, nom }) => {
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#FEF2F2;border-left:4px solid #DC2626;border-radius:8px;padding:14px 18px;margin-bottom:24px;">
+        <div style="font-size:11px;color:#991B1B;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Compte suspendu</div>
+        <div style="font-size:18px;font-weight:800;color:#0B1E3B;margin-top:4px;">⛔ Votre accès a été suspendu</div>
+      </div>
+      <h2 style="color:#0B1E3B;font-size:17px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Votre compte sur le système MediSync de la Clinique Canadienne de Souanké a été suspendu par un administrateur.
+        Vous ne pouvez plus vous connecter tant que cette suspension n'est pas levée.
+      </p>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Si vous pensez qu'il s'agit d'une erreur, contactez l'administration de la clinique.
+      </p>
+    </div>
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: 'Votre compte a été suspendu — Clinique Canadienne',
+    html,
+  });
+};
+
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail };
