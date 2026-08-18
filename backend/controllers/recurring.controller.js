@@ -1,6 +1,6 @@
 const RecurringProtocol = require('../models/RecurringProtocol');
 const Appointment        = require('../models/Appointment');
-const { logAction }      = require('../utils/helpers');
+const { logAction, checkAppointmentConflict } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 // ── GET ALL ──────────────────────────────────────────────────────────────────
@@ -69,6 +69,14 @@ exports.planifier = async (req, res, next) => {
     const { patient, date_heure, notes } = req.body;
     if (!patient || !date_heure)
       return res.status(400).json({ success: false, message: 'patient et date_heure sont requis.' });
+
+    // AUDIT-P7-6 — planifier() créait le rendez-vous sans aucune
+    // vérification de conflit, contrairement à
+    // appointments.controller.js::create : un protocole récurrent pouvait
+    // planifier une occurrence en plein sur un créneau déjà pris du même
+    // médecin.
+    const conflict = await checkAppointmentConflict({ medecin: protocol.medecin, date_heure, duree_minutes: 30 });
+    if (conflict) return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
 
     // Crée le rendez-vous
     const appt = await Appointment.create({
