@@ -58,40 +58,57 @@ exports.getDossiers = async (req, res) => {
   }
 };
 
-// Statistiques pour tableau de bord et graphiques
+// AUDIT-B3 — chargeait toute la collection en mémoire (DossierChirurgical.find())
+// puis comptait/filtrait en JS, y compris pour le graphique 12 mois. Remplacé
+// par deux agrégations ciblées, même pattern que dashboard.controller.js/
+// analytics.controller.js : les compteurs et le score moyen restent exacts
+// même sur une collection qui dépasse la mémoire disponible côté Node.
 exports.getStats = async (req, res) => {
   try {
-    const dossiers = await DossierChirurgical.find();
-    const total = dossiers.length;
+    const now = new Date();
+    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
 
-    const consultations = dossiers.filter(d => d.statut === 'consultation').length;
-    const preoperatoires = dossiers.filter(d => d.statut === 'preoperatoire').length;
-    const operes = dossiers.filter(d => d.statut === 'opere').length;
-    const suivis_nb = dossiers.filter(d => d.statut === 'suivi_postop').length;
-    const clotures = dossiers.filter(d => d.statut === 'cloture').length;
-    const risques_eleves = dossiers.filter(d => d.ia_risque_niveau === 'eleve' || d.ia_risque_niveau === 'critique').length;
-    const score_moyen = total ? Math.round(dossiers.reduce((s, d) => s + (d.ia_risque_score || 0), 0) / total) : 0;
+    const [kpisAgg, monthlyAgg] = await Promise.all([
+      DossierChirurgical.aggregate([
+        { $group: {
+            _id: null,
+            total: { $sum: 1 },
+            consultations: { $sum: { $cond: [{ $eq: ['$statut', 'consultation'] }, 1, 0] } },
+            preoperatoires: { $sum: { $cond: [{ $eq: ['$statut', 'preoperatoire'] }, 1, 0] } },
+            operes: { $sum: { $cond: [{ $eq: ['$statut', 'opere'] }, 1, 0] } },
+            suivis_nb: { $sum: { $cond: [{ $eq: ['$statut', 'suivi_postop'] }, 1, 0] } },
+            clotures: { $sum: { $cond: [{ $eq: ['$statut', 'cloture'] }, 1, 0] } },
+            risques_eleves: { $sum: { $cond: [{ $in: ['$ia_risque_niveau', ['eleve', 'critique']] }, 1, 0] } },
+            scoreSum: { $sum: { $ifNull: ['$ia_risque_score', 0] } },
+            dossiersAvecComplications: { $sum: { $cond: [{ $gt: ['$nb_complications', 0] }, 1, 0] } },
+        } },
+      ]),
+      // Graphique : interventions par mois (basé sur date_intervention_reelle)
+      DossierChirurgical.aggregate([
+        { $match: { date_intervention_reelle: { $gte: twelveMonthsAgo } } },
+        { $group: {
+            _id: { year: { $year: '$date_intervention_reelle' }, month: { $month: '$date_intervention_reelle' } },
+            count: { $sum: 1 },
+        } },
+      ]),
+    ]);
 
-    // Nombre de dossiers avec au moins une complication
-    const dossiersAvecComplications = dossiers.filter(d => d.nb_complications > 0).length;
-    const taux_compl = total ? parseFloat((dossiersAvecComplications / total * 100).toFixed(1)) : 0;
+    const k = kpisAgg[0] || { total: 0, consultations: 0, preoperatoires: 0, operes: 0, suivis_nb: 0, clotures: 0, risques_eleves: 0, scoreSum: 0, dossiersAvecComplications: 0 };
+    const score_moyen = k.total ? Math.round(k.scoreSum / k.total) : 0;
+    const taux_compl = k.total ? parseFloat((k.dossiersAvecComplications / k.total * 100).toFixed(1)) : 0;
 
-    // Graphique : interventions par mois (basé sur date_intervention_reelle)
     const moisLabels = [];
     const moisData = [];
-    const now = new Date();
     for (let i = 11; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const mois = date.toLocaleString('fr-FR', { month: 'short', year: 'numeric' }).replace('.', '');
       moisLabels.push(mois);
-      const start = new Date(date.getFullYear(), date.getMonth(), 1);
-      const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-      const count = dossiers.filter(d => d.date_intervention_reelle && new Date(d.date_intervention_reelle) >= start && new Date(d.date_intervention_reelle) <= end).length;
-      moisData.push(count);
+      const entry = monthlyAgg.find(m => m._id.year === date.getFullYear() && m._id.month === date.getMonth() + 1);
+      moisData.push(entry ? entry.count : 0);
     }
 
     res.json({
-      kpis: { total, consultations, preoperatoires, operes, suivis_nb, clotures, risques_eleves, score_moyen },
+      kpis: { total: k.total, consultations: k.consultations, preoperatoires: k.preoperatoires, operes: k.operes, suivis_nb: k.suivis_nb, clotures: k.clotures, risques_eleves: k.risques_eleves, score_moyen },
       chart: { labels: moisLabels, data: moisData },
       taux_compl
     });

@@ -3,11 +3,6 @@ const PediatricConsultation  = require('../models/PediatricConsultation');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction, escapeRegex } = require('../utils/helpers');
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function ageEnAns(ddn) {
-  return Math.floor((Date.now() - new Date(ddn)) / (365.25 * 86400000));
-}
-
 // ── Stats / KPIs ──────────────────────────────────────────────────────────────
 exports.getStats = async (req, res) => {
   try {
@@ -31,29 +26,47 @@ exports.getStats = async (req, res) => {
       Child.countDocuments({ statut: 'chronique' }),
     ]);
 
-    // Répartition par âge
-    const allEnfants = await Child.find({}, 'date_naissance');
-    const repartition = { nourr: 0, enfant_petit: 0, enfant_grand: 0, ado: 0 };
-    allEnfants.forEach(e => {
-      const a = ageEnAns(e.date_naissance);
-      if (a < 1) repartition.nourr++;
-      else if (a < 5) repartition.enfant_petit++;
-      else if (a < 10) repartition.enfant_grand++;
-      else repartition.ado++;
-    });
-
-    // Top pathologies (mois courant)
+    // AUDIT-B3 — chargeait toute la collection Child et tous les
+    // PediatricConsultation du mois en mémoire pour les compter en JS.
+    // Remplacé par deux agrégations ciblées, même pattern que
+    // dashboard.controller.js/analytics.controller.js.
     const moisStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const consults  = await PediatricConsultation.find({ date: { $gte: moisStart } }, 'diagnostic');
-    const pathoCounts = {};
-    consults.forEach(c => {
-      const k = c.diagnostic?.toLowerCase() || 'inconnu';
-      pathoCounts[k] = (pathoCounts[k] || 0) + 1;
-    });
-    const topPatho = Object.entries(pathoCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([nom, nb]) => ({ nom, nb }));
+    const MS_PAR_AN = 365.25 * 86400000;
+
+    const [repartitionAgg, topPathoAgg] = await Promise.all([
+      // Répartition par âge — mêmes seuils que l'ancien helper JS ageEnAns()
+      // (âge en années < 1/5/10 ans), calculée côté serveur MongoDB.
+      Child.aggregate([
+        { $project: {
+            ageAns: { $divide: [{ $subtract: ['$$NOW', '$date_naissance'] }, MS_PAR_AN] },
+        } },
+        { $group: {
+            _id: {
+              $switch: {
+                branches: [
+                  { case: { $lt: ['$ageAns', 1] }, then: 'nourr' },
+                  { case: { $lt: ['$ageAns', 5] }, then: 'enfant_petit' },
+                  { case: { $lt: ['$ageAns', 10] }, then: 'enfant_grand' },
+                ],
+                default: 'ado',
+              },
+            },
+            count: { $sum: 1 },
+        } },
+      ]),
+      // Top pathologies (mois courant)
+      PediatricConsultation.aggregate([
+        { $match: { date: { $gte: moisStart } } },
+        { $project: { diagnosticLower: { $toLower: { $ifNull: ['$diagnostic', 'inconnu'] } } } },
+        { $group: { _id: '$diagnosticLower', nb: { $sum: 1 } } },
+        { $sort: { nb: -1 } },
+        { $limit: 6 },
+      ]),
+    ]);
+
+    const repartition = { nourr: 0, enfant_petit: 0, enfant_grand: 0, ado: 0 };
+    repartitionAgg.forEach(r => { repartition[r._id] = r.count; });
+    const topPatho = topPathoAgg.map(r => ({ nom: r._id, nb: r.nb }));
 
     // Consultations 6 derniers mois
     const moisLabels = [];
