@@ -14,6 +14,12 @@ test('analytics.controller — les 4 endpoints réellement utilisés (base réel
   await mongoose.connect(process.env.MONGO_URI);
   const analyticsC = require('../controllers/analytics.controller');
   const Patient = require('../models/Patient');
+  // AUDIT-B4 — getStats/getPatientStats sont désormais mis en cache (TTL
+  // 30s) : sans ce flush, l'appel "après création" de ce test servirait la
+  // réponse en cache d'avant, jamais la donnée fraîche — flushAll() isole
+  // ce test de comportement (correction du calcul) du comportement du
+  // cache lui-même, testé séparément dans auditB4CacheAnalytics.test.js.
+  const { statsCache } = require('../utils/dashboardCache');
 
   const admin = { _id: new mongoose.Types.ObjectId(), role: 'superadmin' };
   const call = async (fn, req) => {
@@ -28,6 +34,7 @@ test('analytics.controller — les 4 endpoints réellement utilisés (base réel
 
   try {
     await t.test('getStats — répond avec la forme attendue et reflète un patient nouveau', async () => {
+      statsCache.flushAll();
       const { body: before } = await call(analyticsC.getStats, { user: admin, query: {} });
       assert.equal(before.success, true);
       assert.ok(before.kpi && typeof before.kpi === 'object', 'la réponse doit contenir kpi{}');
@@ -36,6 +43,7 @@ test('analytics.controller — les 4 endpoints réellement utilisés (base réel
       const patient = await Patient.create({ nom: `T-Analytics-${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M' });
       cleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
+      statsCache.flushAll();
       const { body: after } = await call(analyticsC.getStats, { user: admin, query: {} });
       assert.equal(after.kpi.patients_nouveaux - avantNouveaux, 1, 'patients_nouveaux doit augmenter de 1 après création (période "mois" par défaut couvre aujourd\'hui)');
     });
@@ -60,6 +68,7 @@ test('analytics.controller — les 4 endpoints réellement utilisés (base réel
     });
 
     await t.test('getPatientStats — reflète un patient réellement créé (genre + statut)', async () => {
+      statsCache.flushAll();
       const { body: before } = await call(analyticsC.getPatientStats, { user: admin, query: {} });
       const avantHommes = before.stats.par_genre.hommes;
       const avantActifs = before.stats.par_statut.actifs;
@@ -67,6 +76,7 @@ test('analytics.controller — les 4 endpoints réellement utilisés (base réel
       const patient = await Patient.create({ nom: `T-Analytics2-${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M', statut: 'actif' });
       cleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
+      statsCache.flushAll();
       const { status, body: after } = await call(analyticsC.getPatientStats, { user: admin, query: {} });
       assert.equal(status, 200);
       assert.equal(after.stats.par_genre.hommes - avantHommes, 1, 'un patient de sexe M supplémentaire doit incrémenter par_genre.hommes');
@@ -74,6 +84,7 @@ test('analytics.controller — les 4 endpoints réellement utilisés (base réel
     });
   } finally {
     for (const fn of cleanup) await fn();
+    statsCache.flushAll();
     await mongoose.disconnect();
   }
 });

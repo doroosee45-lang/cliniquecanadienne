@@ -471,3 +471,19 @@ exports.getPatientStats = async (req, res, next) => {
     });
   } catch (err) { next(err); }
 };
+
+// AUDIT-B4 — le cache dashboard (T9.9, TTL 30s) n'était pas étendu aux
+// endpoints Analytics, de coût comparable (mêmes agrégations lourdes sur
+// les mêmes collections, même audience superadmin/adminclinique). Réassigné
+// ici, après toutes les définitions, même schéma que
+// dashboard.controller.js : exports.<fn> lit exports.<fn> au moment de
+// l'appel (pas à l'import), donc cette réassignation couvre bien tout
+// appel entrant via les routes. getStats est seul concerné par une clé
+// dépendant de la requête (req.query.periode) — les 3 autres n'ont aucun
+// paramètre qui changerait le résultat, clé globale comme
+// medecinStats/superAdminStats côté dashboard.
+const { cacheStats } = require('../utils/dashboardCache');
+exports.getStats        = cacheStats('analyticsStats', (req) => req.query.periode || 'mois', exports.getStats);
+exports.getReport       = cacheStats('analyticsReport', false, exports.getReport);
+exports.getFinancial    = cacheStats('analyticsFinancial', false, exports.getFinancial);
+exports.getPatientStats = cacheStats('analyticsPatientStats', false, exports.getPatientStats);

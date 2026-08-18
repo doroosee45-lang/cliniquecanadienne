@@ -11,13 +11,19 @@ const NodeCache = require('node-cache');
 const STATS_TTL_SECONDS = 30;
 const statsCache = new NodeCache({ stdTTL: STATS_TTL_SECONDS, checkperiod: 60 });
 
-// personalized: true pour les handlers qui filtrent par req.user._id
+// personalized : true pour les handlers qui filtrent par req.user._id
 // (medecinStats: "mes patients" ; receptionnisteStats: messages non lus
 // de l'utilisateur) — la clé de cache doit alors inclure l'utilisateur
-// pour ne jamais servir les stats d'un médecin à un autre.
+// pour ne jamais servir les stats d'un médecin à un autre. Accepte aussi
+// une fonction (req) => suffixe (AUDIT-B4) : nécessaire pour
+// analytics.controller.js::getStats, dont la fenêtre temporelle dépend de
+// req.query.periode — un même cacheKey global aurait servi le résultat
+// d'une période à une requête pour une autre période.
 function cacheStats(cacheKey, personalized, handler) {
   return async (req, res, next) => {
-    const key = personalized ? `${cacheKey}:${req.user._id}` : cacheKey;
+    const key = typeof personalized === 'function'
+      ? `${cacheKey}:${personalized(req)}`
+      : personalized ? `${cacheKey}:${req.user._id}` : cacheKey;
     const hit = statsCache.get(key);
     if (hit !== undefined) {
       // res.set est un en-tête de diagnostic optionnel — de nombreux tests
