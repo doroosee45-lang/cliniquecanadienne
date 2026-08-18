@@ -89,11 +89,15 @@ test('couverture fonctionnelle — pharmacie, hospitalisation (base réelle)', {
       assert.equal(String(bed.patient_actuel), String(patient._id));
 
       // Tenter d'admettre un second patient sur le même lit doit être refusé.
+      // AUDIT-P7-5 — 400 → 409 (Conflict) : ce n'est plus une requête malformée
+      // mais un conflit d'état détecté par le findOneAndUpdate atomique. Test
+      // de concurrence réelle (N réservations simultanées) dans
+      // auditP7-5ReservationLitAtomique.test.js.
       const patient2 = await Patient.create({ nom: `T95G3b${stamp}`, prenom: 'P2', date_naissance: '1990-01-01', sexe: 'F' });
       cleanup.push(() => Patient.findByIdAndDelete(patient2._id));
       const { status: status2, body: body2 } = await call(hospC.create, { body: { patient: patient2._id, motif_entree: 'Observation', lit_numero: 'L1', chambre: room._id }, user });
-      assert.equal(status2, 400);
-      assert.match(body2.message, /n'est pas disponible/);
+      assert.equal(status2, 409);
+      assert.match(body2.message, /n'est plus disponible/);
     });
 
     await t.test('hospitalization.controller.addNote ajoute une note clinique horodatée avec son auteur', async () => {

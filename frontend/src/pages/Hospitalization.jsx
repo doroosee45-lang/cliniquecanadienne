@@ -391,6 +391,7 @@ function DoughnutChart({ labels, data, colors, height = 180 }) {
 export default function Hospitalisation() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const rooms = useSelector(selectRooms);
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => {
@@ -533,7 +534,13 @@ export default function Hospitalisation() {
     loadStats();
     loadPatients();
     loadLits();
-  }, [loadHosps, loadStats, loadPatients, loadLits]);
+    // AUDIT-P7-5 — fetchRooms/selectRooms étaient importés mais jamais
+    // utilisés : nécessaire pour bâtir un vrai sélecteur chambre→lit (le
+    // champ "Chambre" était en texte libre, jamais un ObjectId réel, donc
+    // hospitalization.controller.js::create ne liait jamais réellement de
+    // lit — le correctif d'atomicité serait resté inatteignable sans ça).
+    dispatch(fetchRooms());
+  }, [loadHosps, loadStats, loadPatients, loadLits, dispatch]);
 
   // ── Refresh temps réel ───────────────────────────────────
   useRealtimeRefresh(() => {
@@ -596,12 +603,20 @@ export default function Hospitalisation() {
       setTimeout(() => {
         loadHosps();
         loadAllForKpis();
+        // AUDIT-P7-5 — sans ce refetch, le lit qui vient d'être réservé
+        // resterait affiché comme "libre" dans le sélecteur pour la
+        // prochaine admission jusqu'au prochain montage du composant.
+        dispatch(fetchRooms());
       }, 500);
 
     } catch(err) {
       console.error("Erreur création admission:", err);
       const errMsg = err?.response?.data?.message || "Erreur serveur";
       toast.error(`❌ Échec de l'admission : ${errMsg}`, { id: toastId, duration: 6000 });
+      // AUDIT-P7-5 — un 409 signifie qu'un autre lit a été pris entre-temps
+      // (course perdue) : rafraîchir pour que le sélecteur, toujours ouvert,
+      // ne propose plus ce lit désormais occupé.
+      dispatch(fetchRooms());
     } finally {
       setSaving(false);
     }
@@ -1826,13 +1841,30 @@ export default function Hospitalisation() {
                   <option value="vip">VIP (75 000 CFA/nuit)</option>
                 </select>
               </div>
+              {/* AUDIT-P7-5 — ces deux champs étaient en texte libre ("A12", "01"...),
+                  jamais liés à un vrai Room/lit : hospitalization.controller.js::create
+                  ne matche la branche de réservation que si chambre est un ObjectId
+                  valide (isObjectId(chambreRaw)), ce qui n'arrivait jamais en pratique.
+                  Le lit n'était donc jamais réellement réservé ni marqué occupé — la
+                  correction d'atomicité du contrôleur serait restée inatteignable sans
+                  ce sélecteur réel. */}
               <div>
                 <label className="hlbl">Chambre</label>
-                <input className="hinp" placeholder="Ex: A12, B05..." value={formHosp.chambre} onChange={e => setFormHosp(f=>({...f,chambre:e.target.value}))} />
+                <select className="hinp" value={formHosp.chambre} onChange={e => setFormHosp(f=>({...f,chambre:e.target.value,lit:""}))}>
+                  <option value="">— Non attribuée —</option>
+                  {rooms.map(r => (
+                    <option key={r._id} value={r._id}>{r.numero}{r.service?.nom ? ` — ${r.service.nom}` : ""} ({(r.lits||[]).filter(l=>l.statut==="libre").length} lit(s) libre(s))</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="hlbl">Numéro de lit</label>
-                <input className="hinp" placeholder="Ex: 01, 02..." value={formHosp.lit} onChange={e => setFormHosp(f=>({...f,lit:e.target.value}))} />
+                <select className="hinp" value={formHosp.lit} onChange={e => setFormHosp(f=>({...f,lit:e.target.value}))} disabled={!formHosp.chambre}>
+                  <option value="">{formHosp.chambre ? "— Sélectionner un lit libre —" : "— Choisir une chambre d'abord —"}</option>
+                  {(rooms.find(r => r._id === formHosp.chambre)?.lits || []).filter(l => l.statut === "libre").map(l => (
+                    <option key={l._id} value={l.numero}>Lit {l.numero}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="hlbl">Personne à contacter (urgence)</label>
