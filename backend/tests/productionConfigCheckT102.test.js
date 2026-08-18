@@ -16,7 +16,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
-const { checkProductionConfig, KNOWN_SEED_EMAILS, JWT_MIN_LENGTH } = require('../utils/checkProductionConfig');
+const { checkProductionConfig, KNOWN_SEED_EMAILS, JWT_MIN_LENGTH, JWT_PLACEHOLDER_MARKERS } = require('../utils/checkProductionConfig');
 
 const MONGOD_PATH = 'C:\\Program Files\\MongoDB\\Server\\8.2\\bin\\mongod.exe';
 
@@ -75,8 +75,12 @@ test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart 
     assert.ok(findings.some(f => f.check === 'JWT_SECRET'), 'doit signaler JWT_SECRET trop court');
   });
 
-  await t.test('JWT_SECRET = placeholder connu (même valeur que le .env de développement de ce dépôt) — signalé', async () => {
-    const findings = await checkProductionConfig({ env: { ...GOOD_ENV, JWT_SECRET: 'medisync_jwt_secret_clinique_canadienne_souanke_2024_secure_key_change_in_production' } });
+  await t.test('JWT_SECRET contenant un marqueur de placeholder connu — signalé', async () => {
+    // Valeur synthétique construite à partir du marqueur lui-même (pas la
+    // vraie valeur du .env de développement de ce dépôt) — un test ne doit
+    // jamais faire porter un secret réel dans l'historique git, même un
+    // secret de développement non sensible en production.
+    const findings = await checkProductionConfig({ env: { ...GOOD_ENV, JWT_SECRET: `synthetic_test_value_${JWT_PLACEHOLDER_MARKERS[1]}_${'x'.repeat(30)}` } });
     assert.ok(findings.some(f => f.check === 'JWT_SECRET'), 'doit signaler un JWT_SECRET non régénéré');
   });
 
