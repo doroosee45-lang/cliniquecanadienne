@@ -1300,31 +1300,17 @@ export default function Archivage() {
                 ))}
               </div>
 
-              <div>
-                <div style={{ fontSize:12, fontWeight:700, color:"var(--am)", textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>📄 Documents disponibles</div>
-                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:8 }}>
-                  {[
-                    ["📋","Dossier médical complet","PDF · 1.2 Mo"],
-                    ["💊","Ordonnances","PDF · 0.3 Mo"],
-                    ["📊","Résultats examens","PDF · 0.5 Mo"],
-                    ["🖼","Images médicales","ZIP · 2.4 Mo"],
-                    ["🧾","Factures","PDF · 0.1 Mo"],
-                    ["✍️","Consentements signés","PDF · 0.3 Mo"],
-                  ].slice(0, currentArc.nb_docs || 3).map(([ico,nom,size]) => (
-                    <div key={nom} style={{ background:"#F8FAFD", border:"1.5px solid var(--abr)", borderRadius:10, padding:"10px 12px", display:"flex", alignItems:"center", gap:10 }}>
-                      <span style={{ fontSize:18 }}>{ico}</span>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:12, fontWeight:600, color:"var(--an)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{nom}</div>
-                        <div style={{ fontSize:10, color:"var(--am)" }}>{size}</div>
-                      </div>
-                      <button className="abtn abtn-ghost abtn-sm" style={{ padding:"4px 8px" }} onClick={() => toast.success(`📥 Téléchargement : ${nom}`)}>{I.download}</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
+              {/* AUDIT-11 (Vague 2, W5) — le panneau "Documents disponibles"
+                  qui occupait cet espace était entièrement factice : liste
+                  de documents codée en dur (nom/taille inventés, tronquée à
+                  nb_docs sans rapport avec de vrais fichiers), bouton de
+                  téléchargement par document sans effet, "Télécharger tout"
+                  sans export réel. Retiré plutôt que reconstruit — dépend du
+                  module Documents plus large (P7-9), hors périmètre ici.
+                  "Imprimer" (ci-dessous) reste également un toast sans effet
+                  réel, non traité par ce correctif (hors du périmètre W5),
+                  à signaler séparément. */}
               <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
-                <button className="abtn abtn-ghost" onClick={() => { setModalView(false); toast.success(`📥 Export complet : ${currentArc.reference}`); }}>{I.download} Télécharger tout</button>
                 <button className="abtn abtn-ghost" onClick={() => toast.success(`🖨 Impression : ${currentArc.reference}`)}>{I.print} Imprimer</button>
                 {currentArc.statut !== "restauré" && (
                   <button className="abtn abtn-success" onClick={() => { setModalView(false); handleRestore(currentArc); }}>{I.restore} Restaurer</button>
