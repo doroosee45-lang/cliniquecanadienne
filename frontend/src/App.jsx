@@ -185,67 +185,73 @@
 
 
 
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
 import Layout from './components/Layout/Layout';
 import Spinner from './components/UI/Spinner';
+import { Toaster } from 'react-hot-toast';
 
+// AUDIT-F3 — aucun découpage de code : toutes les pages étaient importées
+// statiquement, donc chargées d'un bloc dans le bundle principal quel que
+// soit le rôle connecté ou la route visitée (3,4 Mo / 881 Ko gzippé avant ce
+// correctif). Converti en React.lazy() par route : chaque page devient son
+// propre chunk, chargé au moment de la navigation, pas au chargement initial.
 // ─── Pages Publiques ──────────────────────────────────────────────────────────
-import Home             from './pages/home';
-import Login            from './pages/Login';
-import ForgotPassword   from './pages/ForgotPassword';
-import ResetPassword    from './pages/ResetPassword';
-import ActivationPatient from './pages/ActivationPatient';
-import NotFound         from './pages/NotFound';
+const Home              = lazy(() => import('./pages/home'));
+const Login             = lazy(() => import('./pages/Login'));
+const ForgotPassword    = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword     = lazy(() => import('./pages/ResetPassword'));
+const ActivationPatient = lazy(() => import('./pages/ActivationPatient'));
+const NotFound          = lazy(() => import('./pages/NotFound'));
 
 // ─── Tableau de bord ──────────────────────────────────────────────────────────
-import Dashboard        from './pages/Dashboard';
+const Dashboard         = lazy(() => import('./pages/Dashboard'));
 
 // ─── Patients ─────────────────────────────────────────────────────────────────
-import Patients         from './pages/Patients';
-import PatientDetail    from './pages/PatientDetail';
+const Patients          = lazy(() => import('./pages/Patients'));
+const PatientDetail     = lazy(() => import('./pages/PatientDetail'));
 
 // ─── Agenda & Consultations ───────────────────────────────────────────────────
-import Appointments     from './pages/Appointments';
-import Consultations    from './pages/Consultations';
-import Prescriptions    from './pages/Prescriptions';
+const Appointments      = lazy(() => import('./pages/Appointments'));
+const Consultations     = lazy(() => import('./pages/Consultations'));
+const Prescriptions     = lazy(() => import('./pages/Prescriptions'));
 
 // ─── Hospitalisation & Chirurgie ──────────────────────────────────────────────
-import Hospitalization  from './pages/Hospitalization';
-import Chirurgie        from './pages/Chirurgie';
-import Blocoperatoire   from './pages/Blocoperatoire';
+const Hospitalization   = lazy(() => import('./pages/Hospitalization'));
+const Chirurgie         = lazy(() => import('./pages/Chirurgie'));
+const Blocoperatoire    = lazy(() => import('./pages/Blocoperatoire'));
 
 // ─── Urgences & Spécialités ───────────────────────────────────────────────────
-import Urgences         from './pages/Urgences';
-import Pediatrie        from './pages/Pediatrie';
-import Maternite        from './pages/Maternite';
+const Urgences          = lazy(() => import('./pages/Urgences'));
+const Pediatrie         = lazy(() => import('./pages/Pediatrie'));
+const Maternite         = lazy(() => import('./pages/Maternite'));
 
 // ─── Paraclinique ─────────────────────────────────────────────────────────────
-import Laboratory       from './pages/Laboratory';
-import Radiology        from './pages/Radiology';
-import Echographie      from './pages/Echographie';
+const Laboratory        = lazy(() => import('./pages/Laboratory'));
+const Radiology         = lazy(() => import('./pages/Radiology'));
+const Echographie       = lazy(() => import('./pages/Echographie'));
 
 // ─── Pharmacie ────────────────────────────────────────────────────────────────
-import Pharmacy         from './pages/Pharmacy';
+const Pharmacy          = lazy(() => import('./pages/Pharmacy'));
 
 // ─── Administration & Finance ─────────────────────────────────────────────────
-import HR               from './pages/HR';
-import Finance          from './pages/Finance';
-import InvoicePrint     from './pages/InvoicePrint';
-import Administration   from './pages/Administration';
-import Settings         from './pages/Settings';
+const HR                = lazy(() => import('./pages/HR'));
+const Finance            = lazy(() => import('./pages/Finance'));
+const InvoicePrint       = lazy(() => import('./pages/InvoicePrint'));
+const Administration     = lazy(() => import('./pages/Administration'));
+const Settings           = lazy(() => import('./pages/Settings'));
 
 // ─── Outils & Communication ───────────────────────────────────────────────────
-import Messages         from './pages/Messages';
-import AI               from './pages/AI';
-import Archive          from './pages/Archive';
-import Audit            from './pages/Audit';
-import Analytics        from './pages/Analytics';
+const Messages           = lazy(() => import('./pages/Messages'));
+const AI                 = lazy(() => import('./pages/AI'));
+const Archive            = lazy(() => import('./pages/Archive'));
+const Audit              = lazy(() => import('./pages/Audit'));
+const Analytics          = lazy(() => import('./pages/Analytics'));
 
 // ─── Portail Patient ──────────────────────────────────────────────────────────
-import Portal           from './pages/Portal';
-import { Toaster }      from 'react-hot-toast';
+const Portal             = lazy(() => import('./pages/Portal'));
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,6 +312,7 @@ const AppRoutes = () => {
   if (loading) return <FullPageSpinner />;
 
   return (
+    <Suspense fallback={<FullPageSpinner />}>
     <Routes>
 
       {/* ── Pages publiques (sans connexion) ─────────────────────────────── */}
@@ -379,6 +386,7 @@ const AppRoutes = () => {
       <Route path="*" element={<NotFound />} />
 
     </Routes>
+    </Suspense>
   );
 };
 
