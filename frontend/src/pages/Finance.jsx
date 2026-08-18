@@ -2,7 +2,7 @@
 
 
 
-import { useState, useEffect, useCallback, useRef, useId } from "react";
+import { useState, useEffect, useCallback, useRef, useId, useMemo, memo } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchInvoices, fetchFinanceStats, createInvoice, recordPayment,
@@ -492,7 +492,14 @@ const I = {
 };
 
 // ─── Chart.js components ──────────────────────────────────────
-function BarChart({ labels, data, color = "#1B4F9E", height = 200 }) {
+// AUDIT-F4 — enveloppés dans memo() : sans ça, chaque re-rendu du parent
+// (même pour une raison sans rapport avec le graphique) démontait et
+// recréait l'instance Chart.js entière, à cause de useEffect([labels,
+// data/datasets, ...]) dont la comparaison par référence échoue dès que
+// l'appelant passe un littéral tableau/objet inline recréé à chaque rendu.
+// memo() seul ne suffit pas si l'appelant continue de recréer ces
+// références — cf. les useMemo ajoutés aux points d'appel plus bas.
+const BarChart = memo(function BarChart({ labels, data, color = "#1B4F9E", height = 200 }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
   useEffect(() => {
@@ -508,9 +515,9 @@ function BarChart({ labels, data, color = "#1B4F9E", height = 200 }) {
     return () => { if (chartRef.current) chartRef.current.destroy(); };
   }, [labels, data, color]);
   return <canvas ref={ref} style={{ maxHeight: height }} />;
-}
+});
 
-function LineChart({ labels, datasets, height = 180 }) {
+const LineChart = memo(function LineChart({ labels, datasets, height = 180 }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
   useEffect(() => {
@@ -526,9 +533,9 @@ function LineChart({ labels, datasets, height = 180 }) {
     return () => { if (chartRef.current) chartRef.current.destroy(); };
   }, [labels, datasets]);
   return <canvas ref={ref} style={{ maxHeight: height }} />;
-}
+});
 
-function DoughnutChart({ labels, data, colors, height = 180 }) {
+const DoughnutChart = memo(function DoughnutChart({ labels, data, colors, height = 180 }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
   useEffect(() => {
@@ -544,7 +551,7 @@ function DoughnutChart({ labels, data, colors, height = 180 }) {
     return () => { if (chartRef.current) chartRef.current.destroy(); };
   }, [labels, data, colors]);
   return <canvas ref={ref} style={{ maxHeight: height }} />;
-}
+});
 
 function Prog({ pct, color }) {
   return <div className="fin-prog"><div className="fin-prog-f" style={{ width: `${Math.min(100, pct)}%`, background: color }} /></div>;
@@ -622,6 +629,16 @@ const CAT_DEP_COLOR = {
   "Maintenance": "#DC2626",
   "Transport": "#CA8A04",
 };
+
+// AUDIT-F4 — hissés au niveau module : ces tableaux étaient recréés à
+// chaque rendu du composant (littéral inline dans le corps de la fonction)
+// bien qu'ils ne dépendent d'aucune donnée — une nouvelle référence à
+// chaque rendu invalidait systématiquement la comparaison superficielle de
+// memo() sur les graphiques qui les reçoivent en props.
+const MOIS          = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+const SERVICE_KEYS   = ["Consultation","Laboratoire","Chirurgie","Imagerie","Hospitalisation","Pharmacie","Maternité","Urgences"];
+const SERVICE_SHORT  = ["Consultation","Labo","Chirurgie","Imagerie","Hospit.","Pharmacie","Maternité","Urgences"];
+const SERVICE_COLORS = ["#0EA5A0","#7C3AED","#DC2626","#059669","#1B4F9E","#D97706","#CA8A04","#6B7A99"];
 
 // ─── EMPTY FORMS ──────────────────────────────────────────────
 const EMPTY_REVENU = { date: new Date().toISOString().substring(0, 10), service: "Consultation", patient: "", reference: "", montant: "", mode: "especes", statut: "paye", notes: "" };
@@ -746,18 +763,37 @@ export default function Finance() {
   const soldeCaisse    = kpis.solde_caisse || 0;
   const tauxRecouvrement = totalRevenus > 0 ? Math.round(((totalRevenus - montantImpaye) / totalRevenus) * 100) : 0;
 
+  // AUDIT-F4 — mémoïsés : recalculés seulement quand revenus/depenses
+  // changent réellement, pas à chaque rendu (ex: frappe dans un champ de
+  // recherche sans rapport). Référence stable en sortie tant que les
+  // dépendances ne changent pas, condition nécessaire pour que memo() sur
+  // les graphiques Chart.js serve à quelque chose.
   // ── Agrégations par mois (depuis les données réelles) ────────
-  const revByMonth = Array(12).fill(0);
-  revenus.forEach(r => { const m = r.date ? new Date(r.date).getMonth() : -1; if (m >= 0) revByMonth[m] += Number(r.montant||0); });
-  const depByMonth = Array(12).fill(0);
-  depenses.forEach(d => { const m = d.date ? new Date(d.date).getMonth() : -1; if (m >= 0) depByMonth[m] += Number(d.montant||0); });
-  const benefByMonth = revByMonth.map((r, i) => r - depByMonth[i]);
+  const revByMonth = useMemo(() => {
+    const arr = Array(12).fill(0);
+    revenus.forEach(r => { const m = r.date ? new Date(r.date).getMonth() : -1; if (m >= 0) arr[m] += Number(r.montant||0); });
+    return arr;
+  }, [revenus]);
+  const depByMonth = useMemo(() => {
+    const arr = Array(12).fill(0);
+    depenses.forEach(d => { const m = d.date ? new Date(d.date).getMonth() : -1; if (m >= 0) arr[m] += Number(d.montant||0); });
+    return arr;
+  }, [depenses]);
+  const benefByMonth = useMemo(() => revByMonth.map((r, i) => r - depByMonth[i]), [revByMonth, depByMonth]);
 
   // ── Agrégations par service (depuis les données réelles) ─────
-  const SERVICE_KEYS   = ["Consultation","Laboratoire","Chirurgie","Imagerie","Hospitalisation","Pharmacie","Maternité","Urgences"];
-  const SERVICE_SHORT  = ["Consultation","Labo","Chirurgie","Imagerie","Hospit.","Pharmacie","Maternité","Urgences"];
-  const SERVICE_COLORS = ["#0EA5A0","#7C3AED","#DC2626","#059669","#1B4F9E","#D97706","#CA8A04","#6B7A99"];
-  const revByService   = SERVICE_KEYS.map(s => revenus.filter(r => r.service === s).reduce((sum,r) => sum + Number(r.montant||0), 0));
+  const revByService = useMemo(
+    () => SERVICE_KEYS.map(s => revenus.filter(r => r.service === s).reduce((sum,r) => sum + Number(r.montant||0), 0)),
+    [revenus]
+  );
+  // AUDIT-F4 — datasets du LineChart "Revenus & Dépenses — 12 mois",
+  // jusqu'ici un littéral inline recréé à chaque rendu (cf. commentaire au
+  // point d'appel).
+  const revDepChartDatasets = useMemo(() => [
+    { label:"Revenus", data:revByMonth, borderColor:"#059669", pointBackgroundColor:"#059669" },
+    { label:"Dépenses", data:depByMonth, borderColor:"#DC2626", pointBackgroundColor:"#DC2626" },
+    { label:"Bénéfice", data:benefByMonth, borderColor:"#0EA5A0", pointBackgroundColor:"#0EA5A0" },
+  ], [revByMonth, depByMonth, benefByMonth]);
 
   // ── Encaissements par mode (depuis paiements réels) ──────────
   const encByMode = { especes:0, mobile_money:0, virement:0, assurance:0, carte:0 };
@@ -912,9 +948,6 @@ export default function Finance() {
     if (filterCatDep && d.categorie !== filterCatDep) return false;
     return true;
   });
-
-  // ── Mois labels ──────────────────────────────────────────
-  const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
   // ── Export PDF ───────────────────────────────────────────────
   const exportFinancePDF = () => {
@@ -1105,11 +1138,7 @@ export default function Finance() {
                   <div style={{ padding:20 }}>
                     <LineChart
                       labels={MOIS}
-                      datasets={[
-                        { label:"Revenus", data:revByMonth, borderColor:"#059669", pointBackgroundColor:"#059669" },
-                        { label:"Dépenses", data:depByMonth, borderColor:"#DC2626", pointBackgroundColor:"#DC2626" },
-                        { label:"Bénéfice", data:benefByMonth, borderColor:"#0EA5A0", pointBackgroundColor:"#0EA5A0" },
-                      ]}
+                      datasets={revDepChartDatasets}
                       height={200}
                     />
                   </div>
