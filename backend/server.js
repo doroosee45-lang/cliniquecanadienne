@@ -161,9 +161,14 @@ app.use(hpp());
 // Logging
 if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
 
-// Static uploads — protégé par JWT (les fichiers médicaux ne sont pas publics)
+// Static uploads — AUDIT-S-1 : express.static protégé seulement par
+// l'authentification (protect) laissait n'importe quel compte accéder à
+// n'importe quel fichier ; uploads.controller.js réapplique un contrôle de
+// rôle par sous-répertoire, cohérent avec les CAN_READ des routes qui
+// produisent ces fichiers.
 const { protect: protectUploads } = require('./middleware/auth');
-app.use('/uploads', protectUploads, express.static(path.join(__dirname, 'uploads')));
+const uploadsController = require('./controllers/uploads.controller');
+app.get('/uploads/*', protectUploads, uploadsController.serveUpload);
 
 // Health check
 app.get('/api/health', (req, res) => {
