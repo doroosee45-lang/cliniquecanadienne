@@ -11,6 +11,7 @@ import {
   createConsultation,
   addVaccination,
   addMesureCroissance,
+  addMaladieChronique,
   setFilters,
   selectPediatrieStats,
   selectRepartitionAge,
@@ -572,6 +573,93 @@ function ModalMesure({ enfant, patientNom, onClose, saving }) {
             <div className="pfield"><label className="plabel">Périmètre crânien (cm)</label><input type="number" min="0" step="0.1" className="pinput" placeholder="Optionnel" value={form.perimetre_cranien} onChange={e=>setForm({...form,perimetre_cranien:e.target.value})}/></div>
           </div>
           <div className="pfield"><label className="plabel">Date de la mesure</label><input type="date" className="pinput" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></div>
+          <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:8 }}>
+            <button className="pbtn pbtn-ghost" onClick={onClose}>Annuler</button>
+            <button className="pbtn pbtn-green" onClick={submit} disabled={saving}>{saving?"⏳ Enregistrement...":"💾 Enregistrer"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL Maladie chronique ───────────────────────────────────
+// AUDIT-P6-6 — addMaladieChronique existait dans pediatrieSlice.js (backend
+// déjà fonctionnel, addMaladieChron) mais n'était jamais importé ni
+// dispatché : le bouton "Nouveau dossier" de l'onglet Chroniques était un
+// toast.success factice, aucune maladie chronique n'était jamais réellement
+// persistée. Contrairement aux autres modales de cette page, l'enfant n'est
+// pas toujours pré-sélectionné (le bouton d'en-tête n'a pas de contexte),
+// d'où le sélecteur ci-dessous quand enfant est null.
+function ModalMaladieChron({ enfant, enfants, onClose, saving }) {
+  const dispatch = useDispatch();
+  const [enfantId, setEnfantId] = useState(enfant?._id || "");
+  const [form, setForm] = useState({
+    maladie:"", date_diagnostic:"", traitement:"", controle:"bien", notes:"",
+  });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  const cibleNom = enfant
+    ? `${enfant.prenom||""} ${enfant.nom||""}`.trim()
+    : (enfants.find(e => e._id === enfantId) ? `${enfants.find(e => e._id === enfantId).prenom||""} ${enfants.find(e => e._id === enfantId).nom||""}`.trim() : "");
+
+  const submit = async () => {
+    if (!enfantId) { toast.error("Sélectionnez d'abord un enfant"); return; }
+    if (!form.maladie.trim()) { toast.error("Le nom de la maladie est requis"); return; }
+    const body = { maladie: form.maladie.trim(), controle: form.controle };
+    if (form.date_diagnostic) body.date_diagnostic = form.date_diagnostic;
+    if (form.traitement) body.traitement = form.traitement;
+    if (form.notes) body.notes = form.notes;
+    const result = await dispatch(addMaladieChronique({ id: enfantId, body }));
+    if (addMaladieChronique.fulfilled.match(result)) {
+      toast.success(`📋 Maladie chronique enregistrée pour ${cibleNom || "l'enfant"}`);
+      onClose();
+    } else {
+      toast.error(result.payload || "Erreur enregistrement maladie chronique");
+    }
+  };
+
+  return (
+    <div className="ped-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div ref={boxRef} className="ped-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+        <div className="ped-modal-hdr">
+          <h2 id={titleId}>📋 Nouvelle maladie chronique{cibleNom ? ` — ${cibleNom}` : ""}</h2>
+          <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
+        </div>
+        <div className="ped-modal-body">
+          {!enfant && (
+            <div className="pfield">
+              <label className="plabel">Enfant *</label>
+              <select className="pinput" value={enfantId} onChange={e=>setEnfantId(e.target.value)}>
+                <option value="">— Sélectionner —</option>
+                {enfants.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="pfield"><label className="plabel">Maladie *</label><input className="pinput" placeholder="Ex: Asthme, Diabète type 1..." value={form.maladie} onChange={e=>setForm({...form,maladie:e.target.value})}/></div>
+          <div className="pg3">
+            <div className="pfield"><label className="plabel">Date de diagnostic</label><input type="date" className="pinput" value={form.date_diagnostic} onChange={e=>setForm({...form,date_diagnostic:e.target.value})}/></div>
+            <div className="pfield">
+              <label className="plabel">Contrôle</label>
+              <select className="pinput" value={form.controle} onChange={e=>setForm({...form,controle:e.target.value})}>
+                <option value="bien">Bien contrôlé</option>
+                <option value="acceptable">Acceptable</option>
+                <option value="modere">Modéré</option>
+                <option value="mauvais">Mauvais</option>
+              </select>
+            </div>
+            <div className="pfield"><label className="plabel">Traitement</label><input className="pinput" placeholder="Ex: Ventoline si besoin" value={form.traitement} onChange={e=>setForm({...form,traitement:e.target.value})}/></div>
+          </div>
+          <div className="pfield"><label className="plabel">Notes</label><textarea className="pinput" rows={2} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} style={{resize:"vertical"}}/></div>
           <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:8 }}>
             <button className="pbtn pbtn-ghost" onClick={onClose}>Annuler</button>
             <button className="pbtn pbtn-green" onClick={submit} disabled={saving}>{saving?"⏳ Enregistrement...":"💾 Enregistrer"}</button>
@@ -1278,7 +1366,7 @@ export default function Pediatrie() {
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                 <div className="sec-lbl">📋 Maladies chroniques pédiatriques</div>
-                <button className="pbtn pbtn-green" onClick={() => toast.success("➕ Nouveau dossier maladie chronique")}>➕ Nouveau dossier</button>
+                <button className="pbtn pbtn-green" onClick={() => openModal("maladieChron")}>➕ Nouveau dossier</button>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:14, marginBottom:20 }}>
@@ -1312,6 +1400,7 @@ export default function Pediatrie() {
                       ))}
                       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                         <button className="pbtn pbtn-green pbtn-sm" onClick={() => openModal("consultation", e)}>🩺 Consulter</button>
+                        <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => openModal("maladieChron", e)}>➕ Ajouter maladie</button>
                         <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success(`📅 RDV programmé — ${e.prenom} ${e.nom}`)}>📅 RDV</button>
                         <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📄 Rapport de suivi imprimé")}>📄 Rapport</button>
                         <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📨 Rappel envoyé aux parents")}>📨 Rappel parents</button>
@@ -1479,6 +1568,14 @@ export default function Pediatrie() {
           enfant={selectedEnfant}
           patientNom={`${selectedEnfant.prenom||""} ${selectedEnfant.nom}`.trim()}
           onClose={() => setMesureModalOpen(false)}
+          saving={saving}
+        />
+      )}
+      {modal === "maladieChron" && (
+        <ModalMaladieChron
+          enfant={selectedEnfant}
+          enfants={enfants}
+          onClose={closeModal}
           saving={saving}
         />
       )}
