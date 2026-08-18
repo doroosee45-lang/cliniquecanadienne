@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { logAction } = require('../utils/helpers');
+const env = require('../config/env');
 
 exports.protect = async (req, res, next) => {
   let token;
@@ -16,7 +17,7 @@ exports.protect = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, env.JWT_SECRET);
     req.user = await User.findById(decoded.id).select('-password');
     if (!req.user || req.user.statut !== 'actif') {
       return res.status(401).json({ success: false, message: 'Utilisateur inactif ou introuvable.' });

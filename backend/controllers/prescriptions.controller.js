@@ -6,6 +6,7 @@ const { emitActivity, emitDashboardUpdate, emitTo } = require('../utils/socket')
 const { sendPrescriptionEmail } = require('../utils/mail');
 const { logger } = require('../utils/logger');
 const { detectInteractions } = require('../utils/drugInteractions');
+const env = require('../config/env');
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -119,7 +120,7 @@ exports.publier = async (req, res, next) => {
     const patientEmail = rx.patient?.email;
     if (patientEmail) {
       try {
-        const lienPortail = `${process.env.CLIENT_URL}/portal`;
+        const lienPortail = `${env.CLIENT_URL}/portal`;
         await sendPrescriptionEmail({
           email:      patientEmail,
           prenom:     rx.patient.prenom,

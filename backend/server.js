@@ -1,4 +1,8 @@
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+// AUDIT-B5 — config/env.js bootstrap dotenv lui-même (même chemin résolu :
+// backend/.env), donc ce require couvre le rôle de l'ancien appel direct
+// à dotenv.config() ici tout en donnant accès aux valeurs par défaut
+// centralisées.
+const env = require('./config/env');
 const http    = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
@@ -30,7 +34,7 @@ const app        = express();
 const httpServer = http.createServer(app);
 
 // ── Socket.IO ────────────────────────────────────────────────────────────────
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+const allowedOrigins = env.CLIENT_URL
   .split(',')
   .map(o => o.trim());
 
@@ -62,7 +66,7 @@ io.use((socket, next) => {
     }
 
     if (!token || token === 'none') return next(new Error('Non authentifié'));
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, env.JWT_SECRET);
     socket.userId   = decoded.id;
     socket.userRole = decoded.role || 'inconnu';
     next();
@@ -125,7 +129,7 @@ app.use(cors({
 // Rate limiting global
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 300 : 2000,
+  max: env.NODE_ENV === 'production' ? 300 : 2000,
   message: { success: false, message: 'Trop de requêtes. Réessayez dans 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -136,7 +140,7 @@ app.use('/api/', limiter);
 // Limit strict sur le login (anti brute-force)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 10 : 50,
+  max: env.NODE_ENV === 'production' ? 10 : 50,
   message: { success: false, message: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -159,7 +163,7 @@ app.use(xss());
 app.use(hpp());
 
 // Logging
-if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
+if (env.NODE_ENV === 'development') app.use(morgan('dev'));
 
 // Static uploads — AUDIT-S-1 : express.static protégé seulement par
 // l'authentification (protect) laissait n'importe quel compte accéder à
@@ -175,7 +179,7 @@ app.get('/api/health', (req, res) => {
   const mongoose = require('mongoose');
   res.json({
     status: 'ok',
-    env: process.env.NODE_ENV,
+    env: env.NODE_ENV,
     db: mongoose.connection.db?.databaseName || 'non connecté',
     dbState: ['déconnecté','connecté','connexion...','déconnexion...'][mongoose.connection.readyState] || 'inconnu',
     uptime: Math.round(process.uptime()) + 's',
@@ -187,7 +191,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api', routes);
 
 // Serve React — production only
-if (process.env.NODE_ENV === 'production') {
+if (env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../frontend/dist')));
   app.get('*', (req, res) =>
     res.sendFile(path.resolve(__dirname, '../frontend/dist/index.html'))
@@ -197,9 +201,9 @@ if (process.env.NODE_ENV === 'production') {
 // Error handler (must be last)
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const PORT = env.PORT;
 httpServer.listen(PORT, () => {
-  logger.info('Serveur démarré', { port: PORT, env: process.env.NODE_ENV });
+  logger.info('Serveur démarré', { port: PORT, env: env.NODE_ENV });
   startReminderJob();
 });
 

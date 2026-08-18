@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { logger } = require('../utils/logger');
+const env = require('./env');
 
 const connectDB = async () => {
   try {
@@ -8,7 +9,7 @@ const connectDB = async () => {
     // est sollicité par une poignée d'utilisateurs simultanés — voir rapport
     // d'audit de charge. Relevé à 200 ; à ajuster selon le dimensionnement
     // réel du serveur MongoDB en production.
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
+    const conn = await mongoose.connect(env.MONGO_URI, {
       serverSelectionTimeoutMS: 5000,
       maxPoolSize: 200,
       minPoolSize: 10,

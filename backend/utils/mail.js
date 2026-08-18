@@ -1,21 +1,22 @@
 const nodemailer = require('nodemailer');
 const { logger } = require('./logger');
+const env = require('../config/env');
 
 const getTransporter = () =>
   nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_PORT === '465',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    host: env.SMTP_HOST,
+    port: parseInt(env.SMTP_PORT),
+    secure: env.SMTP_PORT === '465',
+    auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
   });
 
 const sendEmail = async ({ to, subject, html }) => {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+  if (!env.SMTP_HOST || !env.SMTP_USER) {
     logger.warn('[MAIL] SMTP non configuré — email simulé', { to, subject });
     return { simulated: true };
   }
   const info = await getTransporter().sendMail({
-    from: process.env.SMTP_FROM || '"Clinique Canadienne" <noreply@clinique.cg>',
+    from: env.SMTP_FROM,
     to,
     subject,
     html,
@@ -27,7 +28,7 @@ const sendEmail = async ({ to, subject, html }) => {
 // choisit lui-même son mot de passe en suivant le lien (une seule étape,
 // pas d'identifiant à transmettre en clair par email).
 const sendActivationEmail = async ({ email, prenom, nom, token }) => {
-  const lien = `${process.env.CLIENT_URL}/activate/${token}`;
+  const lien = `${env.CLIENT_URL}/activate/${token}`;
   const html = `
   <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
     <div style="text-align:center;margin-bottom:24px;">
@@ -67,7 +68,7 @@ const sendActivationEmail = async ({ email, prenom, nom, token }) => {
 };
 
 const sendPasswordResetEmail = async ({ email, prenom, nom, token }) => {
-  const lien = `${process.env.CLIENT_URL}/reset-password/${token}`;
+  const lien = `${env.CLIENT_URL}/reset-password/${token}`;
   const html = `
   <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
     <div style="text-align:center;margin-bottom:24px;">

@@ -49,6 +49,7 @@
 const mongoose = require('mongoose');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
+const env      = require('../config/env');
 
 const UserSchema = new mongoose.Schema({
   email: {
@@ -136,8 +137,8 @@ UserSchema.methods.matchPassword = async function(entered) {
 UserSchema.methods.getSignedJWT = function() {
   return jwt.sign(
     { id: this._id, role: this.role },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '7d' }
+    env.JWT_SECRET,
+    { expiresIn: env.JWT_EXPIRE }
   );
 };
 

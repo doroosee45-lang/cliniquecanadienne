@@ -2,6 +2,7 @@ const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
 const { emitTo } = require('./socket');
 const { logger } = require('./logger');
+const env = require('../config/env');
 
 const logAction = async ({ utilisateur, action, module, entite_id, ip, ua, avant, apres, message, statut = 'succes' }) => {
   try {
@@ -35,12 +36,12 @@ const createNotification = async ({ destinataire, type = 'info', titre, message,
 const sendTokenCookie = (user, statusCode, res) => {
   const token = user.getSignedJWT();
   const options = {
-    expires: new Date(Date.now() + parseInt(process.env.JWT_COOKIE_EXPIRE || '7') * 24 * 60 * 60 * 1000),
+    expires: new Date(Date.now() + parseInt(env.JWT_COOKIE_EXPIRE) * 24 * 60 * 60 * 1000),
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     // 'lax' est requis en développement avec le proxy Vite (localhost:5173 → :5000)
     // 'strict' bloque les cookies dans ce contexte cross-port
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
   };
   res.status(statusCode).cookie('token', token, options).json({
     success: true,
