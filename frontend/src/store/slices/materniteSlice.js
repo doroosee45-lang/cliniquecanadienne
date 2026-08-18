@@ -178,6 +178,22 @@ export const updateNouveauNe = createAsyncThunk(
   }
 );
 
+// AUDIT-P6-3 — la route backend (maternityController.js::createChildDossier)
+// et son test existaient déjà et fonctionnaient, mais aucun thunk ni aucun
+// bouton ne l'appelait jamais : le dossier pédiatrique d'un nouveau-né
+// n'était accessible que via une création manuelle depuis Pédiatrie.
+export const createChildDossier = createAsyncThunk(
+  'maternite/createChildDossier',
+  async (id, { rejectWithValue }) => {
+    try {
+      const { data } = await api.post(`/maternite/nouveau-nes/${id}/dossier-enfant`);
+      return { id, enfant: data.enfant };
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur création dossier pédiatrique');
+    }
+  }
+);
+
 // ── Slice ─────────────────────────────────────────────────────────────────────
 
 const materniteSlice = createSlice({
@@ -364,6 +380,16 @@ const materniteSlice = createSlice({
       .addCase(updateNouveauNe.fulfilled, (state, action) => {
         const idx = state.nouveauNes.findIndex(n => n._id === action.payload._id);
         if (idx !== -1) state.nouveauNes[idx] = action.payload;
+      })
+      .addCase(createChildDossier.pending, (state) => { state.saving = true; })
+      .addCase(createChildDossier.fulfilled, (state, action) => {
+        state.saving = false;
+        const idx = state.nouveauNes.findIndex(n => n._id === action.payload.id);
+        if (idx !== -1) state.nouveauNes[idx].child_id = action.payload.enfant._id;
+      })
+      .addCase(createChildDossier.rejected, (state, action) => {
+        state.saving = false;
+        state.error = action.payload;
       });
   },
 });

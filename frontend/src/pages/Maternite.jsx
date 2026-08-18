@@ -14,6 +14,7 @@ import {
   createNouveauNe,
   updateTravail,
   addPostnatal,
+  createChildDossier,
   setFilters,
   selectMaterniteStats,
   selectGrossesses,
@@ -393,6 +394,207 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
   );
 }
 
+// ─── MODAL Échographie ───────────────────────────────────────
+// AUDIT-P6-3 — addEcho était importé depuis materniteSlice mais jamais
+// dispatché nulle part : aucun moyen d'enregistrer une échographie depuis
+// l'interface malgré la route backend fonctionnelle.
+function ModalEcho({ grossesse, patienteNom, onClose, saving }) {
+  const dispatch = useDispatch();
+  const [form, setForm] = useState({
+    type:"morphologique", trimestre:"", terme:"", sexe:"inconnu",
+    poids_estime:"", technicien:"", observations:"",
+  });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  const handleSubmit = async () => {
+    if (!grossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
+    const body = { ...form };
+    if (form.trimestre) body.trimestre = Number(form.trimestre);
+    if (form.terme) body.terme = Number(form.terme);
+    if (form.poids_estime) body.poids_estime = Number(form.poids_estime);
+    const result = await dispatch(addEcho({ id: grossesse._id, body }));
+    if (addEcho.fulfilled.match(result)) {
+      toast.success(`✅ Échographie enregistrée pour ${patienteNom}`);
+      onClose();
+    } else {
+      toast.error(result.payload || "Erreur enregistrement échographie");
+    }
+  };
+
+  return (
+    <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+        <div className="mat-modal-hdr">
+          <h2 id={titleId}>📷 Échographie obstétricale — {patienteNom}</h2>
+          <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
+        </div>
+        <div className="mat-modal-body">
+          <div className="mat-g2">
+            <F label="Type d'échographie">
+              <select className="mat-select" value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
+                {["morphologique","datation","croissance","doppler"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+              </select>
+            </F>
+            <F label="Trimestre"><input className="mat-input" placeholder="1, 2 ou 3" value={form.trimestre} onChange={e=>setForm({...form,trimestre:e.target.value})}/></F>
+            <F label="Terme (SA)"><input className="mat-input" placeholder="Ex: 22" value={form.terme} onChange={e=>setForm({...form,terme:e.target.value})}/></F>
+            <F label="Sexe fœtal">
+              <select className="mat-select" value={form.sexe} onChange={e=>setForm({...form,sexe:e.target.value})}>
+                <option value="inconnu">Inconnu</option><option value="masculin">Masculin</option><option value="feminin">Féminin</option>
+              </select>
+            </F>
+            <F label="Poids estimé (g)"><input className="mat-input" placeholder="Ex: 450" value={form.poids_estime} onChange={e=>setForm({...form,poids_estime:e.target.value})}/></F>
+            <F label="Technicien / Médecin"><input className="mat-input" value={form.technicien} onChange={e=>setForm({...form,technicien:e.target.value})}/></F>
+          </div>
+          <F label="Observations"><textarea className="mat-input" rows={3} value={form.observations} onChange={e=>setForm({...form,observations:e.target.value})} style={{resize:"vertical"}}/></F>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}}>
+            <button className="mbtn mbtn-ghost" onClick={onClose}>Annuler</button>
+            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving}>{saving?"⏳ Enregistrement...":"💾 Enregistrer échographie"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL Salle de travail ──────────────────────────────────
+// AUDIT-P6-3 — updateTravail idem : jamais dispatché, aucun moyen
+// d'admettre une patiente en salle de travail depuis l'interface.
+function ModalTravail({ grossesse, patienteNom, onClose, saving }) {
+  const dispatch = useDispatch();
+  const [form, setForm] = useState({
+    motif_admission:"", etat_patient:"", dilatation:"", frequence_contractions:"",
+    rcf:"", rupture_membranes:false, heure_rupture:"",
+  });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  const handleSubmit = async () => {
+    if (!grossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
+    const body = {
+      date_admission: new Date().toISOString(),
+      motif_admission: form.motif_admission,
+      etat_patient: form.etat_patient,
+      rupture_membranes: form.rupture_membranes,
+    };
+    if (form.dilatation) body.dilatation = Number(form.dilatation);
+    if (form.frequence_contractions) body.frequence_contractions = Number(form.frequence_contractions);
+    if (form.rcf) body.rcf = Number(form.rcf);
+    if (form.rupture_membranes && form.heure_rupture) body.heure_rupture = form.heure_rupture;
+    const result = await dispatch(updateTravail({ id: grossesse._id, body }));
+    if (updateTravail.fulfilled.match(result)) {
+      toast.success(`✅ ${patienteNom} admise en salle de travail`);
+      onClose();
+    } else {
+      toast.error(result.payload || "Erreur mise à jour salle de travail");
+    }
+  };
+
+  return (
+    <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+        <div className="mat-modal-hdr">
+          <h2 id={titleId}>🚨 Admission salle de travail — {patienteNom}</h2>
+          <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
+        </div>
+        <div className="mat-modal-body">
+          <F label="Motif d'admission"><input className="mat-input" placeholder="Ex: Contractions régulières" value={form.motif_admission} onChange={e=>setForm({...form,motif_admission:e.target.value})}/></F>
+          <F label="État de la patiente"><input className="mat-input" placeholder="Ex: Stable, consciente" value={form.etat_patient} onChange={e=>setForm({...form,etat_patient:e.target.value})}/></F>
+          <div className="mat-g2">
+            <F label="Dilatation (cm)"><input className="mat-input" placeholder="Ex: 4" value={form.dilatation} onChange={e=>setForm({...form,dilatation:e.target.value})}/></F>
+            <F label="Fréquence contractions (/10min)"><input className="mat-input" placeholder="Ex: 3" value={form.frequence_contractions} onChange={e=>setForm({...form,frequence_contractions:e.target.value})}/></F>
+            <F label="RCF (bpm)"><input className="mat-input" placeholder="Ex: 140" value={form.rcf} onChange={e=>setForm({...form,rcf:e.target.value})}/></F>
+          </div>
+          <div className="mat-field" style={{display:"flex",alignItems:"center",gap:8}}>
+            <input type="checkbox" id="rupture_membranes" checked={form.rupture_membranes} onChange={e=>setForm({...form,rupture_membranes:e.target.checked})}/>
+            <label htmlFor="rupture_membranes" className="mat-label" style={{margin:0}}>Rupture des membranes</label>
+          </div>
+          {form.rupture_membranes && (
+            <F label="Heure de rupture"><input type="datetime-local" className="mat-input" value={form.heure_rupture} onChange={e=>setForm({...form,heure_rupture:e.target.value})}/></F>
+          )}
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}}>
+            <button className="mbtn mbtn-ghost" onClick={onClose}>Annuler</button>
+            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving}>{saving?"⏳ Admission...":"💾 Admettre en salle de travail"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL Suivi postnatal ─────────────────────────────────────
+// AUDIT-P6-3 — addPostnatal idem : jamais dispatché.
+function ModalPostnatal({ grossesse, patienteNom, onClose, saving }) {
+  const dispatch = useDispatch();
+  const [form, setForm] = useState({
+    etat_mere:"", cicatrisation:"", allaitement:true, contraception:"", observations:"",
+  });
+  const boxRef = useRef(null);
+  const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
+    window.addEventListener("keydown", h);
+    boxRef.current?.focus();
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  const handleSubmit = async () => {
+    if (!grossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
+    const result = await dispatch(addPostnatal({ id: grossesse._id, body: { ...form } }));
+    if (addPostnatal.fulfilled.match(result)) {
+      toast.success(`✅ Suivi postnatal enregistré pour ${patienteNom}`);
+      onClose();
+    } else {
+      toast.error(result.payload || "Erreur enregistrement suivi postnatal");
+    }
+  };
+
+  return (
+    <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+        <div className="mat-modal-hdr">
+          <h2 id={titleId}>🤱 Suivi postnatal — {patienteNom}</h2>
+          <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
+        </div>
+        <div className="mat-modal-body">
+          <div className="mat-g2">
+            <F label="État de la mère"><input className="mat-input" placeholder="Ex: Bon état général" value={form.etat_mere} onChange={e=>setForm({...form,etat_mere:e.target.value})}/></F>
+            <F label="Cicatrisation"><input className="mat-input" placeholder="Ex: Bonne, sans signe d'infection" value={form.cicatrisation} onChange={e=>setForm({...form,cicatrisation:e.target.value})}/></F>
+            <F label="Contraception"><input className="mat-input" placeholder="Ex: Non démarrée, à discuter" value={form.contraception} onChange={e=>setForm({...form,contraception:e.target.value})}/></F>
+          </div>
+          <div className="mat-field" style={{display:"flex",alignItems:"center",gap:8}}>
+            <input type="checkbox" id="allaitement" checked={form.allaitement} onChange={e=>setForm({...form,allaitement:e.target.checked})}/>
+            <label htmlFor="allaitement" className="mat-label" style={{margin:0}}>Allaitement en cours</label>
+          </div>
+          <F label="Observations"><textarea className="mat-input" rows={3} value={form.observations} onChange={e=>setForm({...form,observations:e.target.value})} style={{resize:"vertical"}}/></F>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}}>
+            <button className="mbtn mbtn-ghost" onClick={onClose}>Annuler</button>
+            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving}>{saving?"⏳ Enregistrement...":"💾 Enregistrer suivi"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── MODAL Accouchement ──────────────────────────────────────
 function ModalAccouchement({ grossesse, patienteNom, onClose, saving }) {
   const dispatch = useDispatch();
@@ -567,6 +769,18 @@ export default function Maternite() {
   };
   const closeModal = () => { setModal(null); setSelectedGrossesse(null); };
   const openDossier = (g) => { setGrossesseDossier(g); setTab("dossier"); };
+
+  // AUDIT-P6-3 — la route backend existait et fonctionnait déjà (testée),
+  // mais aucun bouton ne l'appelait jamais : le bouton "Dossier" se
+  // contentait d'un toast.success factice.
+  const handleCreateChildDossier = async (n) => {
+    const result = await dispatch(createChildDossier(n._id));
+    if (createChildDossier.fulfilled.match(result)) {
+      toast.success(`✅ Dossier pédiatrique créé pour ${n.prenom||"Bébé"}`);
+    } else {
+      toast.error(result.payload || "Erreur création dossier pédiatrique");
+    }
+  };
 
   // Filtrage local (côté client) sur les grossesses déjà chargées
   const grossessesFiltrees = grossesses.filter(p => {
@@ -1104,7 +1318,11 @@ export default function Maternite() {
                         </div>
                       </div>
                       <div style={{display:"flex",gap:8}}>
-                        <button className="mbtn mbtn-pink mbtn-sm" style={{flex:1}} onClick={()=>toast.success(`📋 Dossier pédiatrique — ${n.prenom||"Bébé"}`)}>📋 Dossier</button>
+                        {n.child_id ? (
+                          <button className="mbtn mbtn-ghost mbtn-sm" style={{flex:1}} onClick={()=>navigate('/pediatrie')}>📋 Voir dossier pédiatrique</button>
+                        ) : (
+                          <button className="mbtn mbtn-pink mbtn-sm" style={{flex:1}} onClick={()=>handleCreateChildDossier(n)} disabled={saving}>📋 Créer dossier pédiatrique</button>
+                        )}
                         <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>toast.success("📄 Certificat de naissance imprimé")}>📄 Certificat</button>
                       </div>
                     </div>
@@ -1237,8 +1455,10 @@ export default function Maternite() {
                       </div>
                     </div>
                   </div>
-                  <div style={{ display:"flex", gap:8 }}>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                     <button className="mbtn mbtn-ghost mbtn-sm" onClick={() => openModal("cpn", grossesseDossier)}>🩺 Nouvelle CPN</button>
+                    <button className="mbtn mbtn-ghost mbtn-sm" onClick={() => openModal("echo", grossesseDossier)}>📷 Échographie</button>
+                    <button className="mbtn mbtn-ghost mbtn-sm" onClick={() => openModal("travail", grossesseDossier)}>🚨 Salle de travail</button>
                     <button className="mbtn mbtn-pink mbtn-sm" onClick={() => openModal("accouchement", grossesseDossier)}>🍼 Déclarer accouchement</button>
                   </div>
                 </div>
@@ -1281,6 +1501,49 @@ export default function Maternite() {
                   ))}
                 </div>
               </div>
+
+              {/* Historique échographies — AUDIT-P6-3 */}
+              <div className="mat-card" style={{ marginBottom:16 }}>
+                <div className="mat-card-hdr">
+                  <div><h3>📷 Échographies</h3><p>Historique des échographies obstétricales</p></div>
+                  <button className="mbtn mbtn-ghost mbtn-sm" onClick={() => openModal("echo", grossesseDossier)}>➕ Ajouter</button>
+                </div>
+                <div style={{ padding:14 }}>
+                  {(grossesseDossier.echographies||[]).length === 0 ? (
+                    <div style={{ textAlign:"center", color:"var(--am)", padding:"16px 0", fontSize:12 }}>Aucune échographie enregistrée</div>
+                  ) : [...(grossesseDossier.echographies||[])].reverse().map((e,i) => (
+                    <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr", gap:12, background:"#F8FAFD", borderRadius:10, padding:"10px 14px", border:"1.5px solid var(--abr)", marginBottom:8 }}>
+                      <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Date</div><div style={{ fontSize:12, fontWeight:600, color:"var(--an)" }}>{fmtDate(e.date)}</div></div>
+                      <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Type</div><div style={{ fontSize:12, fontWeight:600, color:"var(--ab)" }}>{e.type||"—"}</div></div>
+                      <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Terme</div><div style={{ fontSize:12, fontWeight:600 }}>{e.terme?`${e.terme} SA`:"—"}</div></div>
+                      <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Poids estimé</div><div style={{ fontSize:12, fontWeight:600 }}>{e.poids_estime?`${e.poids_estime} g`:"—"}</div></div>
+                      <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Technicien</div><div style={{ fontSize:12, color:"var(--am)" }}>{e.technicien||"—"}</div></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Suivi postnatal — AUDIT-P6-3, pertinent seulement après accouchement */}
+              {["accouchee","suivi_postnatal","cloturee"].includes(grossesseDossier.statut) && (
+                <div className="mat-card" style={{ marginBottom:16 }}>
+                  <div className="mat-card-hdr">
+                    <div><h3>🤱 Suivi postnatal</h3><p>Consultations post-accouchement</p></div>
+                    <button className="mbtn mbtn-ghost mbtn-sm" onClick={() => openModal("postnatal", grossesseDossier)}>➕ Ajouter</button>
+                  </div>
+                  <div style={{ padding:14 }}>
+                    {(grossesseDossier.consultations_postnatales||[]).length === 0 ? (
+                      <div style={{ textAlign:"center", color:"var(--am)", padding:"16px 0", fontSize:12 }}>Aucun suivi postnatal enregistré</div>
+                    ) : [...(grossesseDossier.consultations_postnatales||[])].reverse().map((p,i) => (
+                      <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, background:"#F8FAFD", borderRadius:10, padding:"10px 14px", border:"1.5px solid var(--abr)", marginBottom:8 }}>
+                        <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Date</div><div style={{ fontSize:12, fontWeight:600, color:"var(--an)" }}>{fmtDate(p.date)}</div></div>
+                        <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>État mère</div><div style={{ fontSize:12, fontWeight:600 }}>{p.etat_mere||"—"}</div></div>
+                        <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Cicatrisation</div><div style={{ fontSize:12, fontWeight:600 }}>{p.cicatrisation||"—"}</div></div>
+                        <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Allaitement</div><Badge cls={p.allaitement?"green":"gray"}>{p.allaitement?"Oui":"Non"}</Badge></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Informations médicales */}
               <div className="mat-card">
@@ -1332,6 +1595,30 @@ export default function Maternite() {
       )}
       {modal==="accouchement" && (
         <ModalAccouchement
+          grossesse={selectedGrossesse}
+          patienteNom={selectedGrossesse ? `${selectedGrossesse.patient_prenom||""} ${selectedGrossesse.patient_nom||""}`.trim() : "Patiente"}
+          onClose={closeModal}
+          saving={saving}
+        />
+      )}
+      {modal==="echo" && (
+        <ModalEcho
+          grossesse={selectedGrossesse}
+          patienteNom={selectedGrossesse ? `${selectedGrossesse.patient_prenom||""} ${selectedGrossesse.patient_nom||""}`.trim() : "Patiente"}
+          onClose={closeModal}
+          saving={saving}
+        />
+      )}
+      {modal==="travail" && (
+        <ModalTravail
+          grossesse={selectedGrossesse}
+          patienteNom={selectedGrossesse ? `${selectedGrossesse.patient_prenom||""} ${selectedGrossesse.patient_nom||""}`.trim() : "Patiente"}
+          onClose={closeModal}
+          saving={saving}
+        />
+      )}
+      {modal==="postnatal" && (
+        <ModalPostnatal
           grossesse={selectedGrossesse}
           patienteNom={selectedGrossesse ? `${selectedGrossesse.patient_prenom||""} ${selectedGrossesse.patient_nom||""}`.trim() : "Patiente"}
           onClose={closeModal}
