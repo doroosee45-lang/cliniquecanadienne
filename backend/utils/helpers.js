@@ -72,4 +72,25 @@ const paginate = (query, page = 1, limit = 20) => {
 // filtre, jamais interpréter l'entrée comme un motif.
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex };
+// AUDIT-P7-6 — factorisé depuis appointments.controller.js::create, seul
+// endroit qui vérifiait un conflit de créneau avant ce correctif.
+// update() (report de RDV) et recurring.controller.js::planifier() créaient
+// ou déplaçaient des rendez-vous sans aucune re-vérification, permettant un
+// double-booking du même médecin. excludeId sert à ignorer le rendez-vous
+// lui-même lors d'un report (sinon il entrerait toujours en conflit avec
+// sa propre plage horaire actuelle).
+const checkAppointmentConflict = async ({ medecin, date_heure, duree_minutes = 30, excludeId }) => {
+  const Appointment = require('../models/Appointment');
+  const start = new Date(date_heure);
+  const end = new Date(start.getTime() + duree_minutes * 60000);
+  const filter = {
+    medecin,
+    statut: { $nin: ['annule', 'absent'] },
+    date_heure: { $lt: end },
+    $expr: { $gt: [{ $add: ['$date_heure', { $multiply: ['$duree_minutes', 60000] }] }, start] },
+  };
+  if (excludeId) filter._id = { $ne: excludeId };
+  return Appointment.findOne(filter);
+};
+
+module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex, checkAppointmentConflict };

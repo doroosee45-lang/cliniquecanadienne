@@ -2,7 +2,7 @@ const Appointment = require('../models/Appointment');
 const Patient     = require('../models/Patient');
 const User        = require('../models/User');
 const Service     = require('../models/Service');
-const { logAction, paginate } = require('../utils/helpers');
+const { logAction, paginate, checkAppointmentConflict } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail } = require('../utils/mail');
 const { logger } = require('../utils/logger');
@@ -71,14 +71,7 @@ exports.create = async (req, res, next) => {
   try {
     // Conflict detection
     const { medecin, date_heure, duree_minutes = 30 } = req.body;
-    const start = new Date(date_heure);
-    const end = new Date(start.getTime() + duree_minutes * 60000);
-    const conflict = await Appointment.findOne({
-      medecin,
-      statut: { $nin: ['annule','absent'] },
-      date_heure: { $lt: end },
-      $expr: { $gt: [{ $add: ['$date_heure', { $multiply: ['$duree_minutes', 60000] }] }, start] },
-    });
+    const conflict = await checkAppointmentConflict({ medecin, date_heure, duree_minutes });
     if (conflict) return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
 
     const appt = await Appointment.create({ ...req.body, created_by: req.user._id });
@@ -124,6 +117,23 @@ exports.update = async (req, res, next) => {
     if (!avant) return res.status(404).json({ success: false, message: 'Rendez-vous introuvable.' });
     const data = {};
     for (const [k, v] of Object.entries(req.body)) { if (!APPT_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+
+    // AUDIT-P7-6 — create() vérifiait un conflit de créneau, update() non :
+    // reporter un RDV (date_heure) ou le réassigner à un autre médecin
+    // pouvait silencieusement produire un double-booking. Re-vérifié
+    // uniquement quand le créneau réel change (medecin/date_heure/durée),
+    // pas sur les autres modifications (statut, notes...) — et seulement
+    // si un médecin est déterminé, sinon 'medecin: undefined' matcherait
+    // n'importe quel autre rendez-vous sans médecin assigné.
+    const medecinCible  = data.medecin !== undefined ? data.medecin : avant.medecin;
+    const dateCible      = data.date_heure !== undefined ? data.date_heure : avant.date_heure;
+    const dureeCible     = data.duree_minutes !== undefined ? data.duree_minutes : avant.duree_minutes;
+    const creneauChange  = data.medecin !== undefined || data.date_heure !== undefined || data.duree_minutes !== undefined;
+    if (creneauChange && medecinCible) {
+      const conflict = await checkAppointmentConflict({ medecin: medecinCible, date_heure: dateCible, duree_minutes: dureeCible, excludeId: avant._id });
+      if (conflict) return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
+    }
+
     const appt = await Appointment.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: appt._id, ip: req.ip, avant, apres: appt });
 
