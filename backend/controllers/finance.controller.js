@@ -135,6 +135,83 @@ exports.addPayment = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-11 (audit complet post-Phase 10) — PUT /finance/:id (changement de
+// statut de facture) n'avait jamais de route réelle : Finance.jsx appelait
+// une URL inexistante, l'erreur était avalée (catch vide) et l'interface
+// affichait quand même "Facture marquée comme payée" sans que rien ne soit
+// écrit en base.
+//
+// 'payee' est traité à part : le hook pre('save') du modèle dérive
+// statut/montant_restant depuis paiements[] (cf. commentaire dans create()
+// plus haut) — fixer statut:'payee' sans mouvement de paiement laisserait
+// montant_paye/montant_restant désynchronisés de l'affichage. On enregistre
+// donc le solde restant comme un vrai paiement plutôt que de contourner
+// cette logique. 'partiellement_payee' n'est acceptable ici que si un
+// paiement existe déjà (montant réel connu) : ce endpoint générique n'a pas
+// de champ montant, contrairement à /:id/paiement, donc pas de base pour
+// inventer un montant partiel.
+const VALID_STATUTS = ['brouillon','emise','partiellement_payee','payee','annulee','contentieux'];
+
+exports.updateStatut = async (req, res, next) => {
+  try {
+    const { statut } = req.body;
+    if (!VALID_STATUTS.includes(statut)) {
+      return res.status(400).json({ success: false, message: `Statut invalide. Valeurs acceptées : ${VALID_STATUTS.join(', ')}.` });
+    }
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ success: false, message: 'Facture introuvable.' });
+    const avant = invoice.toObject();
+
+    if (statut === 'partiellement_payee' && invoice.montant_paye === 0) {
+      return res.status(400).json({ success: false, message: "Aucun paiement enregistré — utilisez « Enregistrer un paiement » pour indiquer le montant versé." });
+    }
+    if (statut === 'payee' && invoice.montant_restant > 0) {
+      invoice.paiements.push({ montant: invoice.montant_restant, mode: 'especes', enregistre_par: req.user._id });
+    } else {
+      invoice.statut = statut;
+    }
+    await invoice.save();
+
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Statut facture ${invoice.numero_facture} : ${avant.statut} → ${invoice.statut}`, avant, apres: invoice.toObject() });
+    emitDashboardUpdate();
+    res.json({ success: true, invoice: normalizeInvoice(invoice.toObject()) });
+  } catch (err) { next(err); }
+};
+
+// AUDIT-11 — POST /finance/caisse était un stub inline dans les routes qui
+// renvoyait { success:true } sans jamais écrire en base (aucun modèle
+// importé, aucune persistance). Une entrée de caisse est une recette
+// directe (même nature que POST /finance/revenus, déjà réel) ; une sortie
+// est une dépense (déléguée aux mêmes règles que createDepense ci-dessus —
+// description/montant positif requis).
+exports.caisse = async (req, res, next) => {
+  try {
+    const { type, montant, libelle, mode } = req.body;
+    const montantNum = Number(montant);
+    if (!montantNum || montantNum <= 0) return res.status(400).json({ success: false, message: 'Montant invalide.' });
+
+    if (type === 'sortie') {
+      const depense = await Depense.create({
+        categorie: 'Autre', description: libelle || 'Sortie de caisse', montant: montantNum, statut: 'paye',
+        enregistre_par: req.user._id,
+      });
+      await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: depense._id, ip: req.ip, message: `Sortie de caisse : ${libelle || 'sans libellé'} — ${montantNum} CFA` });
+      emitDashboardUpdate();
+      return res.status(201).json({ success: true, type: 'sortie', depense });
+    }
+
+    const invoice = await Invoice.create({
+      created_by: req.user._id, date_facture: new Date(), service_label: libelle || 'Entrée de caisse',
+      statut: 'payee', montant_direct: montantNum, montant_ttc: montantNum,
+      lignes: [{ libelle: libelle || 'Entrée de caisse', categorie: 'autre', prix_unitaire: montantNum, quantite: 1, montant: montantNum }],
+      paiements: [{ montant: montantNum, mode: mode || 'especes', date: new Date(), enregistre_par: req.user._id }],
+    });
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Entrée de caisse : ${libelle || 'sans libellé'} — ${montantNum} CFA` });
+    emitDashboardUpdate();
+    res.status(201).json({ success: true, type: 'entree', invoice });
+  } catch (err) { next(err); }
+};
+
 exports.stats = async (req, res, next) => {
   try {
     const now = new Date();
