@@ -14,6 +14,18 @@
 // page utilise, ce test échouerait — contrairement à un payload
 // reconstitué à la main qui resterait vert même après une régression
 // frontend.
+//
+// Réouvert (décision explicite) : est_critique n'est plus purement dérivé
+// des statut_res. Laboratory.jsx pré-coche une case "résultat critique"
+// avec deriveCriticalPayload() quand la modale de validation s'ouvre, mais
+// c'est l'état de la case au moment de la signature qui est envoyé — le
+// biologiste peut la décocher (résultat détecté mais jugé non critique
+// après relecture) ou la cocher (rien détecté, mais critique cliniquement).
+// simulateEstCritiqueConfirme() ci-dessous mirror exactement ce mécanisme
+// en deux temps (pré-remplissage puis override optionnel) en réutilisant la
+// même fonction partagée deriveCriticalPayload — sans quoi ce test
+// resterait vert même si le pré-remplissage réel de la case divergeait de
+// la détection.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -21,6 +33,11 @@ const mongoose = require('mongoose');
 const path = require('path');
 
 const { REF_VALUES, deriveCriticalPayload } = require(path.join(__dirname, '..', '..', 'frontend', 'src', 'utils', 'labResultats.js'));
+
+function simulateEstCritiqueConfirme(resultats, biologisteOverride) {
+  const { est_critique: preCoche } = deriveCriticalPayload(resultats, REF_VALUES);
+  return biologisteOverride === undefined ? preCoche : biologisteOverride;
+}
 
 test('laboratoire — chaîne complète frontend réel -> validate() -> notification (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -65,13 +82,15 @@ test('laboratoire — chaîne complète frontend réel -> validate() -> notifica
       assert.equal(status, 200);
     });
 
-    await t.test("validerAnalyse calcule le payload avec la même fonction que Laboratory.jsx (deriveCriticalPayload), pas un est_critique fourni à la main", async () => {
+    await t.test("validerAnalyse envoie l'état de la case (pré-cochée par deriveCriticalPayload, non modifiée par le biologiste ici)", async () => {
       const relu = await LabResult.findById(labId).lean();
-      // Reproduit exactement ce que fait validerAnalyse() : lit currentAnalyse.resultats
-      // (donc les vraies données persistées à l'étape précédente) et appelle la même
-      // fonction partagée que la page importe.
-      const { est_critique, valeurs_critiques } = deriveCriticalPayload(relu.resultats, REF_VALUES);
-      assert.equal(est_critique, true, 'un statut_res:"critique" saisi doit se traduire en est_critique:true côté frontend');
+      // Reproduit exactement ce que fait Laboratory.jsx en deux temps :
+      // la modale de validation pré-coche la case depuis deriveCriticalPayload
+      // (donc les vraies données persistées à l'étape précédente), puis
+      // validerAnalyse() envoie l'état de la case, pas le calcul brut.
+      const { valeurs_critiques } = deriveCriticalPayload(relu.resultats, REF_VALUES);
+      const est_critique = simulateEstCritiqueConfirme(relu.resultats);
+      assert.equal(est_critique, true, 'un statut_res:"critique" saisi doit pré-cocher la case (non modifiée ici)');
       assert.match(valeurs_critiques, /Glycémie/, 'le récapitulatif doit citer le résultat critique par son label réel');
 
       const payload = { resultats: relu.resultats, commentaires: 'Contrôle E2E', est_critique, valeurs_critiques };
@@ -90,7 +109,7 @@ test('laboratoire — chaîne complète frontend réel -> validate() -> notifica
       cleanup.push(() => Notification.findByIdAndDelete(notif._id));
     });
 
-    await t.test("non-régression : aucun résultat critique saisi -> est_critique reste false, aucune notification supplémentaire créée", async () => {
+    await t.test("non-régression : aucun résultat critique saisi -> la case n'est pas pré-cochée, aucune notification supplémentaire créée", async () => {
       const { body: created2 } = await call(labC.create, {
         user: laborantin,
         body: { patient: patient._id, medecin_prescripteur: medecin._id, examens_demandes: ['hb'] },
@@ -104,8 +123,8 @@ test('laboratoire — chaîne complète frontend réel -> validate() -> notifica
         user: laborantin,
       });
       const relu2 = await LabResult.findById(labId2).lean();
-      const { est_critique } = deriveCriticalPayload(relu2.resultats, REF_VALUES);
-      assert.equal(est_critique, false);
+      const est_critique = simulateEstCritiqueConfirme(relu2.resultats);
+      assert.equal(est_critique, false, 'aucun statut_res:"critique" -> la case ne doit pas être pré-cochée');
 
       // Notification.entite_id n'existe pas sur ce schéma (createNotification
       // de validate() ne corrèle pas au LabResult) : seule une comparaison de
@@ -115,6 +134,72 @@ test('laboratoire — chaîne complète frontend réel -> validate() -> notifica
       await call(labC.validate, { params: { id: labId2 }, body: { resultats: relu2.resultats, commentaires: '', est_critique, valeurs_critiques: '' }, user: laborantin });
       const apres = await Notification.countDocuments({ destinataire: medecin._id, type: 'critical' });
       assert.equal(apres, avant, 'aucune notification critique supplémentaire ne doit être créée quand est_critique est false');
+    });
+
+    await t.test("décision de réouverture : le biologiste décoche une case pré-cochée -> est_critique:false envoyé, aucune notification", async () => {
+      const { body: created3 } = await call(labC.create, {
+        user: laborantin,
+        body: { patient: patient._id, medecin_prescripteur: medecin._id, examens_demandes: ['creatinine'] },
+      });
+      const labId3 = created3.result._id;
+      cleanup.push(() => LabResult.findByIdAndDelete(labId3));
+
+      await call(labC.saisirResultats, {
+        params: { id: labId3 },
+        body: { resultats: [{ exam_id: 'creatinine', valeur: '25', ref: REF_VALUES.creatinine.ref, unite: REF_VALUES.creatinine.unite, statut_res: 'critique' }] },
+        user: laborantin,
+      });
+      const relu3 = await LabResult.findById(labId3).lean();
+      const preCoche = simulateEstCritiqueConfirme(relu3.resultats);
+      assert.equal(preCoche, true, 'précondition : la case doit être pré-cochée par la détection avant que le biologiste ne la décoche');
+
+      // Le biologiste juge, après relecture, que la notification n'est pas
+      // justifiée et décoche la case — c'est exactement le scénario que la
+      // dérivation automatique pure (avant cette réouverture) ne permettait
+      // pas d'exprimer.
+      const est_critique = simulateEstCritiqueConfirme(relu3.resultats, false);
+      assert.equal(est_critique, false);
+
+      const avant = await Notification.countDocuments({ destinataire: medecin._id, type: 'critical' });
+      const { status } = await call(labC.validate, { params: { id: labId3 }, body: { resultats: relu3.resultats, commentaires: 'Décoché après relecture', est_critique, valeurs_critiques: '' }, user: laborantin });
+      assert.equal(status, 200);
+      const apres = await Notification.countDocuments({ destinataire: medecin._id, type: 'critical' });
+      assert.equal(apres, avant, 'décocher une case pré-cochée doit réellement empêcher la notification, pas seulement changer l\'affichage');
+
+      const releu3 = await LabResult.findById(labId3).lean();
+      assert.equal(releu3.est_critique, false, 'la décision du biologiste (pas la détection automatique) doit être ce qui est persisté');
+    });
+
+    await t.test("décision de réouverture : le biologiste coche manuellement une case non pré-cochée -> est_critique:true envoyé, notification créée", async () => {
+      const { body: created4 } = await call(labC.create, {
+        user: laborantin,
+        body: { patient: patient._id, medecin_prescripteur: medecin._id, examens_demandes: ['cholesterol'] },
+      });
+      const labId4 = created4.result._id;
+      cleanup.push(() => LabResult.findByIdAndDelete(labId4));
+
+      await call(labC.saisirResultats, {
+        params: { id: labId4 },
+        body: { resultats: [{ exam_id: 'cholesterol', valeur: '1.9', ref: REF_VALUES.cholesterol.ref, unite: REF_VALUES.cholesterol.unite, statut_res: 'normal' }] },
+        user: laborantin,
+      });
+      const relu4 = await LabResult.findById(labId4).lean();
+      const preCoche = simulateEstCritiqueConfirme(relu4.resultats);
+      assert.equal(preCoche, false, 'précondition : rien détecté, la case ne doit pas être pré-cochée avant que le biologiste ne la coche lui-même');
+
+      // Jugement clinique du biologiste au-delà de la détection automatique
+      // (ex. contexte patient non capturé par le simple statut_res).
+      const est_critique = simulateEstCritiqueConfirme(relu4.resultats, true);
+      const { valeurs_critiques } = deriveCriticalPayload(relu4.resultats, REF_VALUES);
+
+      const avant = await Notification.countDocuments({ destinataire: medecin._id, type: 'critical' });
+      const { status } = await call(labC.validate, { params: { id: labId4 }, body: { resultats: relu4.resultats, commentaires: 'Coché manuellement — contexte clinique', est_critique, valeurs_critiques }, user: laborantin });
+      assert.equal(status, 200);
+      const notif = await Notification.findOne({ destinataire: medecin._id, type: 'critical' }).sort('-createdAt').lean();
+      assert.ok(notif, 'cocher manuellement doit réellement créer une notification, même sans détection automatique');
+      cleanup.push(() => Notification.findByIdAndDelete(notif._id));
+      const apres = await Notification.countDocuments({ destinataire: medecin._id, type: 'critical' });
+      assert.equal(apres, avant + 1);
     });
   } finally {
     for (const fn of cleanup) await fn();
