@@ -38,6 +38,11 @@ const PatientSchema = new Schema({
   allergies: [String],
   antecedents_medicaux: [String],
   antecedents_familiaux: [String],
+  // AUDIT-P2-2 — jamais déclaré ici alors que Patients.jsx le lit à 6
+  // endroits (stats "chroniques", badges liste/détail) : le champ était
+  // systématiquement absent des documents (silencieusement rejeté par
+  // Mongoose en mode strict), rendant ces lectures inertes.
+  maladies_chroniques: [String],
   medecin_referent: { type: Schema.Types.ObjectId, ref: 'User' },
   // Max 2 assurances
   assurances: {
