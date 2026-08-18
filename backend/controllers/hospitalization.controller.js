@@ -94,13 +94,28 @@ exports.create = async (req, res, next) => {
     let room        = null;
 
     if (chambreRaw && isObjectId(chambreRaw)) {
-      room = await Room.findById(chambreRaw);
-      if (!room) return res.status(404).json({ success: false, message: 'Chambre introuvable.' });
-      const bed = room.lits.find(l => l.numero === lit_numero);
-      if (bed && bed.statut !== 'libre') {
-        return res.status(400).json({ success: false, message: `Le lit ${lit_numero} n'est pas disponible (${bed.statut}).` });
+      // AUDIT-P7-5 — l'ancienne séquence (findById → vérifier bed.statut en
+      // mémoire → room.save()) laissait une fenêtre entre la lecture et
+      // l'écriture : deux admissions concurrentes sur le même lit libre
+      // pouvaient toutes les deux lire statut:'libre' avant que la première
+      // n'ait sauvegardé, aboutissant à une double occupation. Remplacé par
+      // un findOneAndUpdate atomique filtré sur lits.statut:'libre' au
+      // niveau de la requête elle-même : Mongo ne peut matcher/modifier
+      // qu'un seul des deux appels concurrents, l'autre reçoit 0 document
+      // modifié et un échec explicite, pas un succès silencieux erroné.
+      if (!lit_numero) return res.status(400).json({ success: false, message: 'Numéro de lit obligatoire si une chambre est sélectionnée.' });
+      room = await Room.findOneAndUpdate(
+        { _id: chambreRaw, lits: { $elemMatch: { numero: lit_numero, statut: 'libre' } } },
+        { $set: { 'lits.$[bed].statut': 'occupe', 'lits.$[bed].patient_actuel': patient } },
+        { new: true, arrayFilters: [{ 'bed.numero': lit_numero }] }
+      );
+      if (!room) {
+        const exists = await Room.findOne({ _id: chambreRaw, 'lits.numero': lit_numero }).select('lits.$');
+        const message = exists
+          ? `Le lit ${lit_numero} n'est plus disponible (${exists.lits[0].statut}).`
+          : 'Chambre ou lit introuvable.';
+        return res.status(exists ? 409 : 404).json({ success: false, message });
       }
-      if (bed) { bed.statut = 'occupe'; bed.patient_actuel = patient; await room.save(); }
       chambre     = chambreRaw;
       chambre_num = room.numero || chambreRaw;
     }
