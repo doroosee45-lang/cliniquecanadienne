@@ -18,6 +18,31 @@ function toModelStatut(s) {
   return map[s] || s;
 }
 
+// AUDIT-2.1 — factorisé sur le modèle de utils/helpers.js::checkAppointmentConflict :
+// aucune détection de conflit de salle/créneau n'existait jusqu'ici, deux
+// interventions pouvaient être programmées dans la même salle au même
+// moment. Ne s'applique qu'aux dossiers réellement occupant la salle
+// (preoperatoire/opere) — un dossier clôturé/annulé ne bloque plus le
+// créneau.
+async function checkBlocConflict({ salle, date_intervention_prev, duree_intervention_min = 60, excludeId }) {
+  if (!salle || !date_intervention_prev) return null;
+  const start = new Date(date_intervention_prev);
+  const end = new Date(start.getTime() + (duree_intervention_min || 60) * 60000);
+  const filter = {
+    salle_prevue: salle,
+    statut: { $in: ['preoperatoire', 'opere'] },
+    date_intervention_prev: { $lt: end },
+    $expr: {
+      $gt: [
+        { $add: ['$date_intervention_prev', { $multiply: [{ $ifNull: ['$duree_intervention_min', 60] }, 60000] }] },
+        start,
+      ],
+    },
+  };
+  if (excludeId) filter._id = { $ne: excludeId };
+  return DossierChirurgical.findOne(filter);
+}
+
 // Numéro d'intervention bloc — compteur atomique (voir chirurgieController.js)
 async function generateNumeroBloc() {
   const yr = new Date().getFullYear();
@@ -144,7 +169,26 @@ exports.createIntervention = async (req, res, next) => {
     dossier.niveau_urgence = niveauMap[niveau_urgence] || 'electif';
     dossier.statut         = toModelStatut(statut) || 'preoperatoire';
 
-    await dossier.save();
+    // AUDIT-2.1 — détection de conflit de salle/créneau, uniquement si ce
+    // dossier occupe réellement une salle à une date donnée.
+    if (dossier.salle_prevue && dossier.date_intervention_prev && ['preoperatoire','opere'].includes(dossier.statut)) {
+      const conflict = await checkBlocConflict({
+        salle: dossier.salle_prevue,
+        date_intervention_prev: dossier.date_intervention_prev,
+        duree_intervention_min: dossier.duree_intervention_min,
+        excludeId: dossier._id,
+      });
+      if (conflict) return res.status(400).json({ success: false, message: `Conflit : la salle ${dossier.salle_prevue} est déjà occupée par une autre intervention à ce créneau.` });
+    }
+
+    // AUDIT-2.1 — filet de sécurité atomique (index unique partiel du
+    // modèle) : la vérification ci-dessus n'est pas atomique avec l'écriture.
+    try {
+      await dossier.save();
+    } catch (err) {
+      if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit : cette salle vient d\'être réservée par une autre requête à ce créneau. Veuillez réessayer.' });
+      throw err;
+    }
 
     await logAction({
       utilisateur: req.user._id, action: 'CREATE', module: 'blocoperatoire',
@@ -264,7 +308,23 @@ exports.scheduleIntervention = async (req, res, next) => {
     if (chirurgien_id)     dossier.chirurgien_id          = chirurgien_id;
     if (notes)             dossier.cr_operatoire          = notes;
 
-    await dossier.save();
+    // AUDIT-2.1 — détection de conflit de salle/créneau (voir checkBlocConflict
+    // ci-dessus), + filet de sécurité atomique (index unique partiel du modèle)
+    // sur l'écriture qui suit, non atomique avec cette vérification.
+    const conflict = await checkBlocConflict({
+      salle: dossier.salle_prevue,
+      date_intervention_prev: dossier.date_intervention_prev,
+      duree_intervention_min: dossier.duree_intervention_min,
+      excludeId: dossier._id,
+    });
+    if (conflict) return res.status(400).json({ success: false, message: `Conflit : la salle ${salle} est déjà occupée par une autre intervention à ce créneau.` });
+
+    try {
+      await dossier.save();
+    } catch (err) {
+      if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit : cette salle vient d\'être réservée par une autre requête à ce créneau. Veuillez réessayer.' });
+      throw err;
+    }
 
     await logAction({
       utilisateur: req.user._id, action: 'CREATE', module: 'blocoperatoire',

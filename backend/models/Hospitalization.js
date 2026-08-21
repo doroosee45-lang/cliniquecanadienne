@@ -68,6 +68,12 @@ const PrescriptionSejourSchema = new Schema({
 
 const HospitalizationSchema = new Schema({
   patient:              { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
+  // Ticket 0018 (option 2 retenue) — référence optionnelle vers le passage
+  // aux urgences à l'origine de cette admission, quand il y en a un. Purement
+  // déclaratif : aucune automatisation ne crée ce lien, le personnel le
+  // renseigne manuellement au moment de la saisie s'il le souhaite. Ne change
+  // rien pour les hospitalisations sans passage aux urgences (champ absent).
+  urgence_id:           { type: Schema.Types.ObjectId, ref: 'Urgence' },
   chambre:              { type: Schema.Types.ObjectId, ref: 'Room' },
   chambre_num:          { type: String },          // texte libre quand pas de Room en BD
   lit_numero:           { type: String },

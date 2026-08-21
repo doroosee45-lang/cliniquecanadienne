@@ -33,6 +33,7 @@ router.get('/',                                 protect, authorize(...CAN_READ),
 router.post('/',                                protect, authorize(...CAN_MANAGE),    pharmaC.create);
 router.get('/:id',                              protect, authorize(...CAN_READ),      pharmaC.getOne);
 router.put('/:id',                              protect, authorize(...CAN_MANAGE),    pharmaC.update);
+router.delete('/:id',                           protect, authorize(...CAN_MANAGE),    pharmaC.remove);
 router.post('/:id/photo',                       protect, authorize(...CAN_MANAGE),    uploadMedPhoto.single('photo'), pharmaC.uploadPhoto);
 router.post('/:id/mouvement',                   protect, authorize(...CAN_MANAGE),    pharmaC.mouvement);
 

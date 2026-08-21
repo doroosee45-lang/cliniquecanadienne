@@ -79,17 +79,26 @@ exports.planifier = async (req, res, next) => {
     if (conflict) return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
 
     // Crée le rendez-vous
-    const appt = await Appointment.create({
-      patient,
-      medecin:       protocol.medecin,
-      date_heure:    new Date(date_heure),
-      duree_minutes: 30,
-      motif:         protocol.titre,
-      type:          'suivi',
-      statut:        'planifie',
-      notes:         notes || protocol.notes,
-      created_by:    req.user._id,
-    });
+    // AUDIT-2.1 — même filet de sécurité que appointments.controller.js :
+    // l'index unique partiel (medecin+date_heure) ferme la course sur le
+    // créneau exact, remontée en 409 plutôt qu'en erreur serveur brute.
+    let appt;
+    try {
+      appt = await Appointment.create({
+        patient,
+        medecin:       protocol.medecin,
+        date_heure:    new Date(date_heure),
+        duree_minutes: 30,
+        motif:         protocol.titre,
+        type:          'suivi',
+        statut:        'planifie',
+        notes:         notes || protocol.notes,
+        created_by:    req.user._id,
+      });
+    } catch (err) {
+      if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit: ce créneau vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+      throw err;
+    }
 
     // Calcule la prochaine occurrence
     const DELTAS = {

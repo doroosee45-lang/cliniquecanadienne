@@ -1,6 +1,7 @@
 const Hospitalization = require('../models/Hospitalization');
-const Room   = require('../models/Room');
-const User   = require('../models/User');
+const Room    = require('../models/Room');
+const User    = require('../models/User');
+const Urgence = require('../models/Urgence');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate, emitTo } = require('../utils/socket');
 
@@ -68,6 +69,15 @@ exports.create = async (req, res, next) => {
     if (!patient)      return res.status(400).json({ success: false, message: 'Patient obligatoire.' });
     if (!motif_entree) return res.status(400).json({ success: false, message: 'Motif d\'hospitalisation obligatoire.' });
 
+    // Ticket 0018 (option 2) — lien optionnel vers un passage aux urgences.
+    // Jamais automatique : seulement si le personnel le renseigne lui-même.
+    let urgence_id;
+    if (req.body.urgence_id) {
+      const urgenceExiste = await Urgence.findById(req.body.urgence_id).select('_id');
+      if (!urgenceExiste) return res.status(400).json({ success: false, message: 'Dossier urgences introuvable pour la référence fournie.' });
+      urgence_id = req.body.urgence_id;
+    }
+
     // ── Médecin responsable ─────────────────────────────────────
     let medecin_responsable = null;
     let medecin_nom         = req.body.medecin || req.body.medecin_nom || '';
@@ -122,6 +132,7 @@ exports.create = async (req, res, next) => {
 
     const payload = {
       patient,
+      urgence_id,
       motif_entree,
       lit_numero,
       chambre,
@@ -269,13 +280,20 @@ exports.discharge = async (req, res, next) => {
     // Free the bed — uniquement si le séjour référence une chambre structurée
     // (un séjour peut avoir été admis avec une simple chambre_num en texte libre,
     // auquel cas hosp.chambre est null et il n'y a pas de lit à libérer).
+    // AUDIT-2.1 — l'ancienne séquence (findById → modifier le lit en mémoire →
+    // room.save()) réécrit le document Room entier : deux sorties concurrentes
+    // sur des lits différents de la MÊME chambre pouvaient s'écraser
+    // mutuellement (la seconde sauvegarde, basée sur une lecture antérieure à
+    // la première, annule silencieusement la libération déjà faite par la
+    // première). Remplacé par le même motif atomique que l'admission
+    // (AUDIT-P7-5, ligne ~107 plus haut) : mise à jour ciblée du sous-document
+    // via arrayFilters, jamais de réécriture du tableau lits complet.
     if (hosp.chambre?._id) {
-      const room = await Room.findById(hosp.chambre._id);
-      if (room) {
-        const bed = room.lits.find(l => l.numero === hosp.lit_numero);
-        if (bed) { bed.statut = 'libre'; bed.patient_actuel = undefined; }
-        await room.save();
-      }
+      await Room.findOneAndUpdate(
+        { _id: hosp.chambre._id, 'lits.numero': hosp.lit_numero },
+        { $set: { 'lits.$[bed].statut': 'libre' }, $unset: { 'lits.$[bed].patient_actuel': '' } },
+        { arrayFilters: [{ 'bed.numero': hosp.lit_numero }] }
+      );
     }
     // Notification patient à la sortie
     const pat = await require('../models/Patient').findById(hosp.patient).select('nom prenom email');

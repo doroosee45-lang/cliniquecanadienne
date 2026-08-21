@@ -9,7 +9,12 @@ exports.getAll = async (req, res, next) => {
   try {
     const { page = 1, limit = 30, q, statut, alerte, categorie } = req.query;
     const filter = {};
+    // AUDIT-0.3 — un médicament retiré du catalogue (statut 'suspendu', voir
+    // exports.remove ci-dessous) ne doit plus apparaître dans la liste active
+    // par défaut ; un appel explicite ?statut=suspendu reste possible pour le
+    // consulter (traçabilité), tout comme les autres valeurs d'enum.
     if (statut) filter.statut = statut;
+    else filter.statut = { $ne: 'suspendu' };
     if (categorie) filter.categorie = { $regex: escapeRegex(categorie), $options: 'i' };
     if (q) {
       const qRe = escapeRegex(q);
@@ -32,7 +37,9 @@ exports.getAll = async (req, res, next) => {
 
 exports.getStats = async (req, res, next) => {
   try {
-    const meds = await Medication.find({});
+    // Exclut les médicaments retirés du catalogue (statut 'suspendu') des KPI
+    // de stock actif — même règle que getAll (AUDIT-0.3).
+    const meds = await Medication.find({ statut: { $ne: 'suspendu' } });
     const now = Date.now();
     const in30 = new Date(now + 30 * 24 * 3600 * 1000);
     const ruptures  = meds.filter(m => m.stock_actuel === 0).length;
@@ -76,35 +83,43 @@ exports.createVente = async (req, res, next) => {
     const year = new Date().getFullYear();
     const numero = `VNT-${year}-${String(Date.now()).slice(-5)}`;
 
-    // Même garde-fou que dispenser() (T4.3 / R-04b) : vérifier tout le stock
-    // nécessaire avant d'écrire quoi que ce soit, plutôt que de décrémenter
-    // certains articles puis échouer sur les suivants.
-    const medsById = new Map();
+    // AUDIT-2.1 — l'ancien garde-fou (T4.3/R-04b) vérifiait le stock de tous
+    // les articles PUIS décrémentait chacun séparément sans revérifier au
+    // moment de l'écriture : deux ventes concurrentes du même produit
+    // pouvaient toutes deux lire un stock suffisant avant que l'une n'ait
+    // écrit, faisant passer le stock en négatif. Chaque article est
+    // désormais décrémenté par une opération atomique conditionnelle unique
+    // (findOneAndUpdate filtré sur stock_actuel >= quantité demandée) ; si un
+    // article échoue en cours de boucle, les articles déjà décrémentés dans
+    // cette même vente sont recrédités (mouvement de type 'retour', jamais
+    // de suppression de l'historique) avant de renvoyer l'erreur.
+    const decrementes = [];
+    let echec = null;
     for (const item of items) {
-      if (!medsById.has(item.medicament_id)) {
-        const med = await Medication.findById(item.medicament_id);
-        if (med) medsById.set(item.medicament_id, med);
-      }
-    }
-    const insuffisants = [];
-    for (const item of items) {
-      const med = medsById.get(item.medicament_id);
       const quantite = Math.abs(item.quantite || 0);
-      if (med && quantite > 0 && med.stock_actuel < quantite) {
-        insuffisants.push(`${med.nom_commercial} (stock: ${med.stock_actuel}, requis: ${quantite})`);
+      if (quantite === 0) continue;
+      const med = await Medication.findOneAndUpdate(
+        { _id: item.medicament_id, stock_actuel: { $gte: quantite } },
+        { $inc: { stock_actuel: -quantite } },
+        { new: true }
+      );
+      if (!med) {
+        const info = await Medication.findById(item.medicament_id).select('nom_commercial stock_actuel');
+        echec = `${info?.nom_commercial || item.medicament_id} (stock: ${info?.stock_actuel ?? '—'}, requis: ${quantite})`;
+        break;
       }
+      decrementes.push({ id: item.medicament_id, quantite });
     }
-    if (insuffisants.length) {
+    if (echec) {
+      for (const d of decrementes) {
+        await Medication.findByIdAndUpdate(d.id, {
+          $inc: { stock_actuel: d.quantite },
+          $push: { mouvements: { type: 'retour', quantite: d.quantite, reference: numero, notes: `Annulation automatique — stock insuffisant ailleurs dans la même vente ${numero}`, utilisateur: req.user._id } },
+        });
+      }
       return res.status(400).json({
         success: false,
-        message: `Stock insuffisant pour cette vente : ${insuffisants.join(', ')}.`,
-      });
-    }
-
-    // Décrémenter le stock pour chaque article vendu
-    for (const item of items) {
-      await Medication.findByIdAndUpdate(item.medicament_id, {
-        $inc: { stock_actuel: -Math.abs(item.quantite) },
+        message: `Stock insuffisant pour cette vente : ${echec}.`,
       });
     }
     const total = items.reduce((s, i) => s + (i.prix_unitaire || 0) * i.quantite, 0);
@@ -235,6 +250,29 @@ exports.update = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-0.3 — retrait "logique" (statut: 'suspendu') plutôt que suppression
+// physique : cohérent avec le reste du module (aucun mouvement/historique
+// n'est jamais supprimé physiquement ailleurs) et avec le champ statut déjà
+// prévu au modèle pour cet usage (analytics.controller.js l'agrège déjà comme
+// 4e catégorie du graphique de répartition du stock). getAll()/getStats()
+// excluent ce statut par défaut (voir plus haut), donc le médicament
+// disparaît bien de la liste et des KPI actifs sans perte de traçabilité.
+exports.remove = async (req, res, next) => {
+  try {
+    const med = await Medication.findById(req.params.id);
+    if (!med) return res.status(404).json({ success: false, message: 'Médicament introuvable.' });
+    if (med.statut === 'suspendu') {
+      return res.status(400).json({ success: false, message: 'Ce médicament est déjà retiré du catalogue.' });
+    }
+    const avant = med.toObject();
+    med.statut = 'suspendu';
+    await med.save();
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'pharmacy', entite_id: med._id, ip: req.ip, message: `Médicament retiré du catalogue : ${med.nom_commercial}`, avant, apres: med });
+    emitDashboardUpdate();
+    res.json({ success: true, medication: med });
+  } catch (err) { next(err); }
+};
+
 exports.uploadPhoto = async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'Aucun fichier fourni.' });
@@ -248,21 +286,36 @@ exports.uploadPhoto = async (req, res, next) => {
 exports.mouvement = async (req, res, next) => {
   try {
     const { type, quantite, reference, notes } = req.body;
-    const med = await Medication.findById(req.params.id);
-    if (!med) return res.status(404).json({ success: false, message: 'Médicament introuvable.' });
+    const avant = await Medication.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Médicament introuvable.' });
 
-    if (['sortie','dispensation','perte','peremption'].includes(type) && med.stock_actuel < quantite)
-      return res.status(400).json({ success: false, message: 'Stock insuffisant.' });
-    const avant = med.toObject();
+    // AUDIT-2.1 — l'ancienne séquence (findById → vérifier/modifier
+    // stock_actuel en mémoire → med.save()) laissait une fenêtre de course :
+    // deux mouvements concurrents sur le même médicament pouvaient tous deux
+    // lire le même stock de départ, l'un écrasant silencieusement l'écriture
+    // de l'autre (perte de mouvement). Décrément conditionnel atomique
+    // (findOneAndUpdate filtré sur stock_actuel >= quantité pour les
+    // mouvements sortants), jamais de save() sur le document complet.
+    const sortant = ['sortie','dispensation','perte','peremption'].includes(type);
+    const delta   = ['entree','retour'].includes(type) ? quantite : -quantite;
+    const filter  = { _id: req.params.id };
+    if (sortant) filter.stock_actuel = { $gte: quantite };
 
-    const delta = ['entree','retour'].includes(type) ? quantite : -quantite;
-    med.stock_actuel += delta;
-    med.mouvements.push({ type, quantite, reference, notes, utilisateur: req.user._id });
+    const med = await Medication.findOneAndUpdate(
+      filter,
+      { $inc: { stock_actuel: delta }, $push: { mouvements: { type, quantite, reference, notes, utilisateur: req.user._id } } },
+      { new: true }
+    );
+    if (!med) return res.status(400).json({ success: false, message: 'Stock insuffisant.' });
 
-    if (med.stock_actuel <= 0) med.statut = 'rupture';
-    else if (med.statut === 'rupture') med.statut = 'disponible';
+    if (med.stock_actuel <= 0 && med.statut !== 'rupture') {
+      await Medication.findByIdAndUpdate(med._id, { $set: { statut: 'rupture' } });
+      med.statut = 'rupture';
+    } else if (med.stock_actuel > 0 && med.statut === 'rupture') {
+      await Medication.findByIdAndUpdate(med._id, { $set: { statut: 'disponible' } });
+      med.statut = 'disponible';
+    }
 
-    await med.save();
     await logAction({ utilisateur: req.user._id, action: 'STOCK_MOUVEMENT', module: 'pharmacy', entite_id: med._id, ip: req.ip, message: `${type} x${quantite} — ${med.nom_commercial}`, avant, apres: med });
     emitActivity({ module: 'pharmacy', action: `Mouvement stock (${type})`, detail: `${med.nom_commercial} ×${quantite}`, icon: type === 'entree' ? '📦' : '💊', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
@@ -298,47 +351,59 @@ exports.dispenser = async (req, res, next) => {
     // stock — une ligne saisie en texte libre (medicament_nom sans medicament)
     // ne peut pas être rapprochée d'un produit sans risquer un mauvais match.
     const lignesAvecStock = prescription.lignes.filter(l => l.medicament);
-    const medicamentsById = new Map();
+
+    // AUDIT-2.1 — l'ancien garde-fou (vérifier tout le stock nécessaire AVANT
+    // d'écrire quoi que ce soit) protégeait contre un échec partiel mais pas
+    // contre une course : deux dispensations concurrentes de la même
+    // ordonnance/du même produit pouvaient toutes deux lire un stock
+    // suffisant puis toutes deux décrémenter, faisant passer le stock en
+    // négatif. Chaque ligne est maintenant décrémentée par une opération
+    // atomique conditionnelle unique (findOneAndUpdate filtré sur
+    // stock_actuel >= quantité) ; si une ligne échoue en cours de boucle, les
+    // lignes déjà décrémentées dans cette même requête sont recréditées
+    // (mouvement de type 'retour', jamais de suppression de l'historique)
+    // avant de renvoyer l'erreur — aucune écriture partielle ne subsiste.
+    const decrementees = [];
+    let echec = null;
     for (const ligne of lignesAvecStock) {
-      const id = ligne.medicament.toString();
-      if (!medicamentsById.has(id)) {
-        const med = await Medication.findById(id);
-        if (med) medicamentsById.set(id, med);
+      const medId = ligne.medicament.toString();
+      const quantite = Math.abs(ligne.quantite || 0);
+      if (quantite === 0) continue;
+      const med = await Medication.findOneAndUpdate(
+        { _id: medId, stock_actuel: { $gte: quantite } },
+        {
+          $inc: { stock_actuel: -quantite },
+          $push: { mouvements: { type: 'dispensation', quantite, reference: prescription.numero_rx, notes: `Dispensation ordonnance ${prescription.numero_rx}`, utilisateur: req.user._id } },
+        },
+        { new: true }
+      );
+      if (!med) {
+        const info = await Medication.findById(medId).select('nom_commercial stock_actuel');
+        echec = `${info?.nom_commercial || medId} (stock: ${info?.stock_actuel ?? '—'}, requis: ${quantite})`;
+        break;
+      }
+      decrementees.push({ id: medId, quantite });
+      if (med.stock_actuel <= 0 && med.statut !== 'rupture') {
+        await Medication.findByIdAndUpdate(medId, { $set: { statut: 'rupture' } });
+      } else if (med.stock_actuel > 0 && med.statut === 'rupture') {
+        await Medication.findByIdAndUpdate(medId, { $set: { statut: 'disponible' } });
       }
     }
 
-    // Vérifier tout le stock nécessaire avant d'écrire quoi que ce soit —
-    // on ne veut pas décrémenter certaines lignes puis échouer sur les suivantes.
-    const insuffisants = [];
-    for (const ligne of lignesAvecStock) {
-      const med = medicamentsById.get(ligne.medicament.toString());
-      const quantite = Math.abs(ligne.quantite || 0);
-      if (med && quantite > 0 && med.stock_actuel < quantite) {
-        insuffisants.push(`${med.nom_commercial} (stock: ${med.stock_actuel}, requis: ${quantite})`);
+    if (echec) {
+      for (const d of decrementees) {
+        const updated = await Medication.findByIdAndUpdate(d.id, {
+          $inc: { stock_actuel: d.quantite },
+          $push: { mouvements: { type: 'retour', quantite: d.quantite, reference: prescription.numero_rx, notes: `Annulation automatique — stock insuffisant ailleurs dans la même ordonnance ${prescription.numero_rx}`, utilisateur: req.user._id } },
+        }, { new: true });
+        if (updated && updated.stock_actuel > 0 && updated.statut === 'rupture') {
+          await Medication.findByIdAndUpdate(d.id, { $set: { statut: 'disponible' } });
+        }
       }
-    }
-    if (insuffisants.length) {
       return res.status(400).json({
         success: false,
-        message: `Stock insuffisant pour dispenser cette ordonnance : ${insuffisants.join(', ')}.`,
+        message: `Stock insuffisant pour dispenser cette ordonnance : ${echec}.`,
       });
-    }
-
-    for (const ligne of lignesAvecStock) {
-      const med = medicamentsById.get(ligne.medicament.toString());
-      const quantite = Math.abs(ligne.quantite || 0);
-      if (!med || quantite === 0) continue;
-
-      med.stock_actuel -= quantite;
-      med.mouvements.push({
-        type: 'dispensation',
-        quantite,
-        reference: prescription.numero_rx,
-        notes: `Dispensation ordonnance ${prescription.numero_rx}`,
-        utilisateur: req.user._id,
-      });
-      med.statut = med.stock_actuel <= 0 ? 'rupture' : (med.statut === 'rupture' ? 'disponible' : med.statut);
-      await med.save();
     }
 
     prescription.statut = 'dispensee';

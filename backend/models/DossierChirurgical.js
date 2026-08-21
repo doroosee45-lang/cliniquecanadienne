@@ -68,4 +68,28 @@ dossierChirurgicalSchema.pre('save', function(next) {
 // LabResult, Prescription : { patient: 1, <date>: -1 }).
 dossierChirurgicalSchema.index({ patient_id: 1, created_at: -1 });
 
+// AUDIT-2.1 — blocoperatoireController.js n'avait aucune détection de conflit
+// de salle/créneau ; la vérification applicative ajoutée
+// (checkBlocConflict, blocoperatoireController.js) n'est pas atomique avec
+// l'écriture qui suit. Cet index unique partiel ferme la course pour le cas
+// exact (même salle, même date_intervention_prev à la milliseconde) :
+// MongoDB rejette la seconde écriture concurrente en erreur E11000, remontée
+// en 409/400 par le contrôleur. Restreint aux dossiers réellement
+// programmés au bloc (salle_prevue/date_intervention_prev renseignés) pour
+// ne jamais entrer en collision avec un dossier chirurgical "consultation"
+// classique qui atteindrait statut preoperatoire/opere sans être programmé
+// dans une salle — vérifié empiriquement contre MongoDB (partialFilterExpression
+// n'accepte que $exists/$in/$gt(e)/$lt(e)/$type et l'égalité, pas $ne/$nin).
+dossierChirurgicalSchema.index(
+  { salle_prevue: 1, date_intervention_prev: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      statut: { $in: ['preoperatoire', 'opere'] },
+      salle_prevue: { $exists: true },
+      date_intervention_prev: { $exists: true },
+    },
+  }
+);
+
 module.exports = mongoose.model('DossierChirurgical', dossierChirurgicalSchema);

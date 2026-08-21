@@ -74,7 +74,17 @@ exports.create = async (req, res, next) => {
     const conflict = await checkAppointmentConflict({ medecin, date_heure, duree_minutes });
     if (conflict) return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
 
-    const appt = await Appointment.create({ ...req.body, created_by: req.user._id });
+    // AUDIT-2.1 — la vérification ci-dessus n'est pas atomique avec l'écriture
+    // qui suit : l'index unique partiel du modèle (medecin+date_heure) ferme
+    // la course pour une requête concurrente sur le créneau exact, remontée
+    // ici en 409 plutôt qu'en erreur serveur brute.
+    let appt;
+    try {
+      appt = await Appointment.create({ ...req.body, created_by: req.user._id });
+    } catch (err) {
+      if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit: ce créneau vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+      throw err;
+    }
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'appointments', entite_id: appt._id, ip: req.ip, message: `Nouveau RDV: ${appt.type}` });
     emitActivity({ module: 'appointments', action: 'Nouveau rendez-vous', detail: appt.type, icon: '📅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
@@ -134,7 +144,16 @@ exports.update = async (req, res, next) => {
       if (conflict) return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
     }
 
-    const appt = await Appointment.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
+    // AUDIT-2.1 — même filet de sécurité que create() : la vérification
+    // ci-dessus n'est pas atomique avec l'écriture, l'index unique partiel
+    // ferme la course sur le créneau exact.
+    let appt;
+    try {
+      appt = await Appointment.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
+    } catch (err) {
+      if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit: ce créneau vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+      throw err;
+    }
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: appt._id, ip: req.ip, avant, apres: appt });
 
     // Rendez-vous reporté (date/heure modifiée) ou nouvellement confirmé :
