@@ -157,8 +157,23 @@ exports.update = async (req, res, next) => {
     const u = await Urgence.findById(req.params.id);
     if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
 
-    const { soins, prescriptions, examens, timeline, ...fields } = req.body;
+    // ADR-0005 — admission_status n'est jamais réassignable directement par
+    // le client (retiré des champs génériques, comme soins/prescriptions/
+    // examens/timeline ci-dessous) : il ne suit que decision (transitions
+    // automatiques ci-après) ou la création réelle d'une hospitalisation
+    // (hospitalization.controller.js::create).
+    const { soins, prescriptions, examens, timeline, admission_status, ...fields } = req.body;
+    const decisionAvant = u.decision;
     Object.assign(u, fields);
+
+    if (fields.decision !== undefined && fields.decision !== decisionAvant && u.admission_status !== 'terminee') {
+      if (fields.decision === 'hospitalisation') {
+        u.admission_status = 'preparation';
+      } else if (decisionAvant === 'hospitalisation') {
+        // Décision d'hospitaliser retirée avant toute création réelle.
+        u.admission_status = 'annulee';
+      }
+    }
 
     if (fields.statut && fields.statut !== u.statut) {
       u.timeline.push({

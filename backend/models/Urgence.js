@@ -77,6 +77,20 @@ const UrgenceSchema = new mongoose.Schema({
     default: '',
   },
 
+  // ADR-0005 — suit le workflow Urgences → Hospitalisation (remplace
+  // l'option 2, purement passive, du ticket 0018). 'non_requise' tant que
+  // decision !== 'hospitalisation' ; 'preparation' dès que la décision est
+  // posée (le personnel peut alors "Préparer l'admission") ; 'terminee' une
+  // fois l'hospitalisation réellement créée (hospitalization.controller.js
+  // ::create) ; 'annulee' si la décision est finalement retirée avant
+  // création. Jamais modifié automatiquement une fois 'terminee' — une
+  // hospitalisation réelle existe, ce n'est plus une simple intention.
+  admission_status: {
+    type: String,
+    enum: ['non_requise','preparation','terminee','annulee'],
+    default: 'non_requise',
+  },
+
   date_arrivee: { type: Date, default: Date.now },
   date_sortie:  { type: Date },
   heure_sortie: { type: String },

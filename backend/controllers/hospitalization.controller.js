@@ -69,12 +69,19 @@ exports.create = async (req, res, next) => {
     if (!patient)      return res.status(400).json({ success: false, message: 'Patient obligatoire.' });
     if (!motif_entree) return res.status(400).json({ success: false, message: 'Motif d\'hospitalisation obligatoire.' });
 
-    // Ticket 0018 (option 2) — lien optionnel vers un passage aux urgences.
-    // Jamais automatique : seulement si le personnel le renseigne lui-même.
+    // ADR-0005 — workflow complet Urgences → Hospitalisation (remplace
+    // l'option 2 du ticket 0018) : lien vers le passage aux urgences
+    // toujours posé par une action humaine explicite ("Préparer
+    // l'admission"), jamais automatique à la seule pose de
+    // Urgence.decision='hospitalisation'. Une seule hospitalisation active
+    // par passage aux urgences — empêche une double admission par erreur
+    // (ex. double clic, deux membres du personnel) pour le même épisode.
     let urgence_id;
     if (req.body.urgence_id) {
       const urgenceExiste = await Urgence.findById(req.body.urgence_id).select('_id');
       if (!urgenceExiste) return res.status(400).json({ success: false, message: 'Dossier urgences introuvable pour la référence fournie.' });
+      const dejaHospitalise = await Hospitalization.findOne({ urgence_id: req.body.urgence_id, statut: 'en_cours' }).select('_id');
+      if (dejaHospitalise) return res.status(409).json({ success: false, message: 'Une hospitalisation est déjà en cours pour ce passage aux urgences.' });
       urgence_id = req.body.urgence_id;
     }
 
@@ -152,6 +159,14 @@ exports.create = async (req, res, next) => {
     };
 
     const hosp = await Hospitalization.create(payload);
+
+    // ADR-0005 — clôt le suivi du workflow côté dossier urgences : le
+    // personnel consultant ce dossier voit que la préparation d'admission a
+    // bien abouti à une hospitalisation réelle, pas seulement à une
+    // décision en attente.
+    if (urgence_id) {
+      await Urgence.findByIdAndUpdate(urgence_id, { admission_status: 'terminee' });
+    }
 
     // Peupler pour la réponse
     await hosp.populate('patient', 'nom prenom numero_dossier date_naissance telephone email');

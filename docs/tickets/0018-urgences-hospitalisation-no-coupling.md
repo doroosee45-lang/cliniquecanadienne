@@ -1,6 +1,6 @@
 # Ticket 0018 — Aucun couplage réel entre Urgences et Hospitalisation malgré `Urgence.decision`
 
-**Statut :** Résolu — option 2 retenue (2026-08-21)
+**Statut :** Résolu — supersédé par ADR-0005 (2026-08-21, même jour)
 **Origine :** Phase 10.1, tests de non-régression croisés entre modules interdépendants (Urgences↔Hospitalisation attendu)
 **Sévérité :** Faible/informative — pas un bug (rien ne casse), mais un écart entre ce que le schéma suggère et ce que le code fait réellement
 
@@ -31,9 +31,9 @@ Ce sont donc actuellement deux modules indépendants qui partagent uniquement un
 
 Aucune option n'est mise en œuvre ici — ce ticket documente l'écart pour décision, conformément au protocole établi pour ce type de constat (cf. tickets 0016, 0017).
 
-## Résolution
+## Résolution (historique — voir mise à jour ci-dessous)
 
-Option 2 retenue (référence optionnelle, sans automatisme). Une proposition plus lourde (entité `Encounter` centrale) avait été envisagée puis écartée au profit de cette option, plus proportionnée au besoin exprimé (traçabilité a posteriori, pas de refonte du parcours de saisie).
+Option 2 retenue une première fois (référence optionnelle, sans automatisme). Une proposition plus lourde (entité `Encounter` centrale) avait été envisagée puis écartée au profit de cette option, plus proportionnée au besoin exprimé (traçabilité a posteriori, pas de refonte du parcours de saisie).
 
 Implémenté :
 - `backend/models/Hospitalization.js` — nouveau champ `urgence_id` (`ObjectId`, `ref: 'Urgence'`, optionnel).
@@ -41,3 +41,11 @@ Implémenté :
 - `backend/controllers/hospitalization.controller.js::update` — `urgence_id` n'est pas dans `HOSP_BLOCKED_FIELDS` : peut être renseigné a posteriori via l'édition générique, conformément à l'objectif de traçabilité différée de l'option 2.
 - Aucune automatisation : `urgencesController.js` n'est pas modifié, une décision `Urgence.decision:'hospitalisation'` ne crée toujours rien automatiquement — le lien reste une saisie manuelle volontaire.
 - Aucun changement du formulaire frontend d'admission n'a été fait (le champ est utilisable via l'API dès maintenant ; l'exposer dans l'UI de saisie reste une évolution frontend séparée, non traitée ici).
+
+## Mise à jour — supersédé par ADR-0005 (même jour)
+
+Le plan directeur MediSync (Phase 4, priorité critique) a explicitement demandé le workflow complet plutôt que l'option 2 ci-dessus. **Voir `docs/decisions/ADR-0005-urgences-hospitalisation-workflow.md`** pour la décision actuelle, qui conserve `urgence_id` (option 2) comme référence structurelle mais ajoute :
+- `Urgence.admission_status` (suivi d'état : `non_requise/preparation/terminee/annulee`), géré automatiquement par `urgencesController.js::update` selon `decision` — toujours aucune création automatique d'hospitalisation.
+- Protection contre la double admission (`hospitalization.controller.js::create` refuse une seconde hospitalisation active pour le même `urgence_id`).
+
+`urgencesController.js` reste modifié uniquement pour la gestion de `admission_status` (transition d'état), jamais pour créer ou référencer `Hospitalization` directement — le couplage applicatif fort entre les deux modules reste évité, conformément à la limite déjà posée dans ce ticket.
