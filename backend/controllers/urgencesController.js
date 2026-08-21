@@ -13,7 +13,7 @@ const normalize = (u) => ({
 });
 
 // GET /urgences/stats
-exports.getStats = async (req, res) => {
+exports.getStats = async (req, res, next) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -83,13 +83,11 @@ exports.getStats = async (req, res) => {
       triageMap,
       chart: { labels, data: chartValues },
     });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // GET /urgences
-exports.getAll = async (req, res) => {
+exports.getAll = async (req, res, next) => {
   try {
     const { page = 1, limit = 20, q, niveau_triage, statut, patient } = req.query;
     const filter = {};
@@ -117,26 +115,22 @@ exports.getAll = async (req, res) => {
     ]);
 
     res.json({ urgences: urgences.map(normalize), total, page: Number(page) });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // GET /urgences/:id
-exports.getOne = async (req, res) => {
+exports.getOne = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id)
       .populate('patient', 'prenom nom numero_dossier date_naissance')
       .populate('medecin_responsable', 'prenom nom');
     if (!u) return res.status(404).json({ message: 'Dossier urgence introuvable' });
     res.json({ urgence: normalize(u) });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // POST /urgences
-exports.create = async (req, res) => {
+exports.create = async (req, res, next) => {
   try {
     const body = { ...req.body };
     if (!body.date_arrivee) body.date_arrivee = new Date();
@@ -154,13 +148,11 @@ exports.create = async (req, res) => {
     emitDashboardUpdate();
     await u.populate('patient', 'prenom nom numero_dossier');
     res.status(201).json({ urgence: normalize(u), message: `Patient ${u.numero} admis aux urgences` });
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // PUT /urgences/:id
-exports.update = async (req, res) => {
+exports.update = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
     if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -183,22 +175,20 @@ exports.update = async (req, res) => {
     await u.populate('patient', 'prenom nom numero_dossier');
     await u.populate('medecin_responsable', 'prenom nom');
     res.json({ urgence: normalize(u) });
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // GET /urgences/:id/soins
-exports.getSoins = async (req, res) => {
+exports.getSoins = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id).select('soins');
     if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
     res.json({ soins: u.soins.sort((a, b) => new Date(b.date) - new Date(a.date)) });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // POST /urgences/:id/soins
-exports.addSoin = async (req, res) => {
+exports.addSoin = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
     if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -212,20 +202,20 @@ exports.addSoin = async (req, res) => {
     await u.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Soin (${soin.acte || 'acte'}) ajouté au dossier urgences ${u.numero}` });
     res.status(201).json({ soin: u.soins[0], message: 'Soin enregistré' });
-  } catch (err) { res.status(400).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // GET /urgences/:id/prescriptions
-exports.getPrescriptions = async (req, res) => {
+exports.getPrescriptions = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id).select('prescriptions');
     if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
     res.json({ prescriptions: u.prescriptions });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // POST /urgences/:id/prescriptions
-exports.addPrescription = async (req, res) => {
+exports.addPrescription = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
     if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -234,20 +224,20 @@ exports.addPrescription = async (req, res) => {
     await u.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Prescription (${req.body.designation || req.body.type || '—'}) ajoutée au dossier urgences ${u.numero}` });
     res.status(201).json({ prescription: u.prescriptions[u.prescriptions.length - 1] });
-  } catch (err) { res.status(400).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // GET /urgences/:id/examens
-exports.getExamens = async (req, res) => {
+exports.getExamens = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id).select('examens');
     if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
     res.json({ examens: u.examens });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // POST /urgences/:id/examens
-exports.addExamen = async (req, res) => {
+exports.addExamen = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
     if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -256,14 +246,14 @@ exports.addExamen = async (req, res) => {
     await u.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Examen demandé (${req.body.designation || '—'}) — dossier urgences ${u.numero}` });
     res.status(201).json({ examen: u.examens[u.examens.length - 1] });
-  } catch (err) { res.status(400).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // GET /urgences/:id/timeline
-exports.getTimeline = async (req, res) => {
+exports.getTimeline = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id).select('timeline');
     if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
     res.json({ timeline: u.timeline.sort((a, b) => new Date(b.date) - new Date(a.date)) });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };

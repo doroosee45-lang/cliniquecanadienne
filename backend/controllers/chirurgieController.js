@@ -27,7 +27,7 @@ function updateIaNiveau(score) {
 }
 
 // Récupération des dossiers (liste paginée, recherche, filtre)
-exports.getDossiers = async (req, res) => {
+exports.getDossiers = async (req, res, next) => {
   try {
     const { page = 1, limit = 15, q = '', statut = '', patient_id = '' } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -53,9 +53,7 @@ exports.getDossiers = async (req, res) => {
     const total = await DossierChirurgical.countDocuments(filter);
 
     res.json({ success: true, dossiers, total, page: parseInt(page), pages: Math.ceil(total / limit) });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // AUDIT-B3 — chargeait toute la collection en mémoire (DossierChirurgical.find())
@@ -63,7 +61,7 @@ exports.getDossiers = async (req, res) => {
 // par deux agrégations ciblées, même pattern que dashboard.controller.js/
 // analytics.controller.js : les compteurs et le score moyen restent exacts
 // même sur une collection qui dépasse la mémoire disponible côté Node.
-exports.getStats = async (req, res) => {
+exports.getStats = async (req, res, next) => {
   try {
     const now = new Date();
     const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
@@ -112,13 +110,11 @@ exports.getStats = async (req, res) => {
       chart: { labels: moisLabels, data: moisData },
       taux_compl
     });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // Récupération d'un dossier complet (avec bilans, suivis, complications)
-exports.getDossierById = async (req, res) => {
+exports.getDossierById = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
     if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
@@ -128,13 +124,11 @@ exports.getDossierById = async (req, res) => {
     const complications = await Complication.find({ dossier_chirurgical_id: dossier._id }).sort({ date_survenue: -1 });
 
     res.json({ dossier, bilan, suivis, complications });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // Création d'un nouveau dossier
-exports.createDossier = async (req, res) => {
+exports.createDossier = async (req, res, next) => {
   try {
     const { patient_id, chirurgien_id, statut, niveau_urgence, motif_consultation, diagnostic_chirurgical, type_intervention, symptomes, decision } = req.body;
 
@@ -179,9 +173,7 @@ exports.createDossier = async (req, res) => {
     emitActivity({ module: 'chirurgie', action: 'Nouveau dossier chirurgical', detail: `${dossier.patient_nom} — ${dossier.type_intervention || dossier.motif_consultation || ''}`, icon: '🏥', userId: chirurgien_id || null, userName: chirurgien_nom || 'Système' });
     emitDashboardUpdate();
     res.status(201).json(dossier);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // AUDIT-P2-1 (groupe 2) — numero/patient_id identifient le dossier ;
@@ -190,7 +182,7 @@ exports.createDossier = async (req, res) => {
 const DOSSIER_CHIR_BLOCKED_FIELDS = ['numero', 'patient_id'];
 
 // Mise à jour d'un dossier
-exports.updateDossier = async (req, res) => {
+exports.updateDossier = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
     if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
@@ -207,13 +199,11 @@ exports.updateDossier = async (req, res) => {
 
     await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Dossier chirurgical ${dossier.numero} modifié`, avant, apres: dossier });
     res.json(dossier);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // Ajout d'un bilan
-exports.addBilan = async (req, res) => {
+exports.addBilan = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
     if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
@@ -225,13 +215,11 @@ exports.addBilan = async (req, res) => {
     await bilan.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Bilan ajouté au dossier ${dossier.numero} (${bilan.type})` });
     res.status(201).json(bilan);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // Ajout d'un suivi postopératoire
-exports.addSuivi = async (req, res) => {
+exports.addSuivi = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
     if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
@@ -248,13 +236,11 @@ exports.addSuivi = async (req, res) => {
 
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Suivi postopératoire ajouté au dossier ${dossier.numero}` });
     res.status(201).json(suivi);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
 // Ajout d'une complication
-exports.addComplication = async (req, res) => {
+exports.addComplication = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
     if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
@@ -276,7 +262,5 @@ exports.addComplication = async (req, res) => {
 
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Complication (${complication.type_complication}) enregistrée pour le dossier ${dossier.numero}` });
     res.status(201).json(complication);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
