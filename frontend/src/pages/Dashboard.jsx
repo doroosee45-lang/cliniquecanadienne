@@ -607,6 +607,20 @@ function SuperAdminDashboard({ data, isMobile }) {
 
   return (
     <div>
+      {/* ── Accès au Dashboard Global & Analytics (nouvelle vue, SuperAdmin uniquement) ── */}
+      <div className="db-card fu" style={{ background:"linear-gradient(135deg,var(--dp),var(--db))", border:"none", marginBottom:20, cursor:"pointer" }} onClick={() => navigate("/analytics-global")}>
+        <div style={{ padding:"16px 22px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"rgba(255,255,255,.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>📊</div>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700, color:"#fff" }}>Dashboard Global &amp; Analytics</div>
+              <div style={{ fontSize:11.5, color:"rgba(255,255,255,.75)" }}>Vue stratégique : finance, maternité, ordonnances, activité clinique</div>
+            </div>
+          </div>
+          <span className="dbtn" style={{ background:"rgba(255,255,255,.18)", color:"#fff", border:"1.5px solid rgba(255,255,255,.3)" }}>Ouvrir →</span>
+        </div>
+      </div>
+
       {/* ── KPI principaux ── */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:14, marginBottom:24 }}>
         <KpiCard color="blue"   icon="👥"    value={fmtNum(kpis.patients_total)}          label="Total patients"        sub="base active"           onClick={() => navigate("/patients")} />

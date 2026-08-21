@@ -16,6 +16,7 @@ const Delivery       = require('../models/Delivery');
 const PediatricConsultation = require('../models/PediatricConsultation');
 const Echographie    = require('../models/Echographie');
 const ArchiveEntry   = require('../models/ArchiveEntry');
+const Depense        = require('../models/Depense');
 
 const COLORS = ['#DC2626','#D97706','#0EA5A0','#1B4F9E','#7C3AED','#059669','#EC4899','#06B6D4','#84CC16','#F59E0B'];
 const MOIS_LABELS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
@@ -34,6 +35,61 @@ async function safeCount(model, filter = {}) {
 }
 async function safeAggregate(model, pipeline) {
   try { return await model.aggregate(pipeline); } catch { return []; }
+}
+
+// ─── Dashboard Global & Analytics (SuperAdmin) — helpers de période ─────────
+// AUDIT-DASHBOARD-GLOBAL — periode ici est une fenêtre GLISSANTE (7 derniers
+// jours, 30 derniers jours, 12 derniers mois), volontairement différente du
+// startOf() calendaire ci-dessus (début du mois civil) : plus intuitif pour
+// un filtre de type "7 jours / 30 jours / 12 mois" affiché à l'utilisateur,
+// et ça permet un calcul honnête de la période PRÉCÉDENTE de même durée pour
+// la tendance (jamais une comparaison inventée).
+function resolveGlobalPeriod(key) {
+  const now = new Date();
+  const days = key === 'jour' ? 1 : key === '30j' ? 30 : key === '12m' ? 365 : 7; // défaut '7j'
+  const granularity = key === '12m' ? 'month' : 'day';
+  const start = new Date(now.getTime() - days * 86400000);
+  if (key === 'jour') start.setHours(0, 0, 0, 0);
+  const prevEnd   = new Date(start.getTime() - 1);
+  const prevStart = new Date(start.getTime() - days * 86400000);
+  return { start, end: now, prevStart, prevEnd, granularity, days };
+}
+
+// Tendance réelle uniquement : jamais affichée si la période précédente est
+// à 0 (division impossible à interpréter honnêtement — ni +100%, ni 0%
+// n'auraient de sens réel dans ce cas).
+function realTrend(current, previous) {
+  if (!previous || previous <= 0) return null;
+  const pct = Math.round(((current - previous) / previous) * 1000) / 10;
+  return { pct, sens: pct > 0 ? 'up' : pct < 0 ? 'down' : 'neutral' };
+}
+
+const DAY_LABEL = (d) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
+
+// Reconciliation jour-par-jour sur les N derniers jours — même principe que
+// dashboard.controller.js (ADM-02/AUDIT-DASHBOARD) : liste fixe de jours,
+// zéro explicite pour un jour sans donnée, jamais une série tronquée.
+function dailyBuckets(days) {
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    out.push(d.toISOString().substring(0, 10));
+  }
+  return out;
+}
+function mapDailyAgg(raw) {
+  return Object.fromEntries(raw.map((d) => [d._id, d.count ?? d.total ?? 0]));
+}
+// Agrégation "count par jour" sur les `days` derniers jours pour un modèle/champ donné.
+async function countPerDay(model, dateField, days, extraMatch = {}) {
+  const since = new Date(); since.setDate(since.getDate() - (days - 1)); since.setHours(0, 0, 0, 0);
+  const raw = await safeAggregate(model, [
+    { $match: { [dateField]: { $gte: since }, ...extraMatch } },
+    { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: `$${dateField}` } }, count: { $sum: 1 } } },
+  ]);
+  const map = mapDailyAgg(raw);
+  const buckets = dailyBuckets(days);
+  return { labels: buckets.map(DAY_LABEL), data: buckets.map((b) => map[b] || 0), map, buckets };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -472,6 +528,265 @@ exports.getPatientStats = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ═══════════════════════════════════════════════════════════════
+// GET /api/analytics/global — Dashboard Global & Analytics (SuperAdmin)
+// ═══════════════════════════════════════════════════════════════
+// AUDIT-DASHBOARD-GLOBAL — n'importe AUCUNE des heuristiques présentes plus
+// haut dans ce fichier (dépenses = 28% du CA, temps_moyen_consult = 22 en
+// dur) : les dépenses viennent réellement du modèle Depense (même source
+// que dashboard.controller.js::superAdminStats/comptableStats), aucune
+// valeur n'est estimée. Une tendance n'est renvoyée QUE si la période
+// précédente de même durée est réellement non nulle (realTrend ci-dessus) —
+// jamais une évolution inventée pour remplir une carte KPI.
+exports.getGlobalStats = async (req, res, next) => {
+  try {
+    const periode = ['jour', '7j', '30j', '12m'].includes(req.query.periode) ? req.query.periode : '7j';
+    const { start, end, prevStart, prevEnd, granularity, days } = resolveGlobalPeriod(periode);
+
+    // ── KPI + tendance réelle (période courante vs période précédente de même durée) ──
+    const [
+      revenus_cur_agg, revenus_prev_agg,
+      patients_actifs_cur, patients_actifs_prev,
+      consultations_cur, consultations_prev,
+      rdv_cur, rdv_prev,
+    ] = await Promise.all([
+      safeAggregate(Invoice, [{ $match: { statut: 'payee', date_facture: { $gte: start, $lte: end } } }, { $group: { _id: null, total: { $sum: '$montant_paye' } } }]),
+      safeAggregate(Invoice, [{ $match: { statut: 'payee', date_facture: { $gte: prevStart, $lte: prevEnd } } }, { $group: { _id: null, total: { $sum: '$montant_paye' } } }]),
+      Appointment.distinct('patient', { date_heure: { $gte: start, $lte: end } }).catch(() => []),
+      Appointment.distinct('patient', { date_heure: { $gte: prevStart, $lte: prevEnd } }).catch(() => []),
+      safeCount(Consultation, { date_consultation: { $gte: start, $lte: end } }),
+      safeCount(Consultation, { date_consultation: { $gte: prevStart, $lte: prevEnd } }),
+      safeCount(Appointment, { statut: 'termine', date_heure: { $gte: start, $lte: end } }),
+      safeCount(Appointment, { statut: 'termine', date_heure: { $gte: prevStart, $lte: prevEnd } }),
+    ]);
+    const revenus_cur  = revenus_cur_agg[0]?.total  || 0;
+    const revenus_prev = revenus_prev_agg[0]?.total || 0;
+
+    // Sparklines des cartes KPI — toujours les 7 derniers jours réels,
+    // indépendamment du filtre de période sélectionné (comme demandé).
+    const [sparkRevenus, sparkPatients, sparkConsultations, sparkRdv] = await Promise.all([
+      (async () => {
+        const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
+        const raw = await safeAggregate(Invoice, [
+          { $match: { statut: 'payee', date_facture: { $gte: since } } },
+          { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date_facture' } }, total: { $sum: '$montant_paye' } } },
+        ]);
+        const map = mapDailyAgg(raw);
+        return dailyBuckets(7).map((b) => map[b] || 0);
+      })(),
+      countPerDay(Patient, 'createdAt', 7).then((r) => r.data),
+      countPerDay(Consultation, 'date_consultation', 7).then((r) => r.data),
+      countPerDay(Appointment, 'date_heure', 7).then((r) => r.data),
+    ]);
+
+    // ── Finance globale ──
+    const [
+      depenses_agg, factures_imp_agg, paiements_recus_count, revenusServiceRaw,
+    ] = await Promise.all([
+      safeAggregate(Depense, [{ $match: { date: { $gte: start, $lte: end } } }, { $group: { _id: null, total: { $sum: '$montant' } } }]),
+      safeAggregate(Invoice, [{ $match: { statut: { $in: ['emise', 'partiellement_payee'] } } }, { $group: { _id: null, total: { $sum: '$montant_restant' }, count: { $sum: 1 } } }]),
+      safeCount(Invoice, { paiements: { $elemMatch: { date: { $gte: start, $lte: end } } } }),
+      safeAggregate(Invoice, [
+        { $match: { statut: { $nin: ['annulee', 'brouillon'] }, date_facture: { $gte: start, $lte: end } } },
+        { $unwind: { path: '$lignes', preserveNullAndEmptyArrays: false } },
+        { $group: { _id: '$lignes.categorie', total: { $sum: '$lignes.montant' } } },
+        { $sort: { total: -1 } },
+      ]),
+    ]);
+    const depenses = depenses_agg[0]?.total || 0;
+
+    let finEvolution;
+    if (granularity === 'month') {
+      const [caRaw, depRaw] = await Promise.all([
+        safeAggregate(Invoice, [{ $match: { statut: 'payee', date_facture: { $gte: start } } }, { $group: { _id: { $month: '$date_facture' }, total: { $sum: '$montant_paye' } } }]),
+        safeAggregate(Depense, [{ $match: { date: { $gte: start } } }, { $group: { _id: { $month: '$date' }, total: { $sum: '$montant' } } }]),
+      ]);
+      const caMap = mapDailyAgg(caRaw), depMap = mapDailyAgg(depRaw);
+      finEvolution = { labels: MOIS_LABELS, revenus: MOIS_LABELS.map((_, i) => caMap[i + 1] || 0), depenses: MOIS_LABELS.map((_, i) => depMap[i + 1] || 0) };
+    } else {
+      const [ca, dep] = await Promise.all([
+        countPerDay(Invoice, 'date_facture', days, { statut: 'payee' }),
+        countPerDay(Depense, 'date', days),
+      ]);
+      // countPerDay compte des documents, pas des montants — refaire les
+      // sommes réelles par jour pour la finance (les compteurs seuls
+      // n'ont pas de sens monétaire).
+      const [caSumRaw, depSumRaw] = await Promise.all([
+        safeAggregate(Invoice, [{ $match: { statut: 'payee', date_facture: { $gte: new Date(Date.now() - (days - 1) * 86400000) } } }, { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date_facture' } }, total: { $sum: '$montant_paye' } } }]),
+        safeAggregate(Depense, [{ $match: { date: { $gte: new Date(Date.now() - (days - 1) * 86400000) } } }, { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } }, total: { $sum: '$montant' } } }]),
+      ]);
+      const caMap = mapDailyAgg(caSumRaw), depMap = mapDailyAgg(depSumRaw);
+      finEvolution = { labels: ca.buckets.map(DAY_LABEL), revenus: ca.buckets.map((b) => caMap[b] || 0), depenses: dep.buckets.map((b) => depMap[b] || 0) };
+    }
+
+    const CAT_LABELS = { consultation: 'Consultation', hospitalisation: 'Hospitalisation', laboratoire: 'Laboratoire', imagerie: 'Imagerie', pharmacie: 'Pharmacie', autre: 'Autre' };
+    const CAT_COLORS = { consultation: '#1B4F9E', hospitalisation: '#D97706', laboratoire: '#0EA5A0', imagerie: '#7C3AED', pharmacie: '#059669', autre: '#9CA3AF' };
+    const revLabels = [], revData = [], revColors = [];
+    revenusServiceRaw.forEach(({ _id, total }) => { if (!_id) return; revLabels.push(CAT_LABELS[_id] || _id); revData.push(total); revColors.push(CAT_COLORS[_id] || '#6B7A99'); });
+
+    // ── Analytics clinique ──
+    const [
+      patients_nouveaux, hospitalisations_cur, urgences_cur, labo_cur, imagerie_cur,
+      trendPatients, trendConsultations, trendRdv, trendHospit,
+    ] = await Promise.all([
+      safeCount(Patient, { createdAt: { $gte: start, $lte: end } }),
+      safeCount(Hospitalization, { date_entree: { $gte: start, $lte: end } }),
+      safeCount(Urgence, { date_arrivee: { $gte: start, $lte: end } }),
+      safeCount(LabResult, { createdAt: { $gte: start, $lte: end } }),
+      safeCount(ImagingResult, { date_prescription: { $gte: start, $lte: end } }),
+      granularity === 'month'
+        ? safeAggregate(Patient, [{ $match: { createdAt: { $gte: start } } }, { $group: { _id: { $month: '$createdAt' }, count: { $sum: 1 } } }])
+        : countPerDay(Patient, 'createdAt', days),
+      granularity === 'month'
+        ? safeAggregate(Consultation, [{ $match: { date_consultation: { $gte: start } } }, { $group: { _id: { $month: '$date_consultation' }, count: { $sum: 1 } } }])
+        : countPerDay(Consultation, 'date_consultation', days),
+      granularity === 'month'
+        ? safeAggregate(Appointment, [{ $match: { date_heure: { $gte: start } } }, { $group: { _id: { $month: '$date_heure' }, count: { $sum: 1 } } }])
+        : countPerDay(Appointment, 'date_heure', days),
+      granularity === 'month'
+        ? safeAggregate(Hospitalization, [{ $match: { date_entree: { $gte: start } } }, { $group: { _id: { $month: '$date_entree' }, count: { $sum: 1 } } }])
+        : countPerDay(Hospitalization, 'date_entree', days),
+    ]);
+
+    let clinEvolution;
+    if (granularity === 'month') {
+      const pMap = mapDailyAgg(trendPatients), cMap = mapDailyAgg(trendConsultations), rMap = mapDailyAgg(trendRdv), hMap = mapDailyAgg(trendHospit);
+      clinEvolution = {
+        labels: MOIS_LABELS,
+        patients: MOIS_LABELS.map((_, i) => pMap[i + 1] || 0),
+        consultations: MOIS_LABELS.map((_, i) => cMap[i + 1] || 0),
+        rdv: MOIS_LABELS.map((_, i) => rMap[i + 1] || 0),
+        hospitalisations: MOIS_LABELS.map((_, i) => hMap[i + 1] || 0),
+      };
+    } else {
+      clinEvolution = {
+        labels: trendPatients.labels,
+        patients: trendPatients.data, consultations: trendConsultations.data,
+        rdv: trendRdv.data, hospitalisations: trendHospit.data,
+      };
+    }
+
+    // ── Maternité (données réelles uniquement — Pregnancy/Delivery) ──
+    const [
+      grossesses_en_cours, femmes_suivies_arr, accouchements_raw,
+      cpnRaw, deliveryEvolutionRaw,
+    ] = await Promise.all([
+      safeCount(Pregnancy, { statut: { $in: ['active', 'a_risque'] } }),
+      Pregnancy.distinct('patient_id', { statut: { $in: ['active', 'a_risque'] } }).catch(() => []),
+      safeAggregate(Delivery, [
+        { $match: { date_heure: { $gte: start, $lte: end } } },
+        { $group: { _id: '$type_accouchement', count: { $sum: 1 } } },
+      ]),
+      safeAggregate(Pregnancy, [
+        { $unwind: '$cpns' },
+        { $match: { 'cpns.date': { $gte: start, $lte: end } } },
+        { $count: 'total' },
+      ]),
+      granularity === 'month'
+        ? safeAggregate(Delivery, [{ $match: { date_heure: { $gte: start } } }, { $group: { _id: { $month: '$date_heure' }, count: { $sum: 1 } } }])
+        : countPerDay(Delivery, 'date_heure', days),
+    ]);
+    const accouchementsMap = Object.fromEntries(accouchements_raw.map((d) => [d._id, d.count]));
+    const voie_basse   = accouchementsMap.voie_basse || 0;
+    const cesariennes  = accouchementsMap.cesarienne  || 0;
+    const forceps_ventouse = (accouchementsMap.forceps || 0) + (accouchementsMap.ventouse || 0);
+    const accouchements_total = voie_basse + cesariennes + forceps_ventouse;
+    let matEvolution;
+    if (granularity === 'month') {
+      const dMap = mapDailyAgg(deliveryEvolutionRaw);
+      matEvolution = { labels: MOIS_LABELS, accouchements: MOIS_LABELS.map((_, i) => dMap[i + 1] || 0) };
+    } else {
+      matEvolution = { labels: deliveryEvolutionRaw.labels, accouchements: deliveryEvolutionRaw.data };
+    }
+
+    // ── Ordonnances (Prescription — données réelles) ──
+    const [
+      presc_total, presc_actives, presc_terminees, presc_periode,
+      prescEvolutionRaw, topMedsRaw,
+    ] = await Promise.all([
+      safeCount(Prescription, {}),
+      safeCount(Prescription, { statut: { $in: ['active', 'publiee'] } }),
+      safeCount(Prescription, { statut: { $in: ['dispensee', 'expiree'] } }),
+      safeCount(Prescription, { date_prescription: { $gte: start, $lte: end } }),
+      granularity === 'month'
+        ? safeAggregate(Prescription, [{ $match: { date_prescription: { $gte: start } } }, { $group: { _id: { $month: '$date_prescription' }, count: { $sum: 1 } } }])
+        : countPerDay(Prescription, 'date_prescription', days),
+      safeAggregate(Prescription, [
+        { $match: { date_prescription: { $gte: start, $lte: end } } },
+        { $unwind: '$lignes' },
+        { $group: { _id: '$lignes.medicament_nom', total: { $sum: { $ifNull: ['$lignes.quantite', 1] } } } },
+        { $match: { _id: { $ne: null } } },
+        { $sort: { total: -1 } },
+        { $limit: 5 },
+      ]),
+    ]);
+    let presEvolution;
+    if (granularity === 'month') {
+      const map = mapDailyAgg(prescEvolutionRaw);
+      presEvolution = { labels: MOIS_LABELS, data: MOIS_LABELS.map((_, i) => map[i + 1] || 0) };
+    } else {
+      presEvolution = { labels: prescEvolutionRaw.labels, data: prescEvolutionRaw.data };
+    }
+    const top_medicaments = topMedsRaw.map((m) => [m._id || 'Inconnu', m.total || 0]);
+
+    // ── Alertes (mêmes règles réelles que getReport ci-dessus) ──
+    const [labCritiques, medRuptures, urgCritiques] = await Promise.all([
+      LabResult.find({ est_critique: true, acquitte_par: null }).populate('patient', 'nom prenom').select('patient patient_nom createdAt').sort('-createdAt').limit(5).lean().catch(() => []),
+      safeCount(Medication, { statut: 'rupture' }),
+      safeCount(Urgence, { niveau_triage: 'rouge', statut: { $nin: ['sorti', 'transfere', 'decede'] } }),
+    ]);
+    const alertes = [
+      ...labCritiques.map((l) => ({ type: 'error', icon: '🔬', msg: `Résultat critique — ${l.patient_nom || (l.patient ? `${l.patient.prenom} ${l.patient.nom}` : 'Patient')}`, heure: new Date(l.createdAt).toLocaleString('fr-FR') })),
+      medRuptures > 0 ? { type: 'error', icon: '💊', msg: `${medRuptures} médicament(s) en rupture de stock`, heure: 'Maintenant' } : null,
+      urgCritiques > 0 ? { type: 'error', icon: '🚨', msg: `${urgCritiques} urgence(s) niveau critique en cours`, heure: 'Maintenant' } : null,
+      (factures_imp_agg[0]?.total || 0) > 0 ? { type: 'warn', icon: '💰', msg: `${(factures_imp_agg[0].total).toLocaleString('fr-FR')} CFA de factures impayées (${factures_imp_agg[0].count} facture(s))`, heure: "Aujourd'hui" } : null,
+    ].filter(Boolean);
+
+    res.json({
+      success: true,
+      periode,
+      kpis: {
+        revenus:       { valeur: revenus_cur,          unite: 'CFA', trend: realTrend(revenus_cur, revenus_prev),                   sparkline: sparkRevenus },
+        patients_actifs: { valeur: patients_actifs_cur.length, unite: '',   trend: realTrend(patients_actifs_cur.length, patients_actifs_prev.length), sparkline: sparkPatients },
+        consultations: { valeur: consultations_cur,    unite: '',    trend: realTrend(consultations_cur, consultations_prev),        sparkline: sparkConsultations },
+        rdv_realises:  { valeur: rdv_cur,               unite: '',    trend: realTrend(rdv_cur, rdv_prev),                            sparkline: sparkRdv },
+      },
+      finance: {
+        revenus: revenus_cur, depenses, benefice: revenus_cur - depenses,
+        paiements_recus: paiements_recus_count,
+        factures_impayees_count: factures_imp_agg[0]?.count || 0,
+        factures_impayees_montant: factures_imp_agg[0]?.total || 0,
+        evolution: finEvolution,
+        revenus_par_service: revLabels.length ? { labels: revLabels, data: revData, colors: revColors } : null,
+      },
+      analytics: {
+        patients_nouveaux, patients_actifs: patients_actifs_cur.length,
+        consultations: consultations_cur, rdv: rdv_cur,
+        hospitalisations: hospitalisations_cur, urgences: urgences_cur,
+        labo: labo_cur, imagerie: imagerie_cur,
+        evolution: clinEvolution,
+      },
+      maternite: {
+        femmes_suivies: femmes_suivies_arr.length,
+        grossesses_en_cours,
+        consultations_prenatales: cpnRaw[0]?.total ?? 0,
+        accouchements: accouchements_total,
+        naissances: accouchements_total, // 1 accouchement = 1 naissance enregistrée (pas de champ nb_bebes distinct)
+        voie_basse, cesariennes,
+        hospitalisations_maternite: null, // aucun champ ne rattache Hospitalization à la maternité de façon fiable
+        evolution: matEvolution,
+        repartition_accouchement: (voie_basse + cesariennes) > 0 ? { labels: ['Voie basse', 'Césarienne'], data: [voie_basse, cesariennes], colors: ['#0EA5A0', '#DC2626'] } : null,
+      },
+      ordonnances: {
+        total: presc_total, actives: presc_actives, terminees: presc_terminees, periode_count: presc_periode,
+        evolution: presEvolution,
+        top_medicaments: top_medicaments.length ? top_medicaments : null,
+      },
+      alertes,
+    });
+  } catch (err) { next(err); }
+};
+
 // AUDIT-B4 — le cache dashboard (T9.9, TTL 30s) n'était pas étendu aux
 // endpoints Analytics, de coût comparable (mêmes agrégations lourdes sur
 // les mêmes collections, même audience superadmin/adminclinique). Réassigné
@@ -487,3 +802,4 @@ exports.getStats        = cacheStats('analyticsStats', (req) => req.query.period
 exports.getReport       = cacheStats('analyticsReport', false, exports.getReport);
 exports.getFinancial    = cacheStats('analyticsFinancial', false, exports.getFinancial);
 exports.getPatientStats = cacheStats('analyticsPatientStats', false, exports.getPatientStats);
+exports.getGlobalStats  = cacheStats('analyticsGlobalStats', (req) => req.query.periode || '7j', exports.getGlobalStats);

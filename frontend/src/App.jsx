@@ -67,6 +67,7 @@ const AI                 = lazy(() => import('./pages/AI'));
 const Archive            = lazy(() => import('./pages/Archive'));
 const Audit              = lazy(() => import('./pages/Audit'));
 const Analytics          = lazy(() => import('./pages/Analytics'));
+const AnalyticsGlobal     = lazy(() => import('./pages/AnalyticsGlobal'));
 
 // ─── Portail Patient ──────────────────────────────────────────────────────────
 const Portal             = lazy(() => import('./pages/Portal'));
@@ -192,6 +193,8 @@ const AppRoutes = () => {
         <Route path="archive"   element={<Guard roles={ROLES.admin}><Archive /></Guard>} />
         <Route path="audit"     element={<Guard roles={ROLES.superadmin}><Audit /></Guard>} />
         <Route path="analytics" element={<Guard roles={ROLES.admin}><Analytics /></Guard>} />
+        {/* Dashboard Global & Analytics — réservé au SuperAdmin uniquement (pas adminclinique) */}
+        <Route path="analytics-global" element={<Guard roles={ROLES.superadmin}><AnalyticsGlobal /></Guard>} />
 
         {/* ── Portail patient ──────────────────────────────────────────── */}
         <Route path="portal" element={<Guard roles={['patient']}><Portal /></Guard>} />

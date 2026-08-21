@@ -7,6 +7,10 @@ const roles = ['superadmin', 'adminclinique'];
 router.get('/stats',     protect, authorize(...roles), analyticsC.getStats);
 router.get('/financial', protect, authorize(...roles), analyticsC.getFinancial);
 router.get('/patients',  protect, authorize(...roles), analyticsC.getPatientStats);
+// Dashboard Global & Analytics — réservé au SuperAdmin uniquement (pas
+// adminclinique), à la demande explicite : périmètre plus large que
+// /analytics classique (finance, maternité, ordonnances agrégés ensemble).
+router.get('/global',    protect, authorize('superadmin'), analyticsC.getGlobalStats);
 router.get('/',          protect, authorize(...roles), analyticsC.getReport);
 
 module.exports = router;
