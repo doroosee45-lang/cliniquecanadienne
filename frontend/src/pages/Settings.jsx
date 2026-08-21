@@ -5,105 +5,105 @@ import { Settings as SettingsIcon } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 
 // ─── CSS Medical Navy + Teal ──────────────────────────────────
+// Palette locale supprimée (alignée sur les tokens globaux de
+// index.css depuis T4.1) — toutes les règles ci-dessous consomment
+// directement var(--ink)/--primary/--accent/etc. Page à layout
+// sidebar (comme Archive.jsx), pas bandeau+onglets : .set-sidebar-hdr
+// (en-tête propre à la sidebar) retiré — mort, remplacé par le
+// <Hero> partagé placé au-dessus de .set-wrap (T4.3), confirmé par
+// recherche exhaustive dans le JSX avant suppression. .set-sidebar/
+// .set-wrap/.set-content restent vivants et inchangés. Toutes les
+// autres keyframes (setP, skelAnim, savedP, fadeUp) conservées :
+// aucune n'était liée à .set-sidebar-hdr.
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
 .set * { font-family:'Poppins',sans-serif; box-sizing:border-box; }
-:root {
-  --sn:#0B1E3B; --sn2:#132744; --sb:#1B4F9E;
-  --st:#0EA5A0; --st2:#0D9490; --sr:#DC2626;
-  --so:#D97706; --sg:#059669; --sp:#7C3AED;
-  --sbr:#E2EAF4; --sm:#6B7A99; --sl:#EEF4FF; --ss:#F8FAFD;
-  --sh:0 1px 3px rgba(11,30,59,.08); --shm:0 4px 16px rgba(11,30,59,.10); --shl:0 12px 40px rgba(11,30,59,.14);
-}
 .set-wrap { display:flex; min-height:100vh; }
-.set-sidebar { width:260px; flex-shrink:0; background:#fff; border-right:1.5px solid var(--sbr); position:sticky; top:0; max-height:100vh; overflow-y:auto; box-shadow:var(--sh); }
+.set-sidebar { width:260px; flex-shrink:0; background:#fff; border-right:1.5px solid var(--border); position:sticky; top:0; max-height:100vh; overflow-y:auto; box-shadow:var(--shadow); }
 .set-sidebar::-webkit-scrollbar { width:4px; }
-.set-sidebar::-webkit-scrollbar-thumb { background:var(--sbr); border-radius:99px; }
-.set-sidebar-hdr { padding:18px 20px 14px; border-bottom:1.5px solid var(--sbr); background:linear-gradient(135deg,var(--sn),var(--sn2)); position:sticky; top:0; z-index:2; }
-.set-sidebar-hdr h2 { font-size:15px; font-weight:700; color:#fff; margin:0; display:flex; align-items:center; gap:8px; }
-.set-sidebar-hdr p { font-size:11px; color:rgba(255,255,255,.5); margin:3px 0 0; }
+.set-sidebar::-webkit-scrollbar-thumb { background:var(--border); border-radius:99px; }
 .set-nav-group { padding:10px 10px 4px; }
-.set-nav-group-label { font-size:10px; font-weight:700; color:var(--sm); text-transform:uppercase; letter-spacing:.8px; padding:6px 10px 4px; display:block; }
-.set-nav-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:10px; font-size:12.5px; font-weight:500; color:var(--sm); cursor:pointer; border:none; background:none; width:100%; text-align:left; font-family:'Poppins',sans-serif; transition:all .2s; margin-bottom:2px; }
-.set-nav-item:hover { background:var(--sl); color:var(--sn); }
-.set-nav-item.active { background:linear-gradient(135deg,var(--sb),#174391); color:#fff; box-shadow:0 4px 12px rgba(27,79,158,.25); }
+.set-nav-group-label { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; padding:6px 10px 4px; display:block; }
+.set-nav-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:10px; font-size:12.5px; font-weight:500; color:var(--muted); cursor:pointer; border:none; background:none; width:100%; text-align:left; font-family:'Poppins',sans-serif; transition:all .2s; margin-bottom:2px; }
+.set-nav-item:hover { background:var(--tint); color:var(--ink); }
+.set-nav-item.active { background:linear-gradient(135deg,var(--primary),var(--primary-dark)); color:#fff; box-shadow:0 4px 12px rgba(27,79,158,.25); }
 .set-nav-item.active .set-nav-badge { background:rgba(255,255,255,.2); color:#fff; }
-.set-nav-badge { margin-left:auto; background:var(--sl); color:var(--sb); font-size:10px; font-weight:700; padding:2px 7px; border-radius:99px; }
-.set-nav-badge.warn { background:#FEF3C7; color:#D97706; }
-.set-nav-badge.danger { background:#FEE2E2; color:#DC2626; animation:setP 2s infinite; }
+.set-nav-badge { margin-left:auto; background:var(--tint); color:var(--primary); font-size:10px; font-weight:700; padding:2px 7px; border-radius:99px; }
+.set-nav-badge.warn { background:#FEF3C7; color:var(--warning); }
+.set-nav-badge.danger { background:#FEE2E2; color:var(--danger); animation:setP 2s infinite; }
 @keyframes setP { 0%,100%{opacity:1} 50%{opacity:.5} }
-.set-content { flex:1; min-width:0; padding:28px; background:var(--ss); }
+.set-content { flex:1; min-width:0; padding:28px; background:var(--surface); }
 .set-section-top { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:24px; }
-.set-section-title { font-size:20px; font-weight:700; color:var(--sn); }
-.set-section-sub { font-size:13px; color:var(--sm); margin-top:3px; }
-.set-card { background:#fff; border:1.5px solid var(--sbr); border-radius:18px; box-shadow:var(--sh); overflow:hidden; margin-bottom:20px; transition:box-shadow .2s; }
-.set-card-hdr { padding:14px 20px; border-bottom:1.5px solid var(--sbr); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(to right,rgba(238,244,255,.6),transparent); }
-.set-card-hdr h3 { font-size:14px; font-weight:700; color:var(--sn); margin:0; display:flex; align-items:center; gap:8px; }
-.set-card-hdr p { font-size:11px; color:var(--sm); margin:2px 0 0; }
+.set-section-title { font-size:20px; font-weight:700; color:var(--ink); }
+.set-section-sub { font-size:13px; color:var(--muted); margin-top:3px; }
+.set-card { background:#fff; border:1.5px solid var(--border); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; margin-bottom:20px; transition:box-shadow .2s; }
+.set-card-hdr { padding:14px 20px; border-bottom:1.5px solid var(--border); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(to right,rgba(238,244,255,.6),transparent); }
+.set-card-hdr h3 { font-size:14px; font-weight:700; color:var(--ink); margin:0; display:flex; align-items:center; gap:8px; }
+.set-card-hdr p { font-size:11px; color:var(--muted); margin:2px 0 0; }
 .set-card-body { padding:20px; }
-.slbl { font-size:12px; font-weight:600; color:var(--sm); margin-bottom:6px; display:block; }
-.sinp { width:100%; padding:9px 13px; border-radius:10px; border:1.5px solid var(--sbr); background:#FAFBFF; font-size:13px; color:var(--sn); font-family:'Poppins',sans-serif; transition:border-color .2s,box-shadow .2s; outline:none; }
-.sinp:focus { border-color:var(--st); box-shadow:0 0 0 3px rgba(14,165,160,.12); }
+.slbl { font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; display:block; }
+.sinp { width:100%; padding:9px 13px; border-radius:10px; border:1.5px solid var(--border); background:#FAFBFF; font-size:13px; color:var(--ink); font-family:'Poppins',sans-serif; transition:border-color .2s,box-shadow .2s; outline:none; }
+.sinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(14,165,160,.12); }
 .sinp:disabled { background:#F3F4F6; color:#9CA3AF; cursor:not-allowed; }
 .sinp-area { resize:vertical; min-height:80px; }
 .sbtn { display:inline-flex; align-items:center; gap:7px; padding:9px 18px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all .2s; font-family:'Poppins',sans-serif; }
-.sbtn-primary { background:var(--sb); color:#fff; } .sbtn-primary:hover { background:#174391; transform:translateY(-1px); }
-.sbtn-teal    { background:var(--st); color:#fff; } .sbtn-teal:hover    { background:var(--st2); transform:translateY(-1px); }
-.sbtn-ghost   { background:transparent; color:var(--sm); border:1.5px solid var(--sbr); }
-.sbtn-ghost:hover { background:var(--sl); color:var(--sn); }
-.sbtn-danger  { background:#FEF2F2; color:var(--sr); border:1.5px solid #FECACA; }
-.sbtn-danger:hover { background:var(--sr); color:#fff; }
-.sbtn-success { background:#ECFDF5; color:var(--sg); border:1.5px solid #A7F3D0; }
+.sbtn-primary { background:var(--primary); color:#fff; } .sbtn-primary:hover { background:var(--primary-dark); transform:translateY(-1px); }
+.sbtn-teal    { background:var(--accent); color:#fff; } .sbtn-teal:hover    { background:var(--accent-dark); transform:translateY(-1px); }
+.sbtn-ghost   { background:transparent; color:var(--muted); border:1.5px solid var(--border); }
+.sbtn-ghost:hover { background:var(--tint); color:var(--ink); }
+.sbtn-danger  { background:#FEF2F2; color:var(--danger); border:1.5px solid #FECACA; }
+.sbtn-danger:hover { background:var(--danger); color:#fff; }
+.sbtn-success { background:#ECFDF5; color:var(--success); border:1.5px solid #A7F3D0; }
 .sbtn-sm { padding:6px 12px; font-size:12px; }
 .sbtn:disabled { opacity:.5; cursor:not-allowed; transform:none!important; }
 .sbdg { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:600; }
-.sbdg.red    { background:#FEF2F2; color:var(--sr); border:1px solid #FECACA; }
-.sbdg.orange { background:#FFF7ED; color:var(--so); border:1px solid #FED7AA; }
-.sbdg.green  { background:#ECFDF5; color:var(--sg); border:1px solid #A7F3D0; }
-.sbdg.blue   { background:#EFF6FF; color:var(--sb); border:1px solid #BFDBFE; }
-.sbdg.teal   { background:#F0FDFC; color:var(--st); border:1px solid #99F6E4; }
-.sbdg.purple { background:#F5F3FF; color:var(--sp); border:1px solid #DDD6FE; }
+.sbdg.red    { background:#FEF2F2; color:var(--danger); border:1px solid #FECACA; }
+.sbdg.orange { background:#FFF7ED; color:var(--warning); border:1px solid #FED7AA; }
+.sbdg.green  { background:#ECFDF5; color:var(--success); border:1px solid #A7F3D0; }
+.sbdg.blue   { background:#EFF6FF; color:var(--primary); border:1px solid #BFDBFE; }
+.sbdg.teal   { background:#F0FDFC; color:var(--accent); border:1px solid #99F6E4; }
+.sbdg.purple { background:#F5F3FF; color:var(--tertiary); border:1px solid #DDD6FE; }
 .sbdg.gray   { background:#F9FAFB; color:#4B5563;   border:1px solid #E5E7EB; }
-.al-info   { background:linear-gradient(135deg,#EFF6FF,#DBEAFE); border:1.5px solid #BFDBFE; border-left:4px solid var(--sb); border-radius:14px; padding:14px 18px; margin-bottom:16px; }
-.al-warn   { background:linear-gradient(135deg,#FFFBEB,#FEF3C7); border:1.5px solid #FDE68A; border-left:4px solid var(--so); border-radius:14px; padding:14px 18px; margin-bottom:16px; }
-.al-danger { background:linear-gradient(135deg,#FEF2F2,#FEE2E2); border:1.5px solid #FECACA; border-left:4px solid var(--sr); border-radius:14px; padding:14px 18px; margin-bottom:16px; }
+.al-info   { background:linear-gradient(135deg,#EFF6FF,#DBEAFE); border:1.5px solid #BFDBFE; border-left:4px solid var(--primary); border-radius:14px; padding:14px 18px; margin-bottom:16px; }
+.al-warn   { background:linear-gradient(135deg,#FFFBEB,#FEF3C7); border:1.5px solid #FDE68A; border-left:4px solid var(--warning); border-radius:14px; padding:14px 18px; margin-bottom:16px; }
+.al-danger { background:linear-gradient(135deg,#FEF2F2,#FEE2E2); border:1.5px solid #FECACA; border-left:4px solid var(--danger); border-radius:14px; padding:14px 18px; margin-bottom:16px; }
 .toggle-wrap { display:flex; align-items:center; gap:10px; }
 .toggle { position:relative; width:44px; height:24px; cursor:pointer; }
 .toggle input { opacity:0; width:0; height:0; position:absolute; }
 .toggle-slider { position:absolute; inset:0; background:#D1D5DB; border-radius:99px; transition:background .25s; }
 .toggle-slider::before { content:''; position:absolute; width:18px; height:18px; left:3px; top:3px; background:white; border-radius:50%; transition:transform .25s; box-shadow:0 1px 3px rgba(0,0,0,.2); }
-.toggle input:checked + .toggle-slider { background:var(--st); }
+.toggle input:checked + .toggle-slider { background:var(--accent); }
 .toggle input:checked + .toggle-slider::before { transform:translateX(20px); }
-.toggle-lbl { font-size:13px; font-weight:500; color:var(--sn); }
+.toggle-lbl { font-size:13px; font-weight:500; color:var(--ink); }
 .set-tbl { width:100%; border-collapse:collapse; }
-.set-tbl thead tr { background:linear-gradient(to right,#F8FAFD,#EEF4FF); }
-.set-tbl th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700; color:var(--sm); text-transform:uppercase; letter-spacing:.6px; border-bottom:1.5px solid var(--sbr); white-space:nowrap; }
+.set-tbl thead tr { background:linear-gradient(to right,var(--surface),var(--tint)); }
+.set-tbl th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; border-bottom:1.5px solid var(--border); white-space:nowrap; }
 .set-tbl td { padding:11px 14px; font-size:13px; border-bottom:1px solid #F3F7FF; vertical-align:middle; }
 .set-tbl tbody tr:last-child td { border-bottom:none; }
 .set-tbl tbody tr:hover { background:#F8FAFF; }
-.perm-grid { display:grid; grid-template-columns:180px repeat(6,1fr); gap:0; border:1.5px solid var(--sbr); border-radius:14px; overflow:hidden; }
-.perm-hdr { background:linear-gradient(to right,#F8FAFD,#EEF4FF); padding:10px 14px; font-size:11px; font-weight:700; color:var(--sm); text-transform:uppercase; letter-spacing:.5px; border-bottom:1.5px solid var(--sbr); text-align:center; }
+.perm-grid { display:grid; grid-template-columns:180px repeat(6,1fr); gap:0; border:1.5px solid var(--border); border-radius:14px; overflow:hidden; }
+.perm-hdr { background:linear-gradient(to right,var(--surface),var(--tint)); padding:10px 14px; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; border-bottom:1.5px solid var(--border); text-align:center; }
 .perm-hdr:first-child { text-align:left; }
 .perm-row { display:contents; }
 .perm-cell { padding:10px 14px; border-bottom:1px solid #F3F7FF; display:flex; align-items:center; justify-content:center; font-size:12px; }
-.perm-cell:first-child { justify-content:flex-start; font-weight:600; color:var(--sn); }
+.perm-cell:first-child { justify-content:flex-start; font-weight:600; color:var(--ink); }
 .perm-row:last-child .perm-cell { border-bottom:none; }
 .perm-row:hover .perm-cell { background:#F8FAFF; }
-.upload-zone { border:2px dashed var(--sbr); border-radius:12px; padding:24px; text-align:center; cursor:pointer; transition:all .2s; background:var(--ss); }
-.upload-zone:hover { border-color:var(--st); background:#F0FDFC; }
-.color-swatch { width:36px; height:36px; border-radius:8px; border:2px solid var(--sbr); cursor:pointer; transition:transform .2s; overflow:hidden; }
-.color-swatch:hover { transform:scale(1.1); border-color:var(--st); }
+.upload-zone { border:2px dashed var(--border); border-radius:12px; padding:24px; text-align:center; cursor:pointer; transition:all .2s; background:var(--surface); }
+.upload-zone:hover { border-color:var(--accent); background:#F0FDFC; }
+.color-swatch { width:36px; height:36px; border-radius:8px; border:2px solid var(--border); cursor:pointer; transition:transform .2s; overflow:hidden; }
+.color-swatch:hover { transform:scale(1.1); border-color:var(--accent); }
 .color-swatch input[type=color] { width:140%; height:140%; margin:-20%; border:none; cursor:pointer; padding:0; }
-.avatar-zone { width:96px; height:96px; border-radius:20px; border:2px dashed var(--sbr); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:all .2s; background:var(--ss); font-size:11px; color:var(--sm); text-align:center; gap:6px; }
-.avatar-zone:hover { border-color:var(--st); background:#F0FDFC; }
-.sec-div { font-size:12px; font-weight:700; color:var(--sm); text-transform:uppercase; letter-spacing:.6px; margin:20px 0 12px; padding-bottom:6px; border-bottom:2px solid var(--sbr); display:flex; align-items:center; gap:8px; }
-.set-prog { background:#EEF4FF; border-radius:99px; height:6px; overflow:hidden; }
+.avatar-zone { width:96px; height:96px; border-radius:20px; border:2px dashed var(--border); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:all .2s; background:var(--surface); font-size:11px; color:var(--muted); text-align:center; gap:6px; }
+.avatar-zone:hover { border-color:var(--accent); background:#F0FDFC; }
+.sec-div { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin:20px 0 12px; padding-bottom:6px; border-bottom:2px solid var(--border); display:flex; align-items:center; gap:8px; }
+.set-prog { background:var(--tint); border-radius:99px; height:6px; overflow:hidden; }
 .set-prog-f { height:100%; border-radius:99px; transition:width .5s; }
 /* Skeleton loader */
-.skel { background:linear-gradient(90deg,#EEF4FF 25%,#DBEAFE 50%,#EEF4FF 75%); background-size:200% 100%; animation:skelAnim 1.5s infinite; border-radius:8px; }
+.skel { background:linear-gradient(90deg,var(--tint) 25%,#DBEAFE 50%,var(--tint) 75%); background-size:200% 100%; animation:skelAnim 1.5s infinite; border-radius:8px; }
 @keyframes skelAnim { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 /* Saved indicator */
-.saved-dot { width:8px; height:8px; border-radius:50%; background:var(--sg); display:inline-block; margin-left:6px; animation:savedP .4s ease; }
+.saved-dot { width:8px; height:8px; border-radius:50%; background:var(--success); display:inline-block; margin-left:6px; animation:savedP .4s ease; }
 @keyframes savedP { from{transform:scale(0)} to{transform:scale(1)} }
 @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 .fu { animation:fadeUp .3s ease both; }
@@ -268,8 +268,8 @@ const ParamRow = ({ cle, label, desc, type = "string", children }) => {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 0", borderBottom:"1px solid #F3F7FF" }}>
       <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontSize:13, fontWeight:600, color:"var(--sn)" }}>{label}</div>
-        {desc && <div style={{ fontSize:11, color:"var(--sm)", marginTop:2 }}>{desc}</div>}
+        <div style={{ fontSize:13, fontWeight:600, color:"var(--ink)" }}>{label}</div>
+        {desc && <div style={{ fontSize:11, color:"var(--muted)", marginTop:2 }}>{desc}</div>}
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
         {children}
@@ -436,8 +436,8 @@ export default function Settings() {
   // ─────────────────────────────────────────────────────────
   if (loading) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"60vh", flexDirection:"column", gap:16 }}>
-      <div style={{ width:48, height:48, border:"4px solid #EEF4FF", borderTop:"4px solid #1B4F9E", borderRadius:"50%", animation:"spin 1s linear infinite" }} />
-      <div style={{ fontSize:13, color:"var(--sm)", fontFamily:"Poppins,sans-serif" }}>Chargement des paramètres...</div>
+      <div style={{ width:48, height:48, border:"4px solid var(--tint)", borderTop:"4px solid var(--primary)", borderRadius:"50%", animation:"spin 1s linear infinite" }} />
+      <div style={{ fontSize:13, color:"var(--muted)", fontFamily:"Poppins,sans-serif" }}>Chargement des paramètres...</div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -465,8 +465,8 @@ export default function Settings() {
           <div className="set-card-body" style={{ display:"flex", alignItems:"center", gap:24, flexWrap:"wrap" }}>
             <div className="avatar-zone">{I.upload}<span>Logo clinique</span><span style={{fontSize:10,color:"#9CA3AF"}}>PNG, SVG</span></div>
             <div style={{ flex:1, minWidth:200 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:"var(--sn)", marginBottom:4 }}>Logo officiel de la clinique</div>
-              <div style={{ fontSize:12, color:"var(--sm)", marginBottom:12 }}>Format recommandé : PNG transparent · 512×512px minimum · Max 2 Mo</div>
+              <div style={{ fontSize:13, fontWeight:600, color:"var(--ink)", marginBottom:4 }}>Logo officiel de la clinique</div>
+              <div style={{ fontSize:12, color:"var(--muted)", marginBottom:12 }}>Format recommandé : PNG transparent · 512×512px minimum · Max 2 Mo</div>
               <div style={{ display:"flex", gap:8 }}>
                 <button className="sbtn sbtn-primary sbtn-sm">{I.upload} Téléverser</button>
                 <button className="sbtn sbtn-ghost sbtn-sm">Supprimer</button>
@@ -517,8 +517,8 @@ export default function Settings() {
               <div key={nom} style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 0", borderBottom:"1px solid #F3F7FF" }}>
                 <div style={{ fontSize:24 }}>📋</div>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:600, color:"var(--sn)", fontSize:13 }}>{nom}</div>
-                  <div style={{ fontSize:11, color:"var(--sm)" }}>Réf : {ref} · Expire le {exp}</div>
+                  <div style={{ fontWeight:600, color:"var(--ink)", fontSize:13 }}>{nom}</div>
+                  <div style={{ fontSize:11, color:"var(--muted)" }}>Réf : {ref} · Expire le {exp}</div>
                 </div>
                 <Badge cls={new Date(exp)>new Date()?"green":"red"}>{new Date(exp)>new Date()?"✅ Valide":"❌ Expiré"}</Badge>
                 <button className="sbtn sbtn-ghost sbtn-sm">{I.upload} Mettre à jour</button>
@@ -599,7 +599,7 @@ export default function Settings() {
                 <label className="slbl">Couleur principale</label>
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:6 }}>
                   {[["#1B4F9E","Bleu navy"],["#0EA5A0","Teal médical"],["#059669","Vert"],["#7C3AED","Violet"],["#DC2626","Rouge"],["#D97706","Ambre"]].map(([col,lbl])=>(
-                    <div key={col} title={lbl} style={{ width:36, height:36, borderRadius:10, background:col, cursor:"pointer", border:val("apparence_couleur")===col?"3px solid var(--sn)":"3px solid transparent", transition:"all .2s", transform:val("apparence_couleur")===col?"scale(1.15)":"scale(1)" }}
+                    <div key={col} title={lbl} style={{ width:36, height:36, borderRadius:10, background:col, cursor:"pointer", border:val("apparence_couleur")===col?"3px solid var(--ink)":"3px solid transparent", transition:"all .2s", transform:val("apparence_couleur")===col?"scale(1.15)":"scale(1)" }}
                       onClick={() => { set("apparence_couleur", col); saveKey("apparence_couleur"); }}
                     />
                   ))}
@@ -607,7 +607,7 @@ export default function Settings() {
                     <input type="color" value={val("apparence_couleur","#1B4F9E")} onChange={e => set("apparence_couleur", e.target.value)} onBlur={() => saveKey("apparence_couleur")} />
                   </div>
                 </div>
-                <div style={{ marginTop:8, fontSize:12, color:"var(--sm)" }}>
+                <div style={{ marginTop:8, fontSize:12, color:"var(--muted)" }}>
                   Sélectionnée : <strong style={{ color:val("apparence_couleur","#1B4F9E") }}>{val("apparence_couleur","#1B4F9E")}</strong>
                   {saved["apparence_couleur"] && <span className="saved-dot" />}
                 </div>
@@ -630,8 +630,8 @@ export default function Settings() {
                   <label className="slbl">{t}</label>
                   <div className="upload-zone">
                     <div style={{ fontSize:28, marginBottom:6 }}>{I.upload}</div>
-                    <div style={{ fontSize:12, fontWeight:600, color:"var(--sn)" }}>{d}</div>
-                    <div style={{ fontSize:11, color:"var(--sm)", marginTop:4 }}>PNG, JPG, SVG · Max 5 Mo</div>
+                    <div style={{ fontSize:12, fontWeight:600, color:"var(--ink)" }}>{d}</div>
+                    <div style={{ fontSize:11, color:"var(--muted)", marginTop:4 }}>PNG, JPG, SVG · Max 5 Mo</div>
                   </div>
                 </div>
               ))}
@@ -661,16 +661,16 @@ export default function Settings() {
                       <tr key={u.id || u._id}>
                         <td>
                           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                            <div style={{ width:34, height:34, borderRadius:"50%", background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:13, color:"var(--sb)", flexShrink:0 }}>
+                            <div style={{ width:34, height:34, borderRadius:"50%", background:"var(--tint)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:13, color:"var(--primary)", flexShrink:0 }}>
                               {(u.prenom||"?")[0]}{(u.nom||"?")[0]}
                             </div>
-                            <div style={{ fontWeight:600, color:"var(--sn)", fontSize:13 }}>{u.prenom} {u.nom}</div>
+                            <div style={{ fontWeight:600, color:"var(--ink)", fontSize:13 }}>{u.prenom} {u.nom}</div>
                           </div>
                         </td>
-                        <td style={{ fontSize:12, color:"var(--sm)" }}>{u.email}</td>
+                        <td style={{ fontSize:12, color:"var(--muted)" }}>{u.email}</td>
                         <td><Badge cls={roleColors[u.role]||"gray"}>{roleLabels[u.role]||u.role}</Badge></td>
                         <td><Badge cls={u.statut==="actif"?"green":"red"}>{u.statut==="actif"?"● Actif":"○ Inactif"}</Badge></td>
-                        <td style={{ fontSize:12, color:"var(--sm)" }}>{u.last || u.derniere_connexion || "—"}</td>
+                        <td style={{ fontSize:12, color:"var(--muted)" }}>{u.last || u.derniere_connexion || "—"}</td>
                         <td>
                           <div style={{ display:"flex", gap:4 }}>
                             <button className="sbtn sbtn-ghost sbtn-sm" onClick={() => toast.success(`✏️ Modifier ${u.prenom}`)}>{I.edit}</button>
@@ -711,8 +711,8 @@ export default function Settings() {
                   <div key={p} className="perm-cell">
                     <div style={{ width:22, height:22, borderRadius:6, background:r[p]?"#ECFDF5":"#FEF2F2", border:`1.5px solid ${r[p]?"#A7F3D0":"#FECACA"}`, display:"flex", alignItems:"center", justifyContent:"center" }}>
                       {r[p]
-                        ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                        : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                        : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                       }
                     </div>
                   </div>
@@ -969,7 +969,7 @@ export default function Settings() {
                   <input type="number" className="sinp" style={{ width:120 }} value={val("pharma_seuil_jours","30")} min={7} max={90} onChange={e => set("pharma_seuil_jours", e.target.value)} />
                   <SaveBtn cle="pharma_seuil_jours" type="number" />
                 </div>
-                <div style={{ fontSize:11, color:"var(--sm)", marginTop:4 }}>
+                <div style={{ fontSize:11, color:"var(--muted)", marginTop:4 }}>
                   Déclenche l'alerte si le stock est inférieur à {val("pharma_seuil_jours","30")} jours
                 </div>
               </div>
@@ -1045,10 +1045,10 @@ export default function Settings() {
                 ["🏦","Virement bancaire",         "fact_pay_virement",  true],
                 ["🏥","Assurance / Tiers payant",  "fact_pay_assurance", true],
               ].map(([ico, nom, cle, def]) => (
-                <div key={cle} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", background:"var(--ss)", borderRadius:10, border:"1.5px solid var(--sbr)" }}>
+                <div key={cle} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", background:"var(--surface)", borderRadius:10, border:"1.5px solid var(--border)" }}>
                   <span style={{ fontSize:20 }}>{ico}</span>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:"var(--sn)" }}>{nom}</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:"var(--ink)" }}>{nom}</div>
                   </div>
                   <Toggle
                     checked={val(cle, def)}
@@ -1077,11 +1077,11 @@ export default function Settings() {
               <tbody>
                 {[["CNSS Congo","cnss@congosocial.cg",80,"CNSS-CG-2024","2025-12-31","actif"],["AXA Assurances","axa@axa-congo.cg",70,"AXA-CG-2024","2025-06-30","actif"],["NSIA Assurances","nsia@nsia.cg",75,"NSIA-2024-001","2025-09-30","actif"],["Mutuelle FPC","fpc@mutuelle.cg",60,"FPC-2024-012","2024-12-31","expiré"],["UAB Assurances","uab@uab-congo.cg",65,"UAB-2025-003","2026-03-31","actif"]].map(([nom,email,taux,contrat,exp,st])=>(
                   <tr key={nom}>
-                    <td style={{ fontWeight:700, color:"var(--sn)", fontSize:12.5 }}>{nom}</td>
-                    <td style={{ fontSize:11, color:"var(--sm)" }}>{email}</td>
-                    <td><span style={{ fontWeight:800, fontSize:15, color:taux>=75?"var(--sg)":"var(--so)" }}>{taux}%</span></td>
-                    <td style={{ fontFamily:"monospace", fontSize:12, color:"var(--sb)" }}>{contrat}</td>
-                    <td style={{ fontSize:12, color:new Date(exp)<new Date()?"var(--sr)":"var(--sm)" }}>{exp}</td>
+                    <td style={{ fontWeight:700, color:"var(--ink)", fontSize:12.5 }}>{nom}</td>
+                    <td style={{ fontSize:11, color:"var(--muted)" }}>{email}</td>
+                    <td><span style={{ fontWeight:800, fontSize:15, color:taux>=75?"var(--success)":"var(--warning)" }}>{taux}%</span></td>
+                    <td style={{ fontFamily:"monospace", fontSize:12, color:"var(--primary)" }}>{contrat}</td>
+                    <td style={{ fontSize:12, color:new Date(exp)<new Date()?"var(--danger)":"var(--muted)" }}>{exp}</td>
                     <td><Badge cls={st==="actif"?"green":"red"}>{st}</Badge></td>
                     <td><button className="sbtn sbtn-ghost sbtn-sm" onClick={() => toast.success(`✏️ Modifier ${nom}`)}>{I.edit}</button></td>
                   </tr>
@@ -1117,11 +1117,11 @@ export default function Settings() {
                     }[log.type] || ["gray","•"];
                     return (
                       <tr key={i}>
-                        <td style={{ fontWeight:600, color:"var(--sn)", fontSize:13 }}>{log.user || log.utilisateur}</td>
-                        <td style={{ fontSize:12, color:"var(--sm)" }}>{log.action}</td>
+                        <td style={{ fontWeight:600, color:"var(--ink)", fontSize:13 }}>{log.user || log.utilisateur}</td>
+                        <td style={{ fontSize:12, color:"var(--muted)" }}>{log.action}</td>
                         <td><Badge cls={typeConf[0]}>{typeConf[1]} {log.type}</Badge></td>
-                        <td style={{ fontSize:12, color:"var(--sm)", fontFamily:"monospace" }}>{log.date || log.created_at}</td>
-                        <td style={{ fontSize:12, fontFamily:"monospace", color:"var(--sm)" }}>{log.ip}</td>
+                        <td style={{ fontSize:12, color:"var(--muted)", fontFamily:"monospace" }}>{log.date || log.created_at}</td>
+                        <td style={{ fontSize:12, fontFamily:"monospace", color:"var(--muted)" }}>{log.ip}</td>
                       </tr>
                     );
                   })}
@@ -1151,12 +1151,12 @@ export default function Settings() {
             réseau. Voir docs/tickets si une vraie intégration est décidée. */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>
           {INTEGRATIONS.map((integ, i) => (
-            <div key={i} style={{ background:"#fff", border:"1.5px solid var(--sbr)", borderRadius:16, padding:18, boxShadow:"var(--sh)", display:"flex", flexDirection:"column", gap:12 }}>
+            <div key={i} style={{ background:"#fff", border:"1.5px solid var(--border)", borderRadius:16, padding:18, boxShadow:"var(--shadow)", display:"flex", flexDirection:"column", gap:12 }}>
               <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                 <div style={{ width:44, height:44, borderRadius:12, background:`${integ.color}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{integ.icon}</div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:"var(--sn)" }}>{integ.nom}</div>
-                  <div style={{ fontSize:11, color:"var(--sm)" }}>{integ.desc}</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:"var(--ink)" }}>{integ.nom}</div>
+                  <div style={{ fontSize:11, color:"var(--muted)" }}>{integ.desc}</div>
                 </div>
               </div>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -1179,7 +1179,7 @@ export default function Settings() {
                 catch { toast.error("Erreur lors de la régénération"); }
               }}>🔄 Régénérer</button>
             </div>
-            <div style={{ fontSize:11, color:"var(--sm)", marginTop:8 }}>⚠️ Ne partagez jamais votre clé API. Révoquez-la immédiatement si elle est compromise.</div>
+            <div style={{ fontSize:11, color:"var(--muted)", marginTop:8 }}>⚠️ Ne partagez jamais votre clé API. Révoquez-la immédiatement si elle est compromise.</div>
           </div>
         </div>
       </div>
@@ -1203,8 +1203,8 @@ export default function Settings() {
                     <tbody>
                       {services.map(s => (
                         <tr key={s._id}>
-                          <td><div style={{ fontWeight:700, color:"var(--sn)", fontSize:13 }}>{s.nom}</div>{s.description&&<div style={{fontSize:11,color:"var(--sm)"}}>{s.description}</div>}</td>
-                          <td style={{ fontSize:12, color:"var(--sm)" }}>{s.chef_service?.prenom} {s.chef_service?.nom || "—"}</td>
+                          <td><div style={{ fontWeight:700, color:"var(--ink)", fontSize:13 }}>{s.nom}</div>{s.description&&<div style={{fontSize:11,color:"var(--muted)"}}>{s.description}</div>}</td>
+                          <td style={{ fontSize:12, color:"var(--muted)" }}>{s.chef_service?.prenom} {s.chef_service?.nom || "—"}</td>
                           <td><Badge cls="blue">{s.nb_personnel || 0} agents</Badge></td>
                           <td><Badge cls={s.statut==="actif"?"green":"red"}>{s.statut==="actif"?"● Actif":"○ Fermé"}</Badge></td>
                           <td>
@@ -1225,20 +1225,20 @@ export default function Settings() {
             )}
             <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
               {[
-                { key:"services_consultations", nom:"Consultations", icon:"🩺", col:"#1B4F9E" },
-                { key:"services_laboratoire",   nom:"Laboratoire",   icon:"🔬", col:"#059669" },
-                { key:"services_imagerie",       nom:"Imagerie",      icon:"🩻", col:"#7C3AED" },
-                { key:"services_hospitalisation",nom:"Hospitalisation",icon:"🛏️",col:"#D97706" },
-                { key:"services_bloc",           nom:"Bloc opératoire",icon:"🔪",col:"#DC2626" },
-                { key:"services_pharmacie",      nom:"Pharmacie",     icon:"💊", col:"#0EA5A0" },
+                { key:"services_consultations", nom:"Consultations", icon:"🩺", col:"var(--primary)" },
+                { key:"services_laboratoire",   nom:"Laboratoire",   icon:"🔬", col:"var(--success)" },
+                { key:"services_imagerie",       nom:"Imagerie",      icon:"🩻", col:"var(--tertiary)" },
+                { key:"services_hospitalisation",nom:"Hospitalisation",icon:"🛏️",col:"var(--warning)" },
+                { key:"services_bloc",           nom:"Bloc opératoire",icon:"🔪",col:"var(--danger)" },
+                { key:"services_pharmacie",      nom:"Pharmacie",     icon:"💊", col:"var(--accent)" },
               ].map(s => (
                 <div key={s.key} className="set-card" style={{ borderTop:`3px solid ${s.col}` }}>
                   <div className="set-card-body" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:14 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                       <span style={{ fontSize:28 }}>{s.icon}</span>
                       <div>
-                        <div style={{ fontWeight:700, color:"var(--sn)", fontSize:13 }}>{s.nom}</div>
-                        <div style={{ fontSize:11, color:"var(--sm)" }}>Module {val(s.key, "actif") === "actif" ? "activé" : "désactivé"}</div>
+                        <div style={{ fontWeight:700, color:"var(--ink)", fontSize:13 }}>{s.nom}</div>
+                        <div style={{ fontSize:11, color:"var(--muted)" }}>Module {val(s.key, "actif") === "actif" ? "activé" : "désactivé"}</div>
                       </div>
                     </div>
                     <Toggle checked={val(s.key, true)} onChange={v => { set(s.key, v ? "actif" : "inactif"); saveKey(s.key); }} />
@@ -1347,7 +1347,7 @@ export default function Settings() {
                 ["consult_type_preventif",   "🛡️ Médecine préventive",      false],
               ].map(([cle, nom, def]) => (
                 <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid #F3F7FF" }}>
-                  <span style={{ fontSize:13, color:"var(--sn)" }}>{nom}</span>
+                  <span style={{ fontSize:13, color:"var(--ink)" }}>{nom}</span>
                   <Toggle checked={val(cle, def)} onChange={v => { set(cle, v); saveKey(cle, "boolean"); }} />
                 </div>
               ))}
@@ -1436,8 +1436,8 @@ export default function Settings() {
                 ["labo_cat_toxicologie",  "☣️ Toxicologie",           false],
                 ["labo_cat_cytologie",    "🔬 Cytologie",             false],
               ].map(([cle, nom, def]) => (
-                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--ss)", border:"1.5px solid var(--sbr)", borderRadius:10, padding:"10px 14px" }}>
-                  <span style={{ fontSize:13, fontWeight:500, color:"var(--sn)" }}>{nom}</span>
+                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--surface)", border:"1.5px solid var(--border)", borderRadius:10, padding:"10px 14px" }}>
+                  <span style={{ fontSize:13, fontWeight:500, color:"var(--ink)" }}>{nom}</span>
                   <Toggle checked={val(cle, def)} onChange={v => { set(cle, v); saveKey(cle, "boolean"); }} />
                 </div>
               ))}
@@ -1526,8 +1526,8 @@ export default function Settings() {
                 ["img_type_doppler",     "💓 Doppler vasculaire",  false],
                 ["img_type_panoramique", "📐 Panoramique dentaire",false],
               ].map(([cle, nom, def]) => (
-                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--ss)", border:"1.5px solid var(--sbr)", borderRadius:10, padding:"10px 14px" }}>
-                  <span style={{ fontSize:13, fontWeight:500, color:"var(--sn)" }}>{nom}</span>
+                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--surface)", border:"1.5px solid var(--border)", borderRadius:10, padding:"10px 14px" }}>
+                  <span style={{ fontSize:13, fontWeight:500, color:"var(--ink)" }}>{nom}</span>
                   <Toggle checked={val(cle, def)} onChange={v => { set(cle, v); saveKey(cle, "boolean"); }} />
                 </div>
               ))}
@@ -1608,11 +1608,11 @@ export default function Settings() {
                       const etatCfg = { libre:{cls:"green",label:"Libre"}, occupe:{cls:"red",label:"Occupée"}, maintenance:{cls:"orange",label:"Maintenance"}, reserve:{cls:"blue",label:"Réservée"} }[r.statut] || {cls:"gray",label:r.statut};
                       return (
                         <tr key={r._id}>
-                          <td style={{ fontWeight:700, color:"var(--sn)" }}>{typeIcons[r.type]||"🏥"} {r.numero}</td>
-                          <td style={{ fontSize:12, color:"var(--sm)" }}>{r.type}</td>
+                          <td style={{ fontWeight:700, color:"var(--ink)" }}>{typeIcons[r.type]||"🏥"} {r.numero}</td>
+                          <td style={{ fontSize:12, color:"var(--muted)" }}>{r.type}</td>
                           <td><Badge cls="blue">{r.capacite} lit(s)</Badge></td>
                           <td><Badge cls={etatCfg.cls}>{etatCfg.label}</Badge></td>
-                          <td style={{ fontSize:12, color:"var(--sm)" }}>{r.responsable||"—"}</td>
+                          <td style={{ fontSize:12, color:"var(--muted)" }}>{r.responsable||"—"}</td>
                         </tr>
                       );
                     })}
@@ -1620,7 +1620,7 @@ export default function Settings() {
                 </table>
               </div>
             ) : (
-              <div style={{ padding:24, textAlign:"center", color:"var(--sm)", fontSize:13 }}>Aucune salle configurée — créez des salles depuis le module Administration.</div>
+              <div style={{ padding:24, textAlign:"center", color:"var(--muted)", fontSize:13 }}>Aucune salle configurée — créez des salles depuis le module Administration.</div>
             )}
           </div>
         </div>
@@ -1701,8 +1701,8 @@ export default function Settings() {
                 ["bloc_anesth_peridurale",  "🔗 Anesthésie péridurale",     false],
                 ["bloc_anesth_sedation",    "🌙 Sédation consciente",       false],
               ].map(([cle, nom, def]) => (
-                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--ss)", border:"1.5px solid var(--sbr)", borderRadius:10, padding:"10px 14px" }}>
-                  <span style={{ fontSize:13, fontWeight:500, color:"var(--sn)" }}>{nom}</span>
+                <div key={cle} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--surface)", border:"1.5px solid var(--border)", borderRadius:10, padding:"10px 14px" }}>
+                  <span style={{ fontSize:13, fontWeight:500, color:"var(--ink)" }}>{nom}</span>
                   <Toggle checked={val(cle, def)} onChange={v => { set(cle, v); saveKey(cle, "boolean"); }} />
                 </div>
               ))}
@@ -1731,8 +1731,8 @@ export default function Settings() {
               {settings.filter(s => s.groupe === active).map(s => (
                 <div key={s.cle} style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 0", borderBottom:"1px solid #F3F7FF" }}>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:"var(--sn)" }}>{(s.label || s.cle).replace(/_/g," ")}</div>
-                    {s.description && <div style={{ fontSize:11, color:"var(--sm)", marginTop:2 }}>{s.description}</div>}
+                    <div style={{ fontSize:13, fontWeight:600, color:"var(--ink)" }}>{(s.label || s.cle).replace(/_/g," ")}</div>
+                    {s.description && <div style={{ fontSize:11, color:"var(--muted)", marginTop:2 }}>{s.description}</div>}
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                     {s.type === "boolean" ? (
@@ -1756,8 +1756,8 @@ export default function Settings() {
         ) : (
           <div style={{ textAlign:"center", padding:60 }}>
             <div style={{ fontSize:48, marginBottom:16 }}>🔧</div>
-            <div style={{ fontSize:16, fontWeight:700, color:"var(--sn)" }}>Section en cours de développement</div>
-            <div style={{ color:"var(--sm)", marginTop:8 }}>Les paramètres seront chargés depuis <code style={{fontFamily:"monospace",background:"#EEF4FF",padding:"2px 6px",borderRadius:4}}>/settings?groupe={active}</code></div>
+            <div style={{ fontSize:16, fontWeight:700, color:"var(--ink)" }}>Section en cours de développement</div>
+            <div style={{ color:"var(--muted)", marginTop:8 }}>Les paramètres seront chargés depuis <code style={{fontFamily:"monospace",background:"var(--tint)",padding:"2px 6px",borderRadius:4}}>/settings?groupe={active}</code></div>
           </div>
         )}
       </div>
