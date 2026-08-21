@@ -32,9 +32,13 @@ Appointment (patient, medecin, service)
 
 **Écart réel** : `Consultation.prescriptions[]` et `Consultation.examens_complementaires[]` sont des sous-documents **texte libre** (aucun `ref`). Une consultation ne référence donc jamais les `Prescription`/`LabResult`/`ImagingResult` réellement créés à partir d'elle — seul `Prescription.consultation` fait le lien, et uniquement dans ce sens. Remonter d'une consultation vers les examens qu'elle a déclenchés n'est pas une requête directe possible aujourd'hui.
 
+> **Point d'attention reporté à la Phase 6** du plan directeur — ne pas corriger avant cette phase (voir `cartographie-modules.md` §6, `relationships.md` constat #4).
+
 ## 3. Consultation → Laboratoire / Imagerie
 
 `LabResult` et `ImagingResult` référencent `patient` et `medecin_prescripteur` (User), **jamais `Consultation`**. Le lien entre une consultation et les examens qu'elle prescrit est **une saisie humaine indépendante** (le personnel de laboratoire/imagerie recrée la demande à partir du même patient), pas une chaîne de références en base. Idem pour `Echographie` (patient_ref seulement, décision 0003).
+
+> Même écart que §2, également reporté à la **Phase 6**.
 
 ## 4. Maternité
 
@@ -62,6 +66,8 @@ DossierChirurgical (patient_id, chirurgien_id — porte AUSSI la programmation b
 
 `Invoice.lignes[].categorie` est un **enum texte** (`consultation`/`hospitalisation`/`laboratoire`/`imagerie`/`pharmacie`/`autre`), **jamais une référence** vers le document clinique d'origine (pas de `consultation_id`/`hospitalization_id` sur `Invoice` ou ses lignes). La facturation est donc une saisie indépendante qui catégorise la prestation par type, sans lien structurel vers l'enregistrement clinique exact qui l'a motivée. `analytics.controller.js::getReport` utilise cette catégorisation pour la répartition des revenus par service — une agrégation par catégorie déclarée, pas une jointure réelle.
 
+> **Point d'attention reporté à la Phase 3** du plan directeur — ne pas corriger avant cette phase (voir `cartographie-modules.md` §6).
+
 ## 7. Temps réel (tous modules)
 
 ```
@@ -84,3 +90,5 @@ Mécanisme unique et partagé — confirmé câblé sur 15+ contrôleurs (appoin
 ## 9. Archivage
 
 `ArchiveEntry` ne référence pas directement le document archivé par un `ref` Mongoose typé : `source_model` (nom du modèle, String) + `source_id` (ObjectId) forment une référence polymorphe résolue manuellement par le contrôleur. C'est un **instantané + pointeur**, pas une relation vivante — contrairement à tout le reste du projet, qui utilise systématiquement des `ref:` typés à une seule collection. À connaître avant d'étendre l'archivage à une nouvelle catégorie de document.
+
+> **Point d'attention reporté à la Phase 21** du plan directeur — ne pas corriger avant cette phase (voir `cartographie-modules.md` §6, `relationships.md` constat #3).

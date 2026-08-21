@@ -10,7 +10,7 @@
 ## Parcours clinique
 
 - **Appointment** (RDV) — `patient`, `medecin`→User, `service`→Service (optionnel), `date_heure`, `type`, `statut` (10 valeurs), index unique anti-double-réservation (médecin+créneau).
-- **Consultation** — `patient`, `medecin`→User, `appointment`→Appointment (optionnel), `signes_vitaux{}`, `diagnostic`, `prescriptions[]` (texte libre, pas une ref Prescription), `examens_complementaires[]` (**texte libre — pas une ref LabResult/ImagingResult**, voir `workflows.md`), `decision`, `ia_suggestions[]`.
+- **Consultation** — `patient`, `medecin`→User, `appointment`→Appointment (optionnel), `signes_vitaux{}`, `diagnostic`, `prescriptions[]` (texte libre, pas une ref Prescription), `examens_complementaires[]` (**texte libre — pas une ref LabResult/ImagingResult**, voir `workflows.md` — écart reporté à la **Phase 6**), `decision`, `ia_suggestions[]`.
 - **Prescription** (Ordonnances) — `patient`, `medecin`→User, `consultation`→Consultation (optionnel), `lignes[].medicament`→Medication (optionnel, `medicament_nom` texte libre en repli), `statut` (brouillon→active→publiee→dispensee/expiree/annulee), `dispensee_par`/`publie_par`→User.
 - **LabResult** (Laboratoire) — `patient`, `medecin_prescripteur`/`technicien`/`validateur`/`acquitte_par`→User, `examen`→ExamCatalogue (optionnel), `est_critique`, `statut` (7 valeurs).
 - **ImagingResult** (Imagerie) — `patient`, `medecin_prescripteur`/`radiologue`→User, `examen`→ExamCatalogue (optionnel), `ia_anomalie`, `statut` (6 valeurs).
@@ -40,10 +40,10 @@
 
 ## Facturation, Documents, Archivage, IA
 
-- **Invoice** (Facture) — `patient`→Patient (optionnel, `patient_nom` en repli), `lignes[]` (catégorie/montant), `paiements[]` (sous-documents), `statut` recalculé automatiquement (`pre('save')`) selon `montant_paye`/`montant_ttc`.
+- **Invoice** (Facture) — `patient`→Patient (optionnel, `patient_nom` en repli), `lignes[]` (catégorie/montant — **`categorie` est un enum texte, aucune référence vers le document clinique d'origine**, voir `workflows.md` §6 — écart reporté à la **Phase 3**), `paiements[]` (sous-documents), `statut` recalculé automatiquement (`pre('save')`) selon `montant_paye`/`montant_ttc`.
 - **Depense** — autonome. `categorie` (Salaires/Médicaments/.../Autre), `montant`, `statut` (paye/en_attente), `enregistre_par`→User. Source réelle des dépenses (dashboard/analytics), pas une estimation.
 - **Document** — `patient`→Patient (optionnel), `lifecycle_statut` (actif→archive_chaud→archive_froid→purge_planifiee), `hash_integrite`, `version`.
-- **ArchiveEntry** (Archivage) — `patient`→Patient (optionnel), `source_model` (String) + `source_id` (ObjectId) — **référence polymorphe par convention, pas un `ref` Mongoose typé** (seul modèle du projet à utiliser ce pattern). `categorie` (patient/consultation/laboratoire/imagerie/hospitalisation/chirurgie/financier/document), `statut` (archive/restauré/purge_planifiee).
+- **ArchiveEntry** (Archivage) — `patient`→Patient (optionnel), `source_model` (String) + `source_id` (ObjectId) — **référence polymorphe par convention, pas un `ref` Mongoose typé** (seul modèle du projet à utiliser ce pattern — écart reporté à la **Phase 21**). `categorie` (patient/consultation/laboratoire/imagerie/hospitalisation/chirurgie/financier/document), `statut` (archive/restauré/purge_planifiee).
 - **AIPrediction** — `patient`→Patient (optionnel), `type` (diagnostic/anomalie_labo/anomalie_imagerie/interaction_medicament), `traite_par`→User.
 
 ## Ressources humaines
