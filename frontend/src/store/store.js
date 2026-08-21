@@ -8,7 +8,6 @@ import radiologyReducer from './slices/radiologySlice';
 import pharmacyReducer from './slices/pharmacySlice';
 import prescriptionsReducer from './slices/prescriptionsSlice';
 import financeReducer from './slices/financeSlice';
-import dashboardReducer from './slices/dashboardSlice';
 import hrReducer from './slices/hrSlice';
 import messagesReducer from './slices/messagesSlice';
 import aiReducer from './slices/aiSlice';
@@ -37,7 +36,6 @@ const store = configureStore({
     pharmacy: pharmacyReducer,
     prescriptions: prescriptionsReducer,
     finance: financeReducer,
-    dashboard: dashboardReducer,
     hr: hrReducer,
     messages: messagesReducer,
     ai: aiReducer,

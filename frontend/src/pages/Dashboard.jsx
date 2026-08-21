@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useDispatch, useSelector } from 'react-redux';
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
 import api from "../api";
 import toast from "react-hot-toast";
-import { fetchDashboardData, selectDashboardData, selectDashboardLoading } from '../store/slices/dashboardSlice';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -919,10 +917,6 @@ function ComptableDashboard({ data, isMobile }) {
 // ─── MAIN DASHBOARD ─────────────────────────────────────────────
 // ════════════════════════════════════════════════════════════════
 export default function Dashboard() {
-  const dispatch = useDispatch();
-  const reduxDashData    = useSelector(selectDashboardData);
-  const reduxDashLoading = useSelector(selectDashboardLoading);
-
   let authData = null;
   try { authData = useAuth(); } catch {}
   const user     = authData?.user || { prenom:"Utilisateur", nom:"", role:"patient" };
@@ -941,11 +935,15 @@ export default function Dashboard() {
   // ── Socket.IO (temps réel) ───────────────────────────────────
   const { socket, connected, activities } = useSocket();
 
-  // ── Redux sync ──────────────────────────────────────────────
-  useEffect(() => { dispatch(fetchDashboardData(role)); }, [dispatch, role]);
-  useEffect(() => { if (reduxDashData) { setStats(reduxDashData); setLoading(false); } }, [reduxDashData]);
-
   // ── Load dashboard data ──────────────────────────────────────
+  // AUDIT — un dispatch Redux parallèle (fetchDashboardData) appelait le
+  // MÊME endpoint que loadData() ci-dessous à chaque montage/changement de
+  // rôle, sans jamais être rebranché sur le rafraîchissement temps réel
+  // (polling/Socket.IO), et sans qu'aucun autre composant de l'app ne lise
+  // jamais ce slice (vérifié par recherche exhaustive des sélecteurs) :
+  // double appel réseau systématique pour un résultat jamais exploité
+  // ailleurs. Retiré au profit du seul flux réellement complet (celui-ci),
+  // qui gère déjà le repli portail patient, les erreurs et le temps réel.
   const loadData = useCallback(async () => {
     setLoading(true); setError(null);
     try {
