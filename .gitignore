@@ -47,3 +47,9 @@ public/uploads/
 # ===== SAUVEGARDES (T9.11, backend/utils/backup.js) =====
 # Contiennent des données patient en clair (EJSON) — jamais versionnées.
 backend/backups/
+
+# ===== DOCUMENTS DE TRAVAIL PERSONNELS (Word, notes de planification) =====
+# Plans/notes hors dépôt (ex. brouillons du plan directeur) — jamais des
+# livrables du projet, ne doivent jamais entrer dans le suivi Git.
+*.docx
+~$*
