@@ -74,7 +74,7 @@ const CSS = `
 .dbtn-ghost   { background:transparent; color:var(--dm); border:1.5px solid var(--dbr); }
 .dbtn-ghost:hover { background:var(--dl); color:var(--dn); }
 .dbtn-sm { padding:6px 13px; font-size:12px; }
-.qa-btn { display:flex; flex-direction:column; align-items:center; gap:8px; padding:14px 10px; border-radius:14px; border:1.5px solid var(--dbr); background:#fff; cursor:pointer; transition:all .2s; font-family:'Poppins',sans-serif; font-size:11px; font-weight:600; color:var(--dm); text-align:center; }
+.qa-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; width:100%; height:100%; min-height:92px; box-sizing:border-box; padding:14px 10px; border-radius:14px; border:1.5px solid var(--dbr); background:#fff; cursor:pointer; transition:all .2s; font-family:'Poppins',sans-serif; font-size:11px; font-weight:600; color:var(--dm); text-align:center; }
 .qa-btn:hover { border-color:var(--dt); background:var(--dl); color:var(--dn); transform:translateY(-2px); box-shadow:var(--shm); }
 .qa-icon { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; }
 .db-tbl { width:100%; border-collapse:collapse; }
@@ -198,7 +198,7 @@ function Badge({ cls, children }) { return <span className={`dbdg ${cls}`}>{chil
 
 // ─── Quick actions ────────────────────────────────────────────
 const QUICK_ACTIONS = {
-  superadmin:     [{ icon:"👤", label:"Utilisateurs", color:"#EFF6FF", to:"/administration" },{ icon:"📊", label:"Analytics", color:"#F0FDFC", to:"/analytics" },{ icon:"🏥", label:"Administration", color:"#ECFDF5", to:"/administration" },{ icon:"💰", label:"Finance", color:"#FEFCE8", to:"/finance" },{ icon:"💾", label:"Sauvegardes", color:"#F0FDFC", to:"/settings" },{ icon:"🛡️", label:"Audit", color:"#F5F3FF", to:"/audit" },{ icon:"⚙️", label:"Paramètres", color:"#FFF7ED", to:"/settings" },{ icon:"📋", label:"Rapports", color:"#FEF2F2", to:"/analytics" },{ icon:"🤖", label:"IA", color:"#EEF2FF", to:"/ai" },{ icon:"👔", label:"Ressources Hum.", color:"#FDF2F8", to:"/hr" }],
+  superadmin:     [{ icon:"➕", label:"Nouveau patient", color:"#EFF6FF", to:"/patients" },{ icon:"📅", label:"Rendez-vous", color:"#F0FDFC", to:"/appointments" },{ icon:"🩺", label:"Consultations", color:"#ECFDF5", to:"/consultations" },{ icon:"👥", label:"Utilisateurs", color:"#F5F3FF", to:"/administration" },{ icon:"🏥", label:"Hospitalisations", color:"#FEF2F2", to:"/hospitalization" },{ icon:"🧪", label:"Laboratoire", color:"#ECFDF5", to:"/laboratory" },{ icon:"💊", label:"Pharmacie", color:"#FFF7ED", to:"/pharmacy" },{ icon:"💰", label:"Finance", color:"#FEFCE8", to:"/finance" },{ icon:"📊", label:"Rapports", color:"#EEF2FF", to:"/analytics" }],
   adminclinique:  [{ icon:"➕", label:"Nouveau patient", color:"#EFF6FF", to:"/patients" },{ icon:"📅", label:"Nouveau RDV", color:"#F0FDFC", to:"/appointments" },{ icon:"🩺", label:"Consultation", color:"#ECFDF5", to:"/consultations" },{ icon:"💊", label:"Ordonnance", color:"#FFF7ED", to:"/ordonnances" },{ icon:"🏥", label:"Hospitalisation", color:"#FEF2F2", to:"/hospitalization" },{ icon:"💰", label:"Finance", color:"#FEFCE8", to:"/finance" },{ icon:"🧪", label:"Laboratoire", color:"#F5F3FF", to:"/laboratory" },{ icon:"🩻", label:"Imagerie", color:"#EEF2FF", to:"/radiology" },{ icon:"📊", label:"Analytics", color:"#FDF2F8", to:"/analytics" },{ icon:"⚙️", label:"Paramètres", color:"#FFF7ED", to:"/settings" }],
   medecin:        [{ icon:"🩺", label:"Consultation", color:"#EFF6FF", to:"/consultations" },{ icon:"💊", label:"Ordonnance", color:"#F0FDFC", to:"/ordonnances" },{ icon:"📅", label:"Mes RDV", color:"#ECFDF5", to:"/appointments" },{ icon:"👥", label:"Mes patients", color:"#FFF7ED", to:"/patients" },{ icon:"🏥", label:"Hospitalisation", color:"#FEF2F2", to:"/hospitalization" },{ icon:"🔬", label:"Labo", color:"#ECFDF5", to:"/laboratory" },{ icon:"🩻", label:"Imagerie", color:"#EEF2FF", to:"/radiology" },{ icon:"🤖", label:"IA", color:"#F5F3FF", to:"/ai" }],
   infirmier:      [{ icon:"👥", label:"Patients", color:"#EFF6FF", to:"/patients" },{ icon:"🌡️", label:"Constantes", color:"#F0FDFC", to:"/hospitalization" },{ icon:"💉", label:"Soins", color:"#ECFDF5", to:"/hospitalization" },{ icon:"💊", label:"Médicaments", color:"#FFF7ED", to:"/pharmacy" },{ icon:"📋", label:"Fiche suivi", color:"#F5F3FF", to:"/hospitalization" },{ icon:"💬", label:"Messagerie", color:"#FDF2F8", to:"/messages" }],
@@ -558,82 +558,210 @@ function RadiologueDashboard({ data, isMobile }) {
 // ─── AUTRES DASHBOARDS (inchangés) ─────────────────────────────
 // ════════════════════════════════════════════════════════════════
 function SuperAdminDashboard({ data, isMobile }) {
-  const kpis    = data?.kpis          || {};
-  const sys     = data?.sys_status     || { db:"" };
-  const uroles  = data?.users_par_role  || {};
-  const alertes = data?.alertes_crit    || [];
-  const chart   = data?.chart_mois      || { labels:[], ca:[], dep:[] };
+  const navigate = useNavigate();
+  const kpis        = data?.kpis                  || {};
+  const sys         = data?.sys_status            || { db:"" };
+  const uroles      = data?.users_par_role        || {};
+  const alertes     = data?.alertes_crit          || [];
+  const chartFin    = data?.chart_mois            || { labels:[], ca:[], dep:[] };
+  const chartAct    = data?.chart_activite        || { labels:[], patients:[], consultations:[], rdv:[], hospitalisations:[] };
+  const rdvListe    = data?.rdv_auj_liste         || [];
+  const rdvStats    = data?.rdv_stats             || { total:0, confirmes:0, en_attente:0, termines:0, annules:0 };
+  const consultsListe = data?.consultations_auj_liste || [];
+  const urgences    = data?.urgences              || { nouvelles:0, en_cours:0, terminees:0 };
+  const hospit      = data?.hospitalisation       || { admissions_auj:0, patients_actuels:0, sorties_auj:0 };
+  const labo        = data?.laboratoire           || { demandes_auj:0, en_cours:0, critiques:0 };
+  const imagerie    = data?.imagerie              || { examens_auj:0, en_attente:0, rapports_dispo:0 };
+  const pharma      = data?.pharmacie             || { stock_faible:0, ruptures:0 };
   const connexions_echouees = data?.connexions_echouees ?? 0;
   const comptes_bloques     = data?.comptes_bloques ?? 0;
+
+  const stRdv = (s) => ({ confirme:"green", en_attente:"orange", termine:"gray", annule:"red", arrive:"teal", en_consultation:"teal", planifie:"blue", reporte:"purple", absent:"red" }[s] || "blue");
+  const lbRdv = (s) => ({ confirme:"✅ Confirmé", en_attente:"⏳ En attente", termine:"✓ Terminé", annule:"❌ Annulé", arrive:"🏥 Arrivé", en_consultation:"🩺 En cons.", planifie:"📅 Planifié", reporte:"↩️ Reporté", absent:"🚫 Absent" }[s] || s);
+  // Cliquer sur une alerte ouvre le module correspondant — uniquement si la
+  // route existe réellement dans App.jsx, jamais une route inventée.
+  const alertRoute = (icon) => ({ "🔬":"/laboratory", "💊":"/pharmacy", "💰":"/finance", "🔒":"/administration", "🔐":"/audit" }[icon] || null);
+
+  const vueGlobale = [
+    { icon:"📅", title:"Rendez-vous",     to:"/appointments",   rows:[["Aujourd'hui", rdvStats.total],["Confirmés", rdvStats.confirmes],["En attente", rdvStats.en_attente]] },
+    { icon:"🩺", title:"Consultations",   to:"/consultations",  rows:[["Aujourd'hui", kpis.consultations_auj ?? 0]] },
+    { icon:"🏥", title:"Hospitalisation", to:"/hospitalization",rows:[["Admissions",  hospit.admissions_auj],["Hospitalisés", hospit.patients_actuels],["Sorties", hospit.sorties_auj]] },
+    { icon:"🚨", title:"Urgences",        to:"/urgences",       rows:[["Nouvelles",   urgences.nouvelles],["En cours", urgences.en_cours],["Terminées", urgences.terminees]] },
+    { icon:"🧪", title:"Laboratoire",     to:"/laboratory",     rows:[["Demandes",    labo.demandes_auj],["En cours", labo.en_cours],["Critiques", labo.critiques]] },
+    { icon:"🩻", title:"Imagerie",        to:"/radiology",      rows:[["Examens",     imagerie.examens_auj],["En attente", imagerie.en_attente],["Rapports dispo.", imagerie.rapports_dispo]] },
+    { icon:"💊", title:"Pharmacie",       to:"/pharmacy",       rows:[["Stocks faibles", pharma.stock_faible],["Ruptures", pharma.ruptures]] },
+  ];
+
+  const adminTotal = (uroles.superadmin ?? 0) + (uroles.adminclinique ?? 0);
+  const roleBars = [
+    ["Médecins",       uroles.medecin ?? 0],
+    ["Infirmiers",     uroles.infirmier ?? 0],
+    ["Laborantins",    uroles.laborantin ?? 0],
+    ["Pharmaciens",    uroles.pharmacien ?? 0],
+    ["Radiologues",    uroles.radiologue ?? 0],
+    ["Comptables",     uroles.comptable ?? 0],
+    ["Réception",      uroles.receptionniste ?? 0],
+    ["Patients",       uroles.patient ?? 0],
+    ["Administrateurs",adminTotal],
+  ];
+
   return (
     <div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))", gap:14, marginBottom:24 }}>
-        <KpiCard color="blue"   icon="👥" value={fmtNum(kpis.patients_total)}    label="Patients enregistrés"  sub="base globale" />
-        <KpiCard color="teal"   icon="👤" value={kpis.users_total}               label="Utilisateurs système"  sub={`${kpis.users_connectes} connectés`} />
-        <KpiCard color="green"  icon="🩺" value={fmtNum(kpis.consultations_total)} label="Consultations"       sub="total toutes périodes" />
-        <KpiCard color="orange" icon="🛏️" value={kpis.hospitalisations}           label="Hospitalisations"     sub="en cours" />
-        <KpiCard color="purple" icon="🔪" value={kpis.interventions}              label="Interventions chir."  sub="réalisées" />
-        <KpiCard color="red"    icon="💸" value={fmtNum(kpis.factures_impayees)+" CFA"} label="Factures impayées" urgent />
+      {/* ── KPI principaux ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:14, marginBottom:24 }}>
+        <KpiCard color="blue"   icon="👥"    value={fmtNum(kpis.patients_total)}          label="Total patients"        sub="base active"           onClick={() => navigate("/patients")} />
+        <KpiCard color="teal"   icon="📅"    value={kpis.rdv_auj ?? 0}                    label="RDV aujourd'hui"       sub={`${rdvStats.confirmes||0} confirmés`} onClick={() => navigate("/appointments")} />
+        <KpiCard color="green"  icon="🩺"    value={kpis.consultations_auj ?? 0}          label="Consultations auj."   sub="aujourd'hui"           onClick={() => navigate("/consultations")} />
+        <KpiCard color="orange" icon="🏥"    value={kpis.hospitalisations ?? 0}           label="Patients hospitalisés" sub="en cours"              onClick={() => navigate("/hospitalization")} />
+        <KpiCard color="red"    icon="🚨"    value={kpis.urgences_en_cours ?? 0}          label="Urgences en cours"    urgent={kpis.urgences_en_cours > 0} onClick={() => navigate("/urgences")} />
+        <KpiCard color="purple" icon="👨‍⚕️" value={kpis.users_connectes ?? 0}             label="Personnel connecté"   sub={`${kpis.users_total ?? 0} au total`} onClick={() => navigate("/administration")} />
+        <KpiCard color="cyan"   icon="💰"    value={fmtNum(kpis.revenus_auj)+" CFA"}      label="Revenus du jour"                                   onClick={() => navigate("/finance")} />
+        <KpiCard color="yellow" icon="📋"    value={fmtNum(kpis.factures_impayees)+" CFA"} label="Factures impayées"   urgent={kpis.factures_impayees > 0} onClick={() => navigate("/finance")} />
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)", gap:14, marginBottom:24 }}>
-        {[["CA global",kpis.ca_global,"var(--dg)"],["Dépenses",kpis.depenses,"var(--dr)"],["Bénéfice net",kpis.benefice,"var(--db)"]].map(([l,v,c])=>(
-          <div key={l} style={{ background:`linear-gradient(135deg,${c}18,${c}08)`, border:`1.5px solid ${c}44`, borderRadius:18, padding:"18px 22px" }}>
-            <div style={{ fontSize:11, fontWeight:700, color:"var(--dm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>{l}</div>
-            <div style={{ fontSize:22, fontWeight:800, color:c, letterSpacing:-1 }}>{fmtCFA(v)}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
+
+      {/* ── Rendez-vous du jour + Consultations du jour ── */}
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
         <div className="db-card">
-          <div className="db-card-hdr"><div><h3>📈 Évolution financière — 12 mois</h3><p>CA vs Dépenses</p></div></div>
+          <div className="db-card-hdr">
+            <div><h3>📅 Rendez-vous du jour</h3><p>{rdvStats.total} au total</p></div>
+            <button className="dbtn dbtn-ghost dbtn-sm" onClick={() => navigate("/appointments")}>Voir tous →</button>
+          </div>
+          <div style={{ display:"flex", gap:8, padding:"10px 20px 0", flexWrap:"wrap" }}>
+            <Badge cls="green">✅ {rdvStats.confirmes} confirmés</Badge>
+            <Badge cls="orange">⏳ {rdvStats.en_attente} en attente</Badge>
+            <Badge cls="gray">✓ {rdvStats.termines} terminés</Badge>
+            <Badge cls="red">❌ {rdvStats.annules} annulés</Badge>
+          </div>
+          <div style={{ padding:"8px 0" }}>
+            {rdvListe.length === 0 ? <div style={{ padding:"12px 20px" }}><Empty icon="📅" msg="Aucun rendez-vous aujourd'hui" /></div> : rdvListe.map((r,i)=>(
+              <div key={i} className="rdv-item" style={{ padding:"10px 20px" }}>
+                <div className="rdv-time">{r.heure}</div>
+                <div className="rdv-dot" style={{ background:{ confirme:"#059669", en_attente:"#D97706", termine:"#9CA3AF", annule:"#DC2626" }[r.statut]||"#1B4F9E" }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--dn)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{r.patient} · {r.medecin}</div>
+                  <div style={{ fontSize:11, color:"var(--dm)" }}>{r.service}</div>
+                </div>
+                <Badge cls={stRdv(r.statut)}>{lbRdv(r.statut)}</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="db-card">
+          <div className="db-card-hdr">
+            <div><h3>🩺 Consultations du jour</h3><p>{consultsListe.length} aujourd'hui</p></div>
+            <button className="dbtn dbtn-ghost dbtn-sm" onClick={() => navigate("/consultations")}>Voir toutes →</button>
+          </div>
+          <div style={{ padding:"8px 0" }}>
+            {consultsListe.length === 0 ? <div style={{ padding:"12px 20px" }}><Empty icon="🩺" msg="Aucune consultation aujourd'hui" /></div> : consultsListe.map((c,i)=>(
+              <div key={i} className="rdv-item" style={{ padding:"10px 20px" }}>
+                <div className="rdv-time">{c.heure}</div>
+                <div className="rdv-dot" style={{ background:{ termine:"#059669", en_cours:"#0EA5A0", suspendue:"#D97706" }[c.statut]||"#9CA3AF" }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--dn)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.patient} · {c.medecin}</div>
+                  <div style={{ fontSize:11, color:"var(--dm)" }}>{c.service}</div>
+                </div>
+                <Badge cls={c.statut==="termine"?"green":c.statut==="en_cours"?"teal":"orange"}>{c.statut==="termine"?"✅ Terminée":c.statut==="en_cours"?"🔄 En cours":"⏸ Suspendue"}</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Vue médicale globale ── */}
+      <div className="db-card">
+        <div className="db-card-hdr"><h3>🏥 Vue médicale globale</h3><p>Aujourd'hui, par module</p></div>
+        <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fit,minmax(170px,1fr))", gap:12 }}>
+          {vueGlobale.map((b) => (
+            <div key={b.title} onClick={() => navigate(b.to)} style={{ border:"1.5px solid var(--dbr)", borderRadius:14, padding:"12px 14px", cursor:"pointer", transition:"all .2s" }}
+                 onMouseEnter={(e)=>{e.currentTarget.style.borderColor="var(--dt)"; e.currentTarget.style.background="var(--dl)";}}
+                 onMouseLeave={(e)=>{e.currentTarget.style.borderColor="var(--dbr)"; e.currentTarget.style.background="transparent";}}>
+              <div style={{ fontSize:12, fontWeight:700, color:"var(--dn)", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>{b.icon} {b.title}</div>
+              {b.rows.map(([l,v]) => (
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--dm)", marginBottom:3 }}>
+                  <span>{l}</span><span style={{ fontWeight:700, color:"var(--dn)" }}>{v ?? 0}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Graphiques analytiques ── */}
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20, marginTop:20 }}>
+        <div className="db-card">
+          <div className="db-card-hdr"><div><h3>📈 Activité médicale — 7 jours</h3><p>Patients, consultations, RDV, hospitalisations</p></div></div>
           <div style={{ padding:20 }}>
-            <LineChart height={200} labels={chart.labels} datasets={[
-              { label:"CA", data:chart.ca, borderColor:"#059669", backgroundColor:"rgba(5,150,105,.1)", tension:.4, fill:false, pointRadius:3, pointBackgroundColor:"#059669" },
-              { label:"Dépenses", data:chart.dep, borderColor:"#DC2626", backgroundColor:"rgba(220,38,38,.08)", tension:.4, fill:false, borderDash:[4,4], pointRadius:2, pointBackgroundColor:"#DC2626" },
+            <LineChart height={200} labels={chartAct.labels} datasets={[
+              { label:"Patients",       data:chartAct.patients,         borderColor:"#1B4F9E", backgroundColor:"rgba(27,79,158,.08)",  tension:.4, fill:false, pointRadius:3 },
+              { label:"Consultations",  data:chartAct.consultations,    borderColor:"#0EA5A0", backgroundColor:"rgba(14,165,160,.08)", tension:.4, fill:false, pointRadius:3 },
+              { label:"RDV",            data:chartAct.rdv,              borderColor:"#7C3AED", backgroundColor:"rgba(124,58,237,.08)", tension:.4, fill:false, pointRadius:3 },
+              { label:"Hospitalisations", data:chartAct.hospitalisations, borderColor:"#D97706", backgroundColor:"rgba(217,119,6,.08)", tension:.4, fill:false, pointRadius:3, borderDash:[4,4] },
             ]}/>
           </div>
         </div>
         <div className="db-card">
-          <div className="db-card-hdr"><h3>👥 Utilisateurs par rôle</h3></div>
+          <div className="db-card-hdr"><div><h3>💰 Évolution financière — 12 mois</h3><p>CA vs Dépenses</p></div></div>
           <div style={{ padding:20 }}>
-            {[["Médecins",uroles.medecin ?? 0,"var(--db)"],["Infirmiers",uroles.infirmier ?? 0,"var(--dt)"],["Pharmaciens",uroles.pharmacien ?? 0,"var(--do)"],["Laborantins",uroles.laborantin ?? 0,"var(--dg)"]].map(([l,v,c])=>(
-              <div key={l} style={{ marginBottom:10 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
-                  <span style={{ color:"var(--dm)" }}>{l}</span><span style={{ fontWeight:700, color:"var(--dn)" }}>{v}</span>
-                </div>
-                <Prog pct={(v/(uroles.infirmier||1))*100} color={c} />
-              </div>
-            ))}
+            <LineChart height={200} labels={chartFin.labels} datasets={[
+              { label:"CA", data:chartFin.ca, borderColor:"#059669", backgroundColor:"rgba(5,150,105,.1)", tension:.4, fill:false, pointRadius:3, pointBackgroundColor:"#059669" },
+              { label:"Dépenses", data:chartFin.dep, borderColor:"#DC2626", backgroundColor:"rgba(220,38,38,.08)", tension:.4, fill:false, borderDash:[4,4], pointRadius:2, pointBackgroundColor:"#DC2626" },
+            ]}/>
           </div>
         </div>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+
+      {/* ── Utilisateurs par rôle + Alertes ── */}
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
         <div className="db-card">
-          <div className="db-card-hdr"><h3>🖥️ Surveillance système</h3><p>Disque, CPU, RAM et sauvegardes ne sont pas encore instrumentés</p></div>
+          <div className="db-card-hdr"><h3>👥 Utilisateurs par rôle</h3></div>
           <div style={{ padding:20 }}>
-            <div className="stat-row">
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>🗄️</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>Base de données</span></div>
-              <div className={`sys-dot ${sys.db || "warn"}`} />
-            </div>
-            <div className="stat-row">
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>🔐</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>Connexions échouées (aujourd'hui)</span></div>
-              <Badge cls={connexions_echouees > 0 ? "orange" : "green"}>{connexions_echouees}</Badge>
-            </div>
-            <div className="stat-row">
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>🔒</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>Comptes suspendus</span></div>
-              <Badge cls={comptes_bloques > 0 ? "orange" : "green"}>{comptes_bloques}</Badge>
+            <BarChart height={190} labels={roleBars.map(([l])=>l)} data={roleBars.map(([,v])=>v)}
+              colors={["#1B4F9E","#0EA5A0","#059669","#D97706","#6366F1","#EAB308","#EC4899","#7C3AED","#DC2626"]} />
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"4px 20px", marginTop:16 }}>
+              {roleBars.map(([l,v]) => (
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", fontSize:12, padding:"4px 0", borderBottom:"1px solid #F3F7FF" }}>
+                  <span style={{ color:"var(--dm)" }}>{l}</span><span style={{ fontWeight:700, color:"var(--dn)" }}>{v}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
         <div className="db-card">
-          <div className="db-card-hdr"><h3>🔔 Alertes récentes</h3></div>
+          <div className="db-card-hdr"><h3>🔔 Alertes & Attention</h3></div>
           <div style={{ padding:14 }}>
-            {alertes.map((al,i)=>(
-              <div key={i} className={`al-${al.type==="error"?"danger":al.type==="warn"?"warn":"info"}`} style={{ marginBottom:10, display:"flex", gap:10 }}>
-                <span>{al.type==="error"?"🚨":al.type==="warn"?"⚠️":"ℹ️"}</span>
-                <div><div style={{ fontSize:12, fontWeight:600, color:"var(--dn)" }}>{al.msg}</div><div style={{ fontSize:10, color:"var(--dm)" }}>{al.heure}</div></div>
-              </div>
-            ))}
+            {alertes.length === 0 ? <Empty icon="✅" msg="Aucune alerte — tout est sous contrôle" /> : alertes.map((al,i)=>{
+              const route = alertRoute(al.icon);
+              return (
+                <div key={i} className={`al-${al.type==="error"?"danger":al.type==="warn"?"warn":"info"}`}
+                     style={{ marginBottom:10, display:"flex", gap:10, cursor:route?"pointer":"default" }}
+                     onClick={route ? () => navigate(route) : undefined}>
+                  <span>{al.type==="error"?"🔴":al.type==="warn"?"🟠":"🔵"}</span>
+                  <div><div style={{ fontSize:12, fontWeight:600, color:"var(--dn)" }}>{al.msg}</div><div style={{ fontSize:10, color:"var(--dm)" }}>{al.heure}</div></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Surveillance système ── */}
+      <div className="db-card">
+        <div className="db-card-hdr"><h3>🖥️ Surveillance système</h3><p>Disque, CPU, RAM et sauvegardes ne sont pas encore instrumentés</p></div>
+        <div style={{ padding:20 }}>
+          <div className="stat-row">
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>🗄️</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>Base de données</span></div>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <div className={`sys-dot ${sys.db || "warn"}`} />
+              <span style={{ fontSize:12, color:"var(--dm)" }}>{sys.db === "ok" ? "Opérationnelle" : "Problème détecté"}</span>
+            </div>
+          </div>
+          <div className="stat-row">
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>🔐</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>Connexions échouées (aujourd'hui)</span></div>
+            <Badge cls={connexions_echouees > 0 ? "orange" : "green"}>{connexions_echouees}</Badge>
+          </div>
+          <div className="stat-row">
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>🔒</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>Comptes suspendus</span></div>
+            <Badge cls={comptes_bloques > 0 ? "orange" : "green"}>{comptes_bloques}</Badge>
           </div>
         </div>
       </div>
@@ -1090,53 +1218,14 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── QUICK ACTIONS ── */}
-        <div className="db-card fu d1">
-          <div className="db-card-hdr">
-            <h3>⚡ {role === "patient" ? "Mon espace patient" : "Actions rapides"}</h3>
-            <p>{role === "patient" ? "Accès à vos services de santé" : "Raccourcis vers les fonctions principales"}</p>
-          </div>
-          <div style={{ padding:16, display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))", gap:10 }}>
-            {quickActions.map((qa, i) => (
-              <button key={i} className="qa-btn" onClick={() => qa.to ? navigate(qa.to) : toast.error("Route non définie")}>
-                <div className="qa-icon" style={{ background:qa.color }}>{qa.icon}</div>
-                <span style={{ lineHeight:1.3 }}>{qa.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── FLUX D'ACTIVITÉS EN TEMPS RÉEL (staff uniquement) ── */}
-        {role !== "patient" && activities.length > 0 && (
-          <div className="db-card fu d1" style={{ marginBottom:20 }}>
-            <div className="db-card-hdr">
-              <h3>
-                <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
-                  <span style={{ width:8, height:8, borderRadius:"50%", background:"#34D399", display:"inline-block", animation:"dbpulse 1.5s infinite" }} />
-                  Activité en temps réel
-                </span>
-              </h3>
-              <p>{activities.length} événement{activities.length > 1 ? "s" : ""} récent{activities.length > 1 ? "s" : ""}</p>
-            </div>
-            <div style={{ maxHeight:220, overflowY:"auto", padding:"4px 0" }}>
-              {activities.slice(0, 10).map((a) => (
-                <div key={a.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 20px", borderBottom:"1px solid #F3F7FF", animation:"fadeUp .3s ease both" }}>
-                  <span style={{ fontSize:18, flexShrink:0 }}>{a.icon || "📌"}</span>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:"#0B1E3B" }}>{a.action}</div>
-                    <div style={{ fontSize:11, color:"#6B7A99", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{a.detail}</div>
-                  </div>
-                  <div style={{ fontSize:10, color:"#9CA3AF", flexShrink:0, textAlign:"right" }}>
-                    <div style={{ fontWeight:600 }}>{a.userName || "Système"}</div>
-                    <div>{new Date(a.timestamp).toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit", second:"2-digit" })}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* ── ROLE-BASED CONTENT ── */}
+        {/* AUDIT-DASHBOARD-HIERARCHIE — ordre : état global (hero ci-dessus) →
+            KPI/détail/analytique/alertes (propres à chaque rôle) → activité
+            récente → actions rapides. Auparavant Actions rapides + Activité
+            récente s'affichaient AVANT le contenu principal du rôle, ce qui
+            reléguait les KPI (l'information la plus importante) après deux
+            blocs génériques. Réordonnancement pur (mêmes composants, mêmes
+            props, mêmes données) — s'applique uniformément aux 10 rôles. */}
         <div className="fu d2">
           {role === "superadmin"     && <SuperAdminDashboard data={stats} isMobile={isMobile} />}
           {role === "adminclinique"  && <AdminDashboard data={stats} user={user} isMobile={isMobile} />}
@@ -1149,6 +1238,60 @@ export default function Dashboard() {
           {role === "radiologue"     && <RadiologueDashboard data={stats} isMobile={isMobile} />}
           {/* ✅ Patient — dashboard dédié, données personnelles uniquement */}
           {role === "patient"        && <PatientDashboard data={stats} user={user} isMobile={isMobile} />}
+        </div>
+
+        {/* ── ACTIVITÉ RÉCENTE (staff uniquement) — flux réel activity:new ── */}
+        {role !== "patient" && (
+          <div className="db-card fu d1" style={{ marginBottom:20 }}>
+            <div className="db-card-hdr">
+              <h3>
+                <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                  <span style={{ width:8, height:8, borderRadius:"50%", background:"#34D399", display:"inline-block", animation:"dbpulse 1.5s infinite" }} />
+                  Activité récente
+                </span>
+              </h3>
+              <p>{activities.length} événement{activities.length > 1 ? "s" : ""} récent{activities.length > 1 ? "s" : ""}</p>
+            </div>
+            {activities.length === 0 ? (
+              <div style={{ padding:"20px 20px" }}><Empty icon="⚡" msg="Aucune activité récente." /></div>
+            ) : (
+              <div style={{ maxHeight:280, overflowY:"auto", padding:"10px 0" }}>
+                {activities.slice(0, 10).map((a) => (
+                  <div key={a.id} style={{ display:"flex", gap:12, padding:"10px 20px", animation:"fadeUp .3s ease both" }}>
+                    <div className="pat-timeline-dot" style={{ marginTop:5 }} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", gap:10 }}>
+                        <span style={{ fontSize:12, fontWeight:700, color:"#0B1E3B" }}>{a.icon ? `${a.icon} ` : ""}{a.action}</span>
+                        <span style={{ fontSize:10.5, color:"#9CA3AF", flexShrink:0 }}>{new Date(a.timestamp).toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" })}</span>
+                      </div>
+                      {a.detail && <div style={{ fontSize:11.5, color:"#374151", marginTop:2 }}>{a.detail}</div>}
+                      {(a.module || a.userName) && (
+                        <div style={{ fontSize:10.5, color:"#9CA3AF", marginTop:2, textTransform:"uppercase", letterSpacing:.3 }}>
+                          {a.module || a.userName}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── QUICK ACTIONS ── */}
+        <div className="db-card fu d1">
+          <div className="db-card-hdr">
+            <h3>⚡ {role === "patient" ? "Mon espace patient" : "Actions rapides"}</h3>
+            <p>{role === "patient" ? "Accès à vos services de santé" : "Raccourcis vers les fonctions principales"}</p>
+          </div>
+          <div style={{ padding:16, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(118px,1fr))", gap:10 }}>
+            {quickActions.map((qa, i) => (
+              <button key={i} className="qa-btn" onClick={() => qa.to ? navigate(qa.to) : toast.error("Route non définie")}>
+                <div className="qa-icon" style={{ background:qa.color }}>{qa.icon}</div>
+                <span style={{ lineHeight:1.3 }}>{qa.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
       </div>

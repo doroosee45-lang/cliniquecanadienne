@@ -62,6 +62,12 @@ const litsOccupationPct = async () => {
 };
 
 // ─── 1. SUPER ADMIN ────────────────────────────────────────────
+// AUDIT-DASHBOARD-SUPERADMIN — vue globale professionnelle : réutilise au
+// maximum les mêmes requêtes déjà éprouvées ailleurs dans ce fichier
+// (adminCliniqueStats, laborantinStats, radiologueStats) plutôt que d'en
+// réinventer, puisqu'il n'existe qu'une seule clinique dans ce projet (aucun
+// champ clinique_id sur Patient/Appointment/etc.) — le périmètre de données
+// réelles est donc rigoureusement le même, seule la présentation diffère.
 exports.superAdminStats = async (req, res, next) => {
   try {
     const { start, end } = todayRange();
@@ -80,12 +86,33 @@ exports.superAdminStats = async (req, res, next) => {
       users_par_role,
       chart_ca,
       chart_dep,
-      alertes_critiques,
+      alertes_labo,
       patients_auj,
       consultations_auj,
       admissions_auj,
       connexions_echouees,
       comptes_bloques,
+      // Revenus du jour (même agrégat que comptableStats/adminCliniqueStats)
+      revenus_auj_agg,
+      // RDV du jour
+      rdv_auj_total, rdv_confirmes, rdv_en_attente, rdv_termines, rdv_annules,
+      rdv_liste_raw,
+      // Consultations du jour (détail)
+      consults_liste_raw,
+      // Urgences
+      urgences_nouvelles, urgences_en_cours, urgences_terminees,
+      // Hospitalisation
+      sorties_auj,
+      // Laboratoire (même agrégats que laborantinStats)
+      labo_demandes_auj, labo_en_cours, labo_critiques,
+      // Imagerie (mêmes agrégats que radiologueStats)
+      img_examens_auj, img_en_attente, img_rapports_dispo,
+      // Pharmacie (pour la zone alertes)
+      pharma_stock_faible, pharma_ruptures, alertes_pharma_raw,
+      // Factures pour alerte
+      factures_imp_liste,
+      // Activité médicale — 7 jours (4 séries)
+      chart_patients_raw, chart_consults_raw, chart_rdv_raw, chart_hospit_raw,
     ] = await Promise.all([
       Patient.countDocuments({ statut:'actif' }),
       User.countDocuments({ statut:'actif' }),
@@ -111,12 +138,12 @@ exports.superAdminStats = async (req, res, next) => {
         { $group:{ _id:{ $month:'$date' }, total:{ $sum:'$montant' }}},
         { $sort:{ '_id':1 }},
       ]),
-      // Alertes critiques système
+      // Alertes labo critiques (système entier, pas de populate lourd — nom via lookup)
       LabResult.aggregate([
         { $match:{ est_critique:true, acquitte_par:null }},
         { $lookup:{ from:'patients', localField:'patient', foreignField:'_id', as:'pat' }},
         { $limit:10 },
-        { $project:{ type:'error', msg:{ $concat:['Résultat critique — ', { $arrayElemAt:['$pat.nom',0] }] }, heure:'$createdAt' }},
+        { $project:{ msg:{ $concat:['Résultat critique — ', { $arrayElemAt:['$pat.nom',0] }] }, heure:'$createdAt' }},
       ]),
       Patient.countDocuments({ createdAt:{ $gte:start, $lte:end }}),
       Consultation.countDocuments({ date_consultation:{ $gte:start, $lte:end }}),
@@ -127,13 +154,59 @@ exports.superAdminStats = async (req, res, next) => {
       // compteur courant remis à zéro à la connexion, pas un journal daté).
       AuditLog.countDocuments({ action:'LOGIN_ECHEC', createdAt:{ $gte:start, $lte:end }}),
       User.countDocuments({ statut:'suspendu' }),
+      Invoice.aggregate([{ $match:{ statut:'payee', date_facture:{ $gte:start,$lte:end }}},{ $group:{ _id:null,total:{ $sum:'$montant_paye' }}}]),
+      Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }}),
+      Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'confirme' }),
+      Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'en_attente' }),
+      Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'termine' }),
+      Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'annule' }),
+      Appointment.find({ date_heure:{ $gte:start,$lte:end } })
+        .populate('patient','nom prenom').populate('medecin','nom prenom specialite').populate('service','nom')
+        .sort({ date_heure:1 }).limit(8),
+      Consultation.find({ date_consultation:{ $gte:start,$lte:end } })
+        .populate('patient','nom prenom').populate('medecin','nom prenom specialite')
+        .sort({ date_consultation:1 }).limit(8),
+      Urgence.countDocuments({ date_arrivee:{ $gte:start,$lte:end } }),
+      Urgence.countDocuments({ statut:{ $nin:['sorti','transfere','decede'] } }),
+      Urgence.countDocuments({ date_sortie:{ $gte:start,$lte:end }, statut:{ $in:['sorti','transfere','decede'] } }),
+      Hospitalization.countDocuments({ date_sortie:{ $gte:start,$lte:end } }),
+      LabResult.countDocuments({ createdAt:{ $gte:start,$lte:end } }),
+      LabResult.countDocuments({ statut:'en_cours' }),
+      LabResult.countDocuments({ est_critique:true, acquitte_par:null }),
+      ImagingResult.countDocuments({ date_prescription:{ $gte:start,$lte:end } }),
+      ImagingResult.countDocuments({ statut:'en_attente', date_prescription:{ $gte:start,$lte:end } }),
+      ImagingResult.countDocuments({ statut:{ $in:['rapporte','valide'] }, date_prescription:{ $gte:start,$lte:end } }),
+      Medication.countDocuments({ $expr:{ $and:[{ $gt:['$stock_actuel',0] },{ $lte:['$stock_actuel','$seuil_alerte'] }]}}),
+      Medication.countDocuments({ stock_actuel:{ $lte:0 }}),
+      Medication.find({ $or:[{ stock_actuel:{ $lte:0 }},{ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }}]}).limit(3),
+      Invoice.find({ statut:{ $in:['emise','partiellement_payee'] } }).sort({ montant_restant:-1 }).limit(1),
+      Patient.aggregate([
+        { $match:{ createdAt:{ $gte:last7days() }}},
+        { $group:{ _id:{ $dateToString:{ format:'%Y-%m-%d', date:'$createdAt' }}, count:{ $sum:1 }}},
+      ]),
+      Consultation.aggregate([
+        { $match:{ date_consultation:{ $gte:last7days() }}},
+        { $group:{ _id:{ $dateToString:{ format:'%Y-%m-%d', date:'$date_consultation' }}, count:{ $sum:1 }}},
+      ]),
+      Appointment.aggregate([
+        { $match:{ date_heure:{ $gte:last7days() }}},
+        { $group:{ _id:{ $dateToString:{ format:'%Y-%m-%d', date:'$date_heure' }}, count:{ $sum:1 }}},
+      ]),
+      Hospitalization.aggregate([
+        { $match:{ date_entree:{ $gte:last7days() }}},
+        { $group:{ _id:{ $dateToString:{ format:'%Y-%m-%d', date:'$date_entree' }}, count:{ $sum:1 }}},
+      ]),
     ]);
 
-    // Formater users_par_role en objet
+    // Formater users_par_role en objet — tout rôle réel de l'enum User.role
+    // apparaît explicitement à 0 s'il n'a aucun utilisateur (pas une absence
+    // de clé indiscernable d'une donnée non chargée).
+    const ROLES_CONNUS = ['medecin','infirmier','laborantin','radiologue','pharmacien','comptable','receptionniste','patient','superadmin','adminclinique'];
     const uRoles = {};
+    ROLES_CONNUS.forEach(r => { uRoles[r] = 0; });
     users_par_role.forEach(r => { uRoles[r._id] = r.count; });
 
-    // Formater graphiques 12 mois
+    // Formater graphiques 12 mois (financier)
     const caMap  = {}; chart_ca.forEach(d  => { caMap[d._id]  = d.total; });
     const depMap = {}; chart_dep.forEach(d => { depMap[d._id] = d.total; });
     const caArr  = Array.from({length:12}, (_,i) => caMap[i+1]  || 0);
@@ -143,6 +216,52 @@ exports.superAdminStats = async (req, res, next) => {
     const depenses      = depenses_agg[0]?.total   || 0;
     const factures_imp  = factures_impayees_agg[0]?.total || 0;
 
+    // Activité médicale 7 jours — même réconciliation que adminCliniqueStats
+    // (ADM-02) : liste fixe des 7 derniers jours, zéro explicite si aucune
+    // donnée ce jour-là, jamais une série tronquée qui se ferait passer pour
+    // les 7 jours en l'absence de certains jours.
+    const joursSemaine = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      joursSemaine.push(d.toISOString().substring(0, 10));
+    }
+    const toMap = (arr) => Object.fromEntries(arr.map(d => [d._id, d.count]));
+    const patientsMap = toMap(chart_patients_raw);
+    const consultsMap = toMap(chart_consults_raw);
+    const rdvMap      = toMap(chart_rdv_raw);
+    const hospitMap   = toMap(chart_hospit_raw);
+    const activiteLabels = joursSemaine.map(j => dayLabels([{ _id: j }])[0]);
+
+    const rdv_auj = rdv_liste_raw.map(r => ({
+      heure: new Date(r.date_heure).toLocaleTimeString('fr-FR',{ hour:'2-digit',minute:'2-digit' }),
+      patient: r.patient ? `${r.patient.prenom} ${r.patient.nom}` : 'Inconnu',
+      medecin: r.medecin ? `Dr. ${r.medecin.nom}` : '—',
+      service: r.service?.nom || r.medecin?.specialite || '—',
+      statut: r.statut || 'en_attente',
+    }));
+
+    const consultations_auj_liste = consults_liste_raw.map(c => ({
+      heure: new Date(c.date_consultation).toLocaleTimeString('fr-FR',{ hour:'2-digit',minute:'2-digit' }),
+      patient: c.patient ? `${c.patient.prenom} ${c.patient.nom}` : 'Inconnu',
+      medecin: c.medecin ? `Dr. ${c.medecin.nom}` : '—',
+      service: c.service || c.medecin?.specialite || '—',
+      statut: c.statut || 'en_cours',
+    }));
+
+    // Alertes & Attention — combine labo critique, pharmacie, factures et
+    // comptes suspendus, mêmes règles de gravité que adminCliniqueStats.
+    const alertes = [
+      ...alertes_labo.map(a => ({ type:'error', icon:'🔬', msg:a.msg, heure:new Date(a.heure).toLocaleString('fr-FR') })),
+      ...alertes_pharma_raw.map(m => ({
+        type: m.stock_actuel<=0 ? 'error' : 'warn', icon:'💊',
+        msg: m.stock_actuel<=0 ? `${m.nom_commercial} — Rupture de stock` : `${m.nom_commercial} — Stock bas (${m.stock_actuel} unités)`,
+        heure:'Aujourd\'hui',
+      })),
+      factures_imp > 0 ? { type:'warn', icon:'💰', msg:`${factures_imp.toLocaleString('fr-FR')} CFA de factures impayées${factures_imp_liste[0] ? ' — ex. #'+(factures_imp_liste[0].numero_facture||'?') : ''}`, heure:'Aujourd\'hui' } : null,
+      comptes_bloques > 0 ? { type:'warn', icon:'🔒', msg:`${comptes_bloques} compte(s) suspendu(s)`, heure:'À vérifier' } : null,
+      connexions_echouees > 0 ? { type:'info', icon:'🔐', msg:`${connexions_echouees} connexion(s) échouée(s) aujourd'hui`, heure:'Aujourd\'hui' } : null,
+    ].filter(Boolean);
+
     res.json({ success:true, stats:{
       kpis:{
         patients_total, users_total, users_connectes, consultations_total,
@@ -150,6 +269,9 @@ exports.superAdminStats = async (req, res, next) => {
         ca_global, depenses, benefice: ca_global - depenses,
         factures_impayees: factures_imp,
         patients_auj, consultations_auj, admissions_auj,
+        rdv_auj: rdv_auj_total,
+        urgences_en_cours,
+        revenus_auj: revenus_auj_agg[0]?.total || 0,
       },
       users_par_role: uRoles,
       // AUDIT-DASHBOARD — db/backup/disk/cpu/ram/services_actifs étaient tous
@@ -165,11 +287,22 @@ exports.superAdminStats = async (req, res, next) => {
       connexions_echouees,
       comptes_bloques,
       chart_mois:{ labels:monthLabels, ca:caArr, dep:depArr },
-      alertes_crit: alertes_critiques.map(a => ({
-        type: a.type || 'error',
-        msg: a.msg,
-        heure: new Date(a.heure).toLocaleString('fr-FR'),
-      })),
+      chart_activite:{
+        labels: activiteLabels,
+        patients:       joursSemaine.map(j => patientsMap[j] || 0),
+        consultations:  joursSemaine.map(j => consultsMap[j] || 0),
+        rdv:            joursSemaine.map(j => rdvMap[j] || 0),
+        hospitalisations: joursSemaine.map(j => hospitMap[j] || 0),
+      },
+      alertes_crit: alertes,
+      rdv_auj_liste: rdv_auj,
+      rdv_stats: { total:rdv_auj_total, confirmes:rdv_confirmes, en_attente:rdv_en_attente, termines:rdv_termines, annules:rdv_annules },
+      consultations_auj_liste,
+      urgences: { nouvelles:urgences_nouvelles, en_cours:urgences_en_cours, terminees:urgences_terminees },
+      hospitalisation: { admissions_auj, patients_actuels:hospitalisations, sorties_auj },
+      laboratoire: { demandes_auj:labo_demandes_auj, en_cours:labo_en_cours, critiques:labo_critiques },
+      imagerie: { examens_auj:img_examens_auj, en_attente:img_en_attente, rapports_dispo:img_rapports_dispo },
+      pharmacie: { stock_faible:pharma_stock_faible, ruptures:pharma_ruptures },
     }});
   } catch (err) { next(err); }
 };

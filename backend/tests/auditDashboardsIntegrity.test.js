@@ -14,6 +14,10 @@
 //      (valeurs matérielles inventées, retirées).
 //   5. medecinStats.kpis.mes_urgences reflète réellement Urgence.
 //      medecin_responsable (nouvellement agrégé — absent auparavant).
+//   6. superAdminStats (vue globale professionnalisée) : RDV/consultations
+//      du jour, urgences, laboratoire, imagerie, pharmacie, activité 7
+//      jours et users_par_role (tous rôles connus explicitement à 0)
+//      reflètent réellement des fixtures créées ici — rien de fictif.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -161,6 +165,58 @@ test('Audit dashboards — endpoints réels, aucune donnée fictive (base réell
       assert.equal('server_cpu' in body.stats.sys_status, false);
       assert.equal('server_ram' in body.stats.sys_status, false);
       assert.equal('services_actifs' in body.stats.sys_status, false);
+    });
+
+    await t.test('dashboard.controller.superAdminStats — vue globale professionnalisée, entièrement backée par des fixtures réelles', async () => {
+      const rdvAuj = await Appointment.create({
+        patient: patient._id, medecin: medecin._id, date_heure: new Date(),
+        motif: 'Contrôle', type: 'consultation', statut: 'confirme',
+      });
+      cleanup.push(() => Appointment.findByIdAndDelete(rdvAuj._id));
+      // superAdminStats est mis en cache 30s sous une clé globale (non
+      // personnalisée) — le sous-test précédent l'a déjà appelé, donc sans
+      // invalidation explicite ce nouvel appel recevrait la réponse figée
+      // d'avant la création de rdvAuj ci-dessus.
+      require('../utils/dashboardCache').invalidateStatsCache();
+
+      const { status, body } = await call(dashC.superAdminStats, { user: { _id: medecin._id, role: 'superadmin' } });
+      assert.equal(status, 200);
+      const s = body.stats;
+
+      // RDV du jour
+      assert.ok(s.kpis.rdv_auj >= 1, 'rdv_auj doit refléter le RDV créé aujourd\'hui');
+      assert.ok(s.rdv_stats.confirmes >= 1);
+      assert.ok(Array.isArray(s.rdv_auj_liste));
+      assert.ok(s.rdv_auj_liste.some(r => r.patient === 'Patient Test' && r.medecin === 'Dr. Diallo'),
+        'la liste RDV du jour doit contenir le RDV réel créé, avec patient/médecin corrects');
+
+      // Consultations du jour
+      assert.ok(Array.isArray(s.consultations_auj_liste));
+      assert.ok(s.consultations_auj_liste.some(c => c.patient === 'Patient Test'),
+        'la liste consultations du jour doit contenir la consultation réelle créée');
+
+      // Urgences (fixture créée dans le sous-test medecinStats ci-dessus, toujours en base)
+      assert.ok(s.kpis.urgences_en_cours >= 1);
+      assert.ok(s.urgences.en_cours >= 1);
+      assert.ok(s.urgences.nouvelles >= 1);
+
+      // Laboratoire / Imagerie / Pharmacie / Hospitalisation — présents, jamais fictifs
+      assert.ok('demandes_auj' in s.laboratoire && 'en_cours' in s.laboratoire && 'critiques' in s.laboratoire);
+      assert.ok('examens_auj' in s.imagerie && 'en_attente' in s.imagerie && 'rapports_dispo' in s.imagerie);
+      assert.ok('stock_faible' in s.pharmacie && 'ruptures' in s.pharmacie);
+      assert.ok('admissions_auj' in s.hospitalisation && 'patients_actuels' in s.hospitalisation && 'sorties_auj' in s.hospitalisation);
+
+      // Activité médicale 7 jours — jamais de série tronquée ou inventée
+      assert.equal(s.chart_activite.labels.length, 7);
+      assert.equal(s.chart_activite.patients.length, 7);
+      assert.equal(s.chart_activite.consultations.length, 7);
+      assert.equal(s.chart_activite.rdv.length, 7);
+      assert.equal(s.chart_activite.hospitalisations.length, 7);
+
+      // users_par_role — tous les rôles connus présents explicitement, jamais une clé absente
+      ['medecin','infirmier','laborantin','radiologue','pharmacien','comptable','receptionniste','patient','superadmin','adminclinique']
+        .forEach(r => assert.equal(typeof s.users_par_role[r], 'number', `${r} doit être un nombre explicite, jamais absent`));
+      assert.ok(s.users_par_role.medecin >= 1, 'doit refléter le médecin réel créé par ce test');
     });
   } finally {
     for (const fn of cleanup.reverse()) await fn();
