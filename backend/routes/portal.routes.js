@@ -5,6 +5,7 @@ const { protect, authorize } = require('../middleware/auth');
 const PATIENT = protect, ROLE = authorize('patient');
 
 router.get('/me',                    PATIENT, ROLE, pc.getMe);
+router.get('/dashboard',             PATIENT, ROLE, pc.getDashboard);
 router.get('/appointments',          PATIENT, ROLE, pc.getAppointments);
 router.get('/prescriptions',         PATIENT, ROLE, pc.getPrescriptions);
 router.get('/lab-results',           PATIENT, ROLE, pc.getLabResults);

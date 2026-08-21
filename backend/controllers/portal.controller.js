@@ -5,6 +5,8 @@ const LabResult    = require('../models/LabResult');
 const ImagingResult= require('../models/ImagingResult');
 const Invoice      = require('../models/Invoice');
 const Notification = require('../models/Notification');
+const Consultation = require('../models/Consultation');
+const Conversation = require('../models/Conversation');
 const User         = require('../models/User');
 const { logAction } = require('../utils/helpers');
 
@@ -137,6 +139,151 @@ exports.getInvoices = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── DASHBOARD (agrégat pour Dashboard.jsx::PatientDashboard) ─────────────────
+// AUDIT-DASHBOARD-PATIENT — Dashboard.jsx appelle déjà GET /portal/dashboard en
+// repli pour role==='patient', mais cette route n'existait pas : chaque appel
+// échouait en 404, silencieusement absorbé par le frontend (`catch { result =
+// {} }`), donc le dashboard patient affichait TOUJOURS l'état vide sur chacun
+// de ses widgets (KPI à 0, aucun RDV, aucune ordonnance…), quel que soit
+// l'état réel du dossier. Même principe de périmètre strict que le reste de
+// ce contrôleur (findPatient) : uniquement les données du patient connecté,
+// jamais une statistique globale de la clinique.
+exports.getDashboard = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+
+    const now = new Date();
+    // Statuts couvrant un RDV pas encore soldé (ni terminé, ni annulé, ni absent).
+    const RDV_ACTIFS = ['planifie','en_attente','confirme','arrive','en_consultation','en_cours','reporte'];
+
+    const [
+      rdv_a_venir,
+      ordonnances_actives,
+      resultats_labo_dispo,
+      resultats_imagerie_dispo,
+      factures_impayees,
+      consultations_total,
+      messages_non_lus,
+      prochainRdvDoc,
+      rdvListeRaw,
+      ordonnancesRaw,
+      labResultsRaw,
+      imagingRaw,
+      facturesRaw,
+      derniereConsultation,
+    ] = await Promise.all([
+      Appointment.countDocuments({ patient: patient._id, date_heure: { $gte: now }, statut: { $in: RDV_ACTIFS } }),
+      Prescription.countDocuments({ patient: patient._id, statut: { $in: ['active','publiee'] } }),
+      LabResult.countDocuments({ patient: patient._id, statut: 'valide' }),
+      ImagingResult.countDocuments({ patient: patient._id, statut: { $in: ['rapporte','valide'] } }),
+      Invoice.countDocuments({ patient: patient._id, statut: { $in: ['emise','partiellement_payee'] } }),
+      Consultation.countDocuments({ patient: patient._id }),
+      // Même règle que receptionnisteStats (dashboard.controller.js) : un
+      // membre de la conversation avec au moins un message qu'il n'a ni
+      // envoyé, ni encore lu.
+      Conversation.countDocuments({
+        membres: req.user._id,
+        messages: { $elemMatch: { lu_par: { $ne: req.user._id }, expediteur: { $ne: req.user._id } } },
+      }),
+      Appointment.findOne({ patient: patient._id, date_heure: { $gte: now }, statut: { $in: RDV_ACTIFS } })
+        .populate('medecin', 'nom')
+        .sort('date_heure'),
+      Appointment.find({ patient: patient._id }).populate('medecin', 'nom').sort('-date_heure').limit(10),
+      Prescription.find({ patient: patient._id, statut: { $in: ['active','publiee','dispensee','expiree'] } })
+        .sort('-date_prescription').limit(10),
+      LabResult.find({ patient: patient._id, statut: 'valide' }).populate('examen', 'nom').sort('-date_validation').limit(6),
+      ImagingResult.find({ patient: patient._id, statut: { $in: ['rapporte','valide'] } }).sort('-date_rapport').limit(6),
+      Invoice.find({ patient: patient._id }).sort('-date_facture').limit(8),
+      Consultation.findOne({ patient: patient._id }).sort('-date_consultation').select('signes_vitaux date_consultation'),
+    ]);
+
+    const medecin_ref = patient.medecin_referent
+      ? await User.findById(patient.medecin_referent).select('nom prenom specialite telephone')
+      : null;
+
+    const prochain_rdv = prochainRdvDoc ? {
+      date: new Date(prochainRdvDoc.date_heure).toLocaleDateString('fr-FR'),
+      heure: new Date(prochainRdvDoc.date_heure).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      type: prochainRdvDoc.type || 'consultation',
+      medecin: prochainRdvDoc.medecin?.nom || '—',
+    } : null;
+
+    const mes_rdv = rdvListeRaw.map(r => ({
+      date: r.date_heure,
+      heure: new Date(r.date_heure).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      type: r.type || 'consultation',
+      medecin: r.medecin?.nom || '—',
+      statut: r.statut,
+    }));
+
+    const ordonnances = ordonnancesRaw.map(o => ({
+      medicament: (o.lignes || []).map(l => l.medicament_nom).filter(Boolean).join(', ') || '—',
+      posologie: (o.lignes || [])[0]?.posologie || '—',
+      fin: o.date_expiration,
+    }));
+
+    const resultats = [
+      ...labResultsRaw.map(r => ({
+        type: 'laboratoire',
+        examen: r.examen?.nom || 'Analyse de laboratoire',
+        date: r.date_validation || r.date_prescription,
+        statut: 'disponible',
+      })),
+      ...imagingRaw.map(r => ({
+        type: 'radiologie',
+        examen: r.type_examen || 'Imagerie médicale',
+        date: r.date_rapport || r.date_prescription,
+        statut: 'disponible',
+      })),
+    ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
+
+    const factures = facturesRaw.map(f => ({
+      date: f.date_facture,
+      prestation: f.service_label || f.lignes?.[0]?.libelle || 'Facture',
+      montant: f.montant_ttc,
+      statut: f.statut === 'payee' ? 'payee' : (f.montant_paye > 0 ? 'en_attente' : 'impayee'),
+    }));
+
+    const sv = derniereConsultation?.signes_vitaux || {};
+    const constantes = (sv.poids || sv.tension_systolique || sv.glycemie || sv.temperature) ? {
+      poids: sv.poids,
+      tension: (sv.tension_systolique && sv.tension_diastolique) ? `${sv.tension_systolique}/${sv.tension_diastolique}` : undefined,
+      glycemie: sv.glycemie,
+      temp: sv.temperature,
+      taille: sv.taille,
+      fc: sv.pouls,
+      date: derniereConsultation.date_consultation,
+    } : {};
+
+    // Alertes réelles uniquement : aucune injection de contenu clinique
+    // sensible (ex. résultat critique) côté patient sans validation médicale.
+    const alertes = [];
+    if (factures_impayees > 0) {
+      alertes.push({ type: 'warn', msg: `${factures_impayees} facture(s) impayée(s)`, heure: 'À régler' });
+    }
+    const ordonnanceExpireBientot = ordonnancesRaw.find(o =>
+      o.date_expiration && new Date(o.date_expiration) > now && (new Date(o.date_expiration) - now) < 3 * 86400000
+    );
+    if (ordonnanceExpireBientot) {
+      alertes.push({ type: 'info', msg: 'Une ordonnance active arrive bientôt à expiration', heure: 'À renouveler' });
+    }
+
+    res.json({ success: true, stats: {
+      kpis: {
+        rdv_a_venir, ordonnances_actives,
+        resultats_disponibles: resultats_labo_dispo + resultats_imagerie_dispo,
+        factures_impayees, consultations_total, messages_non_lus,
+      },
+      prochain_rdv, mes_rdv, ordonnances, resultats, factures, alertes, constantes,
+      medecin_ref: medecin_ref ? {
+        nom: medecin_ref.nom, prenom: medecin_ref.prenom,
+        specialite: medecin_ref.specialite, telephone: medecin_ref.telephone,
+      } : null,
+    }});
+  } catch (err) { next(err); }
+};
+
 // ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
 exports.getNotifications = async (req, res, next) => {
   try {
@@ -188,6 +335,15 @@ exports.updateProfile = async (req, res, next) => {
     res.json({ success: true, patient: updated });
   } catch (err) { next(err); }
 };
+
+// T9.9 — même cache court (30s) que dashboard.controller.js pour les 9
+// tableaux de bord staff, appliqué ici pour la même raison : Dashboard.jsx
+// interroge cet endpoint au montage, toutes les 30s, et à chaque événement
+// dashboard:refresh — sans cache, chaque patient connecté déclenche la même
+// dizaine de requêtes en boucle. Clé de cache par utilisateur (personalized)
+// puisque la réponse est strictement propre au patient connecté.
+const { cacheStats } = require('../utils/dashboardCache');
+exports.getDashboard = cacheStats('portalDashboard', true, exports.getDashboard);
 
 // ── CHANGER MOT DE PASSE ──────────────────────────────────────────────────────
 exports.changePassword = async (req, res, next) => {

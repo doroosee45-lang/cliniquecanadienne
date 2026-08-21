@@ -14,6 +14,7 @@
 // d'une vraie absence d'activité. Dépenses et échecs de connexion étaient
 // dans ce même cas jusqu'à AUDIT-04 — Depense et le journal LOGIN_ECHEC
 // existent désormais et sont réellement agrégés ci-dessous.
+const mongoose       = require('mongoose');
 const Patient        = require('../models/Patient');
 const Appointment    = require('../models/Appointment');
 const Consultation   = require('../models/Consultation');
@@ -36,6 +37,7 @@ const Conversation   = require('../models/Conversation');
 const Depense        = require('../models/Depense');
 const Commande       = require('../models/Commande');
 const AuditLog       = require('../models/AuditLog');
+const Urgence        = require('../models/Urgence');
 
 // ─── Helpers ──────────────────────────────────────────────────
 const todayRange = () => {
@@ -150,9 +152,15 @@ exports.superAdminStats = async (req, res, next) => {
         patients_auj, consultations_auj, admissions_auj,
       },
       users_par_role: uRoles,
+      // AUDIT-DASHBOARD — db/backup/disk/cpu/ram/services_actifs étaient tous
+      // codés en dur ('ok'/0/14) : un superadmin voyait "Base de données OK"
+      // même connexion Mongo coupée. db reflète maintenant l'état réel de la
+      // connexion Mongoose (seul signal vérifiable sans dépendance nouvelle).
+      // backup/disk/cpu/ram/services_actifs restent non instrumentés (aucune
+      // supervision OS/sauvegarde n'existe dans ce projet) — non affichés
+      // tant que ce n'est pas construit, voir rapport d'audit dashboards.
       sys_status:{
-        db:'ok', backup:'ok',
-        disk:0, server_cpu:0, server_ram:0, services_actifs:14,
+        db: mongoose.connection.readyState === 1 ? 'ok' : 'error',
       },
       connexions_echouees,
       comptes_bloques,
@@ -315,6 +323,7 @@ exports.medecinStats = async (req, res, next) => {
       mes_ordonnances_auj,
       mes_hospit,
       mes_chirurgies,
+      mes_urgences,
       consults_du_jour,
       hospit_patients,
       alertes_labo,
@@ -326,6 +335,11 @@ exports.medecinStats = async (req, res, next) => {
       Ordonnance.countDocuments({ medecin:medecinId, createdAt:{ $gte:start,$lte:end }}),
       Hospitalization.countDocuments({ medecin_responsable:medecinId, statut:'en_cours' }),
       Surgery.countDocuments({ chirurgien_id:medecinId, statut:{ $in:['opere','suivi_postop','cloture'] } }),
+      // AUDIT-DASHBOARD — Urgence.medecin_responsable existe réellement (même
+      // pattern que Hospitalization.medecin_responsable/Surgery.chirurgien_id
+      // ci-dessus) mais n'était jamais agrégé ici : un médecin ne voyait
+      // aucun passage aux urgences sous sa responsabilité sur son dashboard.
+      Urgence.countDocuments({ medecin_responsable:medecinId, statut:{ $nin:['sorti','transfere','decede'] } }),
       // Consultations du jour avec détails
       Consultation.find({ medecin:medecinId, date_consultation:{ $gte:start,$lte:end }})
         .populate('patient','nom prenom')
@@ -338,11 +352,17 @@ exports.medecinStats = async (req, res, next) => {
       LabResult.find({ est_critique:true, acquitte_par:null, medecin_prescripteur:medecinId })
         .populate('patient','nom prenom').limit(5),
       // Stats IA (suggestions générées automatiquement à la consultation)
+      // AUDIT-DASHBOARD — taux_precision était fixé en dur à 94 quel que soit
+      // le contenu réel : ia_suggestions ne stocke qu'un diagnostic +
+      // confidence par suggestion, jamais confronté a posteriori à un
+      // diagnostic confirmé — aucun taux de précision n'est réellement
+      // calculable avec les données actuelles. 0 explicite, même convention
+      // que le reste de ce fichier (cf. en-tête), plutôt qu'un chiffre inventé.
       Consultation.countDocuments({ medecin:medecinId, 'ia_suggestions.0':{ $exists:true } }).then(d => ({
         diagnostics_assistes: d,
         alertes_risque: 0,
         interactions_detectees: 0,
-        taux_precision: 94,
+        taux_precision: 0,
       })).catch(() => ({ diagnostics_assistes:0, alertes_risque:0, interactions_detectees:0, taux_precision:0 })),
     ]);
 
@@ -355,11 +375,16 @@ exports.medecinStats = async (req, res, next) => {
     }));
 
     // Formater hospitalisations
+    // AUDIT-DASHBOARD — statut était fixé en dur à 'stable' pour chaque
+    // patient : le badge frontend "⚠ Surveillance / ✅ Stable" ne reflétait
+    // donc jamais un état réel (aucun champ de gravité/surveillance n'existe
+    // sur Hospitalization pour un séjour en_cours — etat_patient est réservé
+    // à la sortie). Champ retiré plutôt que de continuer à afficher une
+    // évaluation clinique fictive ; voir Dashboard.jsx pour le badge neutre.
     const hospit_patients_fmt = hospit_patients.map(h => ({
       nom: h.patient ? `${h.patient.prenom} ${h.patient.nom}` : 'Inconnu',
       chambre: h.chambre_num || '—',
       jours: Math.ceil((new Date()-new Date(h.date_entree)) / 86400000),
-      statut: 'stable',
     }));
 
     // Alertes
@@ -370,7 +395,7 @@ exports.medecinStats = async (req, res, next) => {
     }));
 
     res.json({ success:true, stats:{
-      kpis:{ mes_patients, mes_consults_auj, mes_rdv_auj, mes_ordonnances_auj, mes_hospit, mes_chirurgies },
+      kpis:{ mes_patients, mes_consults_auj, mes_rdv_auj, mes_ordonnances_auj, mes_hospit, mes_chirurgies, mes_urgences },
       consults_auj,
       hospit_patients: hospit_patients_fmt,
       alertes,
@@ -641,15 +666,39 @@ exports.radiologueStats = async (req, res, next) => {
   try {
     const { start, end } = todayRange();
 
-    const [examens_auj, en_attente, rapports_rediges, anomalies] = await Promise.all([
+    // AUDIT-DASHBOARD — precision_ia était fixé en dur à 94 (aucun calcul
+    // réel n'existe : ia_confidence est stocké par examen mais jamais
+    // confronté a posteriori à un diagnostic confirmé). Retiré plutôt que
+    // d'afficher un taux inventé. en_cours (statut 'realise' = examen
+    // effectué, en attente de compte-rendu) remplace ce qui manquait ici
+    // alors que le frontend l'attendait déjà — sans backing réel jusqu'ici,
+    // le KPI affichait systématiquement sa valeur de repli codée en dur.
+    const [examens_auj, en_attente, en_cours, rapports_rediges, anomalies, examens_liste_raw] = await Promise.all([
       ImagingResult.countDocuments({ date_prescription:{ $gte:start,$lte:end }}),
       ImagingResult.countDocuments({ statut:'en_attente', date_prescription:{ $gte:start,$lte:end }}),
+      ImagingResult.countDocuments({ statut:'realise', date_prescription:{ $gte:start,$lte:end }}),
       ImagingResult.countDocuments({ statut:{ $in:['rapporte','valide'] }, date_prescription:{ $gte:start,$lte:end }}),
       ImagingResult.countDocuments({ ia_anomalie:true }),
+      // AUDIT-DASHBOARD — le frontend attendait déjà une liste `examens`
+      // (table "Examens du jour") mais elle n'était jamais renvoyée : les KPI
+      // ci-dessus montraient un nombre réel non nul pendant que la table
+      // affichait systématiquement "Aucun examen aujourd'hui". patient_nom/
+      // type_examen/heure_rdv sont des champs texte libre déjà stockés sur
+      // ImagingResult (voir modèle) — pas de populate nécessaire.
+      ImagingResult.find({ date_prescription:{ $gte:start,$lte:end }, statut:{ $ne:'annule' } })
+        .sort({ date_prescription:1 }).limit(20),
     ]);
 
+    const examens = examens_liste_raw.map(e => ({
+      patient: e.patient_nom || 'Patient',
+      type: e.type_examen || e.type_categorie || 'Examen',
+      heure: e.heure_rdv || new Date(e.date_prescription).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }),
+      statut: e.ia_anomalie ? 'anomalie' : (e.statut === 'realise' ? 'en_cours' : (['rapporte','valide'].includes(e.statut) ? 'valide' : 'en_attente')),
+    }));
+
     res.json({ success:true, stats:{
-      kpis:{ examens_auj, en_attente, rapports_rediges, anomalies, precision_ia:94 },
+      kpis:{ examens_auj, en_attente, en_cours, rapports_rediges, anomalies },
+      examens,
       alertes: anomalies > 0 ? [{ type:'error', msg:`${anomalies} anomalie(s) IA détectée(s) — Vérification requise`, heure:'Urgent' }] : [],
     }});
   } catch (err) { next(err); }

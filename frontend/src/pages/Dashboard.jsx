@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
+import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
 import api from "../api";
 import toast from "react-hot-toast";
 
@@ -197,7 +198,7 @@ function Badge({ cls, children }) { return <span className={`dbdg ${cls}`}>{chil
 
 // ─── Quick actions ────────────────────────────────────────────
 const QUICK_ACTIONS = {
-  superadmin:     [{ icon:"👤", label:"Utilisateurs", color:"#EFF6FF", to:"/users" },{ icon:"📊", label:"Analytics", color:"#F0FDFC", to:"/analytics" },{ icon:"🏥", label:"Administration", color:"#ECFDF5", to:"/administration" },{ icon:"💰", label:"Finance", color:"#FEFCE8", to:"/finance" },{ icon:"💾", label:"Sauvegardes", color:"#F0FDFC", to:"/settings" },{ icon:"🛡️", label:"Audit", color:"#F5F3FF", to:"/audit" },{ icon:"⚙️", label:"Paramètres", color:"#FFF7ED", to:"/settings" },{ icon:"📋", label:"Rapports", color:"#FEF2F2", to:"/analytics" },{ icon:"🤖", label:"IA", color:"#EEF2FF", to:"/ai" },{ icon:"👔", label:"Ressources Hum.", color:"#FDF2F8", to:"/hr" }],
+  superadmin:     [{ icon:"👤", label:"Utilisateurs", color:"#EFF6FF", to:"/administration" },{ icon:"📊", label:"Analytics", color:"#F0FDFC", to:"/analytics" },{ icon:"🏥", label:"Administration", color:"#ECFDF5", to:"/administration" },{ icon:"💰", label:"Finance", color:"#FEFCE8", to:"/finance" },{ icon:"💾", label:"Sauvegardes", color:"#F0FDFC", to:"/settings" },{ icon:"🛡️", label:"Audit", color:"#F5F3FF", to:"/audit" },{ icon:"⚙️", label:"Paramètres", color:"#FFF7ED", to:"/settings" },{ icon:"📋", label:"Rapports", color:"#FEF2F2", to:"/analytics" },{ icon:"🤖", label:"IA", color:"#EEF2FF", to:"/ai" },{ icon:"👔", label:"Ressources Hum.", color:"#FDF2F8", to:"/hr" }],
   adminclinique:  [{ icon:"➕", label:"Nouveau patient", color:"#EFF6FF", to:"/patients" },{ icon:"📅", label:"Nouveau RDV", color:"#F0FDFC", to:"/appointments" },{ icon:"🩺", label:"Consultation", color:"#ECFDF5", to:"/consultations" },{ icon:"💊", label:"Ordonnance", color:"#FFF7ED", to:"/ordonnances" },{ icon:"🏥", label:"Hospitalisation", color:"#FEF2F2", to:"/hospitalization" },{ icon:"💰", label:"Finance", color:"#FEFCE8", to:"/finance" },{ icon:"🧪", label:"Laboratoire", color:"#F5F3FF", to:"/laboratory" },{ icon:"🩻", label:"Imagerie", color:"#EEF2FF", to:"/radiology" },{ icon:"📊", label:"Analytics", color:"#FDF2F8", to:"/analytics" },{ icon:"⚙️", label:"Paramètres", color:"#FFF7ED", to:"/settings" }],
   medecin:        [{ icon:"🩺", label:"Consultation", color:"#EFF6FF", to:"/consultations" },{ icon:"💊", label:"Ordonnance", color:"#F0FDFC", to:"/ordonnances" },{ icon:"📅", label:"Mes RDV", color:"#ECFDF5", to:"/appointments" },{ icon:"👥", label:"Mes patients", color:"#FFF7ED", to:"/patients" },{ icon:"🏥", label:"Hospitalisation", color:"#FEF2F2", to:"/hospitalization" },{ icon:"🔬", label:"Labo", color:"#ECFDF5", to:"/laboratory" },{ icon:"🩻", label:"Imagerie", color:"#EEF2FF", to:"/radiology" },{ icon:"🤖", label:"IA", color:"#F5F3FF", to:"/ai" }],
   infirmier:      [{ icon:"👥", label:"Patients", color:"#EFF6FF", to:"/patients" },{ icon:"🌡️", label:"Constantes", color:"#F0FDFC", to:"/hospitalization" },{ icon:"💉", label:"Soins", color:"#ECFDF5", to:"/hospitalization" },{ icon:"💊", label:"Médicaments", color:"#FFF7ED", to:"/pharmacy" },{ icon:"📋", label:"Fiche suivi", color:"#F5F3FF", to:"/hospitalization" },{ icon:"💬", label:"Messagerie", color:"#FDF2F8", to:"/messages" }],
@@ -207,7 +208,11 @@ const QUICK_ACTIONS = {
   receptionniste: [{ icon:"➕", label:"Nouveau patient", color:"#EFF6FF", to:"/patients" },{ icon:"📅", label:"Nouveau RDV", color:"#F0FDFC", to:"/appointments" },{ icon:"✅", label:"Confirmer RDV", color:"#ECFDF5", to:"/appointments" },{ icon:"📋", label:"Liste patients", color:"#FFF7ED", to:"/patients" },{ icon:"💬", label:"Messagerie", color:"#FDF2F8", to:"/messages" }],
   comptable:      [{ icon:"💰", label:"Factures", color:"#FEFCE8", to:"/finance" },{ icon:"📥", label:"Encaissement", color:"#ECFDF5", to:"/finance" },{ icon:"🏦", label:"Assurances", color:"#FFF7ED", to:"/finance" },{ icon:"📊", label:"Analytics", color:"#F5F3FF", to:"/analytics" },{ icon:"📋", label:"Impayées", color:"#FEF2F2", to:"/finance" }],
   // ✅ Patient : actions limitées à son propre espace
-  patient:        [{ icon:"📅", label:"Mes RDV", color:"#F0FDFC", to:"/portal/appointments" },{ icon:"📋", label:"Mon dossier", color:"#EFF6FF", to:"/portal/dossier" },{ icon:"💊", label:"Ordonnances", color:"#FFF7ED", to:"/portal/ordonnances" },{ icon:"🔬", label:"Mes résultats", color:"#ECFDF5", to:"/portal/resultats" },{ icon:"💬", label:"Messages", color:"#FDF2F8", to:"/portal/messages" },{ icon:"💳", label:"Mes factures", color:"#FEFCE8", to:"/portal/factures" }],
+  // AUDIT-DASHBOARD — Portal.jsx gère ses onglets par état local (setTab),
+  // pas par sous-route ; App.jsx ne déclare que path="portal" (pas de "/*").
+  // Toute cible /portal/xxx tombait donc sur la page 404. Seul /portal existe
+  // réellement : le patient atterrit sur le portail et choisit l'onglet.
+  patient:        [{ icon:"📅", label:"Mes RDV", color:"#F0FDFC", to:"/portal" },{ icon:"📋", label:"Mon dossier", color:"#EFF6FF", to:"/portal" },{ icon:"💊", label:"Ordonnances", color:"#FFF7ED", to:"/portal" },{ icon:"🔬", label:"Mes résultats", color:"#ECFDF5", to:"/portal" },{ icon:"💬", label:"Messages", color:"#FDF2F8", to:"/portal" },{ icon:"💳", label:"Mes factures", color:"#FEFCE8", to:"/portal" }],
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -239,7 +244,7 @@ function PatientDashboard({ data, user, isMobile }) {
             <div style={{ fontSize:17, fontWeight:700, color:"#fff", marginTop:2 }}>{prochainRdv.date} à {prochainRdv.heure}</div>
             <div style={{ fontSize:12, color:"rgba(255,255,255,.7)", marginTop:3 }}>{prochainRdv.type} · Dr. {prochainRdv.medecin}</div>
           </div>
-          <button className="dbtn" style={{ background:"rgba(255,255,255,.15)", color:"#fff", border:"1.5px solid rgba(255,255,255,.3)" }} onClick={() => navigate("/portal/appointments")}>
+          <button className="dbtn" style={{ background:"rgba(255,255,255,.15)", color:"#fff", border:"1.5px solid rgba(255,255,255,.3)" }} onClick={() => navigate("/portal")}>
             Voir tous mes RDV →
           </button>
         </div>
@@ -250,7 +255,7 @@ function PatientDashboard({ data, user, isMobile }) {
             <div style={{ fontSize:13, fontWeight:700, color:"#1E40AF" }}>Aucun rendez-vous à venir</div>
             <div style={{ fontSize:12, color:"#3B82F6" }}>Contactez la réception pour prendre un rendez-vous.</div>
           </div>
-          <button className="dbtn dbtn-primary dbtn-sm" style={{ marginLeft:"auto" }} onClick={() => navigate("/portal/appointments")}>Prendre RDV</button>
+          <button className="dbtn dbtn-primary dbtn-sm" style={{ marginLeft:"auto" }} onClick={() => navigate("/portal")}>Prendre RDV</button>
         </div>
       )}
 
@@ -352,7 +357,7 @@ function PatientDashboard({ data, user, isMobile }) {
               ))}
               {ordonnances.length > 3 && (
                 <div style={{ padding:"10px 20px" }}>
-                  <button className="dbtn dbtn-ghost dbtn-sm" style={{ width:"100%" }} onClick={() => navigate("/portal/ordonnances")}>
+                  <button className="dbtn dbtn-ghost dbtn-sm" style={{ width:"100%" }} onClick={() => navigate("/portal")}>
                     Voir toutes ({ordonnances.length}) →
                   </button>
                 </div>
@@ -369,7 +374,7 @@ function PatientDashboard({ data, user, isMobile }) {
         <div className="db-card">
           <div className="db-card-hdr">
             <div><h3>🔬 Mes résultats récents</h3><p>Analyses et examens</p></div>
-            <button className="dbtn dbtn-ghost dbtn-sm" onClick={() => navigate("/portal/resultats")}>Voir tout</button>
+            <button className="dbtn dbtn-ghost dbtn-sm" onClick={() => navigate("/portal")}>Voir tout</button>
           </div>
           <div style={{ padding:"8px 0" }}>
             {resultats.length === 0 ? (
@@ -395,7 +400,7 @@ function PatientDashboard({ data, user, isMobile }) {
         <div className="db-card">
           <div className="db-card-hdr">
             <div><h3>📅 Mes rendez-vous</h3><p>{rdvListe.length} au total</p></div>
-            <button className="dbtn dbtn-ghost dbtn-sm" onClick={() => navigate("/portal/appointments")}>Voir tout</button>
+            <button className="dbtn dbtn-ghost dbtn-sm" onClick={() => navigate("/portal")}>Voir tout</button>
           </div>
           <div style={{ padding:"8px 0" }}>
             {rdvListe.length === 0 ? (
@@ -420,7 +425,7 @@ function PatientDashboard({ data, user, isMobile }) {
         <div className="db-card">
           <div className="db-card-hdr">
             <div><h3>💳 Mes factures</h3><p>Historique des paiements</p></div>
-            <button className="dbtn dbtn-ghost dbtn-sm" onClick={() => navigate("/portal/factures")}>Voir tout</button>
+            <button className="dbtn dbtn-ghost dbtn-sm" onClick={() => navigate("/portal")}>Voir tout</button>
           </div>
           <div style={{ overflowX:"auto" }}>
             <table className="db-tbl">
@@ -448,7 +453,7 @@ function PatientDashboard({ data, user, isMobile }) {
           <div style={{ fontSize:13, color:"#047857", lineHeight:1.6 }}>
             Pensez à bien suivre vos ordonnances et à ne pas manquer vos rendez-vous de suivi. En cas de symptômes inhabituels, contactez votre médecin référent.
           </div>
-          <button className="dbtn dbtn-sm" style={{ background:"#059669", color:"#fff", marginTop:12, border:"none" }} onClick={() => navigate("/portal/messages")}>
+          <button className="dbtn dbtn-sm" style={{ background:"#059669", color:"#fff", marginTop:12, border:"none" }} onClick={() => navigate("/portal")}>
             💬 Contacter mon médecin
           </button>
         </div>
@@ -465,8 +470,6 @@ function RadiologueDashboard({ data, isMobile }) {
   const kpis     = data?.kpis       || {};
   const examens  = data?.examens    || [];
   const alertes  = data?.alertes    || [];
-  const ia       = data?.ia_stats   || { anomalies_detectees:0, taux_precision:0, examens_analyses:0 };
-  const chart    = data?.chart      || { labels:[], examens:[] };
 
   const stE = (s) => ({ valide:"green", en_cours:"teal", en_attente:"orange", anomalie:"red" }[s] || "gray");
   const lbE = (s) => ({ valide:"✅ Validé", en_cours:"🔄 En cours", en_attente:"⏳ En attente", anomalie:"⚠ Anomalie" }[s] || s);
@@ -474,12 +477,11 @@ function RadiologueDashboard({ data, isMobile }) {
   return (
     <div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))", gap:14, marginBottom:24 }}>
-        <KpiCard color="blue"   icon="🩻" value={kpis.examens_auj      ?? 12}   label="Examens du jour"       sub="programmés" />
-        <KpiCard color="orange" icon="⏳" value={kpis.en_attente        ?? 4}    label="En attente"            sub="à réaliser" />
-        <KpiCard color="teal"   icon="🔄" value={kpis.en_cours          ?? 2}    label="En cours"              sub="en analyse" />
-        <KpiCard color="green"  icon="✅" value={kpis.rapports_rediges  ?? 6}    label="Rapports rédigés"      sub="validés" />
-        <KpiCard color="red"    icon="🚨" value={kpis.anomalies         ?? 1}    label="Anomalies détectées"   urgent={kpis.anomalies > 0} />
-        <KpiCard color="purple" icon="🤖" value={(kpis.precision_ia ?? 94)+"%"}  label="Précision IA"          sub="détection" />
+        <KpiCard color="blue"   icon="🩻" value={kpis.examens_auj      ?? 0}   label="Examens du jour"       sub="programmés" />
+        <KpiCard color="orange" icon="⏳" value={kpis.en_attente        ?? 0}    label="En attente"            sub="à réaliser" />
+        <KpiCard color="teal"   icon="🔄" value={kpis.en_cours          ?? 0}    label="En cours"              sub="en analyse" />
+        <KpiCard color="green"  icon="✅" value={kpis.rapports_rediges  ?? 0}    label="Rapports rédigés"      sub="validés" />
+        <KpiCard color="red"    icon="🚨" value={kpis.anomalies         ?? 0}    label="Anomalies détectées"   urgent={kpis.anomalies > 0} />
       </div>
 
       {/* Alertes IA */}
@@ -509,7 +511,7 @@ function RadiologueDashboard({ data, isMobile }) {
                       <td style={{ fontWeight:600 }}>{e.heure}</td>
                       <td><Badge cls={stE(e.statut)}>{lbE(e.statut)}</Badge></td>
                       <td>
-                        <button className="dbtn dbtn-primary dbtn-sm" style={{ fontSize:11 }} onClick={() => toast.success("📝 Compte rendu ouvert")}>
+                        <button className="dbtn dbtn-primary dbtn-sm" style={{ fontSize:11 }} onClick={() => navigate("/radiology")}>
                           📝 CR
                         </button>
                       </td>
@@ -521,7 +523,8 @@ function RadiologueDashboard({ data, isMobile }) {
           )}
         </div>
 
-        {/* IA stats */}
+        {/* IA stats — dérivées des KPI réels ci-dessus (aucun calcul séparé de
+            précision n'existe : voir dashboard.controller.js::radiologueStats) */}
         <div className="db-card">
           <div className="db-card-hdr"><h3>🤖 Assistance IA</h3></div>
           <div style={{ padding:20 }}>
@@ -531,18 +534,19 @@ function RadiologueDashboard({ data, isMobile }) {
               <div style={{ fontSize:11, opacity:.7, marginTop:4 }}>Détection · Classification · Rapport</div>
             </div>
             {[
-              ["Examens analysés", ia.examens_analyses ?? 847, "var(--dt)"],
-              ["Anomalies détectées", ia.anomalies_detectees ?? 47, "var(--dr)"],
-              ["Taux de précision", (ia.taux_precision ?? 94)+"%", "var(--dg)"],
+              ["Examens du jour", kpis.examens_auj ?? 0, "var(--dt)"],
+              ["Anomalies détectées", kpis.anomalies ?? 0, "var(--dr)"],
             ].map(([l, v, c]) => (
               <div key={l} className="stat-row">
                 <span style={{ fontSize:12, color:"var(--dm)" }}>{l}</span>
                 <span style={{ fontWeight:700, color:c }}>{v}</span>
               </div>
             ))}
-            <div style={{ marginTop:14, padding:"10px 12px", background:"#F0FDFC", borderRadius:10, fontSize:12, color:"var(--dt)", fontWeight:600 }}>
-              💡 1 anomalie en attente de vérification
-            </div>
+            {(kpis.anomalies ?? 0) > 0 && (
+              <div style={{ marginTop:14, padding:"10px 12px", background:"#F0FDFC", borderRadius:10, fontSize:12, color:"var(--dt)", fontWeight:600 }}>
+                💡 {kpis.anomalies} anomalie{kpis.anomalies > 1 ? "s" : ""} en attente de vérification
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -555,16 +559,18 @@ function RadiologueDashboard({ data, isMobile }) {
 // ════════════════════════════════════════════════════════════════
 function SuperAdminDashboard({ data, isMobile }) {
   const kpis    = data?.kpis          || {};
-  const sys     = data?.sys_status     || { db:"", backup:"", disk:0, server_cpu:0, server_ram:0, services_actifs:0 };
+  const sys     = data?.sys_status     || { db:"" };
   const uroles  = data?.users_par_role  || {};
   const alertes = data?.alertes_crit    || [];
   const chart   = data?.chart_mois      || { labels:[], ca:[], dep:[] };
+  const connexions_echouees = data?.connexions_echouees ?? 0;
+  const comptes_bloques     = data?.comptes_bloques ?? 0;
   return (
     <div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(175px,1fr))", gap:14, marginBottom:24 }}>
-        <KpiCard color="blue"   icon="👥" value={fmtNum(kpis.patients_total)}    label="Patients enregistrés"  sub="base globale"            trend={5.2}  trendUp />
+        <KpiCard color="blue"   icon="👥" value={fmtNum(kpis.patients_total)}    label="Patients enregistrés"  sub="base globale" />
         <KpiCard color="teal"   icon="👤" value={kpis.users_total}               label="Utilisateurs système"  sub={`${kpis.users_connectes} connectés`} />
-        <KpiCard color="green"  icon="🩺" value={fmtNum(kpis.consultations_total)} label="Consultations"       sub="total toutes périodes"   trend={8.4}  trendUp />
+        <KpiCard color="green"  icon="🩺" value={fmtNum(kpis.consultations_total)} label="Consultations"       sub="total toutes périodes" />
         <KpiCard color="orange" icon="🛏️" value={kpis.hospitalisations}           label="Hospitalisations"     sub="en cours" />
         <KpiCard color="purple" icon="🔪" value={kpis.interventions}              label="Interventions chir."  sub="réalisées" />
         <KpiCard color="red"    icon="💸" value={fmtNum(kpis.factures_impayees)+" CFA"} label="Factures impayées" urgent />
@@ -590,7 +596,7 @@ function SuperAdminDashboard({ data, isMobile }) {
         <div className="db-card">
           <div className="db-card-hdr"><h3>👥 Utilisateurs par rôle</h3></div>
           <div style={{ padding:20 }}>
-            {[["Médecins",uroles.medecin,"var(--db)"],["Infirmiers",uroles.infirmier,"var(--dt)"],["Pharmaciens",uroles.pharmacien,"var(--do)"],["Laborantins",uroles.laborantin,"var(--dg)"]].map(([l,v,c])=>(
+            {[["Médecins",uroles.medecin ?? 0,"var(--db)"],["Infirmiers",uroles.infirmier ?? 0,"var(--dt)"],["Pharmaciens",uroles.pharmacien ?? 0,"var(--do)"],["Laborantins",uroles.laborantin ?? 0,"var(--dg)"]].map(([l,v,c])=>(
               <div key={l} style={{ marginBottom:10 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
                   <span style={{ color:"var(--dm)" }}>{l}</span><span style={{ fontWeight:700, color:"var(--dn)" }}>{v}</span>
@@ -603,20 +609,20 @@ function SuperAdminDashboard({ data, isMobile }) {
       </div>
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
         <div className="db-card">
-          <div className="db-card-hdr"><h3>🖥️ Surveillance système</h3></div>
+          <div className="db-card-hdr"><h3>🖥️ Surveillance système</h3><p>Disque, CPU, RAM et sauvegardes ne sont pas encore instrumentés</p></div>
           <div style={{ padding:20 }}>
-            {[{ lbl:"Base de données", st:sys.db, ic:"🗄️" },{ lbl:"Sauvegarde", st:sys.backup, ic:"💾" },{ lbl:"Services actifs", val:`${sys.services_actifs}/14`, ic:"⚡" }].map(({lbl,st,ic,val})=>(
-              <div key={lbl} className="stat-row">
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>{ic}</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>{lbl}</span></div>
-                {st ? <div className={`sys-dot ${st}`} /> : <Badge cls="blue">{val}</Badge>}
-              </div>
-            ))}
-            {[["Disque",sys.disk,sys.disk>80?"var(--dr)":sys.disk>60?"var(--do)":"var(--dg)"],["CPU",sys.server_cpu,"var(--db)"],["RAM",sys.server_ram,sys.server_ram>80?"var(--dr)":"var(--do)"]].map(([l,v,c])=>(
-              <div key={l} style={{ marginTop:10 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}><span style={{ color:"var(--dm)" }}>{l}</span><span style={{ fontWeight:700, color:c }}>{v}%</span></div>
-                <Prog pct={v} color={c} />
-              </div>
-            ))}
+            <div className="stat-row">
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>🗄️</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>Base de données</span></div>
+              <div className={`sys-dot ${sys.db || "warn"}`} />
+            </div>
+            <div className="stat-row">
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>🔐</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>Connexions échouées (aujourd'hui)</span></div>
+              <Badge cls={connexions_echouees > 0 ? "orange" : "green"}>{connexions_echouees}</Badge>
+            </div>
+            <div className="stat-row">
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}><span>🔒</span><span style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>Comptes suspendus</span></div>
+              <Badge cls={comptes_bloques > 0 ? "orange" : "green"}>{comptes_bloques}</Badge>
+            </div>
           </div>
         </div>
         <div className="db-card">
@@ -651,9 +657,9 @@ function AdminDashboard({ data, isMobile }) {
         <KpiCard color="green"  icon="🩺" value={kpis.consultations_auj} label="Consultations"      sub={`${consults.en_cours||0} en cours`} />
         <KpiCard color="orange" icon="🛏️" value={kpis.hospit_en_cours}   label="Hospitalisations"   sub={`${hospit.occupation_lits||0}% occupation`} />
         <KpiCard color="purple" icon="🧪" value={kpis.labo_auj}          label="Analyses labo"      sub="aujourd'hui" />
-        <KpiCard color="cyan"   icon="💰" value={fmtNum(kpis.revenus_auj)+" CFA"} label="Revenus du jour" trend={12} trendUp />
+        <KpiCard color="cyan"   icon="💰" value={fmtNum(kpis.revenus_auj)+" CFA"} label="Revenus du jour" />
       </div>
-      {alertes.filter(a=>a.type==="error").length > 0 && (
+      {alertes.length > 0 && (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))", gap:12, marginBottom:20 }}>
           {alertes.map((al,i)=>(
             <div key={i} className={`al-${al.type==="error"?"danger":al.type==="warn"?"warn":"info"}`} style={{ display:"flex", gap:10 }}>
@@ -685,7 +691,7 @@ function AdminDashboard({ data, isMobile }) {
           </div>
         </div>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
         <div className="db-card">
           <div className="db-card-hdr"><h3>💊 Pharmacie</h3></div>
           <div style={{ padding:20 }}>
@@ -709,17 +715,6 @@ function AdminDashboard({ data, isMobile }) {
             <div style={{ marginTop:10, padding:"8px 10px", background:"#FFF7ED", borderRadius:8, fontSize:12, color:"var(--do)" }}>⚠ {pers.absents||0} absent(s) · {pers.conges||0} en congé</div>
           </div>
         </div>
-        <div className="db-card">
-          <div className="db-card-hdr"><h3>🤖 Intelligence Artificielle</h3></div>
-          <div style={{ padding:20 }}>
-            <div style={{ background:"linear-gradient(135deg,var(--dn),var(--db))", borderRadius:14, padding:16, color:"#fff", textAlign:"center", marginBottom:12 }}>
-              <div style={{ fontSize:24, marginBottom:4 }}>🤖</div><div style={{ fontSize:13, fontWeight:700 }}>24 modules IA actifs</div>
-            </div>
-            {[["Diagnostics assistés","1 240","var(--dt)"],["Alertes risque","47","var(--dr)"],["Taux précision","94%","var(--dg)"]].map(([l,v,c])=>(
-              <div key={l} className="stat-row"><span style={{ fontSize:12, color:"var(--dm)" }}>{l}</span><span style={{ fontWeight:800, color:c }}>{v}</span></div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -739,12 +734,13 @@ function MedecinDashboard({ data, user, isMobile }) {
         <KpiCard color="green"  icon="💊" value={kpis.mes_ordonnances_auj}  label="Ordonnances"      sub="créées aujourd'hui" />
         <KpiCard color="purple" icon="🛏️" value={kpis.mes_hospit}          label="Hospitalisés"      sub="sous ma charge" />
         <KpiCard color="red"    icon="🔪" value={kpis.mes_chirurgies}      label="Chirurgies"        sub="ce mois" />
+        <KpiCard color="orange" icon="🚑" value={kpis.mes_urgences ?? 0}   label="Urgences"          sub="sous ma responsabilité" />
       </div>
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
         <div className="db-card">
           <div className="db-card-hdr"><div><h3>📅 Mes consultations du jour</h3><p>{consults.length} patients</p></div></div>
           <div style={{ padding:"8px 0" }}>
-            {consults.map((c,i)=>(
+            {consults.length === 0 ? <div style={{ padding:"12px 20px" }}><Empty icon="📅" msg="Aucune consultation aujourd'hui" /></div> : consults.map((c,i)=>(
               <div key={i} className="rdv-item" style={{ padding:"10px 20px" }}>
                 <div className="rdv-time">{c.heure}</div>
                 <div className="rdv-dot" style={{ background:{ termine:"#059669", en_cours:"#0EA5A0", en_attente:"#D97706", programme:"#1B4F9E" }[c.statut]||"#9CA3AF" }} />
@@ -755,14 +751,30 @@ function MedecinDashboard({ data, user, isMobile }) {
           </div>
         </div>
         <div>
+          {/* AUDIT-DASHBOARD — alertes (résultats labo critiques de mes
+              patients, dashboard.controller.js::medecinStats) était calculé
+              réellement mais jamais affiché ici. */}
+          {alertes.length > 0 && (
+            <div className="db-card" style={{ marginBottom:16 }}>
+              <div className="db-card-hdr"><h3>🔔 Alertes — Résultats critiques</h3></div>
+              <div style={{ padding:14 }}>
+                {alertes.map((al,i)=>(
+                  <div key={i} className="al-danger" style={{ marginBottom:10, display:"flex", gap:10 }}>
+                    <span>🚨</span>
+                    <div><div style={{ fontSize:12, fontWeight:700, color:"var(--dn)" }}>{al.msg}</div><div style={{ fontSize:10, color:"var(--dm)" }}>{al.heure}</div></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="db-card" style={{ marginBottom:16 }}>
             <div className="db-card-hdr"><h3>🛏️ Mes patients hospitalisés</h3></div>
             <div style={{ padding:16 }}>
-              {hospit.map((h,i)=>(
+              {hospit.length === 0 ? <Empty icon="🛏️" msg="Aucun patient hospitalisé sous votre charge" /> : hospit.map((h,i)=>(
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:i<hospit.length-1?"1px solid var(--dbr)":"" }}>
                   <div style={{ width:36, height:36, borderRadius:"50%", background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>👤</div>
                   <div style={{ flex:1 }}><div style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>{h.nom}</div><div style={{ fontSize:11, color:"var(--dm)" }}>Chambre {h.chambre} · J+{h.jours}</div></div>
-                  <Badge cls={h.statut==="surveillance"?"orange":"green"}>{h.statut==="surveillance"?"⚠ Surveillance":"✅ Stable"}</Badge>
+                  <Badge cls="blue">🛏️ Hospitalisé</Badge>
                 </div>
               ))}
             </div>
@@ -797,7 +809,11 @@ function InfirmierDashboard({ data, isMobile }) {
         <div className="db-card">
           <div className="db-card-hdr"><h3>📋 Planning du jour</h3></div>
           <div style={{ padding:"8px 0" }}>
-            {planning.map((p,i)=>(
+            {planning.length === 0 ? (
+              <div style={{ padding:"12px 20px" }}>
+                <Empty icon="📋" msg="Plan de soins structuré non disponible — fonctionnalité pas encore implémentée" />
+              </div>
+            ) : planning.map((p,i)=>(
               <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 20px", borderBottom:i<planning.length-1?"1px solid var(--dbr)":"" }}>
                 <div className="rdv-time">{p.heure}</div>
                 <div style={{ width:22, height:22, borderRadius:"50%", background:p.fait?"#ECFDF5":"#F3F4F6", border:`2px solid ${p.fait?"#059669":"#D1D5DB"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12 }}>{p.fait?"✓":""}</div>
@@ -824,6 +840,7 @@ function InfirmierDashboard({ data, isMobile }) {
 }
 
 function LaborantinDashboard({ data, isMobile }) {
+  const navigate = useNavigate();
   const kpis = data?.kpis || {}; const urgentes = data?.analyses_urgentes || []; const alertes = data?.alertes || [];
   return (
     <div>
@@ -837,12 +854,14 @@ function LaborantinDashboard({ data, isMobile }) {
       {alertes.map((al,i)=>(<div key={i} className={`al-${al.type==="error"?"danger":"warn"}`} style={{ marginBottom:10, display:"flex", gap:10 }}><span>{al.type==="error"?"🚨":"⚠️"}</span><div><div style={{ fontSize:12, fontWeight:700, color:"var(--dn)" }}>{al.msg}</div><div style={{ fontSize:10, color:"var(--dm)" }}>{al.heure}</div></div></div>))}
       <div className="db-card">
         <div className="db-card-hdr"><h3>🚨 Analyses urgentes</h3></div>
-        <div style={{ overflowX:"auto" }}>
-          <table className="db-tbl">
-            <thead><tr><th>Patient</th><th>Examen</th><th>Valeur</th><th>Statut</th><th>Action</th></tr></thead>
-            <tbody>{urgentes.map((a,i)=>(<tr key={i} style={{ background:a.statut==="critique"?"#FEF2F2":"" }}><td style={{ fontWeight:600 }}>{a.patient}</td><td style={{ fontSize:12, color:"var(--dm)" }}>{a.examen}</td><td style={{ fontWeight:700, color:a.statut==="critique"?"var(--dr)":"var(--do)" }}>{a.valeur}</td><td><Badge cls={a.statut==="critique"?"red":a.statut==="anormal"?"orange":"yellow"}>{a.statut}</Badge></td><td><button className="dbtn dbtn-primary dbtn-sm" style={{ fontSize:11 }} onClick={()=>toast.success("📨 Notifié")}>🔔 Notifier</button></td></tr>))}</tbody>
-          </table>
-        </div>
+        {urgentes.length === 0 ? <div style={{ padding:20 }}><Empty icon="✅" msg="Aucune analyse urgente en attente" /></div> : (
+          <div style={{ overflowX:"auto" }}>
+            <table className="db-tbl">
+              <thead><tr><th>Patient</th><th>Examen</th><th>Valeur</th><th>Statut</th><th>Action</th></tr></thead>
+              <tbody>{urgentes.map((a,i)=>(<tr key={i} style={{ background:a.statut==="critique"?"#FEF2F2":"" }}><td style={{ fontWeight:600 }}>{a.patient}</td><td style={{ fontSize:12, color:"var(--dm)" }}>{a.examen}</td><td style={{ fontWeight:700, color:a.statut==="critique"?"var(--dr)":"var(--do)" }}>{a.valeur}</td><td><Badge cls={a.statut==="critique"?"red":a.statut==="anormal"?"orange":"yellow"}>{a.statut}</Badge></td><td><button className="dbtn dbtn-primary dbtn-sm" style={{ fontSize:11 }} onClick={()=>navigate("/laboratory")}>🔔 Notifier</button></td></tr>))}</tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -858,11 +877,11 @@ function PharmacienDashboard({ data, isMobile }) {
         <KpiCard color="orange" icon="⚠️" value={kpis.stocks_faibles}     label="Stocks faibles"     sub="sous le seuil" />
         <KpiCard color="yellow" icon="⏰" value={kpis.expires}            label="Lots périmés"       urgent={kpis.expires>0} />
         <KpiCard color="teal"   icon="💉" value={kpis.dispensations_auj}  label="Dispensations auj." sub="ordonnances" />
-        <KpiCard color="green"  icon="💰" value={fmtNum(kpis.ventes_auj)+" CFA"} label="Ventes du jour" trend={12} trendUp />
+        <KpiCard color="green"  icon="💰" value={fmtNum(kpis.ventes_auj)+" CFA"} label="Ventes du jour" />
       </div>
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
         <div className="db-card"><div className="db-card-hdr"><h3>🔔 Alertes pharmacie</h3></div><div style={{ padding:14 }}>{alertes.map((al,i)=>(<div key={i} className={`al-${al.type==="error"?"danger":al.type==="warn"?"warn":"info"}`} style={{ marginBottom:10, display:"flex", gap:10 }}><span>{al.type==="error"?"🚨":al.type==="warn"?"⚠️":"ℹ️"}</span><div><div style={{ fontSize:12, fontWeight:700, color:"var(--dn)" }}>{al.msg}</div><div style={{ fontSize:10, color:"var(--dm)" }}>{al.heure}</div></div></div>))}</div></div>
-        <div className="db-card"><div className="db-card-hdr"><h3>💊 Top médicaments</h3></div><div style={{ padding:20 }}>{topMeds.map(([med,nb],i)=>(<div key={med} style={{ marginBottom:12 }}><div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}><span style={{ color:"var(--dm)", fontWeight:600 }}>{med}</span><span style={{ fontWeight:700 }}>{nb} u.</span></div><Prog pct={Math.round(nb/(topMeds[0]?.[1]||1)*100)} color={["var(--db)","var(--dt)","var(--dg)","var(--dp)"][i]||"var(--dm)"} /></div>))}</div></div>
+        <div className="db-card"><div className="db-card-hdr"><h3>💊 Top médicaments</h3></div><div style={{ padding:20 }}>{topMeds.length === 0 ? <Empty icon="💊" msg="Aucune dispensation sur les 7 derniers jours" /> : topMeds.map(([med,nb],i)=>(<div key={med} style={{ marginBottom:12 }}><div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}><span style={{ color:"var(--dm)", fontWeight:600 }}>{med}</span><span style={{ fontWeight:700 }}>{nb} u.</span></div><Prog pct={Math.round(nb/(topMeds[0]?.[1]||1)*100)} color={["var(--db)","var(--dt)","var(--dg)","var(--dp)"][i]||"var(--dm)"} /></div>))}</div></div>
       </div>
     </div>
   );
@@ -884,12 +903,14 @@ function ReceptionDashboard({ data, isMobile }) {
       </div>
       <div className="db-card">
         <div className="db-card-hdr"><div><h3>📅 Prochains rendez-vous</h3><p>{rdvListe.length} à venir</p></div></div>
-        <div style={{ overflowX:"auto" }}>
-          <table className="db-tbl">
-            <thead><tr><th>Heure</th><th>Patient</th><th>Médecin</th><th>Type</th><th>Statut</th><th>Action</th></tr></thead>
-            <tbody>{rdvListe.map((r,i)=>(<tr key={i}><td style={{ fontWeight:700 }}>{r.heure}</td><td style={{ fontWeight:600 }}>{r.patient}</td><td style={{ fontSize:12, color:"var(--dm)" }}>{r.medecin}</td><td><Badge cls="blue">{r.type}</Badge></td><td><Badge cls={stR(r.statut)}>{r.statut==="en_attente"?"⏳ Attente":r.statut==="confirme"?"✅ Confirmé":"❌ Annulé"}</Badge></td><td><div style={{ display:"flex", gap:4 }}>{r.statut==="en_attente"&&<button className="dbtn dbtn-teal dbtn-sm" style={{ fontSize:11 }} onClick={()=>toast.success("✅ Confirmé")}>Confirmer</button>}<button className="dbtn dbtn-ghost dbtn-sm" style={{ fontSize:11 }} onClick={()=>toast.success("📞 Appel lancé")}>📞</button></div></td></tr>))}</tbody>
-          </table>
-        </div>
+        {rdvListe.length === 0 ? <div style={{ padding:20 }}><Empty icon="📅" msg="Aucun rendez-vous à venir" /></div> : (
+          <div style={{ overflowX:"auto" }}>
+            <table className="db-tbl">
+              <thead><tr><th>Heure</th><th>Patient</th><th>Médecin</th><th>Type</th><th>Statut</th><th>Action</th></tr></thead>
+              <tbody>{rdvListe.map((r,i)=>(<tr key={i}><td style={{ fontWeight:700 }}>{r.heure}</td><td style={{ fontWeight:600 }}>{r.patient}</td><td style={{ fontSize:12, color:"var(--dm)" }}>{r.medecin}</td><td><Badge cls="blue">{r.type}</Badge></td><td><Badge cls={stR(r.statut)}>{r.statut==="en_attente"?"⏳ Attente":r.statut==="confirme"?"✅ Confirmé":"❌ Annulé"}</Badge></td><td><div style={{ display:"flex", gap:4 }}>{r.statut==="en_attente"&&<button className="dbtn dbtn-teal dbtn-sm" style={{ fontSize:11 }} onClick={()=>navigate("/appointments")}>Confirmer</button>}<button className="dbtn dbtn-ghost dbtn-sm" style={{ fontSize:11 }} onClick={()=>navigate("/appointments")}>📞</button></div></td></tr>))}</tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -900,9 +921,9 @@ function ComptableDashboard({ data, isMobile }) {
   return (
     <div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:24 }}>
-        <KpiCard color="green"  icon="💰" value={fmtNum(kpis.revenus_auj)+" CFA"}    label="Revenus du jour"     trend={12} trendUp />
+        <KpiCard color="green"  icon="💰" value={fmtNum(kpis.revenus_auj)+" CFA"}    label="Revenus du jour"     />
         <KpiCard color="red"    icon="💸" value={fmtNum(kpis.depenses_auj)+" CFA"}   label="Dépenses du jour"    />
-        <KpiCard color="teal"   icon="📈" value={fmtNum(kpis.benefice_auj)+" CFA"}   label="Bénéfice du jour"    trend={8} trendUp />
+        <KpiCard color="teal"   icon="📈" value={fmtNum(kpis.benefice_auj)+" CFA"}   label="Bénéfice du jour"    />
         <KpiCard color="orange" icon="⏰" value={fmtNum(kpis.factures_imp)+" CFA"}   label="Factures impayées"   urgent />
         <KpiCard color="purple" icon="🏦" value={fmtNum(kpis.creances_assur)+" CFA"} label="Créances assurances" />
         <KpiCard color="blue"   icon="🧾" value={kpis.paiements_auj}                  label="Paiements du jour"   />
@@ -933,7 +954,7 @@ export default function Dashboard() {
   const rc   = ROLE_CFG[role] || ROLE_CFG.patient;
 
   // ── Socket.IO (temps réel) ───────────────────────────────────
-  const { socket, connected, activities } = useSocket();
+  const { connected, activities } = useSocket();
 
   // ── Load dashboard data ──────────────────────────────────────
   // AUDIT — un dispatch Redux parallèle (fetchDashboardData) appelait le
@@ -976,19 +997,11 @@ export default function Dashboard() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Polling de sécurité toutes les 30s (fallback si socket indisponible)
-  useEffect(() => {
-    const iv = setInterval(loadData, 30000);
-    return () => clearInterval(iv);
-  }, [loadData]);
-
-  // Refresh immédiat déclenché par le serveur via Socket.IO
-  useEffect(() => {
-    if (!socket) return;
-    const handler = () => loadData();
-    socket.on('dashboard:refresh', handler);
-    return () => socket.off('dashboard:refresh', handler);
-  }, [socket, loadData]);
+  // Polling de sécurité (30s) + refetch immédiat sur dashboard:refresh —
+  // même hook partagé que le reste des pages (AUDIT-DASHBOARD : Dashboard.jsx
+  // réimplémentait la même logique en inline, aucune différence de
+  // comportement, juste dupliquée localement).
+  useRealtimeRefresh(loadData);
 
   const quickActions = QUICK_ACTIONS[role] || QUICK_ACTIONS.patient;
 
@@ -1137,29 +1150,6 @@ export default function Dashboard() {
           {/* ✅ Patient — dashboard dédié, données personnelles uniquement */}
           {role === "patient"        && <PatientDashboard data={stats} user={user} isMobile={isMobile} />}
         </div>
-
-        {/* ── IA BANNER — uniquement staff médical, PAS le patient ── */}
-        {["superadmin","adminclinique","medecin","radiologue"].includes(role) && (
-          <div style={{ background:"linear-gradient(135deg,var(--dp),var(--db))", borderRadius:18, padding:"20px 24px", color:"#fff", marginTop:8 }} className="fu">
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:16 }}>
-              <div>
-                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
-                  <span style={{ fontSize:24 }}>🤖</span>
-                  <span style={{ fontSize:17, fontWeight:700 }}>Intelligence Artificielle MEDISYNC</span>
-                </div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.75)" }}>24 modules IA actifs · Diagnostic · Anomalies · Risques · Prévision</div>
-              </div>
-              <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
-                {[["1 240","Diagnostics"],["47","Alertes"],["94%","Précision"],["3","Interactions"]].map(([v,l])=>(
-                  <div key={l} style={{ textAlign:"center" }}>
-                    <div style={{ fontSize:22, fontWeight:800, letterSpacing:-1 }}>{v}</div>
-                    <div style={{ fontSize:11, color:"rgba(255,255,255,.6)" }}>{l}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
       </div>
     </>
