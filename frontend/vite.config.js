@@ -1,13 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Cible du proxy dev — configurable via VITE_PROXY_TARGET pour les tests
+// bout en bout (Playwright, etc.) qui doivent pointer vers un backend local
+// isolé (mongod local, cf. tests/helpers/isolatedServer.js) plutôt que vers
+// le backend de développement réel connecté à Atlas. Fallback inchangé :
+// sans cette variable, comportement strictement identique à avant.
+const PROXY_TARGET = process.env.VITE_PROXY_TARGET || 'http://localhost:5000';
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: PROXY_TARGET,
         changeOrigin: true,
         secure: false,
         // Réécriture du domaine du cookie pour que le navigateur accepte
@@ -29,12 +36,12 @@ export default defineConfig({
         },
       },
       '/uploads': {
-        target: 'http://localhost:5000',
+        target: PROXY_TARGET,
         changeOrigin: true,
       },
       // Proxy Socket.IO (WebSocket + polling)
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: PROXY_TARGET,
         changeOrigin: true,
         ws: true,
       },

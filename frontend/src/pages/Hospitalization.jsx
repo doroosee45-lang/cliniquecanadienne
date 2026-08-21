@@ -3,7 +3,7 @@
 
 
 import { useState, useEffect, useCallback, useRef, useId } from "react";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { BedDouble, Plus, LogOut, Printer } from 'lucide-react';
 import {
@@ -249,6 +249,9 @@ const EMPTY_HOSP = {
   patient_id:"", medecin:"", service:"", batiment:"", chambre:"", lit:"", type_chambre:"standard",
   provenance:"urgences", motif:"", diagnostic_entree:"", date_admission:"",
   contact_urgence:"", tel_urgence:"",
+  // ADR-0005 — renseigné uniquement quand on arrive depuis Urgences.jsx
+  // ("Préparer l'admission") ; jamais deviné ni généré ici.
+  urgence_id:"",
 };
 
 // Convertit un document hospitalization peuplé depuis l'API en champs plats pour l'affichage
@@ -395,6 +398,7 @@ function DoughnutChart({ labels, data, colors, height = 180 }) {
 export default function Hospitalisation() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const rooms = useSelector(selectRooms);
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
@@ -446,6 +450,26 @@ export default function Hospitalisation() {
   const [formVisite, setFormVisite]             = useState(EMPTY_VISITE);
   const [formSortie, setFormSortie]             = useState(EMPTY_SORTIE);
   const [formPrescription, setFormPrescription] = useState({ type:"medicament", designation:"", posologie:"", medecin:"" });
+
+  // ADR-0005 — arrivée depuis Urgences.jsx ("Préparer l'admission") : le
+  // dossier urgences transmet patient/urgence_id via l'état de navigation
+  // (jamais une route inventée, jamais un id deviné). Pré-remplit le
+  // formulaire et ouvre directement le modal ; l'état est nettoyé de
+  // l'historique pour ne pas rouvrir le modal sur un simple retour arrière.
+  useEffect(() => {
+    if (location.state?.urgence_id) {
+      setFormHosp(f => ({
+        ...f,
+        patient_id: location.state.patient_id || "",
+        urgence_id: location.state.urgence_id,
+        diagnostic_entree: location.state.diagnostic_entree || "",
+        provenance: location.state.provenance || "urgences",
+      }));
+      setModalAdmission(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Chargement TOUTES les hosps (sans filtre) pour les KPIs ─
   const loadAllForKpis = useCallback(async () => {
@@ -1123,6 +1147,13 @@ export default function Hospitalisation() {
                       <div style={{ fontSize:11, color:"rgba(255,255,255,.45)", marginTop:3 }}>
                         Dossier : {currentHosp.patient_dossier || currentHosp.patient?.numero_dossier || "—"} · Service : {currentHosp.service_label || "—"}
                       </div>
+                      {/* ADR-0005 — traçabilité réelle du lien vers le passage
+                          aux urgences d'origine, quand il existe (Hospitalization.urgence_id) */}
+                      {currentHosp.urgence_id && (
+                        <div style={{ marginTop:6 }}>
+                          <Badge cls="orange">🚑 Issu des urgences</Badge>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>

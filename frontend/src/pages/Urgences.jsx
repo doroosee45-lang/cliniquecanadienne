@@ -309,6 +309,14 @@ const MOTIFS_URG = [
   "Douleur thoracique","AVC / Perte de connaissance","Intoxication",
   "Fracture","Plaie / Coupure","Brûlure","Autre",
 ];
+// ADR-0005 — badge du suivi d'admission (Urgence.admission_status), distinct
+// du statut clinique STATUT_URG ci-dessus. 'non_requise' n'est jamais
+// affiché (aucune décision d'hospitalisation n'a été prise, rien à signaler).
+const ADMISSION_STATUS_CFG = {
+  preparation: { cls: "orange", label: "Admission en préparation", icon: "🕓" },
+  terminee:    { cls: "green",  label: "Hospitalisation créée",    icon: "✅" },
+  annulee:     { cls: "gray",   label: "Admission annulée",        icon: "⚪" },
+};
 const AMB_STATUT = {
   disponible: { cls:"green",  label:"Disponible" },
   en_route:   { cls:"orange", label:"En route"  },
@@ -1051,6 +1059,11 @@ export default function Urgences() {
                         <Badge cls={(STATUT_URG[currentUrg.statut] || {}).cls || "gray"}>
                           {(STATUT_URG[currentUrg.statut] || {}).icon} {(STATUT_URG[currentUrg.statut] || {}).label}
                         </Badge>
+                        {ADMISSION_STATUS_CFG[currentUrg.admission_status] && (
+                          <Badge cls={ADMISSION_STATUS_CFG[currentUrg.admission_status].cls}>
+                            {ADMISSION_STATUS_CFG[currentUrg.admission_status].icon} {ADMISSION_STATUS_CFG[currentUrg.admission_status].label}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1070,6 +1083,27 @@ export default function Urgences() {
                       {currentUrg.statut !== "sorti" && currentUrg.statut !== "decede" && (
                         <button className="ubtn ubtn-danger ubtn-sm" style={{ marginTop: 8 }} onClick={() => { setFormCloture(EMPTY_CLOTURE); setModalCloture(true); }}>
                           {I.exit} Clôturer
+                        </button>
+                      )}
+                      {/* ADR-0005 — déclencheur humain vers Hospitalisation :
+                          jamais automatique, uniquement quand admission_status
+                          l'indique réellement (posé par le backend après
+                          decision='hospitalisation'). */}
+                      {currentUrg.admission_status === "preparation" && (
+                        <button
+                          className="ubtn ubtn-success ubtn-sm"
+                          style={{ marginTop: 8, marginLeft: 8 }}
+                          onClick={() => navigate("/hospitalization", {
+                            state: {
+                              patient_id: currentUrg.patient_id || currentUrg.patient?._id || "",
+                              patient_nom: currentUrg.patient_nom || (currentUrg.patient ? `${currentUrg.patient.prenom || ""} ${currentUrg.patient.nom || ""}`.trim() : ""),
+                              urgence_id: currentUrg._id,
+                              diagnostic_entree: currentUrg.diagnostic_final || currentUrg.diagnostic_provisoire || "",
+                              provenance: "urgences",
+                            },
+                          })}
+                        >
+                          🏥 Préparer l'admission →
                         </button>
                       )}
                     </div>
