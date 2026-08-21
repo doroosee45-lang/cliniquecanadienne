@@ -4,7 +4,7 @@ const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction, escapeRegex } = require('../utils/helpers');
 
 // ── Stats / KPIs ──────────────────────────────────────────────────────────────
-exports.getStats = async (req, res) => {
+exports.getStats = async (req, res, next) => {
   try {
     const now   = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -88,11 +88,11 @@ exports.getStats = async (req, res) => {
       topPatho,
       chart: { labels: moisLabels, data: moisData },
     });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Patients (enfants) ────────────────────────────────────────────────────────
-exports.getAll = async (req, res) => {
+exports.getAll = async (req, res, next) => {
   try {
     const { page = 1, limit = 50, q = '', statut = '', age = '' } = req.query;
     const filter = {};
@@ -127,19 +127,19 @@ exports.getAll = async (req, res) => {
       .limit(parseInt(limit));
 
     res.json({ success: true, enfants, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
-exports.getOne = async (req, res) => {
+exports.getOne = async (req, res, next) => {
   try {
     const child = await Child.findById(req.params.id);
     if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
     const consultations = await PediatricConsultation.find({ child_id: child._id }).sort('-date').limit(20);
     res.json({ success: true, enfant: child, consultations });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
-exports.create = async (req, res) => {
+exports.create = async (req, res, next) => {
   try {
     const body = { ...req.body, created_by: req.user._id };
     if (body.date_naissance) body.date_naissance = new Date(body.date_naissance);
@@ -147,7 +147,7 @@ exports.create = async (req, res) => {
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Nouveau dossier pédiatrique ${child.numero} — ${child.prenom || ''} ${child.nom}`.trim() });
     emitDashboardUpdate();
     res.status(201).json({ success: true, enfant: child });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // AUDIT-P2-1 (groupe 2) — patient_id/numero/created_by identifient le
@@ -158,7 +158,7 @@ exports.create = async (req, res) => {
 // permettrait d'écraser tout l'historique en un seul appel.
 const CHILD_BLOCKED_FIELDS = ['patient_id', 'numero', 'created_by', 'vaccinations', 'mesures_croissance', 'maladies_chroniques'];
 
-exports.update = async (req, res) => {
+exports.update = async (req, res, next) => {
   try {
     const avant = await Child.findById(req.params.id).lean();
     const data = {};
@@ -168,11 +168,11 @@ exports.update = async (req, res) => {
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Dossier pédiatrique ${child.numero} modifié`, avant, apres: child });
     emitDashboardUpdate();
     res.json({ success: true, enfant: child });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Vaccinations ──────────────────────────────────────────────────────────────
-exports.addVaccination = async (req, res) => {
+exports.addVaccination = async (req, res, next) => {
   try {
     const child = await Child.findById(req.params.id);
     if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -183,11 +183,11 @@ exports.addVaccination = async (req, res) => {
     await child.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Vaccination (${vacc.vaccin || '—'}) ajoutée au dossier ${child.numero}` });
     res.status(201).json({ success: true, enfant: child, vaccination: child.vaccinations[child.vaccinations.length - 1] });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Mesures de croissance ─────────────────────────────────────────────────────
-exports.addMesure = async (req, res) => {
+exports.addMesure = async (req, res, next) => {
   try {
     const child = await Child.findById(req.params.id);
     if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -204,11 +204,11 @@ exports.addMesure = async (req, res) => {
     await child.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Mesure de croissance ajoutée au dossier ${child.numero}` });
     res.status(201).json({ success: true, enfant: child });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Maladies chroniques ───────────────────────────────────────────────────────
-exports.addMaladieChron = async (req, res) => {
+exports.addMaladieChron = async (req, res, next) => {
   try {
     const child = await Child.findById(req.params.id);
     if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -217,11 +217,11 @@ exports.addMaladieChron = async (req, res) => {
     await child.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Maladie chronique enregistrée au dossier ${child.numero}` });
     res.status(201).json({ success: true, enfant: child });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Consultations ─────────────────────────────────────────────────────────────
-exports.getConsultations = async (req, res) => {
+exports.getConsultations = async (req, res, next) => {
   try {
     const { limit = 50, q = '', type = '', child_id = '' } = req.query;
     const filter = {};
@@ -240,37 +240,41 @@ exports.getConsultations = async (req, res) => {
       .populate('child_id', 'nom prenom date_naissance sexe');
     const total = await PediatricConsultation.countDocuments(filter);
     res.json({ success: true, consultations, total });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
-exports.createConsultation = async (req, res) => {
+exports.createConsultation = async (req, res, next) => {
   try {
     const { child_id } = req.body;
     const body = { ...req.body, created_by: req.user._id };
     if (body.date) body.date = new Date(body.date);
 
+    // AUDIT-3.4 — child_id est requis par le schéma mais Mongoose ne vérifie
+    // que le format ObjectId, pas l'existence : une consultation pouvait donc
+    // être créée avec un child_id syntaxiquement valide mais ne correspondant
+    // à aucun dossier enfant réel, orpheline dans toute vue qui peuple
+    // child_id.
     if (child_id) {
       const child = await Child.findById(child_id);
-      if (child) {
-        body.patient_nom = `${child.prenom || ''} ${child.nom}`.trim();
-        if (body.poids) {
-          child.poids_actuel = body.poids;
-          await child.save();
-        }
+      if (!child) return res.status(400).json({ success: false, message: 'Dossier enfant introuvable pour l\'identifiant fourni.' });
+      body.patient_nom = `${child.prenom || ''} ${child.nom}`.trim();
+      if (body.poids) {
+        child.poids_actuel = body.poids;
+        await child.save();
       }
     }
 
     const consult = await PediatricConsultation.create(body);
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: consult._id, ip: req.ip, message: `Consultation pédiatrique ${consult.numero} — ${consult.patient_nom || 'enfant'} (${consult.type})` });
     res.status(201).json({ success: true, consultation: consult });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // AUDIT-P2-1 (groupe 2) — child_id/numero/created_by identifient la
 // consultation et son dossier enfant.
 const PEDCONSULT_BLOCKED_FIELDS = ['child_id', 'numero', 'created_by'];
 
-exports.updateConsultation = async (req, res) => {
+exports.updateConsultation = async (req, res, next) => {
   try {
     const avant = await PediatricConsultation.findById(req.params.id).lean();
     const data = {};
@@ -279,11 +283,11 @@ exports.updateConsultation = async (req, res) => {
     if (!c) return res.status(404).json({ message: 'Consultation introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pediatrie', entite_id: c._id, ip: req.ip, message: `Consultation pédiatrique ${c.numero} modifiée`, avant, apres: c });
     res.json({ success: true, consultation: c });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Urgences actives ──────────────────────────────────────────────────────────
-exports.getUrgences = async (req, res) => {
+exports.getUrgences = async (req, res, next) => {
   try {
     const now   = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -291,5 +295,5 @@ exports.getUrgences = async (req, res) => {
       .sort('-date')
       .populate('child_id', 'nom prenom date_naissance sexe');
     res.json({ success: true, urgences, total: urgences.length });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };

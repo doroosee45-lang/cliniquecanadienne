@@ -141,7 +141,14 @@ exports.remove = async (req, res, next) => {
   try {
     const c = await Consultation.findByIdAndDelete(req.params.id);
     if (!c) return res.status(404).json({ success: false, message: 'Consultation introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'consultations', entite_id: req.params.id, ip: req.ip, message: `Consultation supprimée — patient ${c.patient}`, avant: c });
+    // AUDIT-3.4 — une prescription générée automatiquement à la clôture de
+    // cette consultation (create(), ci-dessus) référence consultation._id ;
+    // sans ce détachement, la suppression laissait une référence orpheline
+    // (Prescription.consultation pointant vers un document inexistant). La
+    // prescription elle-même reste un document médical valide et n'est
+    // jamais supprimée — seul le lien vers la consultation d'origine l'est.
+    const detached = await Prescription.updateMany({ consultation: c._id }, { $unset: { consultation: 1 } });
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'consultations', entite_id: req.params.id, ip: req.ip, message: `Consultation supprimée — patient ${c.patient}${detached.modifiedCount ? ` (${detached.modifiedCount} ordonnance(s) détachée(s))` : ''}`, avant: c });
     res.json({ success: true, message: 'Consultation supprimée.' });
   } catch (err) { next(err); }
 };

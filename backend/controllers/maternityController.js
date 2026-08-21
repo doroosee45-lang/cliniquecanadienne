@@ -7,7 +7,7 @@ const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction, escapeRegex } = require('../utils/helpers');
 
 // ── Stats / KPIs ─────────────────────────────────────────────────────────────
-exports.getStats = async (req, res) => {
+exports.getStats = async (req, res, next) => {
   try {
     const now   = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -49,11 +49,11 @@ exports.getStats = async (req, res) => {
       stats: { totalGrossesses, aRisque, accouchementsAujourdhui, cesariennes, nouveaunes, cpnAujourdhui, rdvAVenir },
       chart: { labels: moisLabels, data: moisData },
     });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Grossesses ────────────────────────────────────────────────────────────────
-exports.getAll = async (req, res) => {
+exports.getAll = async (req, res, next) => {
   try {
     const { page = 1, limit = 50, q = '', statut = '' } = req.query;
     const filter = {};
@@ -74,37 +74,40 @@ exports.getAll = async (req, res) => {
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit));
     res.json({ success: true, grossesses, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
-exports.getOne = async (req, res) => {
+exports.getOne = async (req, res, next) => {
   try {
     const g = await Pregnancy.findById(req.params.id);
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
     const accouchement = await Delivery.findOne({ grossesse_id: g._id }).sort('-date_heure');
     const nb           = await Newborn.findOne({ grossesse_id: g._id });
     res.json({ success: true, grossesse: g, accouchement, nouveau_ne: nb });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
-exports.create = async (req, res) => {
+exports.create = async (req, res, next) => {
   try {
     const { patient_id, ddr, medecin_responsable, sage_femme, nb_grossesses, nb_accouchements, nb_fausses_couches, nb_cesariennes, nb_morts_nes, antecedents_medicaux, antecedents_chirurgicaux, groupe_sanguin, facteurs_risque, notes } = req.body;
     const body = { medecin_responsable, sage_femme, nb_grossesses, nb_accouchements, nb_fausses_couches, nb_cesariennes, nb_morts_nes, antecedents_medicaux, antecedents_chirurgicaux, groupe_sanguin, facteurs_risque: facteurs_risque || [], notes, created_by: req.user._id };
     if (ddr) { body.ddr = new Date(ddr); body.date_debut = new Date(ddr); }
 
+    // AUDIT-3.4 — si patient_id était fourni mais introuvable, le dossier de
+    // grossesse était créé silencieusement sans aucun lien patient ni erreur
+    // (faute de frappe sur l'ID, ou patient supprimé entre-temps passait
+    // inaperçue). Retourne désormais une erreur explicite.
     if (patient_id) {
       const pat = await Patient.findById(patient_id);
-      if (pat) {
-        body.patient_id     = pat._id;
-        body.patient_nom    = pat.nom;
-        body.patient_prenom = pat.prenom;
-        body.telephone      = pat.telephone;
-        body.date_naissance = pat.date_naissance;
-        if (!body.groupe_sanguin) body.groupe_sanguin = pat.groupe_sanguin;
-        if (!body.antecedents_medicaux && pat.antecedents_medicaux) {
-          body.antecedents_medicaux = Array.isArray(pat.antecedents_medicaux) ? pat.antecedents_medicaux.join(', ') : pat.antecedents_medicaux;
-        }
+      if (!pat) return res.status(400).json({ success: false, message: 'Patient introuvable pour l\'identifiant fourni.' });
+      body.patient_id     = pat._id;
+      body.patient_nom    = pat.nom;
+      body.patient_prenom = pat.prenom;
+      body.telephone      = pat.telephone;
+      body.date_naissance = pat.date_naissance;
+      if (!body.groupe_sanguin) body.groupe_sanguin = pat.groupe_sanguin;
+      if (!body.antecedents_medicaux && pat.antecedents_medicaux) {
+        body.antecedents_medicaux = Array.isArray(pat.antecedents_medicaux) ? pat.antecedents_medicaux.join(', ') : pat.antecedents_medicaux;
       }
     }
 
@@ -116,7 +119,7 @@ exports.create = async (req, res) => {
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Nouveau dossier de grossesse ${g.numero} — ${g.patient_prenom || ''} ${g.patient_nom || ''}`.trim() });
     emitDashboardUpdate();
     res.status(201).json({ success: true, grossesse: g });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // AUDIT-P2-1 (groupe 2) — patient_id/numero/created_by identifient le
@@ -130,7 +133,7 @@ const PREGNANCY_BLOCKED_FIELDS = [
   'cpns', 'echographies', 'consultations_postnatales', 'salle_travail',
 ];
 
-exports.update = async (req, res) => {
+exports.update = async (req, res, next) => {
   try {
     const avant = await Pregnancy.findById(req.params.id).lean();
     const data = {};
@@ -139,11 +142,11 @@ exports.update = async (req, res) => {
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Dossier de grossesse ${g.numero} modifié`, avant, apres: g });
     res.json({ success: true, grossesse: g });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── CPN ───────────────────────────────────────────────────────────────────────
-exports.addCPN = async (req, res) => {
+exports.addCPN = async (req, res, next) => {
   try {
     const g = await Pregnancy.findById(req.params.id);
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -151,11 +154,11 @@ exports.addCPN = async (req, res) => {
     await g.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Consultation prénatale ajoutée au dossier ${g.numero}` });
     res.status(201).json({ success: true, grossesse: g, cpn: g.cpns[g.cpns.length - 1] });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Échographies ──────────────────────────────────────────────────────────────
-exports.addEcho = async (req, res) => {
+exports.addEcho = async (req, res, next) => {
   try {
     const g = await Pregnancy.findById(req.params.id);
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -163,22 +166,22 @@ exports.addEcho = async (req, res) => {
     await g.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Échographie obstétricale ajoutée au dossier ${g.numero}` });
     res.status(201).json({ success: true, grossesse: g, echo: g.echographies[g.echographies.length - 1] });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Salle de travail ──────────────────────────────────────────────────────────
-exports.updateTravail = async (req, res) => {
+exports.updateTravail = async (req, res, next) => {
   try {
     const avant = await Pregnancy.findById(req.params.id).lean();
     const g = await Pregnancy.findByIdAndUpdate(req.params.id, { salle_travail: { ...req.body, en_travail: true } }, { new: true });
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Admission en salle de travail — dossier ${g.numero}`, avant, apres: g });
     res.json({ success: true, grossesse: g });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Postnatal ──────────────────────────────────────────────────────────────────
-exports.addPostnatal = async (req, res) => {
+exports.addPostnatal = async (req, res, next) => {
   try {
     const g = await Pregnancy.findById(req.params.id);
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
@@ -187,11 +190,11 @@ exports.addPostnatal = async (req, res) => {
     await g.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Consultation postnatale ajoutée au dossier ${g.numero}` });
     res.status(201).json({ success: true, grossesse: g });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Accouchements ─────────────────────────────────────────────────────────────
-exports.getDeliveries = async (req, res) => {
+exports.getDeliveries = async (req, res, next) => {
   try {
     const { limit = 50, q = '' } = req.query;
     const filter = {};
@@ -199,32 +202,36 @@ exports.getDeliveries = async (req, res) => {
     const accouchements = await Delivery.find(filter).sort('-date_heure').limit(parseInt(limit));
     const total = await Delivery.countDocuments(filter);
     res.json({ success: true, accouchements, total });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
-exports.createDelivery = async (req, res) => {
+exports.createDelivery = async (req, res, next) => {
   try {
     const { grossesse_id } = req.body;
     const body = { ...req.body, created_by: req.user._id };
     if (body.date_heure) body.date_heure = new Date(body.date_heure);
+    // AUDIT-3.4 — si grossesse_id était fourni mais introuvable, l'accouchement
+    // était enregistré silencieusement sans lien fiable vers la grossesse/
+    // patiente (faute de frappe passait inaperçue). grossesse_id reste
+    // optionnel (accouchement sans dossier prénatal préexistant), mais s'il
+    // est fourni il doit être résolvable.
     if (grossesse_id) {
       const g = await Pregnancy.findById(grossesse_id);
-      if (g) {
-        if (!body.patient_nom) body.patient_nom = `${g.patient_prenom || ''} ${g.patient_nom || ''}`.trim();
-        body.patient_id = g.patient_id;
-        g.statut = 'accouchee';
-        await g.save();
-      }
+      if (!g) return res.status(400).json({ success: false, message: 'Dossier de grossesse introuvable pour l\'identifiant fourni.' });
+      if (!body.patient_nom) body.patient_nom = `${g.patient_prenom || ''} ${g.patient_nom || ''}`.trim();
+      body.patient_id = g.patient_id;
+      g.statut = 'accouchee';
+      await g.save();
     }
     const acc = await Delivery.create(body);
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: acc._id, ip: req.ip, message: `Accouchement enregistré ${acc.numero} — ${acc.patient_nom || 'patiente'} (${acc.type_accouchement})` });
     emitDashboardUpdate();
     res.status(201).json({ success: true, accouchement: acc });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // ── Nouveau-nés ───────────────────────────────────────────────────────────────
-exports.getNewborns = async (req, res) => {
+exports.getNewborns = async (req, res, next) => {
   try {
     const { limit = 50, q = '' } = req.query;
     const filter = {};
@@ -232,10 +239,10 @@ exports.getNewborns = async (req, res) => {
     const nouveaunes = await Newborn.find(filter).sort('-date_naissance').limit(parseInt(limit));
     const total = await Newborn.countDocuments(filter);
     res.json({ success: true, nouveaunes, total });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
-exports.createNewborn = async (req, res) => {
+exports.createNewborn = async (req, res, next) => {
   try {
     const body = { ...req.body, created_by: req.user._id };
     if (body.date_naissance) body.date_naissance = new Date(body.date_naissance);
@@ -248,7 +255,7 @@ exports.createNewborn = async (req, res) => {
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: nb._id, ip: req.ip, message: `Nouveau-né enregistré ${nb.numero} — ${nb.prenom || ''} (mère : ${nb.mere_nom || '—'})` });
     emitDashboardUpdate();
     res.status(201).json({ success: true, nouveau_ne: nb });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // AUDIT-P2-1 (groupe 2) — identifiants/liens (numero, accouchement_id,
@@ -260,7 +267,7 @@ exports.createNewborn = async (req, res) => {
 // sous-tableau géré ailleurs.
 const NEWBORN_BLOCKED_FIELDS = ['numero', 'accouchement_id', 'grossesse_id', 'patient_id', 'created_by', 'child_id', 'vaccinations'];
 
-exports.updateNewborn = async (req, res) => {
+exports.updateNewborn = async (req, res, next) => {
   try {
     const avant = await Newborn.findById(req.params.id).lean();
     const data = {};
@@ -269,7 +276,7 @@ exports.updateNewborn = async (req, res) => {
     if (!nb) return res.status(404).json({ message: 'Nouveau-né introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'maternite', entite_id: nb._id, ip: req.ip, message: `Dossier nouveau-né ${nb.numero} modifié`, avant, apres: nb });
     res.json({ success: true, nouveau_ne: nb });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };
 
 // R-10d — création du dossier pédiatrique (Child) à partir d'un nouveau-né,
@@ -277,7 +284,7 @@ exports.updateNewborn = async (req, res) => {
 // du Newborn (voir commentaire sur Newborn.child_id).
 const ETAT_TO_STATUT = { bon: 'normal', surveillance: 'surveillance', critique: 'a_risque' };
 
-exports.createChildDossier = async (req, res) => {
+exports.createChildDossier = async (req, res, next) => {
   try {
     const nb = await Newborn.findById(req.params.id);
     if (!nb) return res.status(404).json({ message: 'Nouveau-né introuvable' });
@@ -306,5 +313,5 @@ exports.createChildDossier = async (req, res) => {
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Dossier pédiatrique ${child.numero} créé depuis le nouveau-né ${nb.numero}` });
     emitDashboardUpdate();
     res.status(201).json({ success: true, enfant: child });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) { next(err); }
 };

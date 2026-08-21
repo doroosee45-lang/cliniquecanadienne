@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const Patient = require('../models/Patient');
 const User    = require('../models/User');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
+const { CASCADE_TARGETS } = require('../utils/patientAnonymization');
 const mail = require('../utils/mail');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { logger } = require('../utils/logger');
@@ -374,21 +375,27 @@ exports.remove = async (req, res, next) => {
 
     // Un dossier patient possédant le moindre historique clinique/financier
     // ne doit jamais être supprimé physiquement : obligation de conservation
-    // du dossier médical, et ça laisserait des références orphelines dans
-    // rendez-vous/consultations/hospitalisations/factures/ordonnances. On
+    // du dossier médical, et ça laisserait des références orphelines. On
     // désactive le dossier à la place (statut='inactif', actif=false).
-    const [Appointment, Consultation, Hospitalization, Invoice, Prescription] = [
-      require('../models/Appointment'), require('../models/Consultation'),
-      require('../models/Hospitalization'), require('../models/Invoice'), require('../models/Prescription'),
+    // AUDIT-2.2 — cette liste ne couvrait jusqu'ici que 5 modèles
+    // (Appointment, Consultation, Hospitalization, Invoice, Prescription),
+    // oubliant chirurgie/urgences/maternité/laboratoire/imagerie/archive : un
+    // patient ayant uniquement l'un de ces dossiers pouvait être supprimé
+    // physiquement, laissant une référence orpheline. Alignée sur
+    // CASCADE_TARGETS (utils/patientAnonymization.js) — inventaire déjà le
+    // plus complet du projet pour ce besoin — complétée des 4 modèles qui n'y
+    // figurent pas (Invoice y figure déjà, non dupliqué ici).
+    const HISTORY_CHECKS = [
+      { model: require('../models/Appointment'),     refField: 'patient' },
+      { model: require('../models/Consultation'),    refField: 'patient' },
+      { model: require('../models/Hospitalization'), refField: 'patient' },
+      { model: require('../models/Prescription'),    refField: 'patient' },
+      ...CASCADE_TARGETS,
     ];
-    const [nbRdv, nbConsult, nbHosp, nbFact, nbRx] = await Promise.all([
-      Appointment.countDocuments({ patient: patient._id }),
-      Consultation.countDocuments({ patient: patient._id }),
-      Hospitalization.countDocuments({ patient: patient._id }),
-      Invoice.countDocuments({ patient: patient._id }),
-      Prescription.countDocuments({ patient: patient._id }),
-    ]);
-    const hasHistory = (nbRdv + nbConsult + nbHosp + nbFact + nbRx) > 0;
+    const counts = await Promise.all(
+      HISTORY_CHECKS.map(({ model, refField }) => model.countDocuments({ [refField]: patient._id }))
+    );
+    const hasHistory = counts.some(n => n > 0);
 
     if (hasHistory) {
       patient.actif  = false;
