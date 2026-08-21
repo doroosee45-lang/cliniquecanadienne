@@ -1,6 +1,6 @@
 # Ticket 0018 — Aucun couplage réel entre Urgences et Hospitalisation malgré `Urgence.decision`
 
-**Statut :** Ouvert — non corrigé
+**Statut :** Résolu — option 2 retenue (2026-08-21)
 **Origine :** Phase 10.1, tests de non-régression croisés entre modules interdépendants (Urgences↔Hospitalisation attendu)
 **Sévérité :** Faible/informative — pas un bug (rien ne casse), mais un écart entre ce que le schéma suggère et ce que le code fait réellement
 
@@ -30,3 +30,14 @@ Ce sont donc actuellement deux modules indépendants qui partagent uniquement un
 3. **Automatiser** : quand `Urgence.decision` passe à `'hospitalisation'`, proposer (pas forcer) la création d'un dossier `Hospitalization` pré-rempli avec les données déjà saisies aux urgences — réduirait la ressaisie, mais touche `urgencesController.js`, donc hors périmètre tant que l'utilisateur ne le débloque pas explicitement.
 
 Aucune option n'est mise en œuvre ici — ce ticket documente l'écart pour décision, conformément au protocole établi pour ce type de constat (cf. tickets 0016, 0017).
+
+## Résolution
+
+Option 2 retenue (référence optionnelle, sans automatisme). Une proposition plus lourde (entité `Encounter` centrale) avait été envisagée puis écartée au profit de cette option, plus proportionnée au besoin exprimé (traçabilité a posteriori, pas de refonte du parcours de saisie).
+
+Implémenté :
+- `backend/models/Hospitalization.js` — nouveau champ `urgence_id` (`ObjectId`, `ref: 'Urgence'`, optionnel).
+- `backend/controllers/hospitalization.controller.js::create` — accepte `req.body.urgence_id` si fourni, vérifie l'existence du dossier urgences référencé (400 explicite sinon), ne l'exige jamais.
+- `backend/controllers/hospitalization.controller.js::update` — `urgence_id` n'est pas dans `HOSP_BLOCKED_FIELDS` : peut être renseigné a posteriori via l'édition générique, conformément à l'objectif de traçabilité différée de l'option 2.
+- Aucune automatisation : `urgencesController.js` n'est pas modifié, une décision `Urgence.decision:'hospitalisation'` ne crée toujours rien automatiquement — le lien reste une saisie manuelle volontaire.
+- Aucun changement du formulaire frontend d'admission n'a été fait (le champ est utilisable via l'API dès maintenant ; l'exposer dans l'UI de saisie reste une évolution frontend séparée, non traitée ici).

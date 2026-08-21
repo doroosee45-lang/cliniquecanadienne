@@ -240,16 +240,22 @@ exports.getSuspects = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// POST /audit/archive — comptage + archivage des anciens logs
+// POST /audit/archive — AUDIT-3.5 (ADM-05) : ce endpoint ne fait qu'un
+// COMPTAGE des entrées plus anciennes que le seuil ; il ne déplace, n'exporte
+// ni ne supprime jamais rien (aucune politique de rétention n'est validée à
+// ce jour — voir Audit.jsx, section "Estimer le volume", qui affiche déjà
+// cette limite explicitement à l'utilisateur). Le nom historique
+// "archiveLogs" et l'ancien message pouvaient laisser croire à une action
+// réelle ; message clarifié pour ne jamais l'affirmer.
 exports.archiveLogs = async (req, res, next) => {
   try {
     const { duree = '1an' } = req.body;
     const monthsMap = { '1an': 12, '3ans': 36, '5ans': 60, 'illimite': 0 };
     const months = monthsMap[duree] ?? 12;
-    if (months === 0) return res.json({ success: true, count: 0, message: 'Conservation illimitée — aucune entrée archivée.' });
+    if (months === 0) return res.json({ success: true, count: 0, message: 'Conservation illimitée — aucune entrée estimée.' });
     const cutoff = new Date(Date.now() - months * 30 * 24 * 3600 * 1000);
     const count = await AuditLog.countDocuments({ createdAt: { $lt: cutoff } });
-    res.json({ success: true, count, cutoff, message: `${count} entrée(s) archivable(s) avant le ${cutoff.toLocaleDateString('fr-FR')}` });
+    res.json({ success: true, count, cutoff, message: `${count} entrée(s) plus ancienne(s) que le ${cutoff.toLocaleDateString('fr-FR')} — estimation seule, aucune suppression ni déplacement effectué.` });
   } catch (err) { next(err); }
 };
 

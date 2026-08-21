@@ -1,7 +1,6 @@
 const ArchiveEntry    = require('../models/ArchiveEntry');
 const Patient         = require('../models/Patient');
 const { emitDashboardUpdate } = require('../utils/socket');
-const Consultation    = require('../models/Consultation');
 const Hospitalization = require('../models/Hospitalization');
 const LabResult       = require('../models/LabResult');
 const ImagingResult   = require('../models/ImagingResult');

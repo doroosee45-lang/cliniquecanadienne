@@ -55,7 +55,7 @@ const io = new Server(httpServer, {
 // directement depuis l'en-tête Cookie transmis lors du handshake, comme le
 // fait déjà `protect` côté REST. Les en-têtes auth/Authorization restent
 // acceptés en repli pour des clients non-navigateur (scripts, tests).
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   try {
     let token = socket.handshake.auth?.token
       || socket.handshake.headers?.authorization?.replace('Bearer ', '');
@@ -67,6 +67,18 @@ io.use((socket, next) => {
 
     if (!token || token === 'none') return next(new Error('Non authentifié'));
     const decoded = jwt.verify(token, env.JWT_SECRET);
+
+    // AUDIT-3.5 (SEC-03) — seule la signature/expiration du JWT était
+    // vérifiée ici ; contrairement à `protect` côté REST (middleware/auth.js),
+    // qui relit req.user.statut à CHAQUE requête, un compte suspendu après
+    // l'établissement de la connexion gardait l'accès temps réel
+    // (messagerie, notifications) jusqu'à expiration naturelle du token
+    // (jusqu'à 7 jours). Revérifié ici, au moment de la connexion, pour la
+    // même garantie qu'en REST.
+    const User = require('./models/User');
+    const user = await User.findById(decoded.id).select('statut');
+    if (!user || user.statut !== 'actif') return next(new Error('Utilisateur inactif ou introuvable'));
+
     socket.userId   = decoded.id;
     socket.userRole = decoded.role || 'inconnu';
     next();
@@ -202,9 +214,34 @@ if (env.NODE_ENV === 'production') {
 app.use(errorHandler);
 
 const PORT = env.PORT;
-httpServer.listen(PORT, () => {
-  logger.info('Serveur démarré', { port: PORT, env: env.NODE_ENV });
-  startReminderJob();
+
+// AUDIT-2.3 — utils/checkProductionConfig.js (écrit et testé, Phase 10.2)
+// n'était jamais invoqué automatiquement : un JWT_SECRET faible/placeholder,
+// une config SMTP absente ou des comptes seed encore en base en production ne
+// pouvaient être détectés que par une exécution manuelle du script,
+// facilement oubliée avant un déploiement réel. Vérifié désormais au
+// démarrage, uniquement en production (aucun changement de comportement en
+// développement/test) — le serveur ne se met JAMAIS à écouter si un écart
+// critique est détecté.
+async function bootstrap() {
+  if (env.NODE_ENV === 'production') {
+    const { checkProductionConfig } = require('./utils/checkProductionConfig');
+    const findings = await checkProductionConfig({ mongoUri: env.MONGO_URI });
+    if (findings.length > 0) {
+      logger.error(`[FATAL] Vérification de configuration production échouée — ${findings.length} écart(s) détecté(s). Le serveur ne démarre pas.`);
+      for (const f of findings) logger.error(`  [${f.level.toUpperCase()}] ${f.check} — ${f.message}`);
+      process.exit(1);
+    }
+  }
+  httpServer.listen(PORT, () => {
+    logger.info('Serveur démarré', { port: PORT, env: env.NODE_ENV });
+    startReminderJob();
+  });
+}
+
+bootstrap().catch((err) => {
+  logger.error('[FATAL] Échec du démarrage du serveur', { error: err.message, stack: err.stack });
+  process.exit(1);
 });
 
 // ── Filet de sécurité process ────────────────────────────────────────────────

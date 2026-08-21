@@ -2,6 +2,14 @@ const multer = require('multer');
 const path   = require('path');
 const fs     = require('fs');
 
+// AUDIT-3.5 (SEC-02) — req.params.id était injecté tel quel dans le nom de
+// fichier ci-dessous ; multer construit le chemin final via
+// path.join(destination, filename), qui normalise "../" comme n'importe quel
+// chemin — un ID contenant de telles séquences pouvait donc écrire hors du
+// répertoire d'upload prévu. Seuls les ObjectId Mongo valides sont attendus
+// ici (routes /:id/photo), donc validés avant construction du nom de fichier.
+const isObjectId = (v) => /^[a-f\d]{24}$/i.test(v);
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = path.join(__dirname, '../uploads/radiology');
@@ -36,6 +44,7 @@ const storagePhoto = multer.diskStorage({
     cb(null, dir);
   },
   filename: (req, file, cb) => {
+    if (!isObjectId(req.params.id)) return cb(new Error('Identifiant patient invalide.'));
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, `patient-${req.params.id}-${Date.now()}${ext}`);
   },
@@ -61,6 +70,7 @@ const storageMedPhoto = multer.diskStorage({
     cb(null, dir);
   },
   filename: (req, file, cb) => {
+    if (!isObjectId(req.params.id)) return cb(new Error('Identifiant médicament invalide.'));
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, `med-${req.params.id}-${Date.now()}${ext}`);
   },

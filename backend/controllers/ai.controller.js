@@ -5,7 +5,7 @@ const ImagingResult = require('../models/ImagingResult');
 const Prescription  = require('../models/Prescription');
 const Hospitalization = require('../models/Hospitalization');
 const { logAction } = require('../utils/helpers');
-const { INTERACTIONS_DB, detectInteractions } = require('../utils/drugInteractions');
+const { detectInteractions } = require('../utils/drugInteractions');
 
 // ─── Symptômes → conditions probables ────────────────────────
 const SYMPTOM_MAP = {
@@ -428,6 +428,10 @@ exports.getAlerts = async (req, res, next) => {
 exports.updatePrediction = async (req, res, next) => {
   try {
     const { statut, commentaire } = req.body;
+    // AUDIT-3.5 — sans runValidators, l'enum statut du modèle
+    // (en_attente/traite/ignore) n'était pas appliqué sur ce chemin
+    // d'écriture : une valeur arbitraire aurait été persistée sans être
+    // rejetée.
     const prediction = await AIPrediction.findByIdAndUpdate(
       req.params.id,
       {
@@ -436,7 +440,7 @@ exports.updatePrediction = async (req, res, next) => {
         traite_par: req.user?._id,
         traite_at: new Date(),
       },
-      { new: true }
+      { new: true, runValidators: true }
     ).populate('patient', 'nom prenom').lean();
 
     if (!prediction) return res.status(404).json({ success: false, message: 'Prédiction introuvable' });

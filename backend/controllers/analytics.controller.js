@@ -219,7 +219,7 @@ exports.getReport = async (req, res, next) => {
     const startYear = new Date(year, 0, 1);
 
     // ── Helper: par mois (année en cours)
-    const parMois = (arr, key='createdAt') => {
+    const parMois = (arr) => {
       const out = Array(12).fill(0);
       arr.forEach(({ _id, count }) => { out[_id - 1] = count; });
       return out;

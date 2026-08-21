@@ -248,9 +248,23 @@ exports.adminCliniqueStats = async (req, res, next) => {
       statut: r.statut || 'en_attente',
     }));
 
-    // Formater graphiques
-    const cLabels = chart_consults.map(d => dayLabels([d])[0] || d._id);
-    const rLabels = chart_revenus.map(d  => dayLabels([d])[0] || d._id);
+    // AUDIT-3.5 (ADM-02) — chart_consults et chart_revenus sont deux
+    // agrégations indépendantes, groupées sur des champs de date différents
+    // (date_consultation / date_facture) : un jour avec des consultations
+    // mais sans facture payée (ou l'inverse) n'a pas le même ensemble de
+    // dates dans les deux séries. Les labels dérivés uniquement de
+    // chart_consults pouvaient donc afficher un revenu sous la mauvaise
+    // date. Reconciliation sur une liste fixe des 7 derniers jours
+    // (aujourd'hui inclus), jours sans donnée comptés à zéro dans les deux
+    // séries.
+    const joursSemaine = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      joursSemaine.push(d.toISOString().substring(0, 10)); // YYYY-MM-DD, même format que $dateToString ci-dessus
+    }
+    const consultsParJour = Object.fromEntries(chart_consults.map(d => [d._id, d.count]));
+    const revenusParJour  = Object.fromEntries(chart_revenus.map(d => [d._id, d.total]));
+    const cLabels = joursSemaine.map(j => dayLabels([{ _id: j }])[0]);
 
     // Alertes combinées
     const alertes = [
@@ -280,9 +294,9 @@ exports.adminCliniqueStats = async (req, res, next) => {
       alertes,
       rdv_auj,
       chart_semaine:{
-        labels: cLabels.length ? cLabels : ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'],
-        consults: chart_consults.map(d => d.count),
-        revenus:  chart_revenus.map(d  => d.total),
+        labels: cLabels,
+        consults: joursSemaine.map(j => consultsParJour[j] || 0),
+        revenus:  joursSemaine.map(j => revenusParJour[j] || 0),
       },
     }});
   } catch (err) { next(err); }

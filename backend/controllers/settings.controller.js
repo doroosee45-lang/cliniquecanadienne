@@ -22,6 +22,14 @@ exports.upsert = async (req, res, next) => {
   try {
     const { cle, valeur, type, groupe, description } = req.body;
     const avant = await Setting.findOne({ cle }).lean();
+    // AUDIT-3.5 — le champ modifiable existait sur le modèle mais n'était
+    // jamais vérifié : un paramètre marqué non modifiable pouvait être
+    // écrasé par n'importe quel appel. Ne bloque que la modification d'un
+    // paramètre EXISTANT explicitement verrouillé — la création (avant
+    // inexistant) reste toujours possible.
+    if (avant && avant.modifiable === false) {
+      return res.status(403).json({ success: false, message: `Le paramètre "${cle}" n'est pas modifiable.` });
+    }
     const setting = await Setting.findOneAndUpdate(
       { cle }, { valeur, type, groupe, description }, { upsert: true, new: true }
     );
