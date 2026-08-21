@@ -23,6 +23,17 @@ test('AUDIT-2.1 — programmation de salle de bloc atomique sur créneau identiq
   const Patient = require('../models/Patient');
   const DossierChirurgical = require('../models/DossierChirurgical');
   const blocC = require('../controllers/blocoperatoireController');
+  // AUDIT-0 (gap "base de test indépendante") — mongoose construit l'index
+  // unique partiel (salle_prevue+date_intervention_prev) en arrière-plan,
+  // sans bloquer : sur une base fraîchement créée (mongod local isolé,
+  // toujours vide au premier accès), le lancer immédiatement des 10 requêtes
+  // concurrentes ci-dessous pouvait s'exécuter AVANT que l'unicité ne soit
+  // réellement appliquée, laissant passer plusieurs réussites au lieu d'une
+  // seule. Invisible contre l'ancien cluster Atlas partagé (index déjà
+  // construit depuis longtemps). Model.init() attend la fin de la
+  // construction avant de continuer — même garde-fou ajouté à
+  // server.js::bootstrap() pour la production.
+  await DossierChirurgical.init();
 
   const stamp = Date.now();
   const user = { _id: new mongoose.Types.ObjectId(), prenom: 'T21', nom: 'Bloc' };

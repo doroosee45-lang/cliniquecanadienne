@@ -18,6 +18,7 @@ const cookie  = require('cookie');
 const path    = require('path');
 const jwt     = require('jsonwebtoken');
 
+const mongoose       = require('mongoose');
 const connectDB      = require('./config/db');
 const errorHandler   = require('./middleware/errorHandler');
 const routes         = require('./routes');
@@ -25,10 +26,10 @@ const { setIO }      = require('./utils/socket');
 const { startReminderJob } = require('./utils/appointmentReminders');
 const { logger, captureException } = require('./utils/logger');
 
-connectDB().catch(err => {
-  logger.error('Connexion MongoDB échouée au démarrage', { error: err.message });
-  process.exit(1);
-});
+// Capturée plutôt que traitée en fire-and-forget : bootstrap() (fin de
+// fichier) doit attendre que la connexion soit réellement établie avant de
+// construire les index (voir commentaire AUDIT-0 plus bas) et d'écouter.
+const dbReady = connectDB();
 
 const app        = express();
 const httpServer = http.createServer(app);
@@ -224,6 +225,38 @@ const PORT = env.PORT;
 // développement/test) — le serveur ne se met JAMAIS à écouter si un écart
 // critique est détecté.
 async function bootstrap() {
+  try {
+    await dbReady;
+  } catch (err) {
+    logger.error('Connexion MongoDB échouée au démarrage', { error: err.message });
+    process.exit(1);
+    return;
+  }
+
+  // AUDIT-0 (gap "base de test indépendante") — mongoose construit les index
+  // (dont les index uniques ajoutés en 2.1 sur Appointment/DossierChirurgical,
+  // qui protègent contre le double-booking de créneaux) EN ARRIÈRE-PLAN
+  // après la connexion, sans jamais bloquer par défaut. Sur une base
+  // fraîchement créée (premier déploiement, restauration, ou tests contre un
+  // mongod local vide), une fenêtre existe où l'unicité n'est pas encore
+  // appliquée — pendant laquelle la même course que ces index visent à
+  // éliminer peut se reproduire silencieusement. Resté invisible tant que la
+  // suite de tests tournait contre le cluster Atlas partagé, déjà "chaud"
+  // depuis des mois d'exécutions antérieures (index construits une fois pour
+  // toutes) ; découvert en généralisant les tests vers un mongod local isolé
+  // (base réellement vide à chaque exécution). Model.init() attend la fin de
+  // la construction de TOUS les index déclarés avant que le serveur
+  // n'accepte la moindre requête.
+  await Promise.all(mongoose.modelNames().map((name) => mongoose.model(name).init()));
+
+  // AUDIT-2.3 — utils/checkProductionConfig.js (écrit et testé, Phase 10.2)
+  // n'était jamais invoqué automatiquement : un JWT_SECRET faible/placeholder,
+  // une config SMTP absente ou des comptes seed encore en base en production ne
+  // pouvaient être détectés que par une exécution manuelle du script,
+  // facilement oubliée avant un déploiement réel. Vérifié désormais au
+  // démarrage, uniquement en production (aucun changement de comportement en
+  // développement/test) — le serveur ne se met JAMAIS à écouter si un écart
+  // critique est détecté.
   if (env.NODE_ENV === 'production') {
     const { checkProductionConfig } = require('./utils/checkProductionConfig');
     const findings = await checkProductionConfig({ mongoUri: env.MONGO_URI });

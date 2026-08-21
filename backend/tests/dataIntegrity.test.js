@@ -41,11 +41,21 @@ test('intégrité des données (base réelle)', { skip: !process.env.MONGO_URI &
     const User = require('../models/User');
     const patientsController = require('../controllers/patients.controller');
 
-    const email = `_test-regress-del-${Date.now()}@_audit-test.local`;
+    const stamp = Date.now();
+    const email = `_test-regress-del-${stamp}@_audit-test.local`;
     const patient = await Patient.create({ nom: 'Regress', prenom: 'Del', date_naissance: new Date('1985-01-01'), sexe: 'M', email });
     const user = await User.create({ email, password: 'Test1234!', nom: 'Regress', prenom: 'Del', role: 'patient' });
-    const medecin = await User.findOne({ role: 'medecin' });
-    const appt = medecin ? await Appointment.create({ patient: patient._id, medecin: medecin._id, date_heure: new Date(Date.now() + 86400000), motif: 'Test' }) : null;
+    // AUDIT-0 (gap "base de test indépendante") — dépendait jusqu'ici d'un
+    // compte medecin déjà présent en base (User.findOne({role:'medecin'})),
+    // implicitement fourni par les données seed/résiduelles du cluster Atlas
+    // partagé. Contre un mongod local isolé réellement vide à chaque
+    // exécution, cette requête ne trouvait plus rien : le rendez-vous
+    // n'était jamais créé, le patient n'avait alors aucun historique, et la
+    // suppression physique devenait le comportement correct — masquant le
+    // scénario que ce test veut réellement couvrir. Crée désormais son
+    // propre médecin de test, comme partout ailleurs dans la suite.
+    const medecin = await User.create({ email: `_test-regress-medecin-${stamp}@_audit-test.local`, password: 'Test1234!', nom: 'Regress', prenom: 'Medecin', role: 'medecin', statut: 'actif' });
+    const appt = await Appointment.create({ patient: patient._id, medecin: medecin._id, date_heure: new Date(Date.now() + 86400000), motif: 'Test' });
 
     try {
       const req = { params: { id: patient._id.toString() }, user: { _id: new mongoose.Types.ObjectId() }, ip: '127.0.0.1' };
@@ -55,11 +65,11 @@ test('intégrité des données (base réelle)', { skip: !process.env.MONGO_URI &
 
       const stillExists = await Patient.findById(patient._id);
       assert.ok(stillExists, 'le dossier doit toujours exister (désactivé, pas supprimé) car un rendez-vous y est lié');
-      if (appt) assert.equal(stillExists.actif, false);
+      assert.equal(stillExists.actif, false);
     } finally {
-      if (appt) await Appointment.findByIdAndDelete(appt._id);
+      await Appointment.findByIdAndDelete(appt._id);
       await Patient.findByIdAndDelete(patient._id);
-      await User.findByIdAndDelete(user._id);
+      await User.deleteMany({ _id: { $in: [user._id, medecin._id] } });
     }
   });
 

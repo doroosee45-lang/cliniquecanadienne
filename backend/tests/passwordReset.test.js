@@ -8,35 +8,34 @@
 //      avec le nouveau mot de passe ;
 //   3. un token expiré ou inconnu est rejeté (400).
 //
-// Prérequis : serveur démarré (npm run dev).
+// AUDIT-0 (gap "base de test indépendante") — dépendait jusqu'ici d'un
+// serveur de développement ambiant (localhost:5000) déjà lancé et branché
+// sur la MÊME base que ce test — coïncidence qui ne tient plus une fois les
+// tests basculés sur un mongod local isolé (utils/run-tests-local-db.js).
+// Démarre désormais sa propre instance dédiée (serveur + mongod isolé),
+// comme accessMatrix.test.js / googleAutoSignup.test.js.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
+const { startIsolatedServer, mongodExists } = require('./helpers/isolatedServer');
 
-const BASE = process.env.TEST_BASE_URL || 'http://localhost:5000/api';
-
-async function serverReachable() {
-  try { const r = await fetch(`${BASE}/health`); return r.ok; } catch { return false; }
-}
-
-test('forgot-password / reset-password : réponse uniforme, token à usage unique, rejet si invalide', async (t) => {
-  if (!(await serverReachable())) {
-    t.skip('serveur non démarré sur ' + BASE);
-    return;
-  }
-
-  await mongoose.connect(process.env.MONGO_URI);
-  const User = require('../models/User');
-
-  const email = '_password-reset-test@_test.local';
-  await User.deleteOne({ email });
-  const user = await User.create({
-    email, password: 'AncienMdp1', nom: 'Test', prenom: 'ResetFlow',
-    role: 'patient', statut: 'actif',
-  });
+test('forgot-password / reset-password : réponse uniforme, token à usage unique, rejet si invalide', { skip: !mongodExists() && 'mongod introuvable — impossible de démarrer un serveur isolé pour ce test' }, async (t) => {
+  const server = await startIsolatedServer();
+  const BASE = server.baseUrl;
+  let user;
 
   try {
+    await mongoose.connect(server.mongoUri);
+    const User = require('../models/User');
+
+    const email = '_password-reset-test@_test.local';
+    await User.deleteOne({ email });
+    user = await User.create({
+      email, password: 'AncienMdp1', nom: 'Test', prenom: 'ResetFlow',
+      role: 'patient', statut: 'actif',
+    });
+
     // 1. Réponse identique, email existant ou non (pas de fuite d'énumération de comptes).
     const resExisting = await fetch(`${BASE}/auth/forgot-password`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -112,7 +111,8 @@ test('forgot-password / reset-password : réponse uniforme, token à usage uniqu
     });
     assert.equal(resLogin.status, 200);
   } finally {
-    await User.findByIdAndDelete(user._id);
+    if (user) await mongoose.model('User').findByIdAndDelete(user._id);
     await mongoose.disconnect();
+    await server.stop();
   }
 });

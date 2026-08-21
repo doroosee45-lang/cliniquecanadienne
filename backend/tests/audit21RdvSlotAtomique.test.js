@@ -24,6 +24,12 @@ test('AUDIT-2.1 — création de rendez-vous atomique sur créneau identique sou
   const User = require('../models/User');
   const Appointment = require('../models/Appointment');
   const apptC = require('../controllers/appointments.controller');
+  // AUDIT-0 (gap "base de test indépendante") — même garde que
+  // audit21BlocSalleAtomique.test.js : attend la construction de l'index
+  // unique partiel (medecin+date_heure) avant de lancer les requêtes
+  // concurrentes, pour ne pas dépendre d'un index déjà construit par
+  // coïncidence (cas d'un cluster partagé "chaud" comme l'ancien Atlas).
+  await Appointment.init();
 
   const stamp = Date.now();
   const medecin = await User.create({ email: `_t21-rdv-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'T21', prenom: 'RdvMed', role: 'medecin', statut: 'actif' });

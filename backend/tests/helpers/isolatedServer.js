@@ -76,6 +76,16 @@ async function startIsolatedServer() {
   // Environnement dédié — ne touche jamais backend/.env. dotenv.config()
   // (appelé en tête de server.js) ne réécrit jamais une variable déjà
   // présente dans process.env : ces valeurs ont donc la priorité.
+  // AUDIT-0 (gap "base de test indépendante") — JWT_SECRET fixe (pas
+  // suffixé par Date.now()) et exposé ci-dessous dans la valeur de retour :
+  // un appelant qui doit fabriquer lui-même un JWT valide sans passer par
+  // /auth/login (ex. googleAutoSignup.test.js, compte Google sans mot de
+  // passe) a besoin de signer avec EXACTEMENT le même secret que celui que
+  // ce serveur isolé utilisera pour vérifier — sinon 401 "Token invalide"
+  // au lieu du 403 réellement testé. Fixe plutôt que randomisé : aucun
+  // risque, chaque instance est éphémère, locale (127.0.0.1) et détruite en
+  // fin de test.
+  const jwtSecret = 'phase10-isolated-test-secret-fixe';
   const serverProc = spawn('node', ['server.js'], {
     cwd: BACKEND_DIR,
     env: {
@@ -83,7 +93,7 @@ async function startIsolatedServer() {
       NODE_ENV: 'development',
       PORT: String(httpPort),
       MONGO_URI: mongoUri,
-      JWT_SECRET: 'phase10-isolated-test-secret-' + Date.now(),
+      JWT_SECRET: jwtSecret,
       JWT_EXPIRE: '1h',
       JWT_COOKIE_EXPIRE: '1',
       CLIENT_URL: 'http://127.0.0.1:0',
@@ -105,6 +115,7 @@ async function startIsolatedServer() {
   return {
     baseUrl: `http://127.0.0.1:${httpPort}/api`,
     mongoUri,
+    jwtSecret,
     async stop() {
       await new Promise((resolve) => {
         serverProc.once('exit', resolve);
@@ -124,4 +135,8 @@ async function startIsolatedServer() {
   };
 }
 
-module.exports = { startIsolatedServer, mongodExists };
+// AUDIT-0 (gap "base de test indépendante") — findFreePort/waitForPort/
+// MONGOD_PATH exportés pour être réutilisés par
+// tests/helpers/globalTestDb.js, qui généralise le même principe de mongod
+// local isolé à l'ensemble de la suite plutôt que dupliquer cette logique.
+module.exports = { startIsolatedServer, mongodExists, findFreePort, waitForPort, MONGOD_PATH };

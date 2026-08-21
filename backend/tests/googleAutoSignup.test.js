@@ -11,39 +11,47 @@
 // que de rejouer le handshake OAuth réel (nécessite un token Google
 // authentique, impossible à obtenir dans un test automatisé).
 //
-// Prérequis : serveur démarré (npm run dev).
+// AUDIT-0 (gap "base de test indépendante") — dépendait jusqu'ici d'un
+// serveur de développement ambiant (localhost:5000) déjà lancé et branché
+// sur la MÊME base que ce test — coïncidence qui ne tient plus une fois les
+// tests basculés sur un mongod local isolé (utils/run-tests-local-db.js).
+// Démarre désormais sa propre instance dédiée (serveur + mongod isolé),
+// comme accessMatrix.test.js.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const { startIsolatedServer, mongodExists } = require('./helpers/isolatedServer');
 
-const BASE = process.env.TEST_BASE_URL || 'http://localhost:5000/api';
-
-async function serverReachable() {
-  try { const r = await fetch(`${BASE}/health`); return r.ok; } catch { return false; }
-}
-
-test('un compte auto-inscrit via Google (rôle patient) n\'atteint aucune route professionnelle', async (t) => {
-  if (!(await serverReachable())) {
-    t.skip('serveur non démarré sur ' + BASE);
-    return;
-  }
-
-  await mongoose.connect(process.env.MONGO_URI);
-  const User = require('../models/User');
-
-  const email = '_google-autosignup-test@_test.local';
-  await User.deleteOne({ email });
-  // Reproduit exactement controllers/googleAuth.controller.js::googleLogin
-  // pour un nouvel utilisateur : pas de mot de passe, role par défaut
-  // 'patient', statut 'actif', aucune validation admin.
-  const user = await User.create({
-    email, googleId: 'fake-google-id-for-test', nom: 'Test', prenom: 'GoogleAuto',
-    role: 'patient', statut: 'actif',
-  });
-  const cookie = `token=${user.getSignedJWT()}`;
+test('un compte auto-inscrit via Google (rôle patient) n\'atteint aucune route professionnelle', { skip: !mongodExists() && 'mongod introuvable — impossible de démarrer un serveur isolé pour ce test' }, async (t) => {
+  const server = await startIsolatedServer();
+  const BASE = server.baseUrl;
+  let user;
 
   try {
+    await mongoose.connect(server.mongoUri);
+    const User = require('../models/User');
+
+    const email = '_google-autosignup-test@_test.local';
+    await User.deleteOne({ email });
+    // Reproduit exactement controllers/googleAuth.controller.js::googleLogin
+    // pour un nouvel utilisateur : pas de mot de passe, role par défaut
+    // 'patient', statut 'actif', aucune validation admin.
+    user = await User.create({
+      email, googleId: 'fake-google-id-for-test', nom: 'Test', prenom: 'GoogleAuto',
+      role: 'patient', statut: 'actif',
+    });
+    // AUDIT-0 (gap "base de test indépendante") — user.getSignedJWT() signe
+    // avec le JWT_SECRET du process courant (chargé depuis le vrai .env),
+    // pas celui du serveur isolé ci-dessus (délibérément différent, propre
+    // à chaque instance) : le token serait rejeté (401 "Token invalide"),
+    // jamais atteint le contrôle de rôle (403) que ce test veut vérifier.
+    // Signé ici avec server.jwtSecret, exactement comme le ferait ce
+    // serveur isolé.
+    const token = jwt.sign({ id: user._id, role: user.role }, server.jwtSecret, { expiresIn: '1h' });
+    const cookie = `token=${token}`;
+
     const PROFESSIONAL_ROUTES = [
       ['GET', '/chirurgie'],
       ['GET', '/prescriptions'],
@@ -68,7 +76,8 @@ test('un compte auto-inscrit via Google (rôle patient) n\'atteint aucune route 
     const portalRes = await fetch(`${BASE}/portal/notifications`, { headers: { Cookie: cookie } });
     assert.notEqual(portalRes.status, 403, 'le compte doit conserver son accès normal au portail patient');
   } finally {
-    await User.findByIdAndDelete(user._id);
+    if (user) await mongoose.model('User').findByIdAndDelete(user._id);
     await mongoose.disconnect();
+    await server.stop();
   }
 });
