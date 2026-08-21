@@ -714,9 +714,31 @@ export default function Messagerie() {
           return m.map(msg => msg._id === tmpMsg._id ? { ...tmpMsg, ...real } : msg);
         });
       }
-    } catch {}
-    setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message:txt, dernierMsg_at: new Date().toISOString() } : c));
+      setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message:txt, dernierMsg_at: new Date().toISOString() } : c));
+    } catch {
+      // AUDIT-3.3 — le message optimiste restait affiché comme envoyé avec
+      // succès même si l'appel réseau échouait (catch vide), sans aucune
+      // indication ni possibilité de renvoi — perte de communication
+      // silencieuse. Marqué en échec visible (voir rendu de la bulle),
+      // renvoi possible via retrySendMsg(). L'aperçu de conversation n'est
+      // plus mis à jour non plus quand l'envoi échoue réellement.
+      setMessages(m => m.map(msg => msg._id === tmpMsg._id ? { ...msg, echec: true } : msg));
+    }
     setSending(false);
+  };
+
+  // Renvoi d'un message resté en échec (AUDIT-3.3).
+  const retrySendMsg = async (msg) => {
+    if (!selected) return;
+    setMessages(m => m.map(mm => mm._id === msg._id ? { ...mm, echec: false, envoiEnCours: true } : mm));
+    try {
+      const { data } = await api.post(`/messages/${selected._id}/send`, { contenu: msg.contenu });
+      const real = data.message;
+      setMessages(m => m.map(mm => mm._id === msg._id ? (real ? { ...mm, ...real, envoiEnCours: false } : { ...mm, envoiEnCours: false }) : mm));
+      setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message: msg.contenu, dernierMsg_at: new Date().toISOString() } : c));
+    } catch {
+      setMessages(m => m.map(mm => mm._id === msg._id ? { ...mm, echec: true, envoiEnCours: false } : mm));
+    }
   };
 
   // ── Send new message (compose) ────────────────────────────
@@ -1206,7 +1228,20 @@ export default function Messagerie() {
                                 {/* Meta */}
                                 <div className={`msg-meta ${isMe ? "me" : "other"}`}>
                                   <span>{new Date(msg.date_envoi).toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" })}</span>
-                                  {isMe && (
+                                  {/* AUDIT-3.3 — un message dont l'envoi a échoué ne doit jamais
+                                      afficher le même statut qu'un message réellement envoyé. */}
+                                  {isMe && msg.echec ? (
+                                    <span
+                                      className="msg-status"
+                                      style={{ color:"#DC2626", cursor:"pointer", fontWeight:600, display:"inline-flex", alignItems:"center", gap:3 }}
+                                      onClick={() => retrySendMsg(msg)}
+                                      title="Échec de l'envoi — cliquer pour réessayer"
+                                    >
+                                      ⚠ Échec — Réessayer
+                                    </span>
+                                  ) : isMe && msg.envoiEnCours ? (
+                                    <span className="msg-status" style={{ color:"rgba(255,255,255,.6)" }}>…</span>
+                                  ) : isMe && (
                                     <span className="msg-status" style={{ color: msg.lu ? "#0EA5A0" : "rgba(255,255,255,.5)" }}>
                                       {msg.lu ? "✓✓" : "✓"}
                                     </span>

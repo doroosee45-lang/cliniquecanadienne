@@ -469,19 +469,28 @@ export default function Administration() {
   };
 
   // ── Toggle user status ────────────────────────────────────
+  // AUDIT-0.2 : le succès n'est plus affiché qu'après confirmation réelle de
+  // l'API — un échec (réseau, 403, 500) affiche une erreur explicite et ne
+  // touche pas à l'état affiché, au lieu de simuler un succès inconditionnel.
   const toggleUserStatus = async (user) => {
     const newStatut = user.statut === "actif" ? "suspendu" : "actif";
     try {
       await api.put(`/admin/users/${user._id}`, { statut: newStatut });
-    } catch {}
-    setUsers(prev => prev.map(u => u._id === user._id ? { ...u, statut: newStatut } : u));
-    toast.success(`${newStatut === "actif" ? "✅ Compte activé" : "⛔ Compte suspendu"}`);
+      setUsers(prev => prev.map(u => u._id === user._id ? { ...u, statut: newStatut } : u));
+      toast.success(`${newStatut === "actif" ? "✅ Compte activé" : "⛔ Compte suspendu"}`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la mise à jour du statut du compte.");
+    }
   };
 
   // ── Reset password ────────────────────────────────────────
   const resetPassword = async (user) => {
-    try { await api.post(`/admin/users/${user._id}/reset-password`); } catch {}
-    toast.success(`🔑 Email de réinitialisation envoyé à ${user.email}`);
+    try {
+      await api.post(`/admin/users/${user._id}/reset-password`);
+      toast.success(`🔑 Email de réinitialisation envoyé à ${user.email}`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'envoi de l'email de réinitialisation.");
+    }
   };
 
   // ── Create task ───────────────────────────────────────────

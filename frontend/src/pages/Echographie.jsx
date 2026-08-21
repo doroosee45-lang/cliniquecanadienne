@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import {
   fetchEchographieStats, fetchDemandes, createDemande,
   planifierDemande, saveRapport, annulerDemande,
-  selectDemandesList, selectEchographieSaving,
+  selectDemandesList, selectEchographieSaving, selectEchographieChart,
 } from "../store/slices/echographieSlice";
 import { Activity, Plus } from 'lucide-react';
 import Hero from '../components/UI/Hero';
@@ -1475,7 +1475,7 @@ function Facturation({ demandes }) {
 }
 
 // ─── STATISTIQUES ─────────────────────────────────────────────
-function Statistiques({ demandes }) {
+function Statistiques({ demandes, chart }) {
   const byType = TYPES_ECHO.map(t=>({ ...t, count:demandes.filter(d=>d.type===t.label).length })).filter(t=>t.count>0);
   const bySource = SERVICES_SOURCE.map(s=>({ name:s, count:demandes.filter(d=>d.source===s).length })).filter(s=>s.count>0);
   const totalRevenu = demandes.filter(d=>d.statut!=="annulee").length * 25000;
@@ -1541,17 +1541,25 @@ function Statistiques({ demandes }) {
       <div className="echo-card">
         <div className="echo-card-hdr">
           <h3>📈 Rapport d'activité mensuel</h3>
-          <button className="cbtn cbtn-ghost cbtn-sm">📊 Exporter PDF</button>
+          {/* AUDIT-3.2 — n'appelait aucune API ; désactivé plutôt que laissé
+              actif sans effet, comme le reste de l'application. */}
+          <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>📊 Exporter PDF</button>
         </div>
         <div style={{ padding:20 }}>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:12 }}>
-            {["Jan","Fév","Mar","Avr","Mai","Jun"].map((m,i)=>{
-              const cnt = Math.round(demandes.length * (0.6+Math.random()*0.8));
-              const pct = Math.min(100, Math.round(cnt/20*100));
+            {/* AUDIT-3.2 — le nombre d'examens par mois était fabriqué par
+                Math.random() à chaque rendu. Branché sur la vraie agrégation
+                backend (echographieController.js::getStats, chart 6 mois
+                réels), déjà chargée via fetchEchographieStats() mais jamais
+                consommée jusqu'ici. */}
+            {chart.labels.map((m,i)=>{
+              const cnt = chart.data[i] || 0;
+              const maxCnt = Math.max(1, ...chart.data);
+              const pct = Math.round(cnt/maxCnt*100);
               return (
-                <div key={m} style={{ textAlign:"center" }}>
+                <div key={`${m}-${i}`} style={{ textAlign:"center" }}>
                   <div style={{ height:80, display:"flex", alignItems:"flex-end", justifyContent:"center", marginBottom:6 }}>
-                    <div style={{ width:36, borderRadius:"6px 6px 0 0", background:i===5?"var(--ct)":"#BFDBFE", height:`${pct}%`, minHeight:10, transition:"height .5s" }} />
+                    <div style={{ width:36, borderRadius:"6px 6px 0 0", background:i===chart.labels.length-1?"var(--ct)":"#BFDBFE", height:`${pct}%`, minHeight:cnt>0?10:2, transition:"height .5s" }} />
                   </div>
                   <div style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>{cnt}</div>
                   <div style={{ fontSize:11, color:"var(--cm)" }}>{m}</div>
@@ -1665,6 +1673,7 @@ export default function Echographie() {
   const navigate  = useNavigate();
   const dispatch  = useDispatch();
   const demandes  = useSelector(selectDemandesList);
+  const chart     = useSelector(selectEchographieChart);
   const [mainTab, setMainTab] = useState("dashboard");
   const [modalNouv, setModalNouv] = useState(false);
 
@@ -1736,7 +1745,7 @@ export default function Echographie() {
           {mainTab==="planning"     && <Planning demandes={demandes} />}
           {mainTab==="realisation"  && <Realisation demandes={demandes} />}
           {mainTab==="facturation"  && <Facturation demandes={demandes} />}
-          {mainTab==="statistiques" && <Statistiques demandes={demandes} />}
+          {mainTab==="statistiques" && <Statistiques demandes={demandes} chart={chart} />}
           {mainTab==="resultats"    && (
             <div className="fu echo-card" style={{ padding:40, textAlign:"center" }}>
               <div style={{ fontSize:48, marginBottom:16 }}>📄</div>

@@ -1767,9 +1767,12 @@ export default function Consultation() {
                     </div>
                   </div>
                   <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                    <button className="cbtn cbtn-teal">{I.dl} Générer la facture officielle</button>
-                    <button className="cbtn cbtn-ghost">{I.print} Imprimer reçu</button>
-                    <button className="cbtn cbtn-ghost">{I.send} Envoyer au patient</button>
+                    {/* AUDIT-3.2 — aucune route backend de facturation/envoi n'existe pour ce
+                        module (Finance gère les factures séparément) ; neutralisé comme le
+                        reste de l'application plutôt que laissé actif sans effet. */}
+                    <button className="cbtn cbtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Générer la facture officielle</button>
+                    <button className="cbtn cbtn-ghost" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.print} Imprimer reçu</button>
+                    <button className="cbtn cbtn-ghost" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.send} Envoyer au patient</button>
                   </div>
                   {form.statut_paiement==="paye" && (
                     <div className="al-success" style={{ marginTop:16, display:"flex", gap:12, alignItems:"center" }}>
@@ -1943,7 +1946,7 @@ export default function Consultation() {
           </div>
           <div style={{ display:"flex", gap:10, marginTop:16, justifyContent:"center" }}>
             <button className="cbtn cbtn-teal" onClick={() => window.print()}>{I.print} Imprimer l'ordonnance</button>
-            <button className="cbtn cbtn-ghost">{I.dl} Télécharger PDF</button>
+            <button className="cbtn cbtn-ghost" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Télécharger PDF</button>
           </div>
         </Modal>
 

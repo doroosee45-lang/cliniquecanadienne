@@ -22,124 +22,121 @@ function loadChartJs(cb) {
 }
 
 // ─── CSS Medical Navy + Teal ──────────────────────────────────
+// Palette locale supprimée (alignée sur les tokens globaux de
+// index.css depuis T4.1) — toutes les règles ci-dessous consomment
+// directement var(--ink)/--primary/--accent/etc. .ord-top/.ord-tabs/
+// .ord-tab(:hover/.active)/.ord-tab-badge (bandeau + onglets
+// fusionnés) retirés : mortes depuis le passage au <Hero> partagé
+// (T4.3), confirmé par recherche exhaustive dans le JSX avant
+// suppression. @keyframes ordP CONSERVÉ malgré la suppression de
+// .ord-tab-badge : .okpi-dot/.inter-badge.critique (hors bandeau,
+// confirmés vivants) l'utilisent aussi. .omov/.omov-box/.omov-hdr/
+// .omov-cls/.omov-body (modale locale) restent inchangées en
+// structure — seules leurs couleurs sont consolidées. .chronic-badge
+// (#7C3AED22/#7C3AED11) laissée intacte : couleur 8 chiffres à
+// alpha explicite, aucun token global ne couvre ce niveau de
+// transparence — seule sa couleur pleine (#7C3AED, texte) migrée.
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
 .ord * { font-family:'Poppins',sans-serif; box-sizing:border-box; }
-:root {
-  --on:#0B1E3B; --on2:#132744; --ob:#1B4F9E;
-  --ot:#0EA5A0; --ot2:#0D9490; --or:#DC2626;
-  --oo:#D97706; --og:#059669; --op:#7C3AED;
-  --obr:#E2EAF4; --om:#6B7A99; --ol:#EEF4FF; --os:#F8FAFD;
-  --sh:0 1px 3px rgba(11,30,59,.08); --shm:0 4px 16px rgba(11,30,59,.10); --shl:0 12px 40px rgba(11,30,59,.14);
-}
-/* Topbar */
-.ord-top { background:linear-gradient(135deg,var(--on) 0%,var(--on2) 55%,#1B4F9E 100%); padding:20px 24px 0; position:relative; overflow:hidden; }
-.ord-top::before { content:''; position:absolute; top:-50px; right:-50px; width:200px; height:200px; background:radial-gradient(circle,rgba(14,165,160,.22) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
-/* Tabs */
-.ord-tabs { display:flex; gap:2px; padding:0; margin-top:16px; overflow-x:auto; scrollbar-width:none; }
-.ord-tabs::-webkit-scrollbar { display:none; }
-.ord-tab { display:flex; align-items:center; gap:7px; padding:10px 18px 12px; font-size:12.5px; font-weight:600; color:rgba(255,255,255,.55); border:none; background:none; cursor:pointer; border-radius:10px 10px 0 0; transition:all .2s; white-space:nowrap; font-family:'Poppins',sans-serif; }
-.ord-tab:hover { color:rgba(255,255,255,.88); background:rgba(255,255,255,.08); }
-.ord-tab.active { color:var(--on); background:var(--os); box-shadow:0 -2px 0 var(--ot) inset; }
-.ord-tab-badge { background:var(--or); color:#fff; font-size:10px; font-weight:700; padding:1px 6px; border-radius:99px; animation:ordP 2s infinite; }
 @keyframes ordP { 0%,100%{opacity:1} 50%{opacity:.4} }
 /* Cards */
-.ord-card { background:#fff; border:1.5px solid var(--obr); border-radius:18px; box-shadow:var(--sh); overflow:hidden; transition:box-shadow .2s; }
-.ord-card:hover { box-shadow:var(--shm); }
-.ord-card-hdr { padding:14px 20px; border-bottom:1.5px solid var(--obr); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(to right,rgba(238,244,255,.6),transparent); }
-.ord-card-hdr h3 { font-size:14px; font-weight:700; color:var(--on); margin:0; display:flex; align-items:center; gap:8px; }
-.ord-card-hdr p { font-size:11px; color:var(--om); margin:2px 0 0; }
+.ord-card { background:#fff; border:1.5px solid var(--border); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; transition:box-shadow .2s; }
+.ord-card:hover { box-shadow:var(--shadow-md); }
+.ord-card-hdr { padding:14px 20px; border-bottom:1.5px solid var(--border); display:flex; align-items:center; justify-content:space-between; background:linear-gradient(to right,rgba(238,244,255,.6),transparent); }
+.ord-card-hdr h3 { font-size:14px; font-weight:700; color:var(--ink); margin:0; display:flex; align-items:center; gap:8px; }
+.ord-card-hdr p { font-size:11px; color:var(--muted); margin:2px 0 0; }
 /* KPI */
-.ord-kpi { background:#fff; border:1.5px solid var(--obr); border-radius:18px; padding:18px 20px; box-shadow:var(--sh); position:relative; overflow:hidden; transition:all .25s; cursor:pointer; }
-.ord-kpi:hover { transform:translateY(-2px); box-shadow:var(--shm); }
+.ord-kpi { background:#fff; border:1.5px solid var(--border); border-radius:18px; padding:18px 20px; box-shadow:var(--shadow); position:relative; overflow:hidden; transition:all .25s; cursor:pointer; }
+.ord-kpi:hover { transform:translateY(-2px); box-shadow:var(--shadow-md); }
 .ord-kpi::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:18px 18px 0 0; }
-.ord-kpi.blue::before   { background:var(--ob); } .ord-kpi.teal::before   { background:var(--ot); }
-.ord-kpi.red::before    { background:var(--or); } .ord-kpi.orange::before { background:var(--oo); }
-.ord-kpi.green::before  { background:var(--og); } .ord-kpi.purple::before { background:var(--op); }
+.ord-kpi.blue::before   { background:var(--primary); } .ord-kpi.teal::before   { background:var(--accent); }
+.ord-kpi.red::before    { background:var(--danger); } .ord-kpi.orange::before { background:var(--warning); }
+.ord-kpi.green::before  { background:var(--success); } .ord-kpi.purple::before { background:var(--tertiary); }
 .okpi-icon { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; margin-bottom:12px; }
-.okpi-icon.blue   { background:#EFF6FF; color:var(--ob); } .okpi-icon.teal   { background:#F0FDFC; color:var(--ot); }
-.okpi-icon.red    { background:#FEF2F2; color:var(--or); } .okpi-icon.orange { background:#FFF7ED; color:var(--oo); }
-.okpi-icon.green  { background:#ECFDF5; color:var(--og); } .okpi-icon.purple { background:#F5F3FF; color:var(--op); }
-.okpi-val { font-size:26px; font-weight:800; color:var(--on); line-height:1; margin-bottom:4px; letter-spacing:-1px; }
-.okpi-lbl { font-size:11.5px; font-weight:600; color:var(--om); }
+.okpi-icon.blue   { background:#EFF6FF; color:var(--primary); } .okpi-icon.teal   { background:#F0FDFC; color:var(--accent); }
+.okpi-icon.red    { background:#FEF2F2; color:var(--danger); } .okpi-icon.orange { background:#FFF7ED; color:var(--warning); }
+.okpi-icon.green  { background:#ECFDF5; color:var(--success); } .okpi-icon.purple { background:#F5F3FF; color:var(--tertiary); }
+.okpi-val { font-size:26px; font-weight:800; color:var(--ink); line-height:1; margin-bottom:4px; letter-spacing:-1px; }
+.okpi-lbl { font-size:11.5px; font-weight:600; color:var(--muted); }
 .okpi-sub { font-size:10.5px; color:#9CA3AF; margin-top:2px; }
-.okpi-dot { position:absolute; top:14px; right:14px; width:8px; height:8px; border-radius:50%; background:var(--or); animation:ordP 2s infinite; }
+.okpi-dot { position:absolute; top:14px; right:14px; width:8px; height:8px; border-radius:50%; background:var(--danger); animation:ordP 2s infinite; }
 /* Badges */
 .obdg { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:600; white-space:nowrap; }
-.obdg.red    { background:#FEF2F2; color:var(--or); border:1px solid #FECACA; }
-.obdg.orange { background:#FFF7ED; color:var(--oo); border:1px solid #FED7AA; }
+.obdg.red    { background:#FEF2F2; color:var(--danger); border:1px solid #FECACA; }
+.obdg.orange { background:#FFF7ED; color:var(--warning); border:1px solid #FED7AA; }
 .obdg.yellow { background:#FEFCE8; color:#CA8A04;   border:1px solid #FEF08A; }
-.obdg.green  { background:#ECFDF5; color:var(--og); border:1px solid #A7F3D0; }
-.obdg.blue   { background:#EFF6FF; color:var(--ob); border:1px solid #BFDBFE; }
-.obdg.teal   { background:#F0FDFC; color:var(--ot); border:1px solid #99F6E4; }
-.obdg.purple { background:#F5F3FF; color:var(--op); border:1px solid #DDD6FE; }
+.obdg.green  { background:#ECFDF5; color:var(--success); border:1px solid #A7F3D0; }
+.obdg.blue   { background:#EFF6FF; color:var(--primary); border:1px solid #BFDBFE; }
+.obdg.teal   { background:#F0FDFC; color:var(--accent); border:1px solid #99F6E4; }
+.obdg.purple { background:#F5F3FF; color:var(--tertiary); border:1px solid #DDD6FE; }
 .obdg.gray   { background:#F9FAFB; color:#4B5563;   border:1px solid #E5E7EB; }
 /* Progress */
-.ord-prog { background:#EEF4FF; border-radius:99px; height:7px; overflow:hidden; }
+.ord-prog { background:var(--tint); border-radius:99px; height:7px; overflow:hidden; }
 .ord-prog-f { height:100%; border-radius:99px; transition:width .5s; }
 /* Buttons */
 .obtn { display:inline-flex; align-items:center; gap:7px; padding:9px 18px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all .2s; font-family:'Poppins',sans-serif; text-decoration:none; }
-.obtn-primary { background:var(--ob); color:#fff; } .obtn-primary:hover { background:#174391; transform:translateY(-1px); }
-.obtn-teal    { background:var(--ot); color:#fff; } .obtn-teal:hover    { background:var(--ot2); transform:translateY(-1px); }
-.obtn-ghost   { background:transparent; color:var(--om); border:1.5px solid var(--obr); }
-.obtn-ghost:hover { background:var(--ol); color:var(--on); }
-.obtn-danger  { background:#FEF2F2; color:var(--or); border:1.5px solid #FECACA; }
-.obtn-danger:hover { background:var(--or); color:#fff; }
+.obtn-primary { background:var(--primary); color:#fff; } .obtn-primary:hover { background:var(--primary-dark); transform:translateY(-1px); }
+.obtn-teal    { background:var(--accent); color:#fff; } .obtn-teal:hover    { background:var(--accent-dark); transform:translateY(-1px); }
+.obtn-ghost   { background:transparent; color:var(--muted); border:1.5px solid var(--border); }
+.obtn-ghost:hover { background:var(--tint); color:var(--ink); }
+.obtn-danger  { background:#FEF2F2; color:var(--danger); border:1.5px solid #FECACA; }
+.obtn-danger:hover { background:var(--danger); color:#fff; }
 .obtn-sm { padding:6px 12px; font-size:12px; }
 .obtn:disabled { opacity:.5; cursor:not-allowed; transform:none!important; }
 /* Forms */
-.olbl { font-size:12px; font-weight:600; color:var(--om); margin-bottom:6px; display:block; }
-.oinp { width:100%; padding:9px 13px; border-radius:10px; border:1.5px solid var(--obr); background:#FAFBFF; font-size:13px; color:var(--on); font-family:'Poppins',sans-serif; transition:border-color .2s,box-shadow .2s; outline:none; }
-.oinp:focus { border-color:var(--ot); box-shadow:0 0 0 3px rgba(14,165,160,.12); }
+.olbl { font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; display:block; }
+.oinp { width:100%; padding:9px 13px; border-radius:10px; border:1.5px solid var(--border); background:#FAFBFF; font-size:13px; color:var(--ink); font-family:'Poppins',sans-serif; transition:border-color .2s,box-shadow .2s; outline:none; }
+.oinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(14,165,160,.12); }
 /* Section nav */
-.sec-nav { display:flex; gap:6px; flex-wrap:wrap; padding:14px 20px; background:linear-gradient(to right,#F8FAFD,#EEF4FF); border-bottom:1.5px solid var(--obr); }
-.sec-btn { display:flex; align-items:center; gap:6px; padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:1.5px solid transparent; transition:all .2s; color:var(--om); background:none; font-family:'Poppins',sans-serif; }
-.sec-btn:hover { background:white; color:var(--on); border-color:var(--obr); }
-.sec-btn.active { background:var(--on); color:white; border-color:var(--on); }
-.sec-btn.warn { border-color:#FECACA; color:var(--or); }
+.sec-nav { display:flex; gap:6px; flex-wrap:wrap; padding:14px 20px; background:linear-gradient(to right,var(--surface),var(--tint)); border-bottom:1.5px solid var(--border); }
+.sec-btn { display:flex; align-items:center; gap:6px; padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:1.5px solid transparent; transition:all .2s; color:var(--muted); background:none; font-family:'Poppins',sans-serif; }
+.sec-btn:hover { background:white; color:var(--ink); border-color:var(--border); }
+.sec-btn.active { background:var(--ink); color:white; border-color:var(--ink); }
+.sec-btn.warn { border-color:#FECACA; color:var(--danger); }
 /* Alerts */
-.al-ia     { background:linear-gradient(135deg,#EFF6FF,#DBEAFE); border:1.5px solid #BFDBFE; border-left:4px solid var(--ob); border-radius:14px; padding:14px 18px; }
-.al-warn   { background:linear-gradient(135deg,#FFFBEB,#FEF3C7); border:1.5px solid #FDE68A; border-left:4px solid var(--oo); border-radius:14px; padding:14px 18px; }
-.al-danger { background:linear-gradient(135deg,#FEF2F2,#FEE2E2); border:1.5px solid #FECACA; border-left:4px solid var(--or); border-radius:14px; padding:14px 18px; }
+.al-ia     { background:linear-gradient(135deg,#EFF6FF,#DBEAFE); border:1.5px solid #BFDBFE; border-left:4px solid var(--primary); border-radius:14px; padding:14px 18px; }
+.al-warn   { background:linear-gradient(135deg,#FFFBEB,#FEF3C7); border:1.5px solid #FDE68A; border-left:4px solid var(--warning); border-radius:14px; padding:14px 18px; }
+.al-danger { background:linear-gradient(135deg,#FEF2F2,#FEE2E2); border:1.5px solid #FECACA; border-left:4px solid var(--danger); border-radius:14px; padding:14px 18px; }
 /* Table */
 .ord-tbl { width:100%; border-collapse:collapse; }
-.ord-tbl thead tr { background:linear-gradient(to right,#F8FAFD,#EEF4FF); }
-.ord-tbl th { padding:11px 14px; text-align:left; font-size:11px; font-weight:700; color:var(--om); text-transform:uppercase; letter-spacing:.6px; border-bottom:1.5px solid var(--obr); white-space:nowrap; }
+.ord-tbl thead tr { background:linear-gradient(to right,var(--surface),var(--tint)); }
+.ord-tbl th { padding:11px 14px; text-align:left; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; border-bottom:1.5px solid var(--border); white-space:nowrap; }
 .ord-tbl td { padding:11px 14px; font-size:13px; border-bottom:1px solid #F3F7FF; vertical-align:middle; }
 .ord-tbl tbody tr:last-child td { border-bottom:none; }
 .ord-tbl tbody tr:hover { background:#F8FAFF; }
 /* Modal */
 .omov { position:fixed; inset:0; z-index:500; background:rgba(11,30,59,.55); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; padding:20px; }
-.omov-box { background:#fff; border-radius:20px; box-shadow:var(--shl); width:100%; max-width:680px; max-height:92vh; overflow-y:auto; animation:oSlideUp .25s ease; }
+.omov-box { background:#fff; border-radius:20px; box-shadow:var(--shadow-lg); width:100%; max-width:680px; max-height:92vh; overflow-y:auto; animation:oSlideUp .25s ease; }
 @keyframes oSlideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
-.omov-hdr { padding:18px 24px; border-bottom:1.5px solid var(--obr); display:flex; align-items:center; justify-content:space-between; background:#EEF4FF; position:sticky; top:0; z-index:2; border-radius:20px 20px 0 0; }
-.omov-hdr h3 { font-size:16px; font-weight:700; color:var(--on); margin:0; display:flex; align-items:center; gap:10px; }
-.omov-cls { width:32px; height:32px; border-radius:8px; background:#F3F7FF; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--om); font-size:18px; transition:all .2s; font-family:'Poppins',sans-serif; }
-.omov-cls:hover { background:#FEF2F2; color:var(--or); }
+.omov-hdr { padding:18px 24px; border-bottom:1.5px solid var(--border); display:flex; align-items:center; justify-content:space-between; background:var(--tint); position:sticky; top:0; z-index:2; border-radius:20px 20px 0 0; }
+.omov-hdr h3 { font-size:16px; font-weight:700; color:var(--ink); margin:0; display:flex; align-items:center; gap:10px; }
+.omov-cls { width:32px; height:32px; border-radius:8px; background:#F3F7FF; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:18px; transition:all .2s; font-family:'Poppins',sans-serif; }
+.omov-cls:hover { background:#FEF2F2; color:var(--danger); }
 .omov-body { padding:24px; }
 /* Ligne médicament */
-.med-row { background:#F8FAFD; border:1.5px solid var(--obr); border-radius:12px; padding:14px 16px; position:relative; transition:border-color .2s; }
-.med-row:hover { border-color:var(--ot); }
-.med-row-num { position:absolute; top:-10px; left:14px; background:var(--ob); color:white; font-size:11px; font-weight:700; padding:2px 10px; border-radius:99px; }
+.med-row { background:var(--surface); border:1.5px solid var(--border); border-radius:12px; padding:14px 16px; position:relative; transition:border-color .2s; }
+.med-row:hover { border-color:var(--accent); }
+.med-row-num { position:absolute; top:-10px; left:14px; background:var(--primary); color:white; font-size:11px; font-weight:700; padding:2px 10px; border-radius:99px; }
 /* Alerte interactions */
 .inter-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:99px; font-size:11px; font-weight:700; }
-.inter-badge.faible    { background:#ECFDF5; color:var(--og); border:1px solid #A7F3D0; }
+.inter-badge.faible    { background:#ECFDF5; color:var(--success); border:1px solid #A7F3D0; }
 .inter-badge.modere    { background:#FEFCE8; color:#CA8A04;   border:1px solid #FEF08A; }
-.inter-badge.critique  { background:#FEF2F2; color:var(--or); border:1px solid #FECACA; animation:ordP 2s infinite; }
+.inter-badge.critique  { background:#FEF2F2; color:var(--danger); border:1px solid #FECACA; animation:ordP 2s infinite; }
 /* Print ordonnance */
-.ord-print-zone { background:#fff; border:2px solid var(--obr); border-radius:18px; padding:32px; }
-.ord-print-header { display:flex; align-items:center; justify-content:space-between; padding-bottom:18px; border-bottom:2px solid var(--on); margin-bottom:18px; }
-.ord-print-footer { padding-top:18px; border-top:2px solid var(--obr); margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.ord-print-zone { background:#fff; border:2px solid var(--border); border-radius:18px; padding:32px; }
+.ord-print-header { display:flex; align-items:center; justify-content:space-between; padding-bottom:18px; border-bottom:2px solid var(--ink); margin-bottom:18px; }
+.ord-print-footer { padding-top:18px; border-top:2px solid var(--border); margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 /* QR placeholder */
-.qr-placeholder { width:80px; height:80px; background:#F0FDFC; border:2px solid var(--ot); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:28px; }
+.qr-placeholder { width:80px; height:80px; background:#F0FDFC; border:2px solid var(--accent); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:28px; }
 /* Chronic badge */
-.chronic-badge { background:linear-gradient(135deg,#7C3AED22,#7C3AED11); border:1px solid #DDD6FE; color:#7C3AED; font-size:10px; font-weight:700; padding:2px 8px; border-radius:99px; }
+.chronic-badge { background:linear-gradient(135deg,#7C3AED22,#7C3AED11); border:1px solid #DDD6FE; color:var(--tertiary); font-size:10px; font-weight:700; padding:2px 8px; border-radius:99px; }
 /* Fade */
 @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 .fu { animation:fadeUp .35s ease both; }
 /* Print */
 @media print {
-  .ord-top,.sec-nav,.obtn,.omov { display:none!important; }
+  .sec-nav,.obtn,.omov { display:none!important; }
   .ord-print-zone { border:none; padding:0; }
 }
 
@@ -151,8 +148,6 @@ const CSS = `
 
 /* ─── Mobile (≤ 767px) ─────────────────────────────────────── */
 @media (max-width:767px) {
-  .ord-top { padding:12px 14px 0; }
-
   /* Grilles → 1 colonne */
   .ord-g2, .ord-g11 { grid-template-columns:1fr; gap:14px; }
   .ord-g11s  { grid-template-columns:1fr 1fr; gap:8px; }
@@ -193,7 +188,6 @@ const CSS = `
 
 /* ─── Très petit écran (≤ 479px) ─────────────────────────────  */
 @media (max-width:479px) {
-  .ord-top  { padding:10px 12px 0; }
   .ord-g11s { grid-template-columns:1fr; }
   .ord-g4   { grid-template-columns:1fr; }
   .okpi-val { font-size:18px; }
@@ -550,6 +544,49 @@ export default function Ordonnances() {
     } finally { setSaving(false); }
   };
 
+  // ── Pharmacie : stock réel (remplace l'ancien tirage aléatoire — AUDIT-0.1) ──
+  // La disponibilité/quantité en stock affichées venaient de Math.random() à
+  // chaque rendu ; ici on charge le vrai catalogue Medication (même source que
+  // Pharmacy.jsx) et on l'associe par nom, sans jamais inventer de donnée : un
+  // médicament non retrouvé dans le catalogue affiche "Non rattaché" plutôt
+  // qu'un chiffre fabriqué.
+  const [pharmStock, setPharmStock] = useState({});
+  const [loadingStock, setLoadingStock] = useState(false);
+  useEffect(() => {
+    if (tab !== "ordonnance" || section !== "pharmacie" || !currentOrd) return;
+    let cancelled = false;
+    setLoadingStock(true);
+    api.get("/pharmacy?limit=500")
+      .then(({ data }) => {
+        if (cancelled) return;
+        const meds = data.medications || data.medicaments || [];
+        const byName = {};
+        meds.forEach(m => { byName[(m.nom_commercial || "").trim().toLowerCase()] = m; });
+        setPharmStock(byName);
+      })
+      .catch(() => { if (!cancelled) setPharmStock({}); })
+      .finally(() => { if (!cancelled) setLoadingStock(false); });
+    return () => { cancelled = true; };
+  }, [tab, section, currentOrd]);
+
+  // Branché sur le vrai flux de dispensation (pharmacy.controller.js::dispenser,
+  // déjà utilisé et fonctionnel depuis Pharmacy.jsx) — plus de toast simulé.
+  const [dispensingRx, setDispensingRx] = useState(false);
+  const dispenserRx = async () => {
+    if (!currentOrd) return;
+    if (!window.confirm("Confirmer la délivrance de cette ordonnance ? Le stock sera décrémenté pour les médicaments rattachés au catalogue pharmacie.")) return;
+    setDispensingRx(true);
+    try {
+      await api.put(`/pharmacy/prescriptions/${currentOrd._id}/dispenser`);
+      toast.success("💊 Délivrance confirmée — ordonnance marquée comme dispensée.");
+      setCurrent(prev => ({ ...prev, statut: "dispensee" }));
+      setOrds(prev => prev.map(o => o._id === currentOrd._id ? { ...o, statut: "dispensee" } : o));
+      loadStats();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la délivrance.");
+    } finally { setDispensingRx(false); }
+  };
+
   // ── Update ─────────────────────────────────────────────────
   const updateOrd = async (updates) => {
     if (!currentOrd) return;
@@ -637,7 +674,7 @@ export default function Ordonnances() {
                   <div style={{ width:42, height:42, background:"#FEE2E2", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{I.alert}</div>
                   <div style={{ flex:1 }}>
                     <strong style={{ color:"#B91C1C", fontSize:13 }}>⚠️ Interactions médicamenteuses détectées par l'IA</strong>
-                    <div style={{ fontSize:12, color:"#DC2626", marginTop:3 }}>
+                    <div style={{ fontSize:12, color:"var(--danger)", marginTop:3 }}>
                       <strong>{interactions}</strong> ordonnance(s) présentent des interactions médicamenteuses potentielles. Révision médicale recommandée.
                     </div>
                   </div>
@@ -668,28 +705,28 @@ export default function Ordonnances() {
                 <div className="ord-card fu">
                   <div className="ord-card-hdr"><div><h3>Statuts des ordonnances</h3><p>{kpis.total} au total</p></div></div>
                   <div style={{ padding:20 }}>
-                    {[["active","Actives","#059669"],["expiree","Expirées","#DC2626"],["renouvellee","Renouvelées","#0EA5A0"],["annulee","Annulées","#6B7280"]].map(([st,lbl,col]) => {
+                    {[["active","Actives","var(--success)"],["expiree","Expirées","var(--danger)"],["renouvellee","Renouvelées","var(--accent)"],["annulee","Annulées","#6B7280"]].map(([st,lbl,col]) => {
                       const cnt = DEMO_ORDONNANCES.filter(x=>x.statut===st).length;
                       const pct = kpis.total > 0 ? Math.round(cnt/kpis.total*100) : 0;
                       return (
                         <div key={st} style={{ marginBottom:12 }}>
                           <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                            <span style={{ display:"flex", alignItems:"center", gap:7, fontSize:12, color:"var(--om)" }}>
+                            <span style={{ display:"flex", alignItems:"center", gap:7, fontSize:12, color:"var(--muted)" }}>
                               <span style={{ width:10, height:10, borderRadius:3, background:col, display:"inline-block" }} />{lbl}
                             </span>
-                            <span style={{ fontWeight:700, fontSize:12, color:"var(--on)" }}>{cnt}</span>
+                            <span style={{ fontWeight:700, fontSize:12, color:"var(--ink)" }}>{cnt}</span>
                           </div>
                           <Prog pct={pct} color={col} />
                         </div>
                       );
                     })}
-                    <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid var(--obr)", fontSize:12, color:"var(--om)", display:"flex", justifyContent:"space-between" }}>
+                    <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid var(--border)", fontSize:12, color:"var(--muted)", display:"flex", justifyContent:"space-between" }}>
                       <span>🤖 Interactions détectées</span>
-                      <strong style={{ color: interactions>0?"var(--or)":"var(--og)" }}>{interactions}</strong>
+                      <strong style={{ color: interactions>0?"var(--danger)":"var(--success)" }}>{interactions}</strong>
                     </div>
-                    <div style={{ marginTop:6, fontSize:12, color:"var(--om)", display:"flex", justifyContent:"space-between" }}>
+                    <div style={{ marginTop:6, fontSize:12, color:"var(--muted)", display:"flex", justifyContent:"space-between" }}>
                       <span>💊 Traitements chroniques</span>
-                      <strong style={{ color:"var(--op)" }}>{kpis.chroniques}</strong>
+                      <strong style={{ color:"var(--tertiary)" }}>{kpis.chroniques}</strong>
                     </div>
                   </div>
                 </div>
@@ -700,11 +737,11 @@ export default function Ordonnances() {
                 <div className="ord-card fu">
                   <div className="ord-card-hdr"><h3>{I.pill} Médicaments les plus prescrits</h3></div>
                   <div style={{ padding:20 }}>
-                    {[["Paracétamol",38,"#059669"],["Amoxicilline",24,"#1B4F9E"],["Oméprazole",21,"#0EA5A0"],["Ibuprofène",18,"#D97706"],["Metformine",15,"#7C3AED"]].map(([med,pct,col]) => (
+                    {[["Paracétamol",38,"var(--success)"],["Amoxicilline",24,"var(--primary)"],["Oméprazole",21,"var(--accent)"],["Ibuprofène",18,"var(--warning)"],["Metformine",15,"var(--tertiary)"]].map(([med,pct,col]) => (
                       <div key={med} style={{ marginBottom:10 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3, fontSize:12 }}>
-                          <span style={{ color:"var(--om)", fontWeight:600 }}>{med}</span>
-                          <span style={{ fontWeight:700, color:"var(--on)" }}>{pct}%</span>
+                          <span style={{ color:"var(--muted)", fontWeight:600 }}>{med}</span>
+                          <span style={{ fontWeight:700, color:"var(--ink)" }}>{pct}%</span>
                         </div>
                         <Prog pct={pct} color={col} />
                       </div>
@@ -715,15 +752,15 @@ export default function Ordonnances() {
                   <div className="ord-card-hdr"><h3>👨‍⚕️ Top prescripteurs</h3></div>
                   <div style={{ padding:20 }}>
                     {[["Dr. Martin Leblanc","Chirurgie",42],["Dr. Sophie Pierre","Gynécologie / Med. Gen.",31],["Dr. Amina Diallo","Médecine interne",18],["Dr. Pierre Mouanda","Radiologie",9]].map(([dr,spe,n]) => (
-                      <div key={dr} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid var(--obr)" }}>
-                        <div style={{ width:36, height:36, borderRadius:"50%", background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>👨‍⚕️</div>
+                      <div key={dr} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid var(--border)" }}>
+                        <div style={{ width:36, height:36, borderRadius:"50%", background:"var(--tint)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>👨‍⚕️</div>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:13, fontWeight:700, color:"var(--on)" }}>{dr}</div>
-                          <div style={{ fontSize:11, color:"var(--om)" }}>{spe}</div>
+                          <div style={{ fontSize:13, fontWeight:700, color:"var(--ink)" }}>{dr}</div>
+                          <div style={{ fontSize:11, color:"var(--muted)" }}>{spe}</div>
                         </div>
                         <div style={{ textAlign:"right", flexShrink:0 }}>
-                          <div style={{ fontWeight:800, color:"var(--ob)", fontSize:16 }}>{n}</div>
-                          <div style={{ fontSize:10, color:"var(--om)" }}>ce mois</div>
+                          <div style={{ fontWeight:800, color:"var(--primary)", fontSize:16 }}>{n}</div>
+                          <div style={{ fontSize:10, color:"var(--muted)" }}>ce mois</div>
                         </div>
                       </div>
                     ))}
@@ -749,20 +786,20 @@ export default function Ordonnances() {
                         return (
                           <tr key={ord._id} style={{ background: ord.ia_interactions ? "#FFFBF0" : "" }}>
                             <td>
-                              <span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--ob)", fontSize:12 }}>{ord.numero}</span>
+                              <span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--primary)", fontSize:12 }}>{ord.numero}</span>
                               {ord.chronique && <div><span className="chronic-badge">♾ Chronique</span></div>}
                               {ord.ia_interactions && <div><span className="inter-badge modere">🤖 Interaction</span></div>}
                             </td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--on)", cursor: ord.patient_id ? 'pointer' : 'default', textDecoration: ord.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => ord.patient_id && navigate(`/patients/${ord.patient_id}`)} title={ord.patient_id ? "Ouvrir le dossier patient" : ""}>{ord.patient_nom}</div>
-                              {ord.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{ord.patient_dossier}</span>}
-                              <div style={{ fontSize:11, color:"var(--om)" }}>{ageCalc(ord.patient_dob)} · {ord.poids}kg</div>
+                              <div style={{ fontWeight:600, color:"var(--ink)", cursor: ord.patient_id ? 'pointer' : 'default', textDecoration: ord.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => ord.patient_id && navigate(`/patients/${ord.patient_id}`)} title={ord.patient_id ? "Ouvrir le dossier patient" : ""}>{ord.patient_nom}</div>
+                              {ord.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'var(--primary)', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{ord.patient_dossier}</span>}
+                              <div style={{ fontSize:11, color:"var(--muted)" }}>{ageCalc(ord.patient_dob)} · {ord.poids}kg</div>
                             </td>
-                            <td style={{ fontSize:12, color:"var(--om)" }}>{ord.medecin}</td>
+                            <td style={{ fontSize:12, color:"var(--muted)" }}>{ord.medecin}</td>
                             <td style={{ fontSize:12, maxWidth:180 }}><div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{ord.diagnostic}</div></td>
-                            <td><span style={{ fontWeight:700, color:"var(--ob)" }}>{ord.medicaments.length}</span><span style={{ fontSize:11, color:"var(--om)" }}> médic.</span></td>
-                            <td style={{ fontSize:12, color:"var(--om)" }}>{fmtDate(ord.date_prescription)}</td>
-                            <td style={{ fontSize:12, color: jRestants<7 && ord.statut==="active" ? "var(--or)" : "var(--om)", fontWeight: jRestants<7 && ord.statut==="active" ? 700 : 400 }}>
+                            <td><span style={{ fontWeight:700, color:"var(--primary)" }}>{ord.medicaments.length}</span><span style={{ fontSize:11, color:"var(--muted)" }}> médic.</span></td>
+                            <td style={{ fontSize:12, color:"var(--muted)" }}>{fmtDate(ord.date_prescription)}</td>
+                            <td style={{ fontSize:12, color: jRestants<7 && ord.statut==="active" ? "var(--danger)" : "var(--muted)", fontWeight: jRestants<7 && ord.statut==="active" ? 700 : 400 }}>
                               {fmtDate(ord.date_expiration)}
                               {ord.statut==="active" && jRestants<7 && <div style={{ fontSize:10 }}>⚠ {jRestants}j restants</div>}
                             </td>
@@ -785,8 +822,8 @@ export default function Ordonnances() {
             <div>
               <div style={{ display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
                 <div>
-                  <div style={{ fontSize:16, fontWeight:700, color:"var(--on)" }}>Historique des ordonnances</div>
-                  <div style={{ fontSize:12, color:"var(--om)", marginTop:2 }}>{total} ordonnance(s) au total</div>
+                  <div style={{ fontSize:16, fontWeight:700, color:"var(--ink)" }}>Historique des ordonnances</div>
+                  <div style={{ fontSize:12, color:"var(--muted)", marginTop:2 }}>{total} ordonnance(s) au total</div>
                 </div>
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <div style={{ position:"relative" }}>
@@ -797,8 +834,8 @@ export default function Ordonnances() {
                     <option value="">Tous statuts</option>
                     {Object.entries(STATUTS).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
                   </select>
-                  <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontWeight:600, color:"var(--om)", cursor:"pointer" }}>
-                    <input type="checkbox" checked={filterChr} onChange={e=>setFilterChr(e.target.checked)} style={{ accentColor:"var(--op)", width:15, height:15 }} />
+                  <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontWeight:600, color:"var(--muted)", cursor:"pointer" }}>
+                    <input type="checkbox" checked={filterChr} onChange={e=>setFilterChr(e.target.checked)} style={{ accentColor:"var(--tertiary)", width:15, height:15 }} />
                     ♾ Chroniques
                   </label>
                   <button className="obtn obtn-primary" onClick={() => { setFormOrd(EMPTY_ORD); setModalNouv(true); }}>
@@ -815,7 +852,7 @@ export default function Ordonnances() {
                     </thead>
                     <tbody>
                       {loading ? (
-                        <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--om)" }}>Chargement...</td></tr>
+                        <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--muted)" }}>Chargement...</td></tr>
                       ) : (ordonnances.length===0 ? DEMO_ORDONNANCES : ordonnances).map(ord => {
                         const sc = STATUTS[ord.statut] || { cls:"gray", label:ord.statut, icon:"?" };
                         const jRestants = Math.max(0, Math.floor((new Date(ord.date_expiration)-Date.now())/(86400*1000)));
@@ -823,25 +860,25 @@ export default function Ordonnances() {
                         return (
                           <tr key={ord._id} style={{ background: ord.ia_interactions?"#FFFBF0": ord.statut==="expiree"?"#FFF8F8":"" }}>
                             <td>
-                              <span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--ob)", fontSize:12 }}>{ord.numero}</span>
+                              <span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--primary)", fontSize:12 }}>{ord.numero}</span>
                               {ord.chronique && <div><span className="chronic-badge">♾ Chronique</span></div>}
                               {ord.ia_interactions && <div style={{ marginTop:2 }}><span className="inter-badge modere">🤖 Interaction</span></div>}
                             </td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--on)", cursor: ord.patient_id ? 'pointer' : 'default', textDecoration: ord.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => ord.patient_id && navigate(`/patients/${ord.patient_id}`)} title={ord.patient_id ? "Ouvrir le dossier patient" : ""}>{ord.patient_nom}</div>
-                              {ord.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{ord.patient_dossier}</span>}
-                              <div style={{ fontSize:11, color:"var(--om)" }}>{ageCalc(ord.patient_dob)} · {ord.poids}kg
-                                {ord.allergies?.length > 0 && <span style={{ color:"var(--or)", marginLeft:4 }}>⚠ Allergie</span>}
+                              <div style={{ fontWeight:600, color:"var(--ink)", cursor: ord.patient_id ? 'pointer' : 'default', textDecoration: ord.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => ord.patient_id && navigate(`/patients/${ord.patient_id}`)} title={ord.patient_id ? "Ouvrir le dossier patient" : ""}>{ord.patient_nom}</div>
+                              {ord.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'var(--primary)', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{ord.patient_dossier}</span>}
+                              <div style={{ fontSize:11, color:"var(--muted)" }}>{ageCalc(ord.patient_dob)} · {ord.poids}kg
+                                {ord.allergies?.length > 0 && <span style={{ color:"var(--danger)", marginLeft:4 }}>⚠ Allergie</span>}
                               </div>
                             </td>
                             <td>
-                              <div style={{ fontSize:12, fontWeight:600, color:"var(--on)" }}>{ord.medecin}</div>
-                              <div style={{ fontSize:11, color:"var(--om)" }}>{ord.specialite}</div>
+                              <div style={{ fontSize:12, fontWeight:600, color:"var(--ink)" }}>{ord.medecin}</div>
+                              <div style={{ fontSize:11, color:"var(--muted)" }}>{ord.specialite}</div>
                             </td>
                             <td style={{ fontSize:12, maxWidth:160 }}><div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{ord.diagnostic}</div></td>
-                            <td style={{ textAlign:"center", fontWeight:700, color:"var(--ob)" }}>{ord.medicaments.length}</td>
-                            <td style={{ fontSize:12, color:"var(--om)" }}>{fmtDate(ord.date_prescription)}</td>
-                            <td style={{ fontSize:12, color: jRestants<7&&ord.statut==="active"?"var(--or)":"var(--om)", fontWeight: jRestants<7&&ord.statut==="active"?700:400 }}>
+                            <td style={{ textAlign:"center", fontWeight:700, color:"var(--primary)" }}>{ord.medicaments.length}</td>
+                            <td style={{ fontSize:12, color:"var(--muted)" }}>{fmtDate(ord.date_prescription)}</td>
+                            <td style={{ fontSize:12, color: jRestants<7&&ord.statut==="active"?"var(--danger)":"var(--muted)", fontWeight: jRestants<7&&ord.statut==="active"?700:400 }}>
                               {fmtDate(ord.date_expiration)}
                               {ord.statut==="active"&&jRestants<7 && <div style={{ fontSize:10 }}>⚠ {jRestants}j</div>}
                             </td>
@@ -864,7 +901,7 @@ export default function Ordonnances() {
                                 {!["publiee","annulee","dispensee"].includes(ord.statut) && (
                                   <button
                                     className="obtn obtn-sm"
-                                    style={{ background:"#EFF6FF", color:"#1B4F9E", border:"1px solid #BFDBFE", fontSize:10, padding:"4px 8px", borderRadius:6 }}
+                                    style={{ background:"#EFF6FF", color:"var(--primary)", border:"1px solid #BFDBFE", fontSize:10, padding:"4px 8px", borderRadius:6 }}
                                     title="Publier et envoyer au patient"
                                     onClick={async () => {
                                       if (!window.confirm(`Publier l'ordonnance ${ord.numero || ord.numero_rx} et l'envoyer au patient ?`)) return;
@@ -884,7 +921,7 @@ export default function Ordonnances() {
 
                                 {/* Badge publiée */}
                                 {ord.statut === "publiee" && (
-                                  <span style={{ background:"#ECFDF5", color:"#059669", border:"1px solid #A7F3D0", fontSize:10, padding:"3px 7px", borderRadius:6, fontWeight:600 }}>
+                                  <span style={{ background:"#ECFDF5", color:"var(--success)", border:"1px solid #A7F3D0", fontSize:10, padding:"3px 7px", borderRadius:6, fontWeight:600 }}>
                                     📨 Publiée
                                   </span>
                                 )}
@@ -899,14 +936,14 @@ export default function Ordonnances() {
                         );
                       })}
                       {!loading && ordonnances.length===0 && DEMO_ORDONNANCES.length===0 && (
-                        <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--om)" }}>Aucune ordonnance trouvée</td></tr>
+                        <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--muted)" }}>Aucune ordonnance trouvée</td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
                 {total > 15 && (
-                  <div style={{ padding:"12px 20px", borderTop:"1.5px solid var(--obr)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <span style={{ fontSize:12, color:"var(--om)" }}>Page {page} / {Math.ceil(total/15)} · {total} ordonnances</span>
+                  <div style={{ padding:"12px 20px", borderTop:"1.5px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <span style={{ fontSize:12, color:"var(--muted)" }}>Page {page} / {Math.ceil(total/15)} · {total} ordonnances</span>
                     <div style={{ display:"flex", gap:8 }}>
                       {page>1 && <button className="obtn obtn-ghost obtn-sm" onClick={() => setPage(p=>p-1)}>← Précédent</button>}
                       {page<Math.ceil(total/15) && <button className="obtn obtn-primary obtn-sm" onClick={() => setPage(p=>p+1)}>Suivant →</button>}
@@ -921,7 +958,7 @@ export default function Ordonnances() {
           {tab === "ordonnance" && currentOrd && (
             <div>
               {/* Header */}
-              <div style={{ background:"linear-gradient(135deg,#0B1E3B,#132744)", borderRadius:18, padding:"20px 24px", marginBottom:20, color:"#fff" }}>
+              <div style={{ background:"linear-gradient(135deg,var(--ink),var(--ink-2))", borderRadius:18, padding:"20px 24px", marginBottom:20, color:"#fff" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:16 }}>
                     <div style={{ width:56, height:56, borderRadius:14, background:"rgba(255,255,255,.15)", border:"2px solid rgba(255,255,255,.25)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>
@@ -997,15 +1034,15 @@ export default function Ordonnances() {
                       <div className="ord-card-hdr"><h3>👤 Informations du patient</h3></div>
                       <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                         {[["Nom complet",currentOrd.patient_nom,true],["Sexe",currentOrd.sexe?"Masculin":"Féminin",false],["Âge",ageCalc(currentOrd.patient_dob),false],["Poids",`${currentOrd.poids} kg`,false],["Téléphone",currentOrd.telephone||"—",false]].map(([lbl,val,wide])=>(
-                          <div key={lbl} style={{ background:"#F8FAFD", borderRadius:10, padding:"10px 12px", gridColumn:wide?"1/-1":"" }}>
-                            <div style={{ fontSize:10, fontWeight:600, color:"var(--om)", textTransform:"uppercase", letterSpacing:.4 }}>{lbl}</div>
-                            <div style={{ fontSize:wide?15:13, fontWeight:wide?700:600, color:"var(--on)", marginTop:2 }}>{val}</div>
+                          <div key={lbl} style={{ background:"var(--surface)", borderRadius:10, padding:"10px 12px", gridColumn:wide?"1/-1":"" }}>
+                            <div style={{ fontSize:10, fontWeight:600, color:"var(--muted)", textTransform:"uppercase", letterSpacing:.4 }}>{lbl}</div>
+                            <div style={{ fontSize:wide?15:13, fontWeight:wide?700:600, color:"var(--ink)", marginTop:2 }}>{val}</div>
                           </div>
                         ))}
                         {currentOrd.allergies?.length>0 && (
                           <div style={{ gridColumn:"1/-1", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, padding:"10px 12px" }}>
                             <div style={{ fontSize:10, fontWeight:700, color:"#B91C1C", textTransform:"uppercase" }}>⚠ Allergies connues</div>
-                            <div style={{ fontSize:12, color:"var(--or)", marginTop:4 }}>{currentOrd.allergies.join(" · ")}</div>
+                            <div style={{ fontSize:12, color:"var(--danger)", marginTop:4 }}>{currentOrd.allergies.join(" · ")}</div>
                           </div>
                         )}
                       </div>
@@ -1036,8 +1073,8 @@ export default function Ordonnances() {
                           </div>
                         </div>
                         <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer" }}>
-                          <input type="checkbox" checked={currentOrd.chronique||false} onChange={e=>setCurrent(d=>({...d,chronique:e.target.checked}))} style={{ width:16, height:16, accentColor:"var(--op)" }} />
-                          <span style={{ fontSize:13, color:"var(--on)", fontWeight:600 }}>♾ Traitement chronique</span>
+                          <input type="checkbox" checked={currentOrd.chronique||false} onChange={e=>setCurrent(d=>({...d,chronique:e.target.checked}))} style={{ width:16, height:16, accentColor:"var(--tertiary)" }} />
+                          <span style={{ fontSize:13, color:"var(--ink)", fontWeight:600 }}>♾ Traitement chronique</span>
                         </label>
                         {currentOrd.chronique && (
                           <div>
@@ -1062,8 +1099,8 @@ export default function Ordonnances() {
                 <div style={{ marginTop:20 }}>
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                     <div>
-                      <div style={{ fontSize:15, fontWeight:700, color:"var(--on)" }}>Prescription médicamenteuse</div>
-                      <div style={{ fontSize:12, color:"var(--om)" }}>{currentOrd.medicaments?.length||0} médicament(s) prescrit(s)</div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--ink)" }}>Prescription médicamenteuse</div>
+                      <div style={{ fontSize:12, color:"var(--muted)" }}>{currentOrd.medicaments?.length||0} médicament(s) prescrit(s)</div>
                     </div>
                     <div style={{ display:"flex", gap:8 }}>
                       <button className="obtn obtn-primary obtn-sm" onClick={() => setCurrent(d=>({...d,medicaments:[...(d.medicaments||[]),{...EMPTY_MED,id:Date.now()}]}))}>
@@ -1078,7 +1115,7 @@ export default function Ordonnances() {
                       <span style={{ fontSize:18 }}>⚠️</span>
                       <div>
                         <strong style={{ color:"#B91C1C", fontSize:12 }}>Allergies connues du patient</strong>
-                        <div style={{ fontSize:12, color:"#DC2626", marginTop:2 }}>{currentOrd.allergies.join(" · ")} — Vérifier les contre-indications</div>
+                        <div style={{ fontSize:12, color:"var(--danger)", marginTop:2 }}>{currentOrd.allergies.join(" · ")} — Vérifier les contre-indications</div>
                       </div>
                     </div>
                   )}
@@ -1177,12 +1214,12 @@ export default function Ordonnances() {
                             {EXAMENS_COMPLS.map(ex => {
                               const checked = (currentOrd.examens_labo||[]).includes(ex);
                               return (
-                                <label key={ex} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", padding:"6px 10px", borderRadius:8, background: checked?"#EEF4FF":"transparent", border:`1px solid ${checked?"var(--ob)":"transparent"}`, transition:"all .15s" }}>
-                                  <input type="checkbox" checked={checked} style={{ accentColor:"var(--ob)", width:14, height:14 }} onChange={() => {
+                                <label key={ex} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", padding:"6px 10px", borderRadius:8, background: checked?"var(--tint)":"transparent", border:`1px solid ${checked?"var(--primary)":"transparent"}`, transition:"all .15s" }}>
+                                  <input type="checkbox" checked={checked} style={{ accentColor:"var(--primary)", width:14, height:14 }} onChange={() => {
                                     const cur = currentOrd.examens_labo||[];
                                     setCurrent(d=>({...d, examens_labo: checked ? cur.filter(x=>x!==ex) : [...cur,ex] }));
                                   }} />
-                                  <span style={{ fontSize:12, color:"var(--on)", fontWeight: checked?600:400 }}>{ex}</span>
+                                  <span style={{ fontSize:12, color:"var(--ink)", fontWeight: checked?600:400 }}>{ex}</span>
                                 </label>
                               );
                             })}
@@ -1194,12 +1231,12 @@ export default function Ordonnances() {
                             {EXAMENS_IMAG.map(ex => {
                               const checked = (currentOrd.examens_imagerie||[]).includes(ex);
                               return (
-                                <label key={ex} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", padding:"6px 10px", borderRadius:8, background: checked?"#F0FDFC":"transparent", border:`1px solid ${checked?"var(--ot)":"transparent"}`, transition:"all .15s" }}>
-                                  <input type="checkbox" checked={checked} style={{ accentColor:"var(--ot)", width:14, height:14 }} onChange={() => {
+                                <label key={ex} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", padding:"6px 10px", borderRadius:8, background: checked?"#F0FDFC":"transparent", border:`1px solid ${checked?"var(--accent)":"transparent"}`, transition:"all .15s" }}>
+                                  <input type="checkbox" checked={checked} style={{ accentColor:"var(--accent)", width:14, height:14 }} onChange={() => {
                                     const cur = currentOrd.examens_imagerie||[];
                                     setCurrent(d=>({...d, examens_imagerie: checked ? cur.filter(x=>x!==ex) : [...cur,ex] }));
                                   }} />
-                                  <span style={{ fontSize:12, color:"var(--on)", fontWeight: checked?600:400 }}>{ex}</span>
+                                  <span style={{ fontSize:12, color:"var(--ink)", fontWeight: checked?600:400 }}>{ex}</span>
                                 </label>
                               );
                             })}
@@ -1286,7 +1323,7 @@ export default function Ordonnances() {
                     {currentOrd.statut !== "publiee" && currentOrd.statut !== "annulee" && (
                       <button
                         className="obtn obtn-primary"
-                        style={{ background:"#1B4F9E", color:"#fff", fontWeight:700 }}
+                        style={{ background:"var(--primary)", color:"#fff", fontWeight:700 }}
                         disabled={publishing}
                         onClick={handlePublier}
                       >
@@ -1301,7 +1338,7 @@ export default function Ordonnances() {
                         <div>
                           <div style={{ fontWeight:700, fontSize:12, color:"#065F46" }}>Publiée — Visible par le patient</div>
                           {currentOrd.publie_at && (
-                            <div style={{ fontSize:11, color:"#059669" }}>
+                            <div style={{ fontSize:11, color:"var(--success)" }}>
                               Le {new Date(currentOrd.publie_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' })}
                             </div>
                           )}
@@ -1315,48 +1352,48 @@ export default function Ordonnances() {
                     {/* En-tête */}
                     <div className="ord-print-header">
                       <div>
-                        <div style={{ fontSize:20, fontWeight:800, color:"var(--on)" }}>CLINIQUE CANADIENNE DE SOUANKÉ</div>
-                        <div style={{ fontSize:12, color:"var(--om)", marginTop:2 }}>République du Congo · Département de la Sangha</div>
-                        <div style={{ fontSize:12, color:"var(--om)" }}>Tél : +242 00 000 0000 · Email : clinique@souanke.cg</div>
+                        <div style={{ fontSize:20, fontWeight:800, color:"var(--ink)" }}>CLINIQUE CANADIENNE DE SOUANKÉ</div>
+                        <div style={{ fontSize:12, color:"var(--muted)", marginTop:2 }}>République du Congo · Département de la Sangha</div>
+                        <div style={{ fontSize:12, color:"var(--muted)" }}>Tél : +242 00 000 0000 · Email : clinique@souanke.cg</div>
                       </div>
                       <div style={{ textAlign:"right" }}>
-                        <div style={{ background:"var(--ob)", color:"#fff", fontWeight:800, fontSize:18, padding:"6px 20px", borderRadius:8, letterSpacing:1 }}>ORDONNANCE</div>
-                        <div style={{ fontFamily:"monospace", fontSize:14, fontWeight:700, color:"var(--ob)", marginTop:8 }}>{currentOrd.numero}</div>
-                        <div style={{ fontSize:12, color:"var(--om)", marginTop:4 }}>Date : {fmtDate(currentOrd.date_prescription)}</div>
-                        <div style={{ fontSize:12, color:"var(--or)", fontWeight:600 }}>Valable jusqu'au : {fmtDate(currentOrd.date_expiration)}</div>
+                        <div style={{ background:"var(--primary)", color:"#fff", fontWeight:800, fontSize:18, padding:"6px 20px", borderRadius:8, letterSpacing:1 }}>ORDONNANCE</div>
+                        <div style={{ fontFamily:"monospace", fontSize:14, fontWeight:700, color:"var(--primary)", marginTop:8 }}>{currentOrd.numero}</div>
+                        <div style={{ fontSize:12, color:"var(--muted)", marginTop:4 }}>Date : {fmtDate(currentOrd.date_prescription)}</div>
+                        <div style={{ fontSize:12, color:"var(--danger)", fontWeight:600 }}>Valable jusqu'au : {fmtDate(currentOrd.date_expiration)}</div>
                       </div>
                     </div>
 
                     {/* Patient */}
-                    <div style={{ background:"#F8FAFD", borderRadius:10, padding:"12px 16px", marginBottom:20 }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:"var(--om)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Patient</div>
+                    <div style={{ background:"var(--surface)", borderRadius:10, padding:"12px 16px", marginBottom:20 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:"var(--muted)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Patient</div>
                       <div className="ord-g4" style={{ gap:12 }}>
                         {[["Nom",currentOrd.patient_nom],["Âge",ageCalc(currentOrd.patient_dob)],["Sexe",currentOrd.sexe?currentOrd.sexe.charAt(0).toUpperCase()+currentOrd.sexe.slice(1):"—"],["Poids",`${currentOrd.poids} kg`]].map(([lbl,val])=>(
-                          <div key={lbl}><div style={{ fontSize:10, color:"var(--om)", fontWeight:600 }}>{lbl}</div><div style={{ fontSize:13, fontWeight:700, color:"var(--on)" }}>{val}</div></div>
+                          <div key={lbl}><div style={{ fontSize:10, color:"var(--muted)", fontWeight:600 }}>{lbl}</div><div style={{ fontSize:13, fontWeight:700, color:"var(--ink)" }}>{val}</div></div>
                         ))}
                       </div>
-                      {currentOrd.allergies?.length>0 && <div style={{ marginTop:8, fontSize:12, color:"var(--or)", fontWeight:700 }}>⚠ Allergies : {currentOrd.allergies.join(", ")}</div>}
+                      {currentOrd.allergies?.length>0 && <div style={{ marginTop:8, fontSize:12, color:"var(--danger)", fontWeight:700 }}>⚠ Allergies : {currentOrd.allergies.join(", ")}</div>}
                     </div>
 
                     {/* Diagnostic */}
                     <div style={{ marginBottom:16 }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:"var(--om)", textTransform:"uppercase", marginBottom:6 }}>Diagnostic</div>
-                      <div style={{ fontSize:13, fontWeight:600, color:"var(--on)" }}>{currentOrd.diagnostic}</div>
+                      <div style={{ fontSize:11, fontWeight:700, color:"var(--muted)", textTransform:"uppercase", marginBottom:6 }}>Diagnostic</div>
+                      <div style={{ fontSize:13, fontWeight:600, color:"var(--ink)" }}>{currentOrd.diagnostic}</div>
                     </div>
 
                     {/* Médicaments */}
                     <div style={{ marginBottom:20 }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:"var(--om)", textTransform:"uppercase", marginBottom:10, borderBottom:"2px solid var(--on)", paddingBottom:6 }}>Prescription médicamenteuse</div>
+                      <div style={{ fontSize:11, fontWeight:700, color:"var(--muted)", textTransform:"uppercase", marginBottom:10, borderBottom:"2px solid var(--ink)", paddingBottom:6 }}>Prescription médicamenteuse</div>
                       {(currentOrd.medicaments||[]).map((med, i) => (
-                        <div key={med.id} style={{ marginBottom:14, paddingLeft:16, borderLeft:"3px solid var(--ob)" }}>
-                          <div style={{ fontWeight:700, fontSize:14, color:"var(--on)" }}>{i+1}. {med.medicament}</div>
-                          <div style={{ fontSize:12, color:"var(--om)", marginTop:2 }}>
+                        <div key={med.id} style={{ marginBottom:14, paddingLeft:16, borderLeft:"3px solid var(--primary)" }}>
+                          <div style={{ fontWeight:700, fontSize:14, color:"var(--ink)" }}>{i+1}. {med.medicament}</div>
+                          <div style={{ fontSize:12, color:"var(--muted)", marginTop:2 }}>
                             {med.forme} · {med.dosage} · {med.voie}
                           </div>
-                          <div style={{ fontSize:12, color:"var(--on)", marginTop:2 }}>
+                          <div style={{ fontSize:12, color:"var(--ink)", marginTop:2 }}>
                             <strong>Posologie :</strong> {med.frequence} pendant {med.duree} — Qté : {med.quantite} unité(s)
                           </div>
-                          {med.instructions && <div style={{ fontSize:11, color:"var(--om)", fontStyle:"italic", marginTop:2 }}>📌 {med.instructions}</div>}
+                          {med.instructions && <div style={{ fontSize:11, color:"var(--muted)", fontStyle:"italic", marginTop:2 }}>📌 {med.instructions}</div>}
                         </div>
                       ))}
                     </div>
@@ -1364,17 +1401,17 @@ export default function Ordonnances() {
                     {/* Examens */}
                     {((currentOrd.examens_labo?.length||0)+(currentOrd.examens_imagerie?.length||0)) > 0 && (
                       <div style={{ marginBottom:20 }}>
-                        <div style={{ fontSize:11, fontWeight:700, color:"var(--om)", textTransform:"uppercase", marginBottom:10, borderBottom:"2px solid var(--ot)", paddingBottom:6 }}>Examens complémentaires</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:"var(--muted)", textTransform:"uppercase", marginBottom:10, borderBottom:"2px solid var(--accent)", paddingBottom:6 }}>Examens complémentaires</div>
                         {currentOrd.examens_labo?.length>0 && (
                           <div style={{ marginBottom:8 }}>
-                            <div style={{ fontSize:12, fontWeight:700, color:"var(--on)" }}>Analyses biologiques :</div>
-                            <div style={{ fontSize:12, color:"var(--om)" }}>{currentOrd.examens_labo.join(" · ")}</div>
+                            <div style={{ fontSize:12, fontWeight:700, color:"var(--ink)" }}>Analyses biologiques :</div>
+                            <div style={{ fontSize:12, color:"var(--muted)" }}>{currentOrd.examens_labo.join(" · ")}</div>
                           </div>
                         )}
                         {currentOrd.examens_imagerie?.length>0 && (
                           <div>
-                            <div style={{ fontSize:12, fontWeight:700, color:"var(--on)" }}>Imagerie médicale :</div>
-                            <div style={{ fontSize:12, color:"var(--om)" }}>{currentOrd.examens_imagerie.join(" · ")}</div>
+                            <div style={{ fontSize:12, fontWeight:700, color:"var(--ink)" }}>Imagerie médicale :</div>
+                            <div style={{ fontSize:12, color:"var(--muted)" }}>{currentOrd.examens_imagerie.join(" · ")}</div>
                           </div>
                         )}
                       </div>
@@ -1382,30 +1419,30 @@ export default function Ordonnances() {
 
                     {/* Recommandations */}
                     {currentOrd.recommandations && (
-                      <div style={{ marginBottom:20, background:"#F8FAFD", borderRadius:8, padding:"10px 14px" }}>
-                        <div style={{ fontSize:11, fontWeight:700, color:"var(--om)", textTransform:"uppercase", marginBottom:6 }}>Recommandations</div>
-                        <div style={{ fontSize:12, color:"var(--on)", whiteSpace:"pre-wrap" }}>{currentOrd.recommandations}</div>
+                      <div style={{ marginBottom:20, background:"var(--surface)", borderRadius:8, padding:"10px 14px" }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:"var(--muted)", textTransform:"uppercase", marginBottom:6 }}>Recommandations</div>
+                        <div style={{ fontSize:12, color:"var(--ink)", whiteSpace:"pre-wrap" }}>{currentOrd.recommandations}</div>
                       </div>
                     )}
 
                     {/* Pied de page */}
                     <div className="ord-print-footer">
                       <div>
-                        <div style={{ fontSize:11, color:"var(--om)", fontWeight:700, textTransform:"uppercase", marginBottom:8 }}>Médecin prescripteur</div>
-                        <div style={{ fontSize:14, fontWeight:700, color:"var(--on)" }}>{currentOrd.medecin}</div>
-                        <div style={{ fontSize:12, color:"var(--om)" }}>{currentOrd.specialite}</div>
+                        <div style={{ fontSize:11, color:"var(--muted)", fontWeight:700, textTransform:"uppercase", marginBottom:8 }}>Médecin prescripteur</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:"var(--ink)" }}>{currentOrd.medecin}</div>
+                        <div style={{ fontSize:12, color:"var(--muted)" }}>{currentOrd.specialite}</div>
                         {currentOrd.signature && (
-                          <div style={{ marginTop:8, fontSize:11, fontFamily:"monospace", color:"var(--ob)", background:"#EEF4FF", padding:"4px 10px", borderRadius:6, display:"inline-block" }}>
+                          <div style={{ marginTop:8, fontSize:11, fontFamily:"monospace", color:"var(--primary)", background:"var(--tint)", padding:"4px 10px", borderRadius:6, display:"inline-block" }}>
                             🔐 {currentOrd.signature}
                           </div>
                         )}
-                        <div style={{ marginTop:12, height:50, borderBottom:"1.5px solid var(--obr)", width:200 }}></div>
-                        <div style={{ fontSize:10, color:"var(--om)", marginTop:4 }}>Signature & Cachet</div>
+                        <div style={{ marginTop:12, height:50, borderBottom:"1.5px solid var(--border)", width:200 }}></div>
+                        <div style={{ fontSize:10, color:"var(--muted)", marginTop:4 }}>Signature & Cachet</div>
                       </div>
                       <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:8 }}>
                         <div className="qr-placeholder">{I.qr}</div>
-                        <div style={{ fontSize:10, color:"var(--om)", textAlign:"right" }}>QR Code de vérification</div>
-                        <div style={{ fontSize:10, fontFamily:"monospace", color:"var(--ob)" }}>{currentOrd.numero}</div>
+                        <div style={{ fontSize:10, color:"var(--muted)", textAlign:"right" }}>QR Code de vérification</div>
+                        <div style={{ fontSize:10, fontFamily:"monospace", color:"var(--primary)" }}>{currentOrd.numero}</div>
                       </div>
                     </div>
                   </div>
@@ -1418,26 +1455,32 @@ export default function Ordonnances() {
                   <div className="ord-card">
                     <div className="ord-card-hdr"><h3>💊 Liaison Pharmacie</h3><p>Vérification des stocks et délivrance</p></div>
                     <div style={{ padding:20 }}>
+                      {loadingStock && (
+                        <div style={{ padding:"6px 2px 12px", fontSize:12, color:"var(--muted)" }}>Chargement du stock réel…</div>
+                      )}
                       <div style={{ overflowX:"auto" }}>
                         <table className="ord-tbl">
                           <thead>
-                            <tr><th>Médicament</th><th>Dosage</th><th>Quantité prescrite</th><th>Disponibilité</th><th>Qté délivrée</th><th>Statut</th></tr>
+                            <tr><th>Médicament</th><th>Posologie</th><th>Quantité prescrite</th><th>Disponibilité (stock réel)</th><th>Qté délivrée</th><th>Statut</th></tr>
                           </thead>
                           <tbody>
-                            {(currentOrd.medicaments||[]).map(med => {
-                              const disponible = Math.random() > 0.2;
-                              const qteStock = disponible ? Math.floor(Math.random()*50)+20 : Math.floor(Math.random()*5);
-                              const livree   = disponible ? med.quantite : Math.min(qteStock, med.quantite);
+                            {(currentOrd.medicaments||[]).map((med, idx) => {
+                              const nom = med.medicament_nom || (typeof med.medicament === "string" ? med.medicament : "") || "—";
+                              const catalogue  = pharmStock[nom.trim().toLowerCase()];
+                              const disponible = catalogue ? catalogue.stock_actuel > 0 : null;
+                              const dejaDispensee = currentOrd.statut === "dispensee";
                               return (
-                                <tr key={med.id}>
-                                  <td style={{ fontWeight:600, color:"var(--on)" }}>{med.medicament}</td>
-                                  <td style={{ fontSize:12 }}>{med.forme} · {med.dosage}</td>
-                                  <td style={{ fontWeight:700, textAlign:"center" }}>{med.quantite}</td>
+                                <tr key={med._id || med.id || idx}>
+                                  <td style={{ fontWeight:600, color:"var(--ink)" }}>{nom}</td>
+                                  <td style={{ fontSize:12 }}>{med.posologie || [med.forme, med.dosage].filter(Boolean).join(" · ") || "—"}</td>
+                                  <td style={{ fontWeight:700, textAlign:"center" }}>{med.quantite ?? "—"}</td>
                                   <td>
-                                    <Badge cls={disponible?"green":"red"}>{disponible?`✅ ${qteStock} en stock`:"❌ Rupture"}</Badge>
+                                    {catalogue
+                                      ? <Badge cls={disponible?"green":"red"}>{disponible?`✅ ${catalogue.stock_actuel} en stock`:"❌ Rupture"}</Badge>
+                                      : <Badge cls="gray">Non rattaché au catalogue</Badge>}
                                   </td>
-                                  <td style={{ fontWeight:700, textAlign:"center", color: livree<med.quantite?"var(--or)":"var(--og)" }}>{livree}</td>
-                                  <td><Badge cls={livree>=med.quantite?"green":livree>0?"orange":"red"}>{livree>=med.quantite?"Délivré complet":livree>0?"Partiel":"Non délivré"}</Badge></td>
+                                  <td style={{ fontWeight:700, textAlign:"center" }}>{dejaDispensee ? (med.quantite ?? "—") : "—"}</td>
+                                  <td><Badge cls={dejaDispensee?"green":"gray"}>{dejaDispensee?"Délivré":"En attente"}</Badge></td>
                                 </tr>
                               );
                             })}
@@ -1445,8 +1488,17 @@ export default function Ordonnances() {
                         </table>
                       </div>
                       <div style={{ marginTop:16, display:"flex", gap:8, flexWrap:"wrap" }}>
-                        <button className="obtn obtn-teal" onClick={() => toast.success("💊 Délivrance confirmée en pharmacie")}>{I.check} Confirmer la délivrance</button>
-                        <button className="obtn obtn-ghost" onClick={() => toast.success("📋 Transmis à la pharmacie")}>{I.send} Transmettre à la pharmacie</button>
+                        <button
+                          className="obtn obtn-teal"
+                          disabled={dispensingRx || currentOrd.statut === "dispensee" || !["active","publiee"].includes(currentOrd.statut)}
+                          title={currentOrd.statut === "dispensee" ? "Cette ordonnance est déjà dispensée." : (!["active","publiee"].includes(currentOrd.statut) ? "Seule une ordonnance active ou publiée peut être dispensée." : "")}
+                          onClick={dispenserRx}
+                        >
+                          {I.check} {dispensingRx ? "Délivrance en cours…" : currentOrd.statut === "dispensee" ? "Déjà délivrée" : "Confirmer la délivrance"}
+                        </button>
+                        <button className="obtn obtn-ghost" disabled title="Fonctionnalité momentanément indisponible — aucune étape de transmission distincte n'existe côté serveur entre la publication et la délivrance.">
+                          {I.send} Transmettre à la pharmacie
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1472,9 +1524,9 @@ export default function Ordonnances() {
                             <tr key={i}>
                               <td><Badge cls={log.action==="Création"?"teal":log.action==="Délivrance"?"green":log.action==="Modification"?"orange":"blue"}>{log.action}</Badge></td>
                               <td style={{ fontSize:12, fontWeight:600 }}>{log.user}</td>
-                              <td style={{ fontSize:12, color:"var(--om)", fontFamily:"monospace" }}>{log.date}</td>
-                              <td style={{ fontSize:12, color:"var(--om)", fontFamily:"monospace" }}>{log.ip}</td>
-                              <td style={{ fontSize:12, color:"var(--on)" }}>{log.detail}</td>
+                              <td style={{ fontSize:12, color:"var(--muted)", fontFamily:"monospace" }}>{log.date}</td>
+                              <td style={{ fontSize:12, color:"var(--muted)", fontFamily:"monospace" }}>{log.ip}</td>
+                              <td style={{ fontSize:12, color:"var(--ink)" }}>{log.detail}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1490,8 +1542,8 @@ export default function Ordonnances() {
           {tab === "chroniques" && (
             <div>
               <div style={{ marginBottom:20 }}>
-                <div style={{ fontSize:16, fontWeight:700, color:"var(--on)" }}>Traitements chroniques</div>
-                <div style={{ fontSize:12, color:"var(--om)", marginTop:2 }}>Suivi des prescriptions à long terme</div>
+                <div style={{ fontSize:16, fontWeight:700, color:"var(--ink)" }}>Traitements chroniques</div>
+                <div style={{ fontSize:12, color:"var(--muted)", marginTop:2 }}>Suivi des prescriptions à long terme</div>
               </div>
 
               {MALADIES_CHRONIQUES.map(maladie => {
@@ -1501,7 +1553,7 @@ export default function Ordonnances() {
                   <div key={maladie} className="ord-card" style={{ marginBottom:16 }}>
                     <div className="ord-card-hdr">
                       <h3>♾ {maladie}</h3>
-                      <span style={{ fontSize:12, color:"var(--om)" }}>{patients_maladie.length} patient(s)</span>
+                      <span style={{ fontSize:12, color:"var(--muted)" }}>{patients_maladie.length} patient(s)</span>
                     </div>
                     <div style={{ overflowX:"auto" }}>
                       <table className="ord-tbl">
@@ -1513,14 +1565,14 @@ export default function Ordonnances() {
                               <tr key={ord._id}>
                                 <td>
                                   <div style={{ fontWeight:600 }}>{ord.patient_nom}</div>
-                                  <div style={{ fontSize:11, color:"var(--om)" }}>{ageCalc(ord.patient_dob)}</div>
+                                  <div style={{ fontSize:11, color:"var(--muted)" }}>{ageCalc(ord.patient_dob)}</div>
                                 </td>
-                                <td style={{ fontSize:12, color:"var(--om)" }}>{ord.medecin}</td>
+                                <td style={{ fontSize:12, color:"var(--muted)" }}>{ord.medecin}</td>
                                 <td>
-                                  {ord.medicaments.map(m=><div key={m.id} style={{ fontSize:11, color:"var(--on)" }}>• {m.medicament} {m.dosage}</div>)}
+                                  {ord.medicaments.map(m=><div key={m.id} style={{ fontSize:11, color:"var(--ink)" }}>• {m.medicament} {m.dosage}</div>)}
                                 </td>
-                                <td style={{ fontSize:12, color:"var(--om)" }}>{fmtDate(ord.date_prescription)}</td>
-                                <td style={{ fontSize:12, color: jRestants<15?"var(--or)":"var(--om)", fontWeight: jRestants<15?700:400 }}>
+                                <td style={{ fontSize:12, color:"var(--muted)" }}>{fmtDate(ord.date_prescription)}</td>
+                                <td style={{ fontSize:12, color: jRestants<15?"var(--danger)":"var(--muted)", fontWeight: jRestants<15?700:400 }}>
                                   {fmtDate(ord.date_expiration)}
                                   {jRestants<15 && <div style={{ fontSize:10 }}>⚠ {jRestants}j restants</div>}
                                 </td>
@@ -1565,11 +1617,11 @@ export default function Ordonnances() {
                 <div className="ord-card">
                   <div className="ord-card-hdr"><div><h3>📊 Ordonnances par service</h3></div></div>
                   <div style={{ padding:20 }}>
-                    {[["Chirurgie",35,"#0EA5A0"],["Médecine générale",28,"#1B4F9E"],["Gynécologie",18,"#7C3AED"],["Médecine interne",12,"#059669"],["Urgences",7,"#DC2626"]].map(([svc,pct,col])=>(
+                    {[["Chirurgie",35,"var(--accent)"],["Médecine générale",28,"var(--primary)"],["Gynécologie",18,"var(--tertiary)"],["Médecine interne",12,"var(--success)"],["Urgences",7,"var(--danger)"]].map(([svc,pct,col])=>(
                       <div key={svc} style={{ marginBottom:12 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, fontSize:12 }}>
-                          <span style={{ color:"var(--om)" }}>{svc}</span>
-                          <span style={{ fontWeight:700, color:"var(--on)" }}>{pct}%</span>
+                          <span style={{ color:"var(--muted)" }}>{svc}</span>
+                          <span style={{ fontWeight:700, color:"var(--ink)" }}>{pct}%</span>
                         </div>
                         <Prog pct={pct} color={col} />
                       </div>
@@ -1589,16 +1641,16 @@ export default function Ordonnances() {
                 </div>
                 <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:16 }}>
                   {[
-                    ["Total prescriptions ce mois","74","var(--ob)"],
-                    ["Ordonnances chroniques","18","var(--op)"],
-                    ["Interactions détectées par IA","3","var(--or)"],
-                    ["Ordonnances délivrées","61","var(--og)"],
-                    ["Renouvellements effectués","12","var(--ot)"],
-                    ["Ordonnances annulées","2","var(--om)"],
+                    ["Total prescriptions ce mois","74","var(--primary)"],
+                    ["Ordonnances chroniques","18","var(--tertiary)"],
+                    ["Interactions détectées par IA","3","var(--danger)"],
+                    ["Ordonnances délivrées","61","var(--success)"],
+                    ["Renouvellements effectués","12","var(--accent)"],
+                    ["Ordonnances annulées","2","var(--muted)"],
                   ].map(([lbl,val,col])=>(
-                    <div key={lbl} style={{ background:"#F8FAFD", border:"1.5px solid var(--obr)", borderRadius:12, padding:"16px 18px", textAlign:"center" }}>
+                    <div key={lbl} style={{ background:"var(--surface)", border:"1.5px solid var(--border)", borderRadius:12, padding:"16px 18px", textAlign:"center" }}>
                       <div style={{ fontSize:28, fontWeight:800, color:col, letterSpacing:-1 }}>{val}</div>
-                      <div style={{ fontSize:11.5, color:"var(--om)", fontWeight:600, marginTop:4 }}>{lbl}</div>
+                      <div style={{ fontSize:11.5, color:"var(--muted)", fontWeight:600, marginTop:4 }}>{lbl}</div>
                     </div>
                   ))}
                 </div>
@@ -1718,8 +1770,8 @@ export default function Ordonnances() {
               </div>
 
               <div style={{ gridColumn:"1/-1", display:"flex", alignItems:"center", gap:8 }}>
-                <input type="checkbox" checked={formOrd.chronique} onChange={e=>setFormOrd(f=>({...f,chronique:e.target.checked}))} style={{ width:16, height:16, accentColor:"var(--op)" }} />
-                <span style={{ fontSize:13, fontWeight:600, color:"var(--on)" }}>♾ Traitement chronique</span>
+                <input type="checkbox" checked={formOrd.chronique} onChange={e=>setFormOrd(f=>({...f,chronique:e.target.checked}))} style={{ width:16, height:16, accentColor:"var(--tertiary)" }} />
+                <span style={{ fontSize:13, fontWeight:600, color:"var(--ink)" }}>♾ Traitement chronique</span>
                 {formOrd.chronique && (
                   <select className="oinp" style={{ maxWidth:260, marginLeft:8 }} value={formOrd.maladie_chronique} onChange={e=>setFormOrd(f=>({...f,maladie_chronique:e.target.value}))}>
                     <option value="">— Pathologie —</option>
@@ -1740,9 +1792,9 @@ export default function Ordonnances() {
         {/* ═══ MODAL : RENOUVELLEMENT ═══ */}
         <Modal open={modalRenew} onClose={() => setModalRenew(false)} title={<>{I.refresh} Renouveler l'ordonnance</>} maxWidth={480}>
           <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-            <div style={{ background:"#EEF4FF", borderRadius:12, padding:"14px 16px" }}>
-              <div style={{ fontSize:13, fontWeight:700, color:"var(--on)" }}>{currentOrd?.numero}</div>
-              <div style={{ fontSize:12, color:"var(--om)", marginTop:4 }}>Patient : {currentOrd?.patient_nom} · {currentOrd?.medicaments?.length} médicament(s)</div>
+            <div style={{ background:"var(--tint)", borderRadius:12, padding:"14px 16px" }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"var(--ink)" }}>{currentOrd?.numero}</div>
+              <div style={{ fontSize:12, color:"var(--muted)", marginTop:4 }}>Patient : {currentOrd?.patient_nom} · {currentOrd?.medicaments?.length} médicament(s)</div>
             </div>
             <div>
               <label className="olbl">Nouvelle date d'expiration *</label>
@@ -1774,7 +1826,7 @@ export default function Ordonnances() {
               <span style={{ fontSize:18 }}>⚠️</span>
               <div>
                 <strong style={{ color:"#B91C1C", fontSize:13 }}>Confirmation requise</strong>
-                <div style={{ fontSize:12, color:"#DC2626", marginTop:4 }}>
+                <div style={{ fontSize:12, color:"var(--danger)", marginTop:4 }}>
                   L'annulation de l'ordonnance <strong>{currentOrd?.numero}</strong> est irréversible. La pharmacie sera notifiée.
                 </div>
               </div>
