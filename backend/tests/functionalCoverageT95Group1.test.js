@@ -43,7 +43,7 @@ test('couverture fonctionnelle — chirurgie, bloc opératoire, laboratoire, ima
 
   try {
     await t.test('chirurgieController.createDossier copie et transforme les données patient', async () => {
-      const { status, body } = await call(chirC.createDossier, { body: { patient_id: patient._id, chirurgien_id: medecin._id, motif_consultation: 'Douleur abdominale' }, user });
+      const { status, body } = await call(chirC.createDossier, { body: { patient: patient._id, chirurgien_id: medecin._id, motif_consultation: 'Douleur abdominale' }, user });
       assert.equal(status, 201);
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(body._id));
 
@@ -57,7 +57,7 @@ test('couverture fonctionnelle — chirurgie, bloc opératoire, laboratoire, ima
     });
 
     await t.test('chirurgieController.addBilan, addSuivi, addComplication créent les sous-documents attendus', async () => {
-      const dossier = await DossierChirurgical.create({ numero: `CHIR-T95G1b-${stamp}`, patient_id: patient._id, patient_nom: 'T95G1 P' });
+      const dossier = await DossierChirurgical.create({ numero: `CHIR-T95G1b-${stamp}`, patient: patient._id, patient_nom: 'T95G1 P' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossier._id));
 
       const { status: sB, body: bB } = await call(chirC.addBilan, { params: { id: dossier._id }, body: { type: 'biologie', examen: 'NFS', resultat: 'Normal' }, user });
@@ -82,7 +82,7 @@ test('couverture fonctionnelle — chirurgie, bloc opératoire, laboratoire, ima
       // Payload calqué sur EMPTY_INTERV (Blocoperatoire.jsx) — l'équipe est
       // saisie dès la création, pas seulement en édition ultérieure.
       const { status: s1, body: b1 } = await call(blocC.createIntervention, { body: {
-        patient_id: patient._id, chirurgien_id: medecin._id, type_intervention: 'Appendicectomie', salle: 'Bloc 1',
+        patient: patient._id, chirurgien_id: medecin._id, type_intervention: 'Appendicectomie', salle: 'Bloc 1',
         assistant: 'Dr. Assistant Test', anesthesiste: 'Dr. Anesth Test',
         infirmier_instru: 'Inf. Instru Test', infirmier_circu: 'Inf. Circu Test',
       }, user });
@@ -96,7 +96,7 @@ test('couverture fonctionnelle — chirurgie, bloc opératoire, laboratoire, ima
       assert.equal(saved1.infirmier_instru, 'Inf. Instru Test');
       assert.equal(saved1.infirmier_circu, 'Inf. Circu Test');
 
-      const dossierExistant = await DossierChirurgical.create({ numero: `CHIR-T95G1c-${stamp}`, patient_id: patient._id, patient_nom: 'T95G1 P' });
+      const dossierExistant = await DossierChirurgical.create({ numero: `CHIR-T95G1c-${stamp}`, patient: patient._id, patient_nom: 'T95G1 P' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossierExistant._id));
       const { status: s2 } = await call(blocC.createIntervention, { body: { dossier_id: dossierExistant._id, salle: 'Bloc 2' }, user });
       assert.equal(s2, 201);

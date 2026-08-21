@@ -29,12 +29,12 @@ function updateIaNiveau(score) {
 // Récupération des dossiers (liste paginée, recherche, filtre)
 exports.getDossiers = async (req, res, next) => {
   try {
-    const { page = 1, limit = 15, q = '', statut = '', patient_id = '' } = req.query;
+    const { page = 1, limit = 15, q = '', statut = '', patient = '' } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     let filter = {};
 
     if (statut) filter.statut = statut;
-    if (patient_id) filter.patient_id = patient_id;
+    if (patient) filter.patient = patient;
     if (q) {
       const qRe = escapeRegex(q);
       filter.$or = [
@@ -45,7 +45,7 @@ exports.getDossiers = async (req, res, next) => {
     }
 
     const dossiers = await DossierChirurgical.find(filter)
-      .populate('patient_id', 'nom prenom numero_dossier')
+      .populate('patient', 'nom prenom numero_dossier')
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -130,7 +130,7 @@ exports.getDossierById = async (req, res, next) => {
 // Création d'un nouveau dossier
 exports.createDossier = async (req, res, next) => {
   try {
-    const { patient_id, chirurgien_id, statut, niveau_urgence, motif_consultation, diagnostic_chirurgical, type_intervention, symptomes, decision } = req.body;
+    const { patient: patient_id, chirurgien_id, statut, niveau_urgence, motif_consultation, diagnostic_chirurgical, type_intervention, symptomes, decision } = req.body;
 
     // Récupérer les infos du patient
     const patient = await Patient.findById(patient_id);
@@ -146,7 +146,7 @@ exports.createDossier = async (req, res, next) => {
 
     const dossier = new DossierChirurgical({
       numero,
-      patient_id: patient._id,
+      patient: patient._id,
       patient_nom: `${patient.prenom} ${patient.nom}`,
       date_naissance: patient.date_naissance,
       sexe: patient.sexe === 'M' ? 'homme' : patient.sexe === 'F' ? 'femme' : (patient.sexe || 'autre'),
@@ -176,10 +176,10 @@ exports.createDossier = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// AUDIT-P2-1 (groupe 2) — numero/patient_id identifient le dossier ;
+// AUDIT-P2-1 (groupe 2) — numero/patient identifient le dossier ;
 // Object.assign(dossier, req.body) les laissait auparavant réassignables
 // comme n'importe quel autre champ.
-const DOSSIER_CHIR_BLOCKED_FIELDS = ['numero', 'patient_id'];
+const DOSSIER_CHIR_BLOCKED_FIELDS = ['numero', 'patient'];
 
 // Mise à jour d'un dossier
 exports.updateDossier = async (req, res, next) => {

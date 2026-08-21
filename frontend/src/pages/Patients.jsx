@@ -481,7 +481,7 @@ export default function Patient() {
       api.get(`/laboratory?patient=${id}&limit=100`),
       api.get(`/radiology?patient=${id}&limit=100`),
       api.get(`/hospitalization?patient=${id}&limit=100`),
-      api.get(`/chirurgie?patient_id=${id}&limit=50`),
+      api.get(`/chirurgie?patient=${id}&limit=50`),
       api.get(`/prescriptions?patient=${id}&limit=50`),
       api.get(`/finance?patient=${id}&limit=100`),
       api.get(`/audit?q=${id}&limit=30`),

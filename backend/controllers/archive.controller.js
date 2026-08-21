@@ -98,13 +98,13 @@ async function harvestArchivables() {
 
   // 5. Dossiers chirurgicaux clôturés
   const chirs = await DossierChirurgical.find({ statut: 'cloture' })
-    .select('_id patient_id patient_nom date_intervention_reelle type_intervention').lean();
+    .select('_id patient patient_nom date_intervention_reelle type_intervention').lean();
   for (const c of chirs) {
     await upsert({
       titre: `Chirurgie — ${c.type_intervention || 'Intervention'} — ${c.patient_nom || '—'}`,
       description: 'Dossier clôturé',
       categorie: 'chirurgie', source_model: 'DossierChirurgical', source_id: c._id,
-      patient: c.patient_id, patient_nom: c.patient_nom || '—',
+      patient: c.patient, patient_nom: c.patient_nom || '—',
       date_archivage: c.date_intervention_reelle, priorite: 'normale', tags: ['chirurgie','cloture'],
     });
   }

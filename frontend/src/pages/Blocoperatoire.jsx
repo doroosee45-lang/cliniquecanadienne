@@ -264,7 +264,7 @@ const CHECKLIST_ITEMS = [
 const DEMO_CONSO = [];
 
 const EMPTY_INTERV = {
-  patient_id:"", chirurgien:"", assistant:"", anesthesiste:"", infirmier_instru:"", infirmier_circu:"",
+  patient:"", chirurgien:"", assistant:"", anesthesiste:"", infirmier_instru:"", infirmier_circu:"",
   type_intervention:"", specialite:"chirurgie_generale", niveau_urgence:"programmee",
   statut:"programmee", diagnostic_preop:"", salle:"", date_heure_op:"", duree_estimee:90,
   service_demandeur:"", consentement_signe:false,
@@ -283,14 +283,14 @@ const EMPTY_REVEIL = {
 
 // ─── Normalise un DossierChirurgical vers les champs attendus par le rendu ──
 const normalizeInterv = (d) => {
-  const pat = d.patient_id && typeof d.patient_id === 'object' ? d.patient_id : null;
+  const pat = d.patient && typeof d.patient === 'object' ? d.patient : null;
   return {
     ...d,
     patient_dob:       d.date_naissance || pat?.date_naissance || null,
     patient_gs:        d.groupe_sanguin || pat?.groupe_sanguin || "—",
     patient_sexe:      d.sexe || null,
     patient_poids:     null,
-    patient_id:        pat?._id || (typeof d.patient_id === 'string' ? d.patient_id : '') || '',
+    patient:           pat?._id || (typeof d.patient === 'string' ? d.patient : '') || '',
     patient_dossier:   pat?.numero_dossier || d.patient_dossier || '',
     patient_allergies: d.allergies || null,
     chirurgien:        d.chirurgien_nom || (d.chirurgien_id && typeof d.chirurgien_id === 'object'
@@ -469,7 +469,7 @@ export default function BlocOperatoire() {
   // Forms
   const [formInterv, setFormInterv] = useState(EMPTY_INTERV);
   // Patient sélectionné dans le formulaire (aperçu infos)
-  const selectedPatient = patients.find(p => p._id === formInterv.patient_id) || null;
+  const selectedPatient = patients.find(p => p._id === formInterv.patient) || null;
   const [formCR, setFormCR]         = useState(EMPTY_CR);
   const [formReveil, setFormReveil] = useState(EMPTY_REVEIL);
 
@@ -718,7 +718,7 @@ export default function BlocOperatoire() {
                           <tr key={d._id} style={{ background: d.statut === "en_cours" ? "#E8F8F5" : d.niveau_urgence === "extreme_urgence" ? "#FEF9E7" : "" }}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--bb)", fontSize:12 }}>{d.numero}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--bn)", cursor: d.patient_id ? 'pointer' : 'default', textDecoration: d.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id && navigate(`/patients/${d.patient_id}`)} title={d.patient_id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--bn)", cursor: d.patient ? 'pointer' : 'default', textDecoration: d.patient ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient && navigate(`/patients/${d.patient}`)} title={d.patient ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
                               {d.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{d.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(d.patient_dob)} · {d.patient_gs || "—"}</div>
                             </td>
@@ -872,7 +872,7 @@ export default function BlocOperatoire() {
                           <tr key={d._id} style={{ background: d.statut === "en_cours" ? "#E8F8F5" : d.niveau_urgence === "extreme_urgence" && d.statut !== "terminee" ? "#FEF9E7" : "" }}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--bb)", fontSize:12 }}>{d.numero}</span></td>
                             <td>
-                              <div style={{ fontWeight:600, color:"var(--bn)", cursor: d.patient_id ? 'pointer' : 'default', textDecoration: d.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id && navigate(`/patients/${d.patient_id}`)} title={d.patient_id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
+                              <div style={{ fontWeight:600, color:"var(--bn)", cursor: d.patient ? 'pointer' : 'default', textDecoration: d.patient ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient && navigate(`/patients/${d.patient}`)} title={d.patient ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
                               {d.patient_dossier && <span style={{ fontFamily:'monospace', fontSize:10, fontWeight:700, color:'#1B4F9E', background:'#EFF6FF', padding:'1px 6px', borderRadius:4, display:'inline-block', marginBottom:2 }}>{d.patient_dossier}</span>}
                               <div style={{ fontSize:11, color:"var(--cm)" }}>{ageCalc(d.patient_dob)} · {d.patient_gs || "—"}</div>
                               {d.patient_allergies && <div style={{ fontSize:10, color:"var(--br)" }}>⚠ {d.patient_allergies}</div>}
@@ -1773,7 +1773,7 @@ export default function BlocOperatoire() {
             <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="blbl">Patient *</label>
-                <select className="binp" required value={formInterv.patient_id} onChange={e => setFormInterv(f=>({...f,patient_id:e.target.value}))}>
+                <select className="binp" required value={formInterv.patient} onChange={e => setFormInterv(f=>({...f,patient:e.target.value}))}>
                   <option value="">— Sélectionner un patient —</option>
                   {patients.map(p => <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier}</option>)}
                 </select>

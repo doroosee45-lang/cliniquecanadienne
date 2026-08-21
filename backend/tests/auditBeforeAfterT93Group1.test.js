@@ -36,7 +36,7 @@ test('donnees_avant/donnees_apres — chirurgie, bloc opératoire, laboratoire, 
 
   try {
     await t.test('chirurgieController.updateDossier journalise avant/apres', async () => {
-      const dossier = await DossierChirurgical.create({ numero: `CHIR-T93-${stamp}`, patient_id: patient._id, patient_nom: 'T93 P', diagnostic_chirurgical: 'Initial' });
+      const dossier = await DossierChirurgical.create({ numero: `CHIR-T93-${stamp}`, patient: patient._id, patient_nom: 'T93 P', diagnostic_chirurgical: 'Initial' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossier._id));
 
       await call(chirC.updateDossier, { params: { id: dossier._id }, body: { diagnostic_chirurgical: 'Révisé après bilan' }, user });
@@ -48,7 +48,7 @@ test('donnees_avant/donnees_apres — chirurgie, bloc opératoire, laboratoire, 
     });
 
     await t.test('blocoperatoireController.saveCR et .saveReveil journalisent avant/apres', async () => {
-      const dossier = await DossierChirurgical.create({ numero: `BLOC-T93-${stamp}`, patient_id: patient._id, patient_nom: 'T93 P', statut: 'opere' });
+      const dossier = await DossierChirurgical.create({ numero: `BLOC-T93-${stamp}`, patient: patient._id, patient_nom: 'T93 P', statut: 'opere' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossier._id));
 
       // Payload calqué sur EMPTY_CR (Blocoperatoire.jsx) — saignement_ml,

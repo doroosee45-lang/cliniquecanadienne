@@ -38,7 +38,7 @@ test('AUDIT-2.2 — remove() désactive (ne supprime pas) un patient ayant un hi
     await t.test('patient avec uniquement un DossierChirurgical → désactivé, pas supprimé', async () => {
       const patient = await Patient.create({ nom: `T22-Chir-${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M' });
       const dossier = await DossierChirurgical.create({
-        numero: `T22-CHIR-${stamp}`, patient_id: patient._id, patient_nom: `${patient.prenom} ${patient.nom}`,
+        numero: `T22-CHIR-${stamp}`, patient: patient._id, patient_nom: `${patient.prenom} ${patient.nom}`,
       });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossier._id));
 

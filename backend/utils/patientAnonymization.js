@@ -47,7 +47,7 @@ const ANONYMOUS_LABEL = 'Patient anonymisé';
 const CASCADE_TARGETS = [
   { model: require('../models/ArchiveEntry'),        refField: 'patient',    piiFields: ['patient_nom'] },
   { model: require('../models/Delivery'),             refField: 'patient_id', piiFields: ['patient_nom'] },
-  { model: require('../models/DossierChirurgical'),   refField: 'patient_id', piiFields: ['patient_nom', 'telephone', 'date_naissance'] },
+  { model: require('../models/DossierChirurgical'),   refField: 'patient',    piiFields: ['patient_nom', 'telephone', 'date_naissance'] },
   { model: require('../models/ImagingResult'),        refField: 'patient',    piiFields: ['patient_nom', 'patient_dossier', 'patient_dob', 'telephone', 'adresse'] },
   { model: require('../models/Invoice'),               refField: 'patient',    piiFields: ['patient_nom'] },
   { model: require('../models/LabResult'),             refField: 'patient',    piiFields: ['patient_nom', 'patient_dossier', 'telephone', 'date_naissance'] },

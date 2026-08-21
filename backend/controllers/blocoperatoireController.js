@@ -76,7 +76,7 @@ exports.getPlanning = async (req, res, next) => {
 
     const [planning, total] = await Promise.all([
       DossierChirurgical.find(filter)
-        .populate('patient_id',   'nom prenom date_naissance groupe_sanguin numero_dossier')
+        .populate('patient',      'nom prenom date_naissance groupe_sanguin numero_dossier')
         .populate('chirurgien_id','nom prenom specialite')
         .sort({ date_intervention_prev: 1, created_at: -1 })
         .skip(skip).limit(parseInt(limit))
@@ -110,10 +110,10 @@ exports.getPlanning = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── POST / — Créer une intervention (depuis patient_id ou dossier_id) ─────────
+// ── POST / — Créer une intervention (depuis patient ou dossier_id) ────────────
 exports.createIntervention = async (req, res, next) => {
   try {
-    const { patient_id, dossier_id, salle, date_heure_op, type_intervention,
+    const { patient: patient_id, dossier_id, salle, date_heure_op, type_intervention,
             niveau_urgence, chirurgien, chirurgien_id, diagnostic_preop,
             duree_estimee, statut = 'preoperatoire', assistant, anesthesiste,
             infirmier_instru, infirmier_circu, notes } = req.body;
@@ -126,7 +126,7 @@ exports.createIntervention = async (req, res, next) => {
       if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
     } else {
       // Créer un nouveau dossier chirurgical depuis le bloc
-      if (!patient_id) return res.status(400).json({ success: false, message: 'patient_id requis.' });
+      if (!patient_id) return res.status(400).json({ success: false, message: 'patient requis.' });
       const patient = await Patient.findById(patient_id);
       if (!patient) return res.status(400).json({ success: false, message: 'Patient introuvable.' });
 
@@ -135,7 +135,7 @@ exports.createIntervention = async (req, res, next) => {
 
       dossier = new DossierChirurgical({
         numero,
-        patient_id: patient._id,
+        patient: patient._id,
         patient_nom: `${patient.prenom} ${patient.nom}`,
         date_naissance: patient.date_naissance,
         sexe: patient.sexe === 'M' ? 'homme' : patient.sexe === 'F' ? 'femme' : 'autre',
@@ -199,7 +199,7 @@ exports.createIntervention = async (req, res, next) => {
     emitDashboardUpdate();
 
     const populated = await DossierChirurgical.findById(dossier._id)
-      .populate('patient_id',    'nom prenom date_naissance groupe_sanguin')
+      .populate('patient',       'nom prenom date_naissance groupe_sanguin')
       .populate('chirurgien_id', 'nom prenom specialite')
       .lean();
 
@@ -337,7 +337,7 @@ exports.scheduleIntervention = async (req, res, next) => {
     });
 
     const populated = await DossierChirurgical.findById(dossier._id)
-      .populate('patient_id', 'nom prenom')
+      .populate('patient', 'nom prenom')
       .populate('chirurgien_id', 'nom prenom specialite')
       .lean();
 
@@ -360,7 +360,7 @@ exports.updateIntervention = async (req, res, next) => {
     const dossier = await DossierChirurgical.findByIdAndUpdate(
       req.params.id, update, { new: true, runValidators: true }
     )
-      .populate('patient_id', 'nom prenom')
+      .populate('patient', 'nom prenom')
       .populate('chirurgien_id', 'nom prenom specialite');
 
     if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });

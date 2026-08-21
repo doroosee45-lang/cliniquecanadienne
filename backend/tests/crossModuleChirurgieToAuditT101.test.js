@@ -40,7 +40,7 @@ test('Chirurgie→Journal d\'audit — createDossier/addBilan/addSuivi/addCompli
     const user = { _id: medecin._id, prenom: medecin.prenom, nom: medecin.nom, role: 'medecin' };
 
     await t.test('createDossier écrit une entrée AuditLog module=chirurgie, action=CREATE', async () => {
-      const { status, body } = await call(chirC.createDossier, { body: { patient_id: patient._id, chirurgien_id: medecin._id, motif_consultation: 'T101 douleur' }, user, ip: '127.0.0.1' });
+      const { status, body } = await call(chirC.createDossier, { body: { patient: patient._id, chirurgien_id: medecin._id, motif_consultation: 'T101 douleur' }, user, ip: '127.0.0.1' });
       assert.equal(status, 201);
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(body._id));
 
@@ -50,7 +50,7 @@ test('Chirurgie→Journal d\'audit — createDossier/addBilan/addSuivi/addCompli
     });
 
     await t.test('addBilan / addSuivi / addComplication écrivent chacun une entrée AuditLog module=chirurgie, action=CREATE', async () => {
-      const dossier = await DossierChirurgical.create({ numero: `CHIR-T101-${stamp}`, patient_id: patient._id, patient_nom: 'T101 P' });
+      const dossier = await DossierChirurgical.create({ numero: `CHIR-T101-${stamp}`, patient: patient._id, patient_nom: 'T101 P' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossier._id));
 
       const { status: sB, body: bB } = await call(chirC.addBilan, { params: { id: dossier._id }, body: { type: 'biologie', examen: 'NFS-T101' }, user, ip: '127.0.0.1' });

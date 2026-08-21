@@ -63,7 +63,7 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
     const delivery = await Delivery.create({ patient_id: patient._id, patient_nom: 'Nkoulou Sylvie', type_accouchement: 'voie_basse', terme: 39 });
     cleanup.push(() => Delivery.findByIdAndDelete(delivery._id));
 
-    const dossierChir = await DossierChirurgical.create({ numero: `CHIR-T913-${stamp}`, patient_id: patient._id, patient_nom: 'Nkoulou Sylvie', telephone: '+242061234567', date_naissance: new Date('1988-04-12'), diagnostic_chirurgical: 'Appendicite' });
+    const dossierChir = await DossierChirurgical.create({ numero: `CHIR-T913-${stamp}`, patient: patient._id, patient_nom: 'Nkoulou Sylvie', telephone: '+242061234567', date_naissance: new Date('1988-04-12'), diagnostic_chirurgical: 'Appendicite' });
     cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossierChir._id));
 
     const imaging = await ImagingResult.create({ patient: patient._id, patient_nom: 'Nkoulou Sylvie', patient_dossier: patient.numero_dossier, patient_dob: '12/04/1988', telephone: '+242061234567', adresse: 'Rue du Marché', type_examen: 'Radio thorax', compte_rendu: 'RAS' });

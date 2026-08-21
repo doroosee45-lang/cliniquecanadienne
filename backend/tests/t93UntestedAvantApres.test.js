@@ -38,7 +38,7 @@ test('T9.5 — fonctions avant/apres du T9.3 jamais exercées par un test (base 
 
   try {
     await t.test('blocoperatoireController.scheduleIntervention journalise avant/apres sans planter', async () => {
-      const dossier = await DossierChirurgical.create({ numero: `CHIR-T95-${stamp}`, patient_id: patient._id, patient_nom: 'T95 P' });
+      const dossier = await DossierChirurgical.create({ numero: `CHIR-T95-${stamp}`, patient: patient._id, patient_nom: 'T95 P' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossier._id));
 
       const { status } = await call(blocC.scheduleIntervention, { body: { dossier_id: dossier._id, salle: 'Salle B', date_intervention: '2026-10-01T09:00:00', chirurgien_id: medecin._id }, user, ip: '127.0.0.1' });
@@ -50,7 +50,7 @@ test('T9.5 — fonctions avant/apres du T9.3 jamais exercées par un test (base 
     });
 
     await t.test('blocoperatoireController.updateIntervention journalise avant/apres sans planter', async () => {
-      const dossier = await DossierChirurgical.create({ numero: `CHIR-T95b-${stamp}`, patient_id: patient._id, patient_nom: 'T95 P', statut: 'preoperatoire' });
+      const dossier = await DossierChirurgical.create({ numero: `CHIR-T95b-${stamp}`, patient: patient._id, patient_nom: 'T95 P', statut: 'preoperatoire' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossier._id));
 
       const { status } = await call(blocC.updateIntervention, { params: { id: dossier._id }, body: { statut: 'opere' }, user, ip: '127.0.0.1' });

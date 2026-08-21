@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 const dossierChirurgicalSchema = new mongoose.Schema({
   numero: { type: String, unique: true, required: true },
-  patient_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
+  patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
   patient_nom: { type: String, required: true },
   date_naissance: { type: Date },
   sexe: { type: String, enum: ['homme', 'femme', 'autre'] },
@@ -61,12 +61,13 @@ dossierChirurgicalSchema.pre('save', function(next) {
   next();
 });
 
-// AUDIT-B2 — patient_id n'avait aucun index malgré un filtrage fréquent par
+// AUDIT-B2 — patient n'avait aucun index malgré un filtrage fréquent par
 // ce champ (chirurgieController.js::getDossiers) ; composé avec created_at
 // (l'ordre de tri utilisé par la même requête), même pattern déjà en place
 // sur les modèles comparables (Consultation, Hospitalization, Invoice,
 // LabResult, Prescription : { patient: 1, <date>: -1 }).
-dossierChirurgicalSchema.index({ patient_id: 1, created_at: -1 });
+// ADR-0006 — champ renommé patient_id → patient (convention majoritaire).
+dossierChirurgicalSchema.index({ patient: 1, created_at: -1 });
 
 // AUDIT-2.1 — blocoperatoireController.js n'avait aucune détection de conflit
 // de salle/créneau ; la vérification applicative ajoutée

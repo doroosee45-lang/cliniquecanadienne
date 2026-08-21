@@ -57,10 +57,10 @@ test('AUDIT-2.1 — programmation de salle de bloc atomique sur créneau identiq
       const dateHeureOp = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
 
       const results = await Promise.all(patients.map(p => call(blocC.createIntervention, {
-        body: { patient_id: p._id, salle, date_heure_op: dateHeureOp, type_intervention: 'Test concurrence' },
+        body: { patient: p._id, salle, date_heure_op: dateHeureOp, type_intervention: 'Test concurrence' },
         user,
       })));
-      cleanup.push(() => DossierChirurgical.deleteMany({ patient_id: { $in: patients.map(p => p._id) } }));
+      cleanup.push(() => DossierChirurgical.deleteMany({ patient: { $in: patients.map(p => p._id) } }));
 
       const successes = results.filter(r => r.status === 201);
       const echecs    = results.filter(r => r.status === 400 || r.status === 409);

@@ -215,17 +215,17 @@ test('P2-1 groupe 2 — mass-assignment bloqué sur 13 endpoints cliniques/méti
       assert.equal(fresh.child_id.toString(), child2._id.toString());
     });
 
-    await t.test('DossierChirurgical.updateDossier — patient_id bloqué (Object.assign), diagnostic_chirurgical légitime toujours persisté', async () => {
-      const dossier = await DossierChirurgical.create({ numero: `CHIR-P21C-${stamp}`, patient_id: patient._id, patient_nom: 'P21C' });
+    await t.test('DossierChirurgical.updateDossier — patient bloqué (Object.assign), diagnostic_chirurgical légitime toujours persisté', async () => {
+      const dossier = await DossierChirurgical.create({ numero: `CHIR-P21C-${stamp}`, patient: patient._id, patient_nom: 'P21C' });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(dossier._id));
       await call(chirurgieC.updateDossier, {
         params: { id: dossier._id },
-        body: { diagnostic_chirurgical: 'Appendicite', patient_id: otherPatientId, numero: 'CHIR-HACK' },
+        body: { diagnostic_chirurgical: 'Appendicite', patient: otherPatientId, numero: 'CHIR-HACK' },
         user: staff, ip: '127.0.0.1',
       });
       const fresh = await DossierChirurgical.findById(dossier._id).lean();
       assert.equal(fresh.diagnostic_chirurgical, 'Appendicite');
-      assert.equal(fresh.patient_id.toString(), patient._id.toString());
+      assert.equal(fresh.patient.toString(), patient._id.toString());
       assert.equal(fresh.numero, `CHIR-P21C-${stamp}`);
     });
 

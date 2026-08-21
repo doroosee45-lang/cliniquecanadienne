@@ -35,8 +35,8 @@ test('B3 — 4 endpoints de stats convertis en agrégation (base réelle)', { sk
   try {
     await t.test('chirurgieController.getStats — compteurs et score moyen corrects', async () => {
       const now = new Date();
-      const d1 = await DossierChirurgical.create({ numero: `B3-CH1-${stamp}`, patient_id: new mongoose.Types.ObjectId(), patient_nom: 'B3 Test', statut: 'opere', ia_risque_niveau: 'eleve', ia_risque_score: 80, nb_complications: 1, date_intervention_reelle: now });
-      const d2 = await DossierChirurgical.create({ numero: `B3-CH2-${stamp}`, patient_id: new mongoose.Types.ObjectId(), patient_nom: 'B3 Test', statut: 'cloture', ia_risque_niveau: 'faible', ia_risque_score: 20, nb_complications: 0, date_intervention_reelle: now });
+      const d1 = await DossierChirurgical.create({ numero: `B3-CH1-${stamp}`, patient: new mongoose.Types.ObjectId(), patient_nom: 'B3 Test', statut: 'opere', ia_risque_niveau: 'eleve', ia_risque_score: 80, nb_complications: 1, date_intervention_reelle: now });
+      const d2 = await DossierChirurgical.create({ numero: `B3-CH2-${stamp}`, patient: new mongoose.Types.ObjectId(), patient_nom: 'B3 Test', statut: 'cloture', ia_risque_niveau: 'faible', ia_risque_score: 20, nb_complications: 0, date_intervention_reelle: now });
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(d1._id));
       cleanup.push(() => DossierChirurgical.findByIdAndDelete(d2._id));
 
