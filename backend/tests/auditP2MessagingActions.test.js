@@ -189,3 +189,176 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
     await mongoose.disconnect();
   }
 });
+
+// AUDIT-MESSAGES-PhaseD — sendPatientEmail : mail.sendEmail stubbée pour la
+// même raison que sms.sendSms ci-dessus — SMTP est réellement configuré
+// dans le .env de dev, sans stub la suite enverrait un vrai email.
+test('messages.controller — sendPatientEmail (base réelle, SMTP stubbé)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
+  await mongoose.connect(process.env.MONGO_URI);
+  const msgC = require('../controllers/messages.controller');
+  const Patient = require('../models/Patient');
+  const User = require('../models/User');
+  const AuditLog = require('../models/AuditLog');
+  const mailModule = require('../utils/mail');
+
+  const stamp = Date.now();
+  const originalSendEmail = mailModule.sendEmail;
+  const agent = await User.create({ email: `_email-agent-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Agent', prenom: 'Email', role: 'medecin', statut: 'actif' });
+  const patientAvecEmail = await Patient.create({ nom: `Email${stamp}`, prenom: 'AvecEmail', date_naissance: '1990-01-01', sexe: 'F', email: `_pat-${stamp}@_test.local` });
+  const patientSansEmail = await Patient.create({ nom: `Email${stamp}`, prenom: 'SansEmail', date_naissance: '1990-01-01', sexe: 'M' });
+
+  const call = async (fn, req) => {
+    let status = 200, body = null;
+    const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
+    await fn(req, res, (err) => { if (err) throw err; });
+    return { status, body };
+  };
+
+  try {
+    await t.test('patient avec email, envoi réussi (stub) — 200, tracé succès dans AuditLog', async () => {
+      mailModule.sendEmail = async ({ to }) => { assert.equal(to, `_pat-${stamp}@_test.local`); return { simulated: true }; };
+      const { status, body } = await call(msgC.sendPatientEmail, { user: agent, body: { patient: patientAvecEmail._id.toString(), sujet: 'Sujet test', contenu: `Test ${stamp}` }, ip: '127.0.0.1' });
+      assert.equal(status, 200);
+      assert.equal(body.success, true);
+      const entry = await AuditLog.findOne({ module: 'messages', action: 'SEND_EMAIL', entite_id: patientAvecEmail._id.toString() }).sort('-createdAt').lean();
+      assert.ok(entry);
+      assert.equal(entry.statut, 'succes');
+    });
+
+    await t.test('échec SMTP (stub qui rejette) — vraie erreur renvoyée, tracée en échec', async () => {
+      mailModule.sendEmail = async () => { throw new Error('Relais SMTP indisponible (simulation)'); };
+      const { status, body } = await call(msgC.sendPatientEmail, { user: agent, body: { patient: patientAvecEmail._id.toString(), sujet: 'x', contenu: 'y' }, ip: '127.0.0.1' });
+      assert.equal(status, 502);
+      assert.equal(body.success, false);
+      const entry = await AuditLog.findOne({ module: 'messages', action: 'SEND_EMAIL', entite_id: patientAvecEmail._id.toString(), statut: 'echec' }).sort('-createdAt').lean();
+      assert.ok(entry);
+    });
+
+    await t.test('patient sans email — 400, aucun envoi tenté', async () => {
+      let called = false;
+      mailModule.sendEmail = async () => { called = true; return { simulated: true }; };
+      const { status } = await call(msgC.sendPatientEmail, { user: agent, body: { patient: patientSansEmail._id.toString(), sujet: 'x', contenu: 'y' }, ip: '127.0.0.1' });
+      assert.equal(status, 400);
+      assert.equal(called, false);
+    });
+
+    await t.test('sujet ou message manquant — 400', async () => {
+      const { status } = await call(msgC.sendPatientEmail, { user: agent, body: { patient: patientAvecEmail._id.toString(), sujet: '', contenu: 'y' }, ip: '127.0.0.1' });
+      assert.equal(status, 400);
+    });
+  } finally {
+    mailModule.sendEmail = originalSendEmail;
+    await User.findByIdAndDelete(agent._id);
+    await Patient.findByIdAndDelete(patientAvecEmail._id);
+    await Patient.findByIdAndDelete(patientSansEmail._id);
+    await AuditLog.deleteMany({ module: 'messages', action: 'SEND_EMAIL', entite_id: { $in: [patientAvecEmail._id.toString(), patientSansEmail._id.toString()] } });
+    await mongoose.disconnect();
+  }
+});
+
+// AUDIT-MESSAGES-PhaseD — getHistorique : vérifie que les KPIs/répartition
+// par service/journal sont calculés depuis de vraies données (pas fabriqués),
+// scopés aux conversations dont l'utilisateur est membre.
+test('messages.controller — getHistorique (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
+  await mongoose.connect(process.env.MONGO_URI);
+  const msgC = require('../controllers/messages.controller');
+  const Conversation = require('../models/Conversation');
+  const User = require('../models/User');
+
+  const stamp = Date.now();
+  const medecin = await User.create({ email: `_hist-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Med', prenom: 'Hist', role: 'medecin', statut: 'actif', service: 'Médecine générale' });
+  const infirmier = await User.create({ email: `_hist-inf-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Inf', prenom: 'Hist', role: 'infirmier', statut: 'actif', service: 'Soins infirmiers' });
+
+  const call = async (fn, req) => {
+    let status = 200, body = null;
+    const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
+    await fn(req, res, (err) => { if (err) throw err; });
+    return { status, body };
+  };
+
+  let convId;
+  try {
+    const conv = await Conversation.create({
+      type: 'direct', membres: [medecin._id, infirmier._id],
+      messages: [
+        { expediteur: medecin._id, contenu: `Envoyé par moi ${stamp}`, lu_par: [medecin._id] },
+        { expediteur: infirmier._id, contenu: `Reçu ${stamp} 1`, lu_par: [infirmier._id] },
+        { expediteur: infirmier._id, contenu: `Reçu ${stamp} 2`, lu_par: [infirmier._id] },
+      ],
+    });
+    convId = conv._id;
+
+    await t.test('KPIs réels : envoyés/reçus corrects, scopés à mes conversations', async () => {
+      const { status, body } = await call(msgC.getHistorique, { user: medecin });
+      assert.equal(status, 200);
+      assert.equal(body.kpis.messages_envoyes, 1);
+      assert.equal(body.kpis.messages_recus, 2);
+      assert.ok(body.kpis.conversations_actives >= 1);
+    });
+
+    await t.test('répartition par service réelle : les 2 messages reçus sont attribués au service infirmier', async () => {
+      const { body } = await call(msgC.getHistorique, { user: medecin });
+      const infService = body.par_service.find(s => s.service === 'Soins infirmiers');
+      assert.ok(infService, 'le service de l\'expéditeur réel doit apparaître');
+      assert.equal(infService.count, 2);
+    });
+
+    await t.test('un utilisateur extérieur à la conversation ne voit pas ces messages dans ses propres totaux', async () => {
+      const exterieur = await User.create({ email: `_hist-ext-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Ext', prenom: 'Hist', role: 'medecin', statut: 'actif' });
+      try {
+        const { body } = await call(msgC.getHistorique, { user: exterieur });
+        assert.equal(body.kpis.messages_envoyes, 0);
+        assert.equal(body.kpis.messages_recus, 0);
+      } finally {
+        await User.findByIdAndDelete(exterieur._id);
+      }
+    });
+
+    // AUDIT-MESSAGES-PhaseD (correctif) — le journal était org-wide dans un
+    // endpoint protect seul (fenêtre de visibilité équivalente à /audit sans
+    // son authorize('superadmin')). Doit désormais être scopé comme les
+    // KPIs : mes conversations pour CREATE/DELETE, mes propres envois pour
+    // SEND_SMS/SEND_EMAIL.
+    await t.test("journal — un membre de la conversation voit l'action CREATE tracée dessus", async () => {
+      const { logAction } = require('../utils/helpers');
+      await logAction({ utilisateur: infirmier._id, action: 'CREATE', module: 'messages', entite_id: convId, message: `Conversation créée ${stamp}` });
+      const { body } = await call(msgC.getHistorique, { user: medecin });
+      assert.ok(body.journal.some(j => j.detail === `Conversation créée ${stamp}`), 'un membre de la conversation doit voir cette action dans son journal');
+    });
+
+    await t.test("journal — un utilisateur extérieur à la conversation ne voit PAS cette action", async () => {
+      const exterieur = await User.create({ email: `_hist-ext2-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Ext2', prenom: 'Hist', role: 'medecin', statut: 'actif' });
+      try {
+        const { body } = await call(msgC.getHistorique, { user: exterieur });
+        assert.ok(!body.journal.some(j => j.detail === `Conversation créée ${stamp}`), "une action sur une conversation où l'utilisateur n'est pas membre ne doit jamais apparaître dans son journal");
+      } finally {
+        await User.findByIdAndDelete(exterieur._id);
+      }
+    });
+
+    await t.test("journal — un envoi SMS/Email n'apparaît que dans le journal de l'expéditeur, jamais chez un autre membre du personnel", async () => {
+      const { logAction } = require('../utils/helpers');
+      const Patient = require('../models/Patient');
+      const patient = await Patient.create({ nom: `HistSms${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'F' });
+      try {
+        await logAction({ utilisateur: infirmier._id, action: 'SEND_SMS', module: 'messages', entite_id: patient._id, message: `SMS test ${stamp}` });
+        const { body: bodyExpediteur } = await call(msgC.getHistorique, { user: infirmier });
+        assert.ok(bodyExpediteur.journal.some(j => j.detail === `SMS test ${stamp}`), "l'expéditeur doit voir son propre envoi");
+
+        const { body: bodyAutre } = await call(msgC.getHistorique, { user: medecin });
+        assert.ok(!bodyAutre.journal.some(j => j.detail === `SMS test ${stamp}`), "un autre membre du personnel (même conversation ou non) ne doit jamais voir l'envoi SMS/Email d'un collègue à un patient");
+      } finally {
+        await Patient.findByIdAndDelete(patient._id);
+        const AuditLog = require('../models/AuditLog');
+        await AuditLog.deleteMany({ message: `SMS test ${stamp}` });
+      }
+    });
+  } finally {
+    if (convId) await Conversation.findByIdAndDelete(convId);
+    await User.findByIdAndDelete(medecin._id);
+    await User.findByIdAndDelete(infirmier._id);
+    const AuditLog = require('../models/AuditLog');
+    await AuditLog.deleteMany({ message: `Conversation créée ${stamp}` });
+    await mongoose.disconnect();
+  }
+});

@@ -5,6 +5,10 @@ const { protect } = require('../middleware/auth');
 const { uploadMessageAttachment } = require('../middleware/upload');
 
 router.get('/directory',         protect, msgC.getDirectory);
+// AUDIT-MESSAGES-PhaseD — routes statiques déclarées avant '/:id' (sinon
+// Express les matcherait comme id de conversation).
+router.get('/historique',        protect, msgC.getHistorique);
+router.post('/patient-email',    protect, msgC.sendPatientEmail);
 router.get('/',                  protect, msgC.getConversations);
 router.post('/',                 protect, msgC.getOrCreate);
 router.post('/groups',           protect, msgC.createGroup);

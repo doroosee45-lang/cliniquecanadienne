@@ -1,7 +1,10 @@
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
+const Patient = require('../models/Patient');
+const AuditLog = require('../models/AuditLog');
 const { emitTo } = require('../utils/socket');
 const { logAction } = require('../utils/helpers');
+const mail = require('../utils/mail');
 
 // AUDIT-MESSAGES-PhaseA — la modale "Nouveau message" appelait GET
 // /admin/users (authorize(superadmin, adminclinique)) pour peupler la liste
@@ -291,5 +294,90 @@ exports.deleteMessage = async (req, res, next) => {
     emitTo(`conversation:${conv._id}`, 'message:deleted', { conversationId: conv._id, msgId: req.params.msgId });
 
     res.json({ success: true });
+  } catch (err) { next(err); }
+};
+
+// AUDIT-MESSAGES-PhaseD — l'onglet "Communication patients" affichait un
+// faux succès (toast seul) pour l'envoi d'email à un patient. Réutilise
+// utils/mail.js::sendEmail (déjà utilisé ailleurs — activation, rappels,
+// ordonnances) ; tracé dans AuditLog comme les autres canaux (succès/échec).
+exports.sendPatientEmail = async (req, res, next) => {
+  try {
+    const { patient: patientId, sujet, contenu } = req.body;
+    if (!sujet || !sujet.trim() || !contenu || !contenu.trim()) {
+      return res.status(400).json({ success: false, message: 'Sujet et message requis.' });
+    }
+    const patient = await Patient.findById(patientId);
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+    if (!patient.email) return res.status(400).json({ success: false, message: "Ce patient n'a pas d'adresse email enregistrée." });
+
+    try {
+      const result = await mail.sendEmail({ to: patient.email, subject: sujet, html: `<p>${contenu}</p>` });
+      await logAction({ utilisateur: req.user._id, action: 'SEND_EMAIL', module: 'messages', entite_id: patient._id, ip: req.ip, message: sujet, statut: 'succes' });
+      res.json({ success: true, simulated: !!result?.simulated });
+    } catch (err) {
+      await logAction({ utilisateur: req.user._id, action: 'SEND_EMAIL', module: 'messages', entite_id: patient._id, ip: req.ip, message: sujet, statut: 'echec' });
+      res.status(502).json({ success: false, message: err.message || "Échec de l'envoi de l'email." });
+    }
+  } catch (err) { next(err); }
+};
+
+// AUDIT-MESSAGES-PhaseD — l'onglet "Historique & Audit" affichait des KPIs,
+// une répartition par service et un journal entièrement fabriqués. Scopé
+// aux conversations dont l'utilisateur est membre (jamais org-wide, même
+// principe RBAC que getDirectory en Phase A) ; les envois SEND_SMS/
+// SEND_EMAIL vers un patient ne sont visibles que par leur propre expéditeur
+// (jamais par un autre membre du personnel), car ils ne sont rattachés à
+// aucune conversation.
+exports.getHistorique = async (req, res, next) => {
+  try {
+    const convs = await Conversation.find({ membres: req.user._id })
+      .populate('messages.expediteur', 'service')
+      .lean();
+    const convIds = convs.map(c => c._id.toString());
+
+    let messages_envoyes = 0, messages_recus = 0;
+    const parServiceMap = {};
+    convs.forEach(c => {
+      (c.messages || []).forEach(m => {
+        const expId = (m.expediteur?._id || m.expediteur)?.toString();
+        if (expId === req.user._id.toString()) {
+          messages_envoyes += 1;
+        } else {
+          messages_recus += 1;
+          const service = m.expediteur?.service || 'Autre';
+          parServiceMap[service] = (parServiceMap[service] || 0) + 1;
+        }
+      });
+    });
+    const par_service = Object.entries(parServiceMap)
+      .map(([service, count]) => ({ service, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const ICONS  = { CREATE: '👥', DELETE: '🗑️', SEND_SMS: '📱', SEND_EMAIL: '📧' };
+    const LABELS = { CREATE: 'Conversation créée', DELETE: 'Message supprimé', SEND_SMS: 'SMS envoyé', SEND_EMAIL: 'Email envoyé' };
+    const entries = await AuditLog.find({
+      module: 'messages',
+      $or: [
+        { action: { $in: ['CREATE', 'DELETE'] }, entite_id: { $in: convIds } },
+        { action: { $in: ['SEND_SMS', 'SEND_EMAIL'] }, utilisateur: req.user._id },
+      ],
+    }).sort('-createdAt').limit(50).populate('utilisateur', 'nom prenom').lean();
+
+    const journal = entries.map(e => ({
+      icone: ICONS[e.action] || '📋',
+      action: LABELS[e.action] || e.action,
+      utilisateur: e.utilisateur ? `${e.utilisateur.prenom || ''} ${e.utilisateur.nom || ''}`.trim() : 'Utilisateur',
+      detail: e.message,
+      date: e.createdAt,
+      statut: e.statut,
+    }));
+
+    res.json({
+      success: true,
+      kpis: { messages_envoyes, messages_recus, conversations_actives: convs.length },
+      par_service,
+      journal,
+    });
   } catch (err) { next(err); }
 };

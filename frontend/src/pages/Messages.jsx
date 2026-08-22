@@ -454,6 +454,28 @@ export default function Messagerie() {
   const [shareRecordsLoading, setShareRecordsLoading] = useState(false);
   const [shareSending, setShareSending]     = useState(false);
 
+  // Email patient (Phase D)
+  const [emailOpen, setEmailOpen]         = useState(false);
+  const [emailStep, setEmailStep]         = useState("patient");
+  const [emailQuery, setEmailQuery]       = useState("");
+  const [emailPatients, setEmailPatients] = useState([]);
+  const [emailPatient, setEmailPatient]   = useState(null);
+  const [emailSujet, setEmailSujet]       = useState("");
+  const [emailBody, setEmailBody]         = useState("");
+  const [emailSending, setEmailSending]   = useState(false);
+
+  // WhatsApp patient (Phase D) — même sélecteur, envoi = ouverture wa.me
+  // (aucun backend, comme Finance.jsx)
+  const [waOpen, setWaOpen]         = useState(false);
+  const [waStep, setWaStep]         = useState("patient");
+  const [waQuery, setWaQuery]       = useState("");
+  const [waPatients, setWaPatients] = useState([]);
+  const [waPatient, setWaPatient]   = useState(null);
+  const [waBody, setWaBody]         = useState("");
+
+  // Historique & Audit (Phase D)
+  const [histData, setHistData]       = useState(null);
+  const [histLoading, setHistLoading] = useState(false);
   const bottomRef     = useRef(null);
   const textRef       = useRef(null);
   const fileInputRef  = useRef(null);
@@ -929,6 +951,106 @@ export default function Messagerie() {
       setShareRecords([]);
     }
     setShareRecordsLoading(false);
+  };
+
+  // ── Email patient (Phase D) ────────────────────────────────
+  const openEmail = () => {
+    setEmailOpen(true);
+    setEmailStep("patient");
+    setEmailQuery("");
+    setEmailPatients([]);
+    setEmailPatient(null);
+    setEmailSujet("");
+    setEmailBody("");
+  };
+  const closeEmail = () => setEmailOpen(false);
+
+  useEffect(() => {
+    if (!emailOpen || emailStep !== "patient" || emailQuery.trim().length < 2) { setEmailPatients([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(emailQuery.trim())}`);
+        setEmailPatients(data.patients || []);
+      } catch { setEmailPatients([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [emailQuery, emailOpen, emailStep]);
+
+  const pickEmailPatient = (p) => { setEmailPatient(p); setEmailStep("compose"); };
+
+  const confirmSendEmail = async () => {
+    if (!emailPatient || !emailSujet.trim() || !emailBody.trim()) return;
+    setEmailSending(true);
+    try {
+      const { data } = await api.post("/messages/patient-email", { patient: emailPatient._id, sujet: emailSujet.trim(), contenu: emailBody.trim() });
+      toast.success(data.simulated ? "📧 Email simulé (SMTP non configuré en environnement local)" : "📧 Email envoyé");
+      closeEmail();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Échec de l'envoi de l'email.");
+    }
+    setEmailSending(false);
+  };
+
+  // ── WhatsApp patient (Phase D) — pattern wa.me de Finance.jsx ──
+  const openWhatsapp = () => {
+    setWaOpen(true);
+    setWaStep("patient");
+    setWaQuery("");
+    setWaPatients([]);
+    setWaPatient(null);
+    setWaBody("");
+  };
+  const closeWhatsapp = () => setWaOpen(false);
+
+  useEffect(() => {
+    if (!waOpen || waStep !== "patient" || waQuery.trim().length < 2) { setWaPatients([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(waQuery.trim())}`);
+        setWaPatients(data.patients || []);
+      } catch { setWaPatients([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [waQuery, waOpen, waStep]);
+
+  const pickWaPatient = (p) => { setWaPatient(p); setWaStep("compose"); };
+
+  const confirmSendWhatsapp = () => {
+    if (!waPatient || !waBody.trim()) return;
+    const digits = (waPatient.telephone || "").replace(/\D/g, "");
+    const url = digits
+      ? `https://wa.me/${digits}?text=${encodeURIComponent(waBody.trim())}`
+      : `https://wa.me/?text=${encodeURIComponent(waBody.trim())}`;
+    window.open(url, "_blank");
+    closeWhatsapp();
+  };
+
+  // ── Historique & Audit (Phase D) ───────────────────────────
+  const loadHistorique = useCallback(async () => {
+    setHistLoading(true);
+    try {
+      const { data } = await api.get("/messages/historique");
+      setHistData(data);
+    } catch {
+      toast.error("Impossible de charger l'historique.");
+      setHistData(null);
+    }
+    setHistLoading(false);
+  }, []);
+
+  useEffect(() => { if (tab === "historique") loadHistorique(); }, [tab, loadHistorique]);
+
+  const exportHistoriquePDF = () => {
+    if (!histData) return;
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    pdfHeader(doc, "Journal d'audit messagerie");
+    autoTable(doc, {
+      startY: 32, margin: { left: 14, right: 14 },
+      head: [["Date", "Action", "Utilisateur", "Détail", "Statut"]],
+      body: histData.journal.map(j => [fmtFull(j.date), j.action, j.utilisateur, j.detail || "—", j.statut === "echec" ? "Échec" : "Succès"]),
+      theme: "grid", headStyles: { fillColor: [11, 30, 59] }, styles: { fontSize: 8 },
+    });
+    doc.save(`historique-messagerie-${new Date().toISOString().split("T")[0]}.pdf`);
   };
 
   const pdfHeader = (doc, title) => {
@@ -1749,25 +1871,44 @@ export default function Messagerie() {
           <div style={{ padding:24 }}>
             <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)", marginBottom:20 }}>Communication avec les patients</div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))", gap:20, marginBottom:24 }}>
-              {[
-                { icon:"📱", titre:"SMS", desc:"Envoi de SMS groupés ou individuels", couleur:"#059669", nb:128 },
-                { icon:"📧", titre:"E-mail", desc:"Emails automatiques et personnalisés", couleur:"#1B4F9E", nb:84 },
-                { icon:"💬", titre:"WhatsApp", desc:"Intégration WhatsApp Business API", couleur:"#25D366", nb:52 },
-              ].map(c => (
-                <div key={c.titre} className="adm-card" style={{ borderTop:`3px solid ${c.couleur}` }}>
-                  <div style={{ padding:20 }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-                      <div style={{ fontSize:28 }}>{c.icon}</div>
-                      <span className="cbdg green">{c.nb} envoyés</span>
-                    </div>
-                    <div style={{ fontWeight:700, fontSize:15, color:"var(--cn)", marginBottom:4 }}>{c.titre}</div>
-                    <div style={{ fontSize:12, color:"var(--cm)", marginBottom:14 }}>{c.desc}</div>
-                    <button className="cbtn cbtn-teal cbtn-sm" style={{ width:"100%" }} onClick={() => toast.success(`${c.icon} Envoi via ${c.titre}...`)}>
-                      Envoyer via {c.titre}
-                    </button>
+              <div className="adm-card" style={{ borderTop:"3px solid #059669" }}>
+                <div style={{ padding:20 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                    <div style={{ fontSize:28 }}>📱</div>
+                    <span className="cbdg green">128 envoyés</span>
                   </div>
+                  <div style={{ fontWeight:700, fontSize:15, color:"var(--cn)", marginBottom:4 }}>SMS</div>
+                  <div style={{ fontSize:12, color:"var(--cm)", marginBottom:14 }}>Envoi de SMS groupés ou individuels</div>
+                  <button className="cbtn cbtn-teal cbtn-sm" style={{ width:"100%" }} onClick={() => toast.success("📱 Envoi via SMS...")}>
+                    Envoyer via SMS
+                  </button>
                 </div>
-              ))}
+              </div>
+              {/* AUDIT-MESSAGES-PhaseD — Email : sélecteur de patient Phase C
+                  + utils/mail.js::sendEmail réel. WhatsApp : réutilise tel
+                  quel le pattern wa.me de Finance.jsx (lien pré-rempli
+                  ouvert dans un nouvel onglet, aucun backend — même limite
+                  que Finance.jsx : pas de confirmation d'envoi possible). */}
+              <div className="adm-card" style={{ borderTop:"3px solid #1B4F9E" }}>
+                <div style={{ padding:20 }}>
+                  <div style={{ fontSize:28, marginBottom:12 }}>📧</div>
+                  <div style={{ fontWeight:700, fontSize:15, color:"var(--cn)", marginBottom:4 }}>E-mail</div>
+                  <div style={{ fontSize:12, color:"var(--cm)", marginBottom:14 }}>Email personnalisé à un patient</div>
+                  <button className="cbtn cbtn-teal cbtn-sm" style={{ width:"100%" }} onClick={() => openEmail()}>
+                    Envoyer via E-mail
+                  </button>
+                </div>
+              </div>
+              <div className="adm-card" style={{ borderTop:"3px solid #25D366" }}>
+                <div style={{ padding:20 }}>
+                  <div style={{ fontSize:28, marginBottom:12 }}>💬</div>
+                  <div style={{ fontWeight:700, fontSize:15, color:"var(--cn)", marginBottom:4 }}>WhatsApp</div>
+                  <div style={{ fontSize:12, color:"var(--cm)", marginBottom:14 }}>Ouvre une discussion WhatsApp pré-remplie</div>
+                  <button className="cbtn cbtn-teal cbtn-sm" style={{ width:"100%" }} onClick={() => openWhatsapp()}>
+                    Envoyer via WhatsApp
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="adm-card">
               <div className="adm-card-hdr"><h3>📤 Templates de communication</h3></div>
@@ -1795,73 +1936,88 @@ export default function Messagerie() {
         )}
 
         {/* ══ HISTORIQUE ══ */}
+        {/* AUDIT-MESSAGES-PhaseD — branché sur GET /messages/historique
+            (propre au module, pas /audit qui est réservé superadmin — même
+            RBAC déjà rencontré et corrigé en Phase A pour l'annuaire).
+            KPIs, répartition par service et journal viennent tous d'une
+            vraie agrégation sur les conversations de l'utilisateur courant
+            et de vraies entrées AuditLog ; plus aucune valeur fabriquée. */}
         {tab === "historique" && (
           <div style={{ padding:24 }}>
-            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
-              {/* Statistiques */}
-              <div className="adm-card fu">
-                <div className="adm-card-hdr"><h3>📊 Statistiques de communication</h3></div>
-                <div style={{ padding:20 }}>
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12, marginBottom:16 }}>
-                    {[
-                      { lbl:"Messages envoyés", val:"1 284", col:"#1B4F9E" },
-                      { lbl:"Messages reçus",   val:"1 102", col:"#0EA5A0" },
-                      { lbl:"Groupes actifs",   val:groupConvs.length, col:"#7C3AED" },
-                      { lbl:"Taux de réponse",  val:"94%",  col:"#059669" },
-                    ].map(k => (
-                      <div key={k.lbl} style={{ background:"#F8FAFD", border:"1.5px solid var(--cbr)", borderRadius:12, padding:14, textAlign:"center" }}>
-                        <div style={{ fontSize:22, fontWeight:800, color:k.col }}>{k.val}</div>
-                        <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{k.lbl}</div>
+            {histLoading && (
+              <div style={{ textAlign:"center", padding:40, color:"var(--cm)" }}>Chargement...</div>
+            )}
+            {!histLoading && !histData && (
+              <div style={{ textAlign:"center", padding:40 }}>
+                <div style={{ color:"var(--cm)", marginBottom:12 }}>Impossible de charger l'historique.</div>
+                <button className="cbtn cbtn-ghost cbtn-sm" onClick={loadHistorique}>Réessayer</button>
+              </div>
+            )}
+            {!histLoading && histData && (
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+                {/* Statistiques */}
+                <div className="adm-card fu">
+                  <div className="adm-card-hdr"><h3>📊 Mon activité de messagerie</h3></div>
+                  <div style={{ padding:20 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12, marginBottom:16 }}>
+                      {[
+                        { lbl:"Messages envoyés",     val:histData.kpis.messages_envoyes, col:"#1B4F9E" },
+                        { lbl:"Messages reçus",       val:histData.kpis.messages_recus,   col:"#0EA5A0" },
+                        { lbl:"Groupes actifs",       val:groupConvs.length,               col:"#7C3AED" },
+                        { lbl:"Conversations actives",val:histData.kpis.conversations_actives, col:"#059669" },
+                      ].map(k => (
+                        <div key={k.lbl} style={{ background:"#F8FAFD", border:"1.5px solid var(--cbr)", borderRadius:12, padding:14, textAlign:"center" }}>
+                          <div style={{ fontSize:22, fontWeight:800, color:k.col }}>{k.val}</div>
+                          <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{k.lbl}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>Messages reçus par service</div>
+                    {histData.par_service.length === 0 && (
+                      <div style={{ fontSize:12, color:"var(--cm)" }}>Aucun message reçu pour l'instant.</div>
+                    )}
+                    {(() => {
+                      const max = Math.max(1, ...histData.par_service.map(s => s.count));
+                      const cols = ["#1B4F9E", "#7C3AED", "#0EA5A0", "#059669", "#D97706", "#DC2626"];
+                      return histData.par_service.map((s, i) => (
+                        <div key={s.service} style={{ marginBottom:8 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
+                            <span style={{ color:"var(--cm)" }}>{s.service}</span>
+                            <span style={{ fontWeight:700, color:"var(--cn)" }}>{s.count}</span>
+                          </div>
+                          <div style={{ background:"#EEF4FF", borderRadius:99, height:6, overflow:"hidden" }}>
+                            <div style={{ width:`${Math.round(s.count / max * 100)}%`, height:"100%", background:cols[i % cols.length], borderRadius:99 }} />
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+
+                {/* Audit */}
+                <div className="adm-card fu">
+                  <div className="adm-card-hdr">
+                    <h3>🔍 Journal d'audit messagerie</h3>
+                    <button className="cbtn cbtn-ghost cbtn-sm" onClick={exportHistoriquePDF} disabled={histData.journal.length === 0}>Export</button>
+                  </div>
+                  <div style={{ padding:"8px 0" }}>
+                    {histData.journal.map((a, i, arr) => (
+                      <div key={i} style={{ display:"flex", gap:12, padding:"12px 20px", borderBottom: i < arr.length - 1 ? "1px solid #F3F7FF" : "" }}>
+                        <div style={{ width:32, height:32, borderRadius:8, background: a.statut === "echec" ? "#FEF2F2" : "#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:15 }}>{a.icone}</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontWeight:600, fontSize:12, color:"var(--cn)" }}>{a.action}{a.statut === "echec" && <span style={{ color:"#DC2626" }}> · Échec</span>}</div>
+                          <div style={{ fontSize:11, color:"var(--cm)" }}>{a.utilisateur} · {a.detail || "—"}</div>
+                        </div>
+                        <div style={{ fontSize:10, color:"#9CA3AF", whiteSpace:"nowrap" }}>{fmtFull(a.date)}</div>
                       </div>
                     ))}
+                    {histData.journal.length === 0 && (
+                      <div style={{ padding:24, textAlign:"center", color:"var(--cm)", fontSize:12 }}>Aucune action de messagerie tracée pour l'instant.</div>
+                    )}
                   </div>
-                  <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>Activité par service</div>
-                  {[
-                    ["Médecins",       320, "#1B4F9E"],
-                    ["Administration", 245, "#7C3AED"],
-                    ["Infirmiers",     198, "#0EA5A0"],
-                    ["Pharmacie",      142, "#059669"],
-                    ["Laboratoire",    98,  "#D97706"],
-                  ].map(([lbl, val, col]) => (
-                    <div key={lbl} style={{ marginBottom:8 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
-                        <span style={{ color:"var(--cm)" }}>{lbl}</span>
-                        <span style={{ fontWeight:700, color:"var(--cn)" }}>{val}</span>
-                      </div>
-                      <div style={{ background:"#EEF4FF", borderRadius:99, height:6, overflow:"hidden" }}>
-                        <div style={{ width:`${Math.round(val/320*100)}%`, height:"100%", background:col, borderRadius:99 }} />
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
-
-              {/* Audit */}
-              <div className="adm-card fu">
-                <div className="adm-card-hdr">
-                  <h3>🔍 Journal d'audit messagerie</h3>
-                  <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => toast.success("📥 Export en cours...")}>Export</button>
-                </div>
-                <div style={{ padding:"8px 0" }}>
-                  {[
-                    { ic:"📤", act:"Message envoyé",       user:"Dr. Sophie Martin",  det:"Message à Dr. Leblanc",               d:"2025-06-01T10:30:00" },
-                    { ic:"👁️", act:"Message lu",           user:"Alain Koumba",       det:"Conversation Médecins",               d:"2025-06-01T10:15:00" },
-                    { ic:"📎", act:"Document partagé",      user:"Paul Obiang",        det:"Résultat NFS — Patient Dupont",       d:"2025-06-01T09:45:00" },
-                    { ic:"🗑️", act:"Message supprimé",      user:"Marie Nzigou",       det:"Message de la conv. Urgences",        d:"2025-05-31T22:30:00" },
-                    { ic:"👥", act:"Groupe créé",           user:"Alain Koumba",       det:"Groupe 'Bloc Opératoire' (5 membres)",d:"2025-05-31T14:00:00" },
-                  ].map((a, i) => (
-                    <div key={i} style={{ display:"flex", gap:12, padding:"12px 20px", borderBottom: i < 4 ? "1px solid #F3F7FF" : "" }}>
-                      <div style={{ width:32, height:32, borderRadius:8, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:15 }}>{a.ic}</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:600, fontSize:12, color:"var(--cn)" }}>{a.act}</div>
-                        <div style={{ fontSize:11, color:"var(--cm)" }}>{a.user} · {a.det}</div>
-                      </div>
-                      <div style={{ fontSize:10, color:"#9CA3AF", whiteSpace:"nowrap" }}>{fmtFull(a.d)}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -2027,6 +2183,86 @@ export default function Messagerie() {
               )}
             </div>
           )}
+        </Modal>
+
+        {/* ═══ MODAL : EMAIL PATIENT (Communication patients) ═══ */}
+        <Modal open={emailOpen} onClose={closeEmail} title={<>📧 Envoyer un email</>} maxWidth={460}>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {emailStep === "patient" && (
+              <>
+                <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={emailQuery} onChange={e => setEmailQuery(e.target.value)} />
+                <div style={{ maxHeight:320, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
+                  {emailQuery.trim().length >= 2 && emailPatients.length === 0 && (
+                    <div style={{ textAlign:"center", padding:16, color:"var(--cm)", fontSize:12 }}>Aucun patient trouvé.</div>
+                  )}
+                  {emailPatients.map(p => (
+                    <div key={p._id} className="msg-conv-item" style={{ borderRadius:10, cursor: p.email ? "pointer" : "not-allowed", opacity: p.email ? 1 : .5 }} onClick={() => p.email && pickEmailPatient(p)}>
+                      <div style={{ width:34, height:34, borderRadius:9, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+                      <div style={{ minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{p.prenom} {p.nom}</div>
+                        <div style={{ fontSize:11, color:"var(--cm)" }}>{p.email || "Aucune adresse email enregistrée"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {emailStep === "compose" && (
+              <>
+                <div style={{ fontSize:12, color:"var(--cm)" }}>
+                  Destinataire : <strong style={{ color:"var(--cn)" }}>{emailPatient?.prenom} {emailPatient?.nom}</strong> · {emailPatient?.email}
+                </div>
+                <input className="cinp" placeholder="Objet" value={emailSujet} onChange={e => setEmailSujet(e.target.value)} />
+                <textarea className="cinp" rows={5} placeholder="Votre message..." value={emailBody} onChange={e => setEmailBody(e.target.value)} />
+                <div style={{ display:"flex", gap:10 }}>
+                  <button type="button" className="cbtn cbtn-ghost" onClick={() => setEmailStep("patient")} disabled={emailSending}>← Retour</button>
+                  <button type="button" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} onClick={confirmSendEmail} disabled={emailSending || !emailSujet.trim() || !emailBody.trim()}>
+                    {emailSending ? "Envoi..." : "📧 Envoyer"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
+
+        {/* ═══ MODAL : WHATSAPP PATIENT (Communication patients) ═══ */}
+        <Modal open={waOpen} onClose={closeWhatsapp} title={<>💬 Envoyer via WhatsApp</>} maxWidth={440}>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {waStep === "patient" && (
+              <>
+                <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={waQuery} onChange={e => setWaQuery(e.target.value)} />
+                <div style={{ maxHeight:320, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
+                  {waQuery.trim().length >= 2 && waPatients.length === 0 && (
+                    <div style={{ textAlign:"center", padding:16, color:"var(--cm)", fontSize:12 }}>Aucun patient trouvé.</div>
+                  )}
+                  {waPatients.map(p => (
+                    <div key={p._id} className="msg-conv-item" style={{ borderRadius:10, cursor: p.telephone ? "pointer" : "not-allowed", opacity: p.telephone ? 1 : .5 }} onClick={() => p.telephone && pickWaPatient(p)}>
+                      <div style={{ width:34, height:34, borderRadius:9, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+                      <div style={{ minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{p.prenom} {p.nom}</div>
+                        <div style={{ fontSize:11, color:"var(--cm)" }}>{p.telephone || "Aucun numéro enregistré"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {waStep === "compose" && (
+              <>
+                <div style={{ fontSize:12, color:"var(--cm)" }}>
+                  Destinataire : <strong style={{ color:"var(--cn)" }}>{waPatient?.prenom} {waPatient?.nom}</strong> · {waPatient?.telephone}
+                </div>
+                <textarea className="cinp" rows={4} placeholder="Votre message..." value={waBody} onChange={e => setWaBody(e.target.value)} />
+                <div style={{ fontSize:11, color:"var(--cm)" }}>Ouvre WhatsApp dans un nouvel onglet avec ce message pré-rempli — l'envoi se termine dans WhatsApp.</div>
+                <div style={{ display:"flex", gap:10 }}>
+                  <button type="button" className="cbtn cbtn-ghost" onClick={() => setWaStep("patient")}>← Retour</button>
+                  <button type="button" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} onClick={confirmSendWhatsapp} disabled={!waBody.trim()}>
+                    💬 Ouvrir WhatsApp
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </Modal>
 
       </div>

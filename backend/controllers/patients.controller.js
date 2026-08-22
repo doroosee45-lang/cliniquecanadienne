@@ -458,7 +458,7 @@ exports.search = async (req, res, next) => {
         { numero_dossier: { $regex: escaped, $options: 'i' } },
         { telephone:      { $regex: escaped, $options: 'i' } },
       ],
-    }).limit(10).select('nom prenom numero_dossier telephone date_naissance actif');
+    }).limit(10).select('nom prenom numero_dossier telephone email date_naissance actif');
     res.json({ success: true, patients });
   } catch (err) { next(err); }
 };
