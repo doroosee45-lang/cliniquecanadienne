@@ -18,6 +18,7 @@ import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import * as XLSX from 'xlsx';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
+import { printReceipt58mm } from '../utils/receipt58mm';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -209,231 +210,34 @@ const normalizeFacture = (f) => {
   };
 };
 
-// ── Impression HTML dans une nouvelle fenêtre ────────────────
-const printInvoice = (f) => {
-  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
-  const statutLabel = f.statut === 'paye' ? '✓ Payée' : f.statut === 'partiellement_paye' ? '⚠ Part. payée' : '✗ Non payée';
-  const statutCls   = f.statut === 'paye' ? 'paye' : f.statut === 'partiellement_paye' ? 'partial' : 'non_paye';
-  const win = window.open('', '_blank', 'width=820,height=1000');
-  if (!win) { window.print(); return; }
-  win.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
-<title>Facture ${f.numero} — ${clinicFull}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif}
-body{background:#f5f7fa;padding:0;font-size:10pt;color:#1a1a2e}
-.page{max-width:760px;margin:0 auto;background:#fff;box-shadow:0 2px 20px rgba(0,0,0,.08)}
-/* Bandeau header */
-.inv-header{background:linear-gradient(135deg,#0B1E3B 0%,#1B4F9E 100%);padding:28px 36px;display:flex;justify-content:space-between;align-items:flex-start}
-.clinic-name{font-size:17pt;font-weight:800;color:#fff;letter-spacing:-.3px}
-.clinic-sub{font-size:8pt;color:rgba(255,255,255,.6);margin-top:5px;line-height:1.6}
-.inv-title-box{text-align:right}
-.inv-title-box h1{font-size:26pt;font-weight:800;color:#0EA5A0;letter-spacing:-1px;line-height:1}
-.inv-num{font-size:10pt;color:rgba(255,255,255,.7);margin-top:4px;font-family:monospace;font-weight:700}
-.badge{display:inline-block;padding:4px 14px;border-radius:99px;font-size:8.5pt;font-weight:700;margin-top:8px}
-.paye{background:#DCFCE7;color:#15803D}.non_paye{background:#FEE2E2;color:#DC2626}.partial{background:#FEF3C7;color:#D97706}
-/* Corps */
-.body{padding:32px 36px}
-/* Grid infos */
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px}
-.info-box{background:#F8FAFD;border:1px solid #E2EAF4;border-radius:10px;padding:14px 16px}
-.info-box-lbl{font-size:7.5pt;text-transform:uppercase;letter-spacing:1px;color:#6B7A99;font-weight:700;margin-bottom:6px}
-.info-box-val{font-size:12pt;font-weight:700;color:#0B1E3B}
-.info-box-sub{font-size:8.5pt;color:#6B7A99;margin-top:3px}
-/* Tableau */
-table{width:100%;border-collapse:collapse;margin-bottom:24px}
-thead tr{background:#0B1E3B}
-th{padding:10px 12px;text-align:left;font-size:8pt;text-transform:uppercase;letter-spacing:.6px;color:#fff;font-weight:700}
-td{padding:12px;border-bottom:1px solid #EEF4FF;font-size:9.5pt;color:#1a1a2e}
-tbody tr:last-child td{border-bottom:none}
-tbody tr:hover{background:#F8FAFD}
-.ar{text-align:right;font-weight:700}
-/* Totaux */
-.totals-wrap{display:flex;justify-content:flex-end;margin-bottom:28px}
-.totals-box{min-width:280px;border:1.5px solid #E2EAF4;border-radius:12px;overflow:hidden}
-.t-row{display:flex;justify-content:space-between;padding:9px 16px;border-bottom:1px solid #EEF4FF;font-size:9.5pt;color:#6B7A99}
-.t-row.total{background:#0B1E3B;color:#fff;font-size:12pt;font-weight:800;border-bottom:none}
-/* Paiement */
-.pay-note{background:#F0FDFC;border:1.5px solid #0EA5A030;border-left:4px solid #0EA5A0;border-radius:10px;padding:12px 16px;margin-bottom:24px;font-size:9pt;color:#0D9490}
-/* Footer */
-.inv-footer{background:#F8FAFD;border-top:2px solid #E2EAF4;padding:16px 36px;text-align:center;font-size:8pt;color:#9CA3AF;line-height:1.6}
-@media print{body{background:#fff}.page{box-shadow:none}button{display:none}}
-</style></head><body>
-<div class="page">
-  <div class="inv-header">
-    <div>
-      <div class="clinic-name">🏥 ${clinicFull}</div>
-      <div class="clinic-sub">BP 123, Souanké, Sangha-Mbaéré, Congo<br>Tél : +236 XX XX XX XX &nbsp;·&nbsp; Email : clinique@souanke.cg</div>
-    </div>
-    <div class="inv-title-box">
-      <h1>FACTURE</h1>
-      <div class="inv-num">${f.numero}</div>
-      <div><span class="badge ${statutCls}">${statutLabel}</span></div>
-    </div>
-  </div>
-
-  <div class="body">
-    <div class="info-grid">
-      <div class="info-box">
-        <div class="info-box-lbl">Facturé à</div>
-        <div class="info-box-val">👤 ${f.patient || 'N/A'}</div>
-        <div class="info-box-sub">Patient — ${clinicFull}</div>
-      </div>
-      <div class="info-box">
-        <div class="info-box-lbl">Informations facture</div>
-        <div class="info-box-val" style="font-family:monospace;font-size:11pt">${f.numero}</div>
-        <div class="info-box-sub">Émise le ${fmtDate(f.date)}</div>
-        <div class="info-box-sub">Échéance : <strong style="color:${f.echeance && new Date(f.echeance)<new Date()&&f.statut!=='paye'?'#DC2626':'inherit'}">${fmtDate(f.echeance) || '—'}</strong></div>
-      </div>
-    </div>
-
-    <table>
-      <thead><tr><th>Prestation / Service</th><th>Quantité</th><th>P.U.</th><th class="ar">Montant</th></tr></thead>
-      <tbody>
-        <tr><td>${f.service || 'Prestation médicale'}</td><td>1</td><td>${fmtMontant(f.montant)}</td><td class="ar">${fmtMontant(f.montant)}</td></tr>
-      </tbody>
-    </table>
-
-    <div class="totals-wrap">
-      <div class="totals-box">
-        <div class="t-row"><span>Sous-total HT</span><span>${fmtMontant(f.montant)}</span></div>
-        <div class="t-row"><span>Taxes (0%)</span><span>0 CFA</span></div>
-        <div class="t-row total"><span>TOTAL TTC</span><span>${fmtMontant(f.montant)}</span></div>
-      </div>
-    </div>
-
-    ${f.statut !== 'paye' ? `<div class="pay-note">
-      💳 <strong>Mode de règlement acceptés :</strong> Espèces · Mobile Money · Virement bancaire · Assurance maladie<br>
-      Merci de régler avant le <strong>${fmtDate(f.echeance) || 'la date d\'échéance'}</strong>. En cas de question, contactez le service comptabilité.
-    </div>` : `<div class="pay-note" style="background:#ECFDF5;border-color:#059669;border-left-color:#059669;color:#065F46">
-      ✅ <strong>Cette facture a été entièrement réglée.</strong> Merci pour votre confiance.
-    </div>`}
-  </div>
-
-  <div class="inv-footer">
-    <strong>${clinicFull}</strong> — Souanké, Sangha-Mbaéré, République du Congo<br>
-    Document officiel généré automatiquement · Toute question : comptabilite@${CLINIC_NAME.toLowerCase().replace(/\s/g,'')}.cg
-  </div>
-</div>
-<script>window.onload=()=>{window.print()}</script>
-</body></html>`);
-  win.document.close();
-};
-
-// ── Téléchargement PDF via jsPDF ─────────────────────────────
-const downloadInvoicePDF = (f) => {
-  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-  const W = doc.internal.pageSize.getWidth();
-  const H = doc.internal.pageSize.getHeight();
-  const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
-  const dateStr = new Date().toLocaleDateString('fr-FR');
-
-  // ── Bandeau header navy ──
-  doc.setFillColor(11,30,59);
-  doc.rect(0,0,W,38,'F');
-  doc.setFillColor(14,165,160);
-  doc.rect(0,38,W,2,'F');
-
-  // Nom clinique
-  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(255,255,255);
-  doc.text(`🏥 ${clinicFull}`, 14, 14);
-  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(180,200,230);
-  doc.text('BP 123, Souanké, Sangha-Mbaéré, Congo  ·  clinique@souanke.cg', 14, 22);
-  doc.text(`Tél : +236 XX XX XX XX`, 14, 29);
-
-  // FACTURE titre + numéro (droite)
-  doc.setFont('helvetica','bold'); doc.setFontSize(22); doc.setTextColor(14,165,160);
-  doc.text('FACTURE', W-14, 16, { align:'right' });
-  doc.setFontSize(9); doc.setTextColor(200,220,255); doc.setFont('helvetica','normal');
-  doc.text(f.numero, W-14, 24, { align:'right' });
-  doc.text(dateStr, W-14, 31, { align:'right' });
-
-  // ── Statut badge ──
-  const statusColor = f.statut==='paye' ? [5,150,105] : f.statut==='partiellement_paye' ? [217,119,6] : [220,38,38];
-  const statusLabel = f.statut==='paye' ? 'PAYÉE' : f.statut==='partiellement_paye' ? 'PART. PAYÉE' : 'NON PAYÉE';
-  doc.setFillColor(...statusColor);
-  doc.roundedRect(14,46,36,8,2,2,'F');
-  doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255);
-  doc.text(statusLabel, 32, 51.5, { align:'center' });
-
-  // ── Blocs info ──
-  doc.setDrawColor(226,234,244); doc.setLineWidth(0.3);
-  // Bloc patient
-  doc.setFillColor(248,250,253); doc.roundedRect(14,58,85,28,3,3,'F');
-  doc.rect(14,58,85,28,'S');
-  doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(107,122,153);
-  doc.text('FACTURÉ À', 18, 65);
-  doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(11,30,59);
-  doc.text(f.patient || 'N/A', 18, 73);
-  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(107,122,153);
-  doc.text(`Patient — ${clinicFull}`, 18, 80);
-  // Bloc détails
-  doc.setFillColor(248,250,253); doc.roundedRect(105,58,91,28,3,3,'F');
-  doc.rect(105,58,91,28,'S');
-  doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(107,122,153);
-  doc.text('DÉTAILS FACTURE', 109, 65);
-  doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(11,30,59);
-  doc.text(`N° ${f.numero}`, 109, 72);
-  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(107,122,153);
-  doc.text(`Émise le : ${fmtDate(f.date)}`, 109, 79);
-  doc.text(`Échéance : ${fmtDate(f.echeance) || '—'}`, 109, 84.5);
-
-  // ── Tableau prestations ──
-  autoTable(doc, {
-    startY: 95,
-    margin: { left:14, right:14 },
-    head:[['Prestation / Service','Quantité','Prix unitaire','Montant TTC']],
-    body:[[ f.service || 'Prestation médicale', '1', fmtMontant(f.montant), fmtMontant(f.montant) ]],
-    headStyles:{ fillColor:[11,30,59], textColor:255, fontStyle:'bold', fontSize:9, halign:'left' },
-    bodyStyles:{ fontSize:10, textColor:[30,30,50], cellPadding:5 },
-    columnStyles:{ 0:{cellWidth:85}, 1:{halign:'center',cellWidth:20}, 2:{halign:'right',cellWidth:40}, 3:{halign:'right',cellWidth:40,fontStyle:'bold'} },
-    alternateRowStyles:{ fillColor:[248,250,253] },
+// AUDIT-RECU-58MM — printInvoice() (popup HTML A4) et downloadInvoicePDF()
+// (jsPDF A4) étaient deux implémentations indépendantes du même document,
+// avec des designs différents, ni l'une ni l'autre au format imprimante
+// thermique. Unifiées en une seule fonction utilisant le gabarit commun
+// (frontend/src/utils/receipt58mm.js) : le bouton "Télécharger PDF" a été
+// retiré (redondant — "Enregistrer en PDF" reste possible depuis la boîte
+// de dialogue d'impression du navigateur).
+const printInvoice58mm = (f) => {
+  const statutLabel = f.statut === 'paye' ? 'Payée' : f.statut === 'partiellement_paye' ? 'Partiellement payée' : 'Non payée';
+  printReceipt58mm({
+    docType: 'FACTURE',
+    docNumber: f.numero,
+    date: fmtDate(f.date),
+    billedTo: { label: 'Facturé à', name: f.patient || 'N/A' },
+    meta: [
+      { label: 'Statut', value: statutLabel },
+      { label: 'Échéance', value: fmtDate(f.echeance) },
+    ],
+    lines: [{ label: f.service || 'Prestation médicale', qty: 1, unitPrice: f.montant, amount: f.montant }],
+    totals: [
+      { label: 'Sous-total HT', value: f.montant },
+      { label: 'Taxes (0%)', value: 0 },
+      { label: 'TOTAL TTC', value: f.montant, emphasis: true },
+    ],
+    note: f.statut === 'paye'
+      ? 'Facture réglée intégralement.'
+      : `À régler avant le ${fmtDate(f.echeance) || "la date d'échéance"}.`,
   });
-
-  const endY = doc.lastAutoTable.finalY;
-
-  // ── Totaux ──
-  doc.setFillColor(248,250,253); doc.rect(W-86,endY+6,72,24,'F');
-  doc.setDrawColor(226,234,244); doc.rect(W-86,endY+6,72,24,'S');
-  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(107,122,153);
-  doc.text('Sous-total HT :', W-82, endY+14);
-  doc.text('Taxes (0%) :', W-82, endY+20);
-  doc.setFontSize(8.5); doc.setFont('helvetica','bold'); doc.setTextColor(11,30,59);
-  doc.text(fmtMontant(f.montant), W-16, endY+14, { align:'right' });
-  doc.text('0 CFA', W-16, endY+20, { align:'right' });
-
-  // Ligne totale colorée
-  doc.setFillColor(11,30,59); doc.rect(W-86,endY+30,72,12,'F');
-  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255);
-  doc.text('TOTAL TTC', W-82, endY+38);
-  doc.setTextColor(14,165,160);
-  doc.text(fmtMontant(f.montant), W-16, endY+38, { align:'right' });
-
-  // ── Note paiement ──
-  const noteY = endY + 50;
-  if (f.statut !== 'paye') {
-    doc.setFillColor(240,253,252); doc.roundedRect(14,noteY,W-28,14,3,3,'F');
-    doc.setDrawColor(14,165,160); doc.setLineWidth(0.5); doc.line(14,noteY,14,noteY+14);
-    doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(13,148,136);
-    doc.text('Règlement accepté : Espèces · Mobile Money · Virement · Assurance', 18, noteY+6);
-    doc.text(`Merci de régler avant le ${fmtDate(f.echeance) || "la date d'échéance"}.`, 18, noteY+11);
-  } else {
-    doc.setFillColor(236,253,245); doc.roundedRect(14,noteY,W-28,12,3,3,'F');
-    doc.setDrawColor(5,150,105); doc.setLineWidth(0.5); doc.line(14,noteY,14,noteY+12);
-    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
-    doc.text('✓  Facture entièrement réglée — Merci pour votre confiance.', 18, noteY+7.5);
-  }
-
-  // ── Footer ──
-  doc.setFillColor(248,250,253);
-  doc.rect(0,H-18,W,18,'F');
-  doc.setFontSize(7.5); doc.setFont('helvetica','normal'); doc.setTextColor(150,150,160);
-  doc.text(`${clinicFull} — Souanké, Sangha-Mbaéré, République du Congo`, W/2, H-10, { align:'center' });
-  doc.text('Document officiel · Usage interne et comptable', W/2, H-5, { align:'center' });
-  doc.setTextColor(107,122,153);
-  doc.text(dateStr, 14, H-10);
-  doc.text(`Page 1/1`, W-14, H-10, { align:'right' });
-
-  doc.save(`facture-${f.numero}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
 const shareWhatsApp = (f) => {
@@ -1636,8 +1440,7 @@ export default function Finance() {
                                     {I.check} Payer
                                   </button>
                                 )}
-                                <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} title="Imprimer" onClick={() => printInvoice(f)}>{I.print}</button>
-                                <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} title="Télécharger PDF" onClick={() => downloadInvoicePDF(f)}>📥</button>
+                                <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} title="Imprimer" onClick={() => printInvoice58mm(f)}>{I.print}</button>
                               </div>
                             </td>
                           </tr>
@@ -2381,11 +2184,8 @@ export default function Finance() {
 
                 {/* Actions */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
-                  <button className="fbtn fbtn-teal" onClick={() => printInvoice(selectedFacture)}>
+                  <button className="fbtn fbtn-teal" onClick={() => printInvoice58mm(selectedFacture)}>
                     {I.print} Imprimer
-                  </button>
-                  <button className="fbtn fbtn-primary" style={{ background:"#1B4F9E", borderColor:"#1B4F9E" }} onClick={() => downloadInvoicePDF(selectedFacture)}>
-                    📥 Télécharger PDF
                   </button>
                   <button className="fbtn fbtn-green" style={{ background:"#25D366", borderColor:"#25D366", color:"#fff" }} onClick={() => shareWhatsApp(selectedFacture)}>
                     📱 WhatsApp
