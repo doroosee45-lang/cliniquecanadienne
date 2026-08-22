@@ -574,4 +574,52 @@ const sendPlanningPublishedEmail = async ({ email, prenom, nom, poste, date, heu
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendPlanningPublishedEmail };
+// AUDIT-RH-PLANNING-RAPPEL — un email par créneau (même principe de
+// non-consolidation que sendPlanningPublishedEmail) ; utils/planningReminders.js
+// appelle cette fonction pour chaque créneau détecté dans la fenêtre "2h avant".
+// @param {{ email, prenom, nom, poste, date, heure_debut, heure_fin, type }} opts
+const sendPlanningReminderEmail = async ({ email, prenom, nom, poste, date, heure_debut, heure_fin, type }) => {
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#FFF7ED;border-left:4px solid #D97706;border-radius:8px;padding:14px 18px;margin-bottom:24px;">
+        <div style="font-size:11px;color:#92400E;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Rappel de planning</div>
+        <div style="font-size:20px;font-weight:800;color:#0B1E3B;margin-top:4px;">⏰ Votre créneau commence dans 2 heures</div>
+      </div>
+      <h2 style="color:#0B1E3B;font-size:17px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Rappel de votre prochain créneau${poste ? ` (${poste})` : ''} :
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;width:40%;">📅 Date</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;text-transform:capitalize;">${date}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🕐 Horaire</td>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;">${heure_debut || '—'} – ${heure_fin || '—'}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:0 0 8px 8px;font-size:12px;color:#6B7A99;font-weight:700;">🩺 Type</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:0 0 8px 8px;font-size:14px;color:#0B1E3B;">${type}</td>
+        </tr>
+      </table>
+    </div>
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: `Rappel — votre créneau commence dans 2h (${heure_debut || ''})`,
+    html,
+  });
+};
+
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendPlanningPublishedEmail, sendPlanningReminderEmail };
