@@ -353,8 +353,6 @@ const DEMO_ASSURANCES = [];
 
 const DEMO_SALAIRES = [];
 
-const DEMO_BUDGET = [];
-
 // ─── SVG Icons ────────────────────────────────────────────────
 const I = {
   money:  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>,
@@ -641,6 +639,41 @@ export default function Finance() {
 
   useEffect(() => { loadData(); }, [loadData]);
   useRealtimeRefresh(loadData);
+
+  // AUDIT-FINANCE-BUDGET — remplace DEMO_BUDGET (tableau vide fabriqué).
+  // Année civile (décision explicite suite à l'audit — "budget total
+  // annuel", pas mensuel comme l'affichait l'ancien en-tête).
+  const currentYear = new Date().getFullYear();
+  const [budget, setBudget] = useState({ annee: currentYear, categories: [], budget_total_annuel: 0, realise_total: 0, ecart_total: 0, taux_execution_global: null });
+  const [budgetLoading, setBudgetLoading] = useState(false);
+  const [editingCat, setEditingCat] = useState(null);
+  const [editCatValue, setEditCatValue] = useState("");
+
+  const loadBudget = useCallback(async () => {
+    setBudgetLoading(true);
+    try {
+      const { data } = await api.get(`/finance/budget?annee=${currentYear}`);
+      setBudget(data);
+    } catch (err) {
+      console.error("Erreur chargement budget:", err);
+    } finally {
+      setBudgetLoading(false);
+    }
+  }, [currentYear]);
+  useEffect(() => { loadBudget(); }, [loadBudget]);
+
+  const saveBudgetCategorie = async (categorie) => {
+    const montant = Number(editCatValue);
+    if (!(montant >= 0)) { toast.error("Montant invalide"); return; }
+    try {
+      await api.put(`/finance/budget/${encodeURIComponent(categorie)}?annee=${currentYear}`, { montant_annuel: montant });
+      await loadBudget();
+      toast.success(`✅ Budget ${categorie} mis à jour`);
+      setEditingCat(null);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la mise à jour du budget");
+    }
+  };
 
   // ── Computed KPIs ────────────────────────────────────────
   const safeNum = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
@@ -1795,24 +1828,41 @@ export default function Finance() {
           {/* ══ BUDGET ══ */}
           {tab === "budget" && (
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"var(--fn)", marginBottom:20 }}>Suivi budgétaire — Juin 2026</div>
+              <div style={{ fontSize:16, fontWeight:700, color:"var(--fn)", marginBottom:20 }}>Suivi budgétaire — Année {budget.annee}</div>
 
               <div className="fin-card ffu" style={{ marginBottom:20 }}>
-                <div className="fin-card-hdr"><h3>{I.budget} Budget par département</h3><p>Réalisé vs Prévu</p></div>
+                <div className="fin-card-hdr"><h3>{I.budget} Budget par catégorie</h3><p>Réalisé vs cible annuelle — cliquez la cible pour la modifier</p></div>
                 <div style={{ padding:20 }}>
-                  {DEMO_BUDGET.map(b => {
-                    const pct = Math.round(b.realise / b.budget * 100);
+                  {budgetLoading && <div style={{ fontSize:12, color:"var(--cm)" }}>Chargement…</div>}
+                  {!budgetLoading && budget.categories.map(b => {
+                    const pct = b.taux_execution ?? 0;
                     const color = pct >= 100 ? "#DC2626" : pct >= 85 ? "#D97706" : "#059669";
-                    const ecart = b.realise - b.budget;
                     return (
-                      <div key={b.departement} style={{ marginBottom:14 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-                          <span style={{ fontWeight:600, fontSize:13, color:"var(--fn)" }}>{b.departement}</span>
+                      <div key={b.categorie} style={{ marginBottom:14 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5, flexWrap:"wrap", gap:6 }}>
+                          <span style={{ fontWeight:600, fontSize:13, color:"var(--fn)" }}>{b.categorie}</span>
                           <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                            <span style={{ fontSize:11, color:"var(--cm)" }}>Budget : {fmtMontant(b.budget)}</span>
-                            <span style={{ fontSize:11, fontWeight:600, color:color }}>{pct}%</span>
-                            <span style={{ fontSize:11, color: ecart > 0 ? "var(--fr)" : "var(--fg)", fontWeight:700 }}>
-                              {ecart > 0 ? "+" : ""}{fmtMontant(ecart)}
+                            {editingCat === b.categorie ? (
+                              <>
+                                <input
+                                  type="number" min="0" className="finp" style={{ width:110, padding:"4px 8px", fontSize:11 }}
+                                  value={editCatValue} onChange={e => setEditCatValue(e.target.value)} autoFocus
+                                />
+                                <button className="fbtn fbtn-teal fbtn-sm" onClick={() => saveBudgetCategorie(b.categorie)}>{I.check}</button>
+                                <button className="fbtn fbtn-ghost fbtn-sm" onClick={() => setEditingCat(null)}>{I.x}</button>
+                              </>
+                            ) : (
+                              <span
+                                style={{ fontSize:11, color:"var(--cm)", cursor:"pointer", textDecoration:"underline dotted" }}
+                                title="Modifier la cible annuelle"
+                                onClick={() => { setEditingCat(b.categorie); setEditCatValue(String(b.budget_annuel || "")); }}
+                              >
+                                Budget : {fmtMontant(b.budget_annuel)}
+                              </span>
+                            )}
+                            <span style={{ fontSize:11, fontWeight:600, color:color }}>{b.taux_execution == null ? "—" : `${pct}%`}</span>
+                            <span style={{ fontSize:11, color: b.ecart < 0 ? "var(--fr)" : "var(--fg)", fontWeight:700 }}>
+                              {b.ecart < 0 ? "" : "+"}{fmtMontant(b.ecart)}
                             </span>
                           </div>
                         </div>
@@ -1835,10 +1885,10 @@ export default function Finance() {
                   <div className="fin-card-hdr"><h3>📈 Budget global</h3></div>
                   <div style={{ padding:16 }}>
                     {[
-                      ["Budget total mensuel", DEMO_BUDGET.reduce((s,b)=>s+b.budget,0), "var(--fb)"],
-                      ["Réalisé", DEMO_BUDGET.reduce((s,b)=>s+b.realise,0), "var(--fg)"],
-                      ["Écart global", DEMO_BUDGET.reduce((s,b)=>s+b.realise,0) - DEMO_BUDGET.reduce((s,b)=>s+b.budget,0), "var(--fo)"],
-                      ["Taux exécution", Math.round(DEMO_BUDGET.reduce((s,b)=>s+b.realise,0)/DEMO_BUDGET.reduce((s,b)=>s+b.budget,0)*100) + "%", "var(--ft)"],
+                      ["Budget total annuel", budget.budget_total_annuel, "var(--fb)"],
+                      ["Réalisé", budget.realise_total, "var(--fg)"],
+                      ["Écart global", budget.ecart_total, "var(--fo)"],
+                      ["Taux exécution", budget.taux_execution_global == null ? "—" : `${budget.taux_execution_global}%`, "var(--ft)"],
                     ].map(([lbl, val, col]) => (
                       <div key={lbl} style={{ display:"flex", justifyContent:"space-between", padding:"10px 12px", background:"#F8FAFD", borderRadius:10, marginBottom:8 }}>
                         <span style={{ fontSize:12, color:"var(--cm)" }}>{lbl}</span>
@@ -1847,6 +1897,12 @@ export default function Finance() {
                     ))}
                   </div>
                 </div>
+                {/* AUDIT-FINANCE-BUDGET — carte "Objectifs financiers" toujours
+                    fabriquée (cibles 900000/95/100 codées en dur, "actuel" 87
+                    inventé pour la 3e ligne) : hors périmètre de cet audit
+                    (portait uniquement sur les 5 indicateurs de suivi
+                    budgétaire ci-dessus), chacune de ces 3 cibles nécessite sa
+                    propre décision de source — signalé, pas traité. */}
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr"><h3>🎯 Objectifs financiers</h3></div>
                   <div style={{ padding:16 }}>

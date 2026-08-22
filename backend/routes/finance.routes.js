@@ -145,6 +145,8 @@ router.put('/depenses/:id/valider',protect, authorize(...CAN_ACCESS), finC.valid
 router.get('/salaires',            protect, authorize(...CAN_ACCESS), finC.getSalaires);
 router.put('/salaires/:id/payer',  protect, authorize(...CAN_ACCESS), finC.payerSalaire);
 router.get('/assurances',          protect, authorize(...CAN_ACCESS), finC.getAssurances);
+router.get('/budget',              protect, authorize(...CAN_ACCESS), finC.getBudget);
+router.put('/budget/:categorie',   protect, authorize(...CAN_ACCESS), finC.updateBudget);
 router.post('/caisse',    protect, authorize(...CAN_ACCESS), finC.caisse);
 
 router.get('/',             protect, authorize(...CAN_ACCESS), finC.getAll);

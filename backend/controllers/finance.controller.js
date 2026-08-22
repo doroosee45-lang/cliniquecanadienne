@@ -2,6 +2,7 @@ const Invoice = require('../models/Invoice');
 const Depense = require('../models/Depense');
 const Salaire = require('../models/Salaire');
 const Staff = require('../models/Staff');
+const BudgetCible = require('../models/BudgetCible');
 const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
@@ -281,6 +282,93 @@ exports.validerDepense = async (req, res, next) => {
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'finance', entite_id: depense._id, ip: req.ip, message: `Dépense validée : ${depense.description}` });
     emitDashboardUpdate();
     res.json({ success: true, depense });
+  } catch (err) { next(err); }
+};
+
+// ── BUDGET ────────────────────────────────────────────────────────────────
+// AUDIT-FINANCE-BUDGET — l'onglet "Budget" de Finance.jsx était intégralement
+// fabriqué (DEMO_BUDGET = [] côté frontend, tous les indicateurs réduisaient
+// sur un tableau vide — le taux d'exécution rendait littéralement "NaN%").
+// "Réalisé" est réellement dérivable des Depense déjà trackées ; "budget
+// annuel" est une valeur planifiée que personne d'autre que l'utilisateur ne
+// peut fournir — d'où BudgetCible, un document par (année, catégorie),
+// jamais calculé, toujours saisi manuellement. Période retenue : année
+// civile (1er janvier - 31 décembre), décision explicite suite à l'audit —
+// l'ancien libellé "mensuel"/"Juin 2026" du frontend était incohérent avec
+// l'intitulé "budget total annuel" de la demande.
+exports.getBudget = async (req, res, next) => {
+  try {
+    const annee = Number(req.query.annee) || new Date().getFullYear();
+    const debut = new Date(annee, 0, 1);
+    const fin = new Date(annee, 11, 31, 23, 59, 59, 999);
+
+    const [cibles, depensesParCategorie] = await Promise.all([
+      BudgetCible.find({ annee }).lean(),
+      // AUDIT-FINANCE-BUDGET — "réalisé" = dépenses réellement exécutées
+      // (statut 'paye'), pas seulement engagées ('en_attente') : le mot
+      // "réalisé" désigne ce qui a été effectivement dépensé, pas ce qui est
+      // prévu/en cours de règlement.
+      Depense.aggregate([
+        { $match: { date: { $gte: debut, $lte: fin }, statut: 'paye' } },
+        { $group: { _id: '$categorie', total: { $sum: '$montant' } } },
+      ]),
+    ]);
+
+    const cibleParCategorie = {};
+    cibles.forEach(c => { cibleParCategorie[c.categorie] = c.montant_annuel; });
+    const realiseParCategorie = {};
+    depensesParCategorie.forEach(d => { realiseParCategorie[d._id] = d.total; });
+
+    const categories = BudgetCible.CATEGORIES.map(categorie => {
+      const budget_annuel = cibleParCategorie[categorie] || 0;
+      const realise = realiseParCategorie[categorie] || 0;
+      const ecart = budget_annuel - realise;
+      const taux_execution = budget_annuel > 0 ? Math.round((realise / budget_annuel) * 100) : null;
+      return { categorie, budget_annuel, realise, ecart, taux_execution };
+    });
+
+    const budget_total_annuel = categories.reduce((s, c) => s + c.budget_annuel, 0);
+    const realise_total = categories.reduce((s, c) => s + c.realise, 0);
+    const ecart_total = budget_total_annuel - realise_total;
+    const taux_execution_global = budget_total_annuel > 0 ? Math.round((realise_total / budget_total_annuel) * 100) : null;
+
+    res.json({
+      success: true,
+      annee,
+      categories,
+      budget_total_annuel,
+      realise_total,
+      ecart_total,
+      taux_execution_global,
+    });
+  } catch (err) { next(err); }
+};
+
+exports.updateBudget = async (req, res, next) => {
+  try {
+    const annee = Number(req.query.annee) || new Date().getFullYear();
+    const { categorie } = req.params;
+    const { montant_annuel } = req.body;
+    if (!BudgetCible.CATEGORIES.includes(categorie)) {
+      return res.status(400).json({ success: false, message: 'Catégorie invalide.' });
+    }
+    if (!(Number(montant_annuel) >= 0)) {
+      return res.status(400).json({ success: false, message: 'Montant annuel invalide.' });
+    }
+
+    const avant = await BudgetCible.findOne({ annee, categorie }).lean();
+    const cible = await BudgetCible.findOneAndUpdate(
+      { annee, categorie },
+      { montant_annuel: Number(montant_annuel), modifie_par: req.user._id },
+      { new: true, upsert: true, runValidators: true }
+    );
+
+    await logAction({
+      utilisateur: req.user._id, action: avant ? 'UPDATE' : 'CREATE', module: 'finance', entite_id: cible._id, ip: req.ip,
+      message: `Budget cible ${categorie} ${annee} : ${avant?.montant_annuel ?? '—'} → ${montant_annuel} CFA`,
+    });
+    emitDashboardUpdate();
+    res.json({ success: true, cible });
   } catch (err) { next(err); }
 };
 
