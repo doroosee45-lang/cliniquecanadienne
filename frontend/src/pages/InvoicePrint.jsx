@@ -7,6 +7,7 @@ import {
   fetchInvoiceForPrint, clearInvoicePrint,
   selectPrintInvoice, selectPrintSettings, selectPrintLoading, selectPrintError,
 } from '../store/slices/invoicePrintSlice';
+import { printReceipt58mm } from '../utils/receipt58mm';
 
 export default function InvoicePrint() {
   const { id } = useParams();
@@ -50,13 +51,49 @@ export default function InvoicePrint() {
     load();
   }, [id, navigate, reduxInvoice]);
 
-  const handlePrint = () => window.print();
-
   if (loading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
   if (!invoice) return null;
 
   const fmt = (n) => (n || 0).toLocaleString('fr-FR');
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' }) : '—';
+
+  // AUDIT-RECU-58MM — l'aperçu écran (Tailwind, A4/letter) ne change pas ;
+  // seule la sortie imprimée passe par le gabarit thermique commun
+  // (frontend/src/utils/receipt58mm.js), comme Finance.jsx/Pharmacy.jsx.
+  const handlePrint = () => {
+    const statutLabels = {
+      payee: 'Payée', partiellement_payee: 'Partiellement payée', emise: 'Non payée',
+      annulee: 'Annulée', contentieux: 'Contentieux', brouillon: 'Brouillon',
+    };
+    printReceipt58mm({
+      docType: 'FACTURE',
+      docNumber: invoice.numero_facture,
+      date: fmtDate(invoice.date_facture),
+      billedTo: {
+        label: 'Facturé à',
+        name: `${invoice.patient?.nom || ''} ${invoice.patient?.prenom || ''}`.trim() || 'N/A',
+        sub: invoice.patient?.numero_dossier,
+      },
+      meta: [
+        { label: 'Statut', value: statutLabels[invoice.statut] || invoice.statut || '—' },
+        { label: 'Échéance', value: fmtDate(invoice.date_echeance) },
+      ],
+      lines: (invoice.lignes || []).map(l => ({
+        label: l.libelle, sub: l.categorie, qty: l.quantite, unitPrice: l.prix_unitaire, amount: l.montant,
+      })),
+      totals: [
+        { label: 'Sous-total HT', value: invoice.montant_ht },
+        ...(invoice.tva > 0 ? [{ label: `TVA (${invoice.tva}%)`, value: invoice.montant_ttc - invoice.montant_ht }] : []),
+        ...(invoice.montant_assurance > 0 ? [{ label: 'Part assurance', value: -invoice.montant_assurance }] : []),
+        { label: 'TOTAL TTC', value: invoice.montant_ttc, emphasis: true },
+        ...(invoice.montant_paye > 0 ? [{ label: 'Montant payé', value: invoice.montant_paye }] : []),
+        ...(invoice.montant_restant > 0 ? [{ label: 'Solde restant dû', value: invoice.montant_restant, emphasis: true }] : []),
+      ],
+      note: invoice.montant_restant > 0
+        ? `Merci de régler avant le ${fmtDate(invoice.date_echeance) || "la date d'échéance"}.`
+        : 'Facture réglée intégralement. Merci pour votre confiance.',
+    });
+  };
 
   return (
     <div className="space-y-4">
