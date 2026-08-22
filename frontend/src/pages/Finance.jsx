@@ -18,7 +18,7 @@ import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import * as XLSX from 'xlsx';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
-import { printReceipt58mm } from '../utils/receipt58mm';
+import { printReceipt58mm, buildReceiptPdfBase64, downloadReceiptPdf } from '../utils/receipt58mm';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -195,6 +195,11 @@ const fmtMontant = (v) => { const n = Number(v); return (!isNaN(n) ? n : 0).toLo
 const genRef = (prefix) => `${prefix}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000).padStart(4, "0")}`;
 
 // Adapter Invoice (modèle backend) → champs affichés dans le frontend
+// AUDIT-RECU-PDF-PARTAGE — patientId/patientEmail portés depuis
+// patient_id/patient_email (ajoutés côté finance.controller.js::
+// normalizeInvoice) : seule façon de savoir, au moment du partage, si cette
+// facture est réellement liée à un dossier Patient avec un email connu
+// (envoi serveur réel possible) ou non (repli mailto obligatoire).
 const normalizeFacture = (f) => {
   const pat = f.patient && typeof f.patient === 'object' ? f.patient : null;
   const statutMap = { emise:'non_paye', payee:'paye', partiellement_payee:'partiellement_paye', annulee:'annule', contentieux:'non_paye', brouillon:'non_paye' };
@@ -204,6 +209,8 @@ const normalizeFacture = (f) => {
     date:     f.date            || f.date_facture     || f.createdAt,
     echeance: f.echeance        || f.date_echeance    || null,
     patient:  pat ? `${pat.prenom || ''} ${pat.nom || ''}`.trim() : (typeof f.patient === 'string' ? f.patient : f.patient_nom || '—'),
+    patientId:    f.patient_id    || (pat ? pat._id : null) || null,
+    patientEmail: f.patient_email || (pat ? pat.email : null) || null,
     service:  f.service         || f.service_label    || '—',
     montant:  Number(f.montant  || f.montant_direct   || f.montant_ttc || 0),
     statut:   statutMap[f.statut] || f.statut         || 'non_paye',
@@ -217,9 +224,13 @@ const normalizeFacture = (f) => {
 // (frontend/src/utils/receipt58mm.js) : le bouton "Télécharger PDF" a été
 // retiré (redondant — "Enregistrer en PDF" reste possible depuis la boîte
 // de dialogue d'impression du navigateur).
-const printInvoice58mm = async (f) => {
+// AUDIT-RECU-PDF-PARTAGE — factorisé hors de printInvoice58mm pour être
+// réutilisé tel quel par le moteur PDF (buildReceiptPdfBase64/downloadReceiptPdf) :
+// même contenu de facture pour l'impression et pour le PDF partagé, jamais
+// une 3e implémentation.
+const buildInvoiceReceipt = (f) => {
   const statutLabel = f.statut === 'paye' ? 'Payée' : f.statut === 'partiellement_paye' ? 'Partiellement payée' : 'Non payée';
-  await printReceipt58mm({
+  return {
     docType: 'FACTURE',
     docNumber: f.numero,
     date: fmtDate(f.date),
@@ -238,10 +249,19 @@ const printInvoice58mm = async (f) => {
       ? 'Facture réglée intégralement.'
       : `À régler avant le ${fmtDate(f.echeance) || "la date d'échéance"}.`,
     qrData: f.numero,
-  });
+  };
 };
 
-const shareWhatsApp = (f) => {
+const printInvoice58mm = async (f) => {
+  await printReceipt58mm(buildInvoiceReceipt(f));
+};
+
+// AUDIT-RECU-PDF-PARTAGE — texte wa.me inchangé (WhatsApp ne permet pas de
+// joindre un fichier via ce mécanisme) ; en complément, un vrai PDF est
+// téléchargé automatiquement pour que l'utilisateur puisse le joindre
+// lui-même une fois la conversation ouverte — message explicite pour ne
+// laisser aucune ambiguïté sur ce que fait le bouton.
+const shareWhatsApp = async (f) => {
   const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
   const msg = `🏥 *${clinicFull}*\n\n📋 *FACTURE N° ${f.numero}*\n\n👤 Patient : ${f.patient}\n💼 Service : ${f.service}\n💰 Montant : ${fmtMontant(f.montant)}\n📅 Date : ${fmtDate(f.date)}\n⏰ Échéance : ${fmtDate(f.echeance)}\n✅ Statut : ${f.statut === 'paye' ? 'Payée ✓' : f.statut === 'partiellement_paye' ? 'Partiellement payée ⚠' : 'Non payée ✗'}\n\nModes de paiement : Espèces · Mobile Money · Virement · Assurance\n\n📞 Contact : +236 XX XX XX XX`;
   // AUDIT-GLOBAL — le patient a un numéro réel (Patient.telephone) : cibler
@@ -251,15 +271,62 @@ const shareWhatsApp = (f) => {
   const url = digits
     ? `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`
     : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  try {
+    await downloadReceiptPdf(buildInvoiceReceipt(f), `Facture-${f.numero}.pdf`);
+    toast('📎 PDF téléchargé — joignez-le manuellement dans la conversation WhatsApp.', { icon: '📎' });
+  } catch {
+    toast.error("Échec de la génération du PDF — le message WhatsApp s'ouvre quand même.");
+  }
   window.open(url, '_blank');
 };
 
-const shareEmail = (f) => {
+// AUDIT-RECU-PDF-PARTAGE — migré de mailto: (aucune pièce jointe possible)
+// vers POST /messages/patient-email avec le PDF réellement joint, quand la
+// facture est liée à un vrai dossier Patient avec un email connu. Repli sur
+// mailto: + téléchargement PDF (comme WhatsApp) pour les factures
+// patient_nom en texte libre, où aucun envoi serveur n'est possible.
+const shareEmail = async (f) => {
   const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
   const subject = `Facture N° ${f.numero} — ${clinicFull}`;
   const statutTxt = f.statut === 'paye' ? 'Payée' : f.statut === 'partiellement_paye' ? 'Partiellement payée' : 'Non payée';
-  const body = `Bonjour,\n\nVeuillez trouver ci-dessous votre facture de la ${clinicFull}.\n\nN° Facture  : ${f.numero}\nPatient     : ${f.patient}\nPrestation  : ${f.service}\nMontant     : ${fmtMontant(f.montant)}\nDate émise  : ${fmtDate(f.date)}\nÉchéance    : ${fmtDate(f.echeance)}\nStatut      : ${statutTxt}\n\nPour toute question, contactez notre service comptabilité.\n\nCordialement,\nService Comptabilité — ${clinicFull}\nTél : +236 XX XX XX XX`;
-  window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+  const bodyLines = [
+    'Bonjour,', '',
+    `Veuillez trouver ci-joint votre facture de la ${clinicFull}.`, '',
+    `N° Facture  : ${f.numero}`,
+    `Patient     : ${f.patient}`,
+    `Prestation  : ${f.service}`,
+    `Montant     : ${fmtMontant(f.montant)}`,
+    `Date émise  : ${fmtDate(f.date)}`,
+    `Échéance    : ${fmtDate(f.echeance)}`,
+    `Statut      : ${statutTxt}`, '',
+    'Pour toute question, contactez notre service comptabilité.', '',
+    'Cordialement,', `Service Comptabilité — ${clinicFull}`, 'Tél : +236 XX XX XX XX',
+  ];
+
+  if (f.patientId && f.patientEmail) {
+    try {
+      const contentBase64 = await buildReceiptPdfBase64(buildInvoiceReceipt(f));
+      await api.post('/messages/patient-email', {
+        patient: f.patientId,
+        sujet: subject,
+        contenu: bodyLines.join('<br>'),
+        attachment: { filename: `Facture-${f.numero}.pdf`, contentBase64 },
+      });
+      toast.success(`✅ Facture envoyée par email à ${f.patientEmail} (PDF joint)`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Échec de l'envoi de l'email.");
+    }
+    return;
+  }
+
+  // Repli — aucun dossier patient réel avec email connu pour cette facture.
+  try {
+    await downloadReceiptPdf(buildInvoiceReceipt(f), `Facture-${f.numero}.pdf`);
+    toast('📎 PDF téléchargé — aucun email connu pour ce patient, joignez-le manuellement.', { icon: '📎' });
+  } catch {
+    toast.error('Échec de la génération du PDF.');
+  }
+  window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join('\n'))}`);
 };
 
 // AUDIT-GLOBAL — "Relancer" (dossier assurance) affichait un faux succès

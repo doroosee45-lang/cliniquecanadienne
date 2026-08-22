@@ -13,7 +13,7 @@ import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import autoTable from 'jspdf-autotable';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
-import { printReceipt58mm } from '../utils/receipt58mm';
+import { printReceipt58mm, downloadReceiptPdf } from '../utils/receipt58mm';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -831,25 +831,29 @@ export default function Pharmacie() {
   // par tous les modules facture/reçu/ticket de l'app. Le bouton "PDF
   // complet (A4)" ci-dessous reste inchangé (usage différent : document à
   // archiver/envoyer, pas à imprimer au comptoir).
+  // AUDIT-RECU-PDF-PARTAGE — factorisé pour être réutilisé tel quel par le
+  // téléchargement PDF (shareWhatsApp/shareEmail ci-dessous) : même contenu
+  // de ticket pour l'impression et pour le PDF partagé.
+  const buildTicketReceipt = (t) => ({
+    docType: 'TICKET DE VENTE',
+    docNumber: t.numero,
+    date: new Date(t.date).toLocaleString('fr-FR'),
+    billedTo: { label: 'Client', name: t.client },
+    meta: [{ label: 'Paiement', value: modeLabel[t.mode_paiement] || t.mode_paiement }],
+    lines: t.items.map(i => ({
+      label: i.nom + (i.dosage ? ` (${i.dosage})` : ''),
+      qty: i.quantite,
+      unitPrice: i.prix_unitaire,
+      amount: i.sous_total,
+    })),
+    totals: [{ label: 'TOTAL', value: t.total, emphasis: true }],
+    note: 'Conservez ce ticket pour tout remboursement.',
+    qrData: t.numero,
+  });
+
   const printTicket58mm = async () => {
     if (!venteTicket) return;
-    const t = venteTicket;
-    await printReceipt58mm({
-      docType: 'TICKET DE VENTE',
-      docNumber: t.numero,
-      date: new Date(t.date).toLocaleString('fr-FR'),
-      billedTo: { label: 'Client', name: t.client },
-      meta: [{ label: 'Paiement', value: modeLabel[t.mode_paiement] || t.mode_paiement }],
-      lines: t.items.map(i => ({
-        label: i.nom + (i.dosage ? ` (${i.dosage})` : ''),
-        qty: i.quantite,
-        unitPrice: i.prix_unitaire,
-        amount: i.sous_total,
-      })),
-      totals: [{ label: 'TOTAL', value: t.total, emphasis: true }],
-      note: 'Conservez ce ticket pour tout remboursement.',
-      qrData: t.numero,
-    });
+    await printReceipt58mm(buildTicketReceipt(venteTicket));
   };
 
   const printTicketA4 = () => {
@@ -901,7 +905,12 @@ export default function Pharmacie() {
     win.onload = () => { win.focus(); win.print(); };
   };
 
-  const shareWhatsApp = () => {
+  // AUDIT-RECU-PDF-PARTAGE — un ticket de vente comptoir n'a jamais de lien
+  // patient réel (client est un champ texte libre, "Comptoir" par défaut) :
+  // aucun envoi serveur avec pièce jointe n'est structurellement possible ici,
+  // contrairement à Finance. Texte wa.me inchangé + PDF téléchargé
+  // automatiquement pour jointure manuelle, message explicite dans le toast.
+  const shareWhatsApp = async () => {
     if (!venteTicket) return;
     const t = venteTicket;
     const lignes = t.items.map(i => `  • ${i.nom} x${i.quantite} = ${fmtCFA(i.sous_total)}`).join("\n");
@@ -916,15 +925,27 @@ ${lignes}
 💳 Paiement : ${modeLabel[t.mode_paiement] || t.mode_paiement}
 
 ✅ Merci de votre confiance !`;
+    try {
+      await downloadReceiptPdf(buildTicketReceipt(t), `Ticket-${t.numero}.pdf`);
+      toast('📎 PDF téléchargé — joignez-le manuellement dans la conversation WhatsApp.', { icon: '📎' });
+    } catch {
+      toast.error("Échec de la génération du PDF — le message WhatsApp s'ouvre quand même.");
+    }
     window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, "_blank");
   };
 
-  const shareEmail = () => {
+  const shareEmail = async () => {
     if (!venteTicket) return;
     const t = venteTicket;
     const lignes = t.items.map(i => `- ${i.nom} x${i.quantite} = ${fmtCFA(i.sous_total)}`).join("\n");
     const subject = `Ticket de vente N° ${t.numero} — Clinique Canadienne de Souanké`;
     const body = `Clinique Canadienne de Souanké\nSouanké, Congo-Brazzaville\n\nTICKET DE VENTE\nN° ${t.numero}\nDate : ${new Date(t.date).toLocaleString("fr-FR")}\nClient : ${t.client}\nPaiement : ${modeLabel[t.mode_paiement] || t.mode_paiement}\n\nDétail :\n${lignes}\n\nTOTAL : ${fmtCFA(t.total)}\n\nMerci de votre confiance !`;
+    try {
+      await downloadReceiptPdf(buildTicketReceipt(t), `Ticket-${t.numero}.pdf`);
+      toast('📎 PDF téléchargé — aucun email de patient rattaché à ce ticket, joignez-le manuellement.', { icon: '📎' });
+    } catch {
+      toast.error('Échec de la génération du PDF.');
+    }
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 

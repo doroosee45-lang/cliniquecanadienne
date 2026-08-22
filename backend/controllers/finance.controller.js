@@ -6,6 +6,11 @@ const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 // Mapper Invoice (modèle) → objet frontend
+// AUDIT-RECU-PDF-PARTAGE — patient_id/patient_email ajoutés à côté de
+// patient_telephone (déjà existant) : sans ça, le frontend ne peut jamais
+// distinguer une facture réellement liée à un dossier Patient (avec email
+// connu, envoi serveur possible) d'une facture patient_nom en texte libre
+// (aucun envoi réel possible, repli mailto obligatoire).
 function normalizeInvoice(inv) {
   const pat = inv.patient && typeof inv.patient === 'object' ? inv.patient : null;
   const statutMap = { emise:'non_paye', payee:'paye', partiellement_payee:'partiellement_paye', annulee:'annule', contentieux:'non_paye', brouillon:'non_paye' };
@@ -16,6 +21,8 @@ function normalizeInvoice(inv) {
     echeance: inv.date_echeance   || inv.echeance  || null,
     patient:  inv.patient_nom     || (pat ? `${pat.prenom} ${pat.nom}` : (typeof inv.patient === 'string' ? inv.patient : '—')),
     patient_telephone: pat?.telephone || null,
+    patient_id:    pat?._id || null,
+    patient_email: pat?.email || null,
     service:  inv.service_label   || inv.service   || '—',
     montant:  inv.montant_direct  || inv.montant_ttc || inv.montant || 0,
     statut:   statutMap[inv.statut] || inv.statut  || 'non_paye',
@@ -32,7 +39,7 @@ exports.getAll = async (req, res, next) => {
     const total = await Invoice.countDocuments(filter);
     const raw = await paginate(
       Invoice.find(filter)
-        .populate('patient', 'nom prenom numero_dossier telephone')
+        .populate('patient', 'nom prenom numero_dossier telephone email')
         .populate('created_by', 'nom prenom')
         .sort('-date_facture'),
       page, limit
@@ -109,7 +116,7 @@ exports.create = async (req, res, next) => {
     emitDashboardUpdate();
 
     const populated = await Invoice.findById(invoice._id)
-      .populate('patient', 'nom prenom numero_dossier telephone')
+      .populate('patient', 'nom prenom numero_dossier telephone email')
       .lean();
     const facture = normalizeInvoice(populated);
     res.status(201).json({ success: true, invoice: facture, facture });

@@ -301,9 +301,16 @@ exports.deleteMessage = async (req, res, next) => {
 // faux succès (toast seul) pour l'envoi d'email à un patient. Réutilise
 // utils/mail.js::sendEmail (déjà utilisé ailleurs — activation, rappels,
 // ordonnances) ; tracé dans AuditLog comme les autres canaux (succès/échec).
+// AUDIT-RECU-PDF-PARTAGE — attachment optionnel {filename, contentBase64},
+// pour joindre réellement un PDF (facture/reçu) généré côté client — jusqu'ici
+// cet endpoint n'envoyait que du texte. Garde-fou de taille avant décodage
+// pour ne pas accepter une pièce jointe arbitrairement volumineuse dans le
+// corps JSON.
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+
 exports.sendPatientEmail = async (req, res, next) => {
   try {
-    const { patient: patientId, sujet, contenu } = req.body;
+    const { patient: patientId, sujet, contenu, attachment } = req.body;
     if (!sujet || !sujet.trim() || !contenu || !contenu.trim()) {
       return res.status(400).json({ success: false, message: 'Sujet et message requis.' });
     }
@@ -311,8 +318,17 @@ exports.sendPatientEmail = async (req, res, next) => {
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
     if (!patient.email) return res.status(400).json({ success: false, message: "Ce patient n'a pas d'adresse email enregistrée." });
 
+    let attachments;
+    if (attachment && attachment.contentBase64) {
+      const buf = Buffer.from(attachment.contentBase64, 'base64');
+      if (buf.length > MAX_ATTACHMENT_BYTES) {
+        return res.status(400).json({ success: false, message: 'Pièce jointe trop volumineuse (max 8 Mo).' });
+      }
+      attachments = [{ filename: attachment.filename || 'document.pdf', content: buf }];
+    }
+
     try {
-      const result = await mail.sendEmail({ to: patient.email, subject: sujet, html: `<p>${contenu}</p>` });
+      const result = await mail.sendEmail({ to: patient.email, subject: sujet, html: `<p>${contenu}</p>`, attachments });
       await logAction({ utilisateur: req.user._id, action: 'SEND_EMAIL', module: 'messages', entite_id: patient._id, ip: req.ip, message: sujet, statut: 'succes' });
       res.json({ success: true, simulated: !!result?.simulated });
     } catch (err) {

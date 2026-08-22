@@ -10,7 +10,11 @@ const getTransporter = () =>
     auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
   });
 
-const sendEmail = async ({ to, subject, html }) => {
+// AUDIT-RECU-PDF-PARTAGE — attachments optionnel (forme nodemailer standard :
+// [{filename, content:Buffer}]), réutilisable par tout futur module — pas
+// propre à la facturation. Absent par défaut : n'affecte aucun appelant
+// existant (activation, rappels, ordonnances, messagerie patient texte seul).
+const sendEmail = async ({ to, subject, html, attachments }) => {
   if (!env.SMTP_HOST || !env.SMTP_USER) {
     logger.warn('[MAIL] SMTP non configuré — email simulé', { to, subject });
     return { simulated: true };
@@ -20,6 +24,7 @@ const sendEmail = async ({ to, subject, html }) => {
     to,
     subject,
     html,
+    ...(attachments && attachments.length ? { attachments } : {}),
   });
   return info;
 };
