@@ -9,6 +9,8 @@ import {
 import { Activity, Plus } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import api from "../api";
+import toast from "react-hot-toast";
 
 // ─── CSS — même design system que Consultation (Navy + Teal) ──
 const CSS = `
@@ -1573,23 +1575,58 @@ function Statistiques({ demandes, chart }) {
   );
 }
 
+// Âge en années révolues à partir de la date de naissance réelle du patient
+// sélectionné (remplace l'ancienne saisie manuelle libre de l'âge).
+const computeAge = (dob) => {
+  if (!dob) return null;
+  const diff = Date.now() - new Date(dob).getTime();
+  return Math.max(0, Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000)));
+};
+
+
+// AUDIT-ECHOGRAPHIE-PATIENT — le patient était saisi en texte libre (aucun
+// patient_ref jamais renseigné à la création), rendant morts les liens
+// "cliquer le nom → ouvrir le dossier" déjà présents ailleurs dans ce
+// fichier (conditionnés sur d.patient_ref?._id). Remplacé par le même
+// sélecteur réel que Pédiatrie/Maternité (recherche débouncée sur
+// GET /patients/search, sélection, champs dérivés en lecture seule),
+// patient_ref réel envoyé à la création.
 // ─── COMPOSANT NOUVELLE DEMANDE (Modal) ───────────────────────
 function NouvelleDemandeModal({ open, onClose, onAdd }) {
   const [form, setForm] = useState({
-    patient:"", dossier:"", age:"", sexe:"F",
+    dossier:"",
     source:SERVICES_SOURCE[0], medecin_presc:ECHOGRAPHISTES[0],
     type:"obstet", sous_type:"",
     motif:"", priorite:"normale",
   });
+  const [patientQuery, setPatientQuery] = useState("");
+  const [patientResults, setPatientResults] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
   const te = TYPES_ECHO.find(t=>t.id===form.type);
+
+  useEffect(() => {
+    if (selectedPatient || patientQuery.trim().length < 2) { setPatientResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(patientQuery.trim())}`);
+        setPatientResults(data.patients || []);
+      } catch { setPatientResults([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [patientQuery, selectedPatient]);
+
+  const pickPatient = (p) => { setSelectedPatient(p); setPatientQuery(""); setPatientResults([]); };
+  const clearPatient = () => setSelectedPatient(null);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!selectedPatient) { toast.error("Sélectionnez un patient existant avant de créer la demande."); return; }
     onAdd({
-      patient: form.patient,
+      patient: `${selectedPatient.prenom} ${selectedPatient.nom}`.trim(),
+      patient_ref: selectedPatient._id,
       dossier: form.dossier||genNum("DOS"),
-      age: parseInt(form.age)||25,
-      sexe: form.sexe,
+      age: computeAge(selectedPatient.date_naissance) ?? 25,
+      sexe: selectedPatient.sexe || "F",
       source: form.source,
       medecin_presc: form.medecin_presc,
       date_prescription: new Date().toISOString().split("T")[0],
@@ -1605,25 +1642,49 @@ function NouvelleDemandeModal({ open, onClose, onAdd }) {
   return (
     <Modal open={open} onClose={onClose} title="➕ Nouvelle demande d'échographie" maxWidth={620}>
       <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom:14 }}>
+          <label className="clbl req">Patient</label>
+          {!selectedPatient ? (
+            <>
+              <input className="cinp" placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={patientQuery} onChange={e=>setPatientQuery(e.target.value)} />
+              <div style={{ maxHeight:200, overflowY:"auto", display:"flex", flexDirection:"column", gap:4, marginTop:8 }}>
+                {patientQuery.trim().length >= 2 && patientResults.length === 0 && (
+                  <div style={{ textAlign:"center", padding:12, color:"var(--cm)", fontSize:12 }}>Aucun patient trouvé.</div>
+                )}
+                {patientResults.map(p => (
+                  <div key={p._id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", borderRadius:10, cursor:"pointer", border:"1.5px solid var(--cbr)" }} onClick={() => pickPatient(p)}>
+                    <div style={{ width:32, height:32, borderRadius:8, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{p.prenom} {p.nom}</div>
+                      <div style={{ fontSize:11, color:"var(--cm)" }}>{p.numero_dossier || "—"} · {p.telephone || "—"}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"#EEF4FF", border:"1.5px solid var(--ct)" }}>
+              <div style={{ width:32, height:32, borderRadius:8, background:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:"var(--cn)" }}>{selectedPatient.prenom} {selectedPatient.nom}</div>
+                <div style={{ fontSize:11, color:"var(--cm)" }}>{selectedPatient.numero_dossier || "—"}</div>
+              </div>
+              <button type="button" className="cbtn cbtn-ghost cbtn-sm" onClick={clearPatient}>Changer</button>
+            </div>
+          )}
+        </div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
           <div>
-            <label className="clbl req">Nom du patient</label>
-            <input className="cinp" required value={form.patient} onChange={e=>setForm(f=>({...f,patient:e.target.value}))} placeholder="Prénom NOM" />
-          </div>
-          <div>
-            <label className="clbl">N° dossier</label>
-            <input className="cinp" value={form.dossier} onChange={e=>setForm(f=>({...f,dossier:e.target.value}))} placeholder="DOS-XXXX-XXXX" />
-          </div>
-          <div>
             <label className="clbl">Âge</label>
-            <input type="number" className="cinp" value={form.age} onChange={e=>setForm(f=>({...f,age:e.target.value}))} placeholder="Âge en années" />
+            <input className="cinp" readOnly disabled value={selectedPatient ? (computeAge(selectedPatient.date_naissance) ?? "—") : ""} placeholder="Dérivé du patient sélectionné" />
           </div>
           <div>
             <label className="clbl">Sexe</label>
-            <select className="cinp" value={form.sexe} onChange={e=>setForm(f=>({...f,sexe:e.target.value}))}>
-              <option value="F">Féminin</option>
-              <option value="M">Masculin</option>
-            </select>
+            <input className="cinp" readOnly disabled value={selectedPatient?.sexe === "M" ? "Masculin" : selectedPatient?.sexe === "F" ? "Féminin" : ""} placeholder="Dérivé du patient sélectionné" />
+          </div>
+          <div>
+            <label className="clbl">N° dossier (demande)</label>
+            <input className="cinp" value={form.dossier} onChange={e=>setForm(f=>({...f,dossier:e.target.value}))} placeholder="DOS-XXXX-XXXX" />
           </div>
           <div>
             <label className="clbl req">Service prescripteur</label>
@@ -1661,7 +1722,7 @@ function NouvelleDemandeModal({ open, onClose, onAdd }) {
         </div>
         <div style={{ display:"flex", gap:10 }}>
           <button type="button" className="cbtn cbtn-ghost" onClick={onClose}>Annuler</button>
-          <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }}>➕ Créer la demande</button>
+          <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={!selectedPatient} title={!selectedPatient ? "Sélectionnez d'abord un patient" : undefined}>➕ Créer la demande</button>
         </div>
       </form>
     </Modal>
