@@ -11,6 +11,7 @@ router.get('/patients',  protect, authorize(...roles), analyticsC.getPatientStat
 // adminclinique), à la demande explicite : périmètre plus large que
 // /analytics classique (finance, maternité, ordonnances agrégés ensemble).
 router.get('/global',    protect, authorize('superadmin'), analyticsC.getGlobalStats);
+router.post('/report/email', protect, authorize(...roles), analyticsC.sendReportEmail);
 router.get('/',          protect, authorize(...roles), analyticsC.getReport);
 
 module.exports = router;

@@ -294,6 +294,31 @@ function Prog({ pct, color, h = 8 }) {
 
 function Badge({ cls, children }) { return <span className={`abdg ${cls}`}>{children}</span>; }
 
+// AUDIT-ANALYTICS-P1 — Analytics.jsx n'avait aucun composant Modal (toutes
+// les autres pages de l'app en ont un local) ; nécessaire pour la sélection
+// de rôle avant l'envoi du rapport par email.
+function Modal({ open, onClose, title, children, maxWidth = 480 }) {
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:500, background:"rgba(11,30,59,.55)", backdropFilter:"blur(4px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:"#fff", borderRadius:20, boxShadow:"var(--shl)", width:"100%", maxWidth, maxHeight:"90vh", overflowY:"auto" }} role="dialog" aria-modal="true">
+        <div style={{ padding:"18px 24px", borderBottom:"1.5px solid var(--abr)", display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--al)", borderRadius:"20px 20px 0 0" }}>
+          <h3 style={{ fontSize:15, fontWeight:700, color:"var(--an)", margin:0 }}>{title}</h3>
+          <button onClick={onClose} aria-label="Fermer" style={{ width:32, height:32, borderRadius:8, background:"#F3F7FF", border:"none", cursor:"pointer", fontSize:18, color:"var(--am)" }}>×</button>
+        </div>
+        <div style={{ padding:24 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 // ─── DEMO DATA ────────────────────────────────────────────
 const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
@@ -337,16 +362,24 @@ export default function Analytics() {
   const [periode, setPeriode]   = useState("mois");
   const [filterService, setFilterSvc]  = useState("");
   const [filterMedecin, setFilterMed]  = useState("");
+  // AUDIT-ANALYTICS-P1 — les 2 champs date de la période "Personnalisée"
+  // n'avaient ni value ni onChange (purement décoratifs). Seul getStats
+  // (→ fetchKpis) interprète réellement date_debut/date_fin aujourd'hui ;
+  // getReport/getFinancial/getPatientStats restent figées sur l'année civile
+  // en cours quelle que soit la période choisie (limitation préexistante,
+  // documentée côté backend, hors périmètre de ce point).
+  const [dateDebut, setDateDebut] = useState("");
+  const [dateFin, setDateFin]     = useState("");
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
   // ── Chargement de toutes les données selon la période ──────
   const loadAll = useCallback(() => {
-    dispatch(fetchKpis({ periode }));
+    dispatch(fetchKpis({ periode, dateDebut, dateFin }));
     dispatch(fetchAnalyticsReport({ type: 'global', periode }));
     dispatch(fetchFinancialReport({ periode }));
     dispatch(fetchPatientStats({ periode }));
     setLastUpdate(new Date());
-  }, [dispatch, periode]);
+  }, [dispatch, periode, dateDebut, dateFin]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
   useRealtimeRefresh(loadAll);
@@ -404,7 +437,12 @@ export default function Analytics() {
   ], [reduxFinancialData?.financial?.ca, reduxFinancialData?.financial?.depenses, reduxFinancialData?.financial?.benefice]);
 
   // ── Export PDF ─────────────────────────────────────────────
-  const exportAnalyticsPDF = () => {
+  // AUDIT-ANALYTICS-P1 — extrait de exportAnalyticsPDF pour être réutilisé
+  // tel quel par l'envoi email (sendAnalyticsReportEmail) : même contenu,
+  // juste un doc renvoyé au lieu d'un .save() direct — pas de 3e
+  // implémentation du rapport (le bouton "Rapport complet PDF" de la section
+  // export, qui n'était qu'un toast, appelle maintenant exportAnalyticsPDF).
+  const buildAnalyticsPdfDoc = () => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
     const dateStr = new Date().toLocaleDateString('fr-FR');
@@ -456,9 +494,60 @@ export default function Analytics() {
       doc.text(`Page ${i}/${n}`, W/2, H-3.5, { align:'center' });
       doc.text(dateStr, W-14, H-3.5, { align:'right' });
     }
+    return doc;
+  };
+
+  const exportAnalyticsPDF = () => {
+    const doc = buildAnalyticsPdfDoc();
     const filename = `analytics-${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(filename);
     toast.success(`📄 PDF exporté : ${filename}`);
+  };
+
+  // AUDIT-ANALYTICS-P1 — "Envoyer par e-mail" n'envoyait rien du tout
+  // (toast seul). Pas de destinataire unique naturel pour un rapport
+  // Analytics (ni patient ni membre du personnel déjà identifié) — décision :
+  // sélection d'un rôle, envoi à tout le personnel actif de ce rôle, un
+  // email séparé par destinataire (cohérent avec Planning/Finance — jamais
+  // de consolidation), le PDF réel (buildAnalyticsPdfDoc ci-dessus) en
+  // pièce jointe.
+  const [modalEmailRole, setModalEmailRole] = useState(false);
+  const [reportRole, setReportRole] = useState("comptable");
+  const [sendingReport, setSendingReport] = useState(false);
+
+  const ROLES_RAPPORT = [
+    { value:"superadmin",     label:"Super administrateurs" },
+    { value:"adminclinique",  label:"Administrateurs clinique" },
+    { value:"medecin",        label:"Médecins" },
+    { value:"infirmier",      label:"Infirmiers" },
+    { value:"sage_femme",     label:"Sages-femmes" },
+    { value:"laborantin",     label:"Laborantins" },
+    { value:"radiologue",     label:"Radiologues" },
+    { value:"pharmacien",     label:"Pharmaciens" },
+    { value:"comptable",      label:"Comptables" },
+    { value:"receptionniste", label:"Réceptionnistes" },
+  ];
+
+  const sendAnalyticsReportEmail = async () => {
+    setSendingReport(true);
+    try {
+      const doc = buildAnalyticsPdfDoc();
+      const contentBase64 = doc.output('datauristring').split(',')[1];
+      const { data } = await api.post('/analytics/report/email', {
+        role: reportRole,
+        attachment: { filename: `analytics-${new Date().toISOString().split('T')[0]}.pdf`, contentBase64 },
+      });
+      if (data.envoyes > 0) {
+        toast.success(`📧 Rapport envoyé à ${data.envoyes} destinataire(s)${data.echecs ? ` (${data.echecs} échec(s))` : ''}`);
+        setModalEmailRole(false);
+      } else {
+        toast.error(data.message || "Aucun destinataire actif trouvé pour ce rôle.");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'envoi du rapport.");
+    } finally {
+      setSendingReport(false);
+    }
   };
 
   // AUDIT-11 (Vague 2, W4) — chaque bouton "Export Excel"/"Export CSV" de
@@ -642,9 +731,9 @@ export default function Analytics() {
             ))}
             {periode === "custom" && (
               <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                <input type="date" className="filter-select" style={{ width:140 }} />
+                <input type="date" className="filter-select" style={{ width:140 }} value={dateDebut} max={dateFin || undefined} onChange={e => setDateDebut(e.target.value)} />
                 <span style={{ color:"var(--am)", fontSize:12 }}>→</span>
-                <input type="date" className="filter-select" style={{ width:140 }} />
+                <input type="date" className="filter-select" style={{ width:140 }} value={dateFin} min={dateDebut || undefined} onChange={e => setDateFin(e.target.value)} />
               </div>
             )}
             <span style={{ fontSize:12, fontWeight:700, color:"var(--am)", marginLeft:8 }}>{I.filter} Filtres :</span>
@@ -674,7 +763,13 @@ export default function Analytics() {
                   </KpiCard>
                   <div className="anl-kpi blue fu d1">
                     <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
-                      {[["Nouveaux",kpi.patients_nouveaux,"var(--ab)"],["Actifs",kpi.patients_actifs,"var(--ag)"],["Hospitalisés",kpi.patients_hospitalises,"var(--ao)"],["Sortis",44,"var(--at)"]].map(([lbl,val,col])=>(
+                      {/* AUDIT-ANALYTICS-P1 — "Sortis" (44 codé en dur) remplacé par
+                          kpi.hospit_sorties (sorties d'hospitalisation réelles sur la
+                          période) : aucun champ "patients sortis" dédié n'existe côté
+                          backend, hospit_sorties est la donnée réelle la plus proche
+                          de ce que cette grille représente (Nouveaux/Actifs/
+                          Hospitalisés/Sortis suit le parcours patient). */}
+                      {[["Nouveaux",kpi.patients_nouveaux,"var(--ab)"],["Actifs",kpi.patients_actifs,"var(--ag)"],["Hospitalisés",kpi.patients_hospitalises,"var(--ao)"],["Sortis",kpi.hospit_sorties,"var(--at)"]].map(([lbl,val,col])=>(
                         <div key={lbl} className="mini-kpi">
                           <div className="mini-kpi-val" style={{ color:col }}>{val}</div>
                           <div className="mini-kpi-lbl">{lbl}</div>
@@ -1331,11 +1426,15 @@ export default function Analytics() {
                 <div className="anl-card-hdr"><h3>📤 Exportation des rapports</h3></div>
                 <div style={{ padding:20, display:"flex", gap:12, flexWrap:"wrap" }}>
                   {[
-                    { icon:"📄", label:"Rapport complet PDF",  fn:()=>toast.success("📄 Rapport PDF généré"), cls:"abtn-teal" },
+                    /* AUDIT-ANALYTICS-P1 — appelle désormais le même export
+                       que le bouton "Export PDF" du Hero (exportAnalyticsPDF) :
+                       c'était un doublon fake (toast seul), pas de 3e
+                       implémentation du rapport. */
+                    { icon:"📄", label:"Rapport complet PDF",  fn:exportAnalyticsPDF, cls:"abtn-teal" },
                     { icon:"📊", label:"Export Excel",          fn:exportGlobalExcel, cls:"abtn-primary" },
                     { icon:"📁", label:"Export CSV",            fn:exportGlobalCSV,  cls:"abtn-ghost" },
                     { icon:"🖨",  label:"Impression",            fn:()=>window.print(),                         cls:"abtn-ghost" },
-                    { icon:"📧", label:"Envoyer par e-mail",    fn:()=>toast.success("📧 Rapport envoyé par email"), cls:"abtn-ghost" },
+                    { icon:"📧", label:"Envoyer par e-mail",    fn:()=>setModalEmailRole(true), cls:"abtn-ghost" },
                   ].map((b,i)=>(
                     <button key={i} className={`abtn ${b.cls}`} onClick={b.fn}>
                       <span>{b.icon}</span> {b.label}
@@ -1347,6 +1446,27 @@ export default function Analytics() {
           )}
 
         </div>
+
+        {/* ═══ MODAL : ENVOYER LE RAPPORT PAR E-MAIL ═══ */}
+        <Modal open={modalEmailRole} onClose={() => setModalEmailRole(false)} title="📧 Envoyer le rapport par e-mail" maxWidth={440}>
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            <div style={{ fontSize:12, color:"var(--am)" }}>
+              Le rapport PDF sera envoyé, en pièce jointe, à chaque membre actif du personnel ayant le rôle sélectionné (un email séparé par destinataire).
+            </div>
+            <div>
+              <label style={{ fontSize:12, fontWeight:600, color:"var(--am)", marginBottom:6, display:"block" }}>Destinataires</label>
+              <select className="filter-select" style={{ width:"100%" }} value={reportRole} onChange={e => setReportRole(e.target.value)}>
+                {ROLES_RAPPORT.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:6 }}>
+              <button className="abtn abtn-ghost" onClick={() => setModalEmailRole(false)}>Annuler</button>
+              <button className="abtn abtn-teal" style={{ marginLeft:"auto" }} disabled={sendingReport} onClick={sendAnalyticsReportEmail}>
+                {sendingReport ? "Envoi…" : <>{I.send} Envoyer</>}
+              </button>
+            </div>
+          </div>
+        </Modal>
       </div>
     </>
   );

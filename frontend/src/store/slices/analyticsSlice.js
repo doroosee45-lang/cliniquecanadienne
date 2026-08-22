@@ -39,11 +39,20 @@ export const fetchPatientStats = createAsyncThunk(
   }
 );
 
+// AUDIT-ANALYTICS-P1 — date_debut/date_fin transmis seulement quand
+// periode==='custom' : c'est la seule route (getStats) à les interpréter
+// réellement aujourd'hui (getReport/getFinancial/getPatientStats restent
+// figées sur l'année civile en cours, limitation préexistante hors périmètre).
 export const fetchKpis = createAsyncThunk(
   'analytics/fetchKpis',
-  async ({ periode = 'mois' } = {}, { rejectWithValue }) => {
+  async ({ periode = 'mois', dateDebut = '', dateFin = '' } = {}, { rejectWithValue }) => {
     try {
-      const { data } = await api.get(`/analytics/stats?periode=${periode}`);
+      const params = new URLSearchParams({ periode });
+      if (periode === 'custom') {
+        if (dateDebut) params.set('date_debut', dateDebut);
+        if (dateFin) params.set('date_fin', dateFin);
+      }
+      const { data } = await api.get(`/analytics/stats?${params}`);
       return data.kpi || {};
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Erreur KPIs');

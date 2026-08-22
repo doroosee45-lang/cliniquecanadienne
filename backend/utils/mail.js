@@ -622,4 +622,40 @@ const sendPlanningReminderEmail = async ({ email, prenom, nom, poste, date, heur
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendPlanningPublishedEmail, sendPlanningReminderEmail };
+// AUDIT-ANALYTICS-P1 — un email par destinataire (analytics.controller.js::
+// sendReportEmail boucle sur chaque membre du personnel du rôle choisi),
+// jamais de consolidation. Le PDF réel (généré côté client, même contenu
+// que le bouton "Export PDF") est joint tel quel.
+// @param {{ email, prenom, nom, attachment: {filename, content:Buffer} }} opts
+const sendAnalyticsReportEmail = async ({ email, prenom, nom, attachment }) => {
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#EFF6FF;border-left:4px solid #1B4F9E;border-radius:8px;padding:14px 18px;margin-bottom:22px;">
+        <div style="font-size:11px;color:#6B7A99;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Analytics</div>
+        <div style="font-size:18px;font-weight:800;color:#0B1E3B;margin-top:4px;">📊 Rapport Analytics</div>
+      </div>
+      <h2 style="color:#0B1E3B;font-size:16px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Veuillez trouver ci-joint le rapport Analytics de la Clinique Canadienne de Souanké, généré le ${new Date().toLocaleDateString('fr-FR')}.
+      </p>
+    </div>
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: `Rapport Analytics — ${new Date().toLocaleDateString('fr-FR')}`,
+    html,
+    attachments: [attachment],
+  });
+};
+
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendPlanningPublishedEmail, sendPlanningReminderEmail, sendAnalyticsReportEmail };

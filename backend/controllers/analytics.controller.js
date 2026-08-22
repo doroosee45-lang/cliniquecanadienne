@@ -17,6 +17,9 @@ const PediatricConsultation = require('../models/PediatricConsultation');
 const Echographie    = require('../models/Echographie');
 const ArchiveEntry   = require('../models/ArchiveEntry');
 const Depense        = require('../models/Depense');
+const mail           = require('../utils/mail');
+const { logAction }  = require('../utils/helpers');
+const { logger }     = require('../utils/logger');
 
 const COLORS = ['#DC2626','#D97706','#0EA5A0','#1B4F9E','#7C3AED','#059669','#EC4899','#06B6D4','#84CC16','#F59E0B'];
 const MOIS_LABELS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
@@ -27,6 +30,31 @@ function startOf(periodeKey) {
   if (periodeKey === 'semaine')  { const d = new Date(); d.setDate(d.getDate()-7); return d; }
   if (periodeKey === 'annee')    return new Date(now.getFullYear(), 0, 1);
   return new Date(now.getFullYear(), now.getMonth(), 1); // mois par défaut
+}
+
+// AUDIT-ANALYTICS-P1 — période "Personnalisée" (date_debut/date_fin) n'avait
+// aucun traitement réel : startOf('custom') retombait silencieusement sur le
+// cas "mois" par défaut, quels que soient les champs de date remplis côté
+// UI. getStats() est la SEULE des 4 fonctions de ce contrôleur à lire
+// req.query.periode — getReport/getFinancial/getPatientStats restent figées
+// sur l'année civile en cours quel que soit le sélecteur (limitation
+// préexistante, hors périmètre de ce point : les graphiques ne suivent donc
+// la période choisie que partiellement, seuls les KPI ci-dessous en tiennent
+// compte). `fin` est ajouté explicitement (pas seulement `depuis`) pour que
+// la borne de fin d'une période personnalisée soit réellement respectée —
+// sans elle, un date_fin dans le passé n'aurait aucun effet (toute requête
+// en simple `{ $gte: depuis }`, sans borne haute, inclut implicitement
+// "jusqu'à maintenant").
+function resolvePeriodRange(query) {
+  const { periode, date_debut, date_fin } = query;
+  if (periode === 'custom' && date_debut) {
+    const debut = new Date(date_debut);
+    debut.setHours(0, 0, 0, 0);
+    const fin = date_fin ? new Date(date_fin) : new Date();
+    fin.setHours(23, 59, 59, 999);
+    return { debut, fin };
+  }
+  return { debut: startOf(periode || 'mois'), fin: new Date() };
 }
 
 // safe count helper — returns 0 if model query fails
@@ -97,7 +125,7 @@ async function countPerDay(model, dateField, days, extraMatch = {}) {
 // ═══════════════════════════════════════════════════════════════
 exports.getStats = async (req, res, next) => {
   try {
-    const depuis = startOf(req.query.periode || 'mois');
+    const { debut: depuis, fin } = resolvePeriodRange(req.query);
 
     const [
       // Patients
@@ -136,32 +164,32 @@ exports.getStats = async (req, res, next) => {
     ] = await Promise.all([
       // ── Patients
       safeCount(Patient, { statut: { $ne: 'decede' } }),
-      safeCount(Patient, { createdAt: { $gte: depuis } }),
+      safeCount(Patient, { createdAt: { $gte: depuis, $lte: fin } }),
       safeCount(Hospitalization, { statut: 'en_cours' }),
-      Appointment.distinct('patient', { date_heure: { $gte: depuis } }).catch(()=>[]),
+      Appointment.distinct('patient', { date_heure: { $gte: depuis, $lte: fin } }).catch(()=>[]),
       // ── Consultations
-      safeCount(Consultation, { createdAt: { $gte: depuis } }),
-      safeCount(Consultation, { statut: 'terminee', createdAt: { $gte: depuis } }),
-      safeCount(Appointment, { statut: 'annule', date_heure: { $gte: depuis } }),
+      safeCount(Consultation, { createdAt: { $gte: depuis, $lte: fin } }),
+      safeCount(Consultation, { statut: 'terminee', createdAt: { $gte: depuis, $lte: fin } }),
+      safeCount(Appointment, { statut: 'annule', date_heure: { $gte: depuis, $lte: fin } }),
       // ── Labo
-      safeCount(LabResult, { createdAt: { $gte: depuis } }),
-      safeCount(LabResult, { statut: { $in: ['termine','valide'] }, createdAt: { $gte: depuis } }),
+      safeCount(LabResult, { createdAt: { $gte: depuis, $lte: fin } }),
+      safeCount(LabResult, { statut: { $in: ['termine','valide'] }, createdAt: { $gte: depuis, $lte: fin } }),
       safeCount(LabResult, { statut: { $in: ['prescrit','en_attente','en_cours'] } }),
       // ── Imagerie
-      safeCount(ImagingResult, { createdAt: { $gte: depuis } }),
-      safeCount(ImagingResult, { statut: { $in: ['realise','rapporte','valide'] }, createdAt: { $gte: depuis } }),
+      safeCount(ImagingResult, { createdAt: { $gte: depuis, $lte: fin } }),
+      safeCount(ImagingResult, { statut: { $in: ['realise','rapporte','valide'] }, createdAt: { $gte: depuis, $lte: fin } }),
       safeCount(ImagingResult, { statut: { $in: ['programme','en_attente'] } }),
       // ── Hospitalisations
-      safeCount(Hospitalization, { createdAt: { $gte: depuis } }),
-      safeCount(Hospitalization, { statut: 'sorti', updatedAt: { $gte: depuis } }),
+      safeCount(Hospitalization, { createdAt: { $gte: depuis, $lte: fin } }),
+      safeCount(Hospitalization, { statut: 'sorti', updatedAt: { $gte: depuis, $lte: fin } }),
       safeCount(Hospitalization, { statut: 'en_cours' }),
       safeCount(Room, { statut: { $ne: 'ferme' } }),
       // ── Chirurgie
-      safeCount(DossierChirurgical, { createdAt: { $gte: depuis } }),
-      safeCount(DossierChirurgical, { statut: 'opere', date_intervention_reelle: { $gte: depuis } }),
+      safeCount(DossierChirurgical, { createdAt: { $gte: depuis, $lte: fin } }),
+      safeCount(DossierChirurgical, { statut: 'opere', date_intervention_reelle: { $gte: depuis, $lte: fin } }),
       // ── Finance
       Invoice.aggregate([
-        { $match: { statut: { $nin: ['annulee','brouillon'] }, createdAt: { $gte: depuis } } },
+        { $match: { statut: { $nin: ['annulee','brouillon'] }, createdAt: { $gte: depuis, $lte: fin } } },
         { $group: { _id: null, total: { $sum: '$montant_ttc' }, paye: { $sum: '$montant_paye' } } },
       ]).catch(()=>[]),
       Invoice.aggregate([
@@ -177,23 +205,23 @@ exports.getStats = async (req, res, next) => {
       ]).catch(()=>[]),
       // ── Prescriptions
       safeCount(Prescription),
-      safeCount(Prescription, { createdAt: { $gte: depuis } }),
+      safeCount(Prescription, { createdAt: { $gte: depuis, $lte: fin } }),
       // ── Urgences
       safeCount(Urgence),
-      safeCount(Urgence, { createdAt: { $gte: depuis } }),
+      safeCount(Urgence, { createdAt: { $gte: depuis, $lte: fin } }),
       // Urgence.niveau_urgence n'existe pas — le champ réel est niveau_triage
       // (enum rouge/orange/jaune/vert/bleu) ; 'rouge' = niveau critique.
       safeCount(Urgence, { niveau_triage: 'rouge' }),
       // ── Maternité
       // Enum réel Pregnancy.statut : active/accouchee/suivi_postnatal/cloturee/a_risque
       safeCount(Pregnancy, { statut: { $in: ['active','a_risque'] } }),
-      safeCount(Delivery, { createdAt: { $gte: depuis } }),
+      safeCount(Delivery, { createdAt: { $gte: depuis, $lte: fin } }),
       // ── Pédiatrie
       safeCount(PediatricConsultation),
-      safeCount(PediatricConsultation, { createdAt: { $gte: depuis } }),
+      safeCount(PediatricConsultation, { createdAt: { $gte: depuis, $lte: fin } }),
       // ── Échographie
       safeCount(Echographie),
-      safeCount(Echographie, { createdAt: { $gte: depuis } }),
+      safeCount(Echographie, { createdAt: { $gte: depuis, $lte: fin } }),
       // ── RH
       safeCount(User, { role: 'medecin', statut: 'actif' }),
       safeCount(User, { role: 'infirmier', statut: 'actif' }),
@@ -787,6 +815,60 @@ exports.getGlobalStats = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ═══════════════════════════════════════════════════════════════
+// POST /api/analytics/report/email
+// ═══════════════════════════════════════════════════════════════
+// AUDIT-ANALYTICS-P1 — "Envoyer par e-mail" n'envoyait rien (toast seul).
+// Aucun destinataire unique naturel pour un rapport Analytics (pas un
+// patient, pas un membre du personnel déjà identifié comme en Finance/
+// Planning) : décision explicite — sélection d'un rôle, envoi à tout le
+// personnel actif de ce rôle avec un email connu, un message séparé par
+// destinataire (jamais de consolidation, cohérent avec Finance/Planning).
+const ROLES_RAPPORT_VALIDES = ['superadmin','adminclinique','medecin','infirmier','sage_femme','laborantin','radiologue','pharmacien','comptable','receptionniste'];
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+
+exports.sendReportEmail = async (req, res, next) => {
+  try {
+    const { role, attachment } = req.body;
+    if (!ROLES_RAPPORT_VALIDES.includes(role)) {
+      return res.status(400).json({ success: false, message: 'Rôle destinataire invalide.' });
+    }
+    if (!attachment?.contentBase64) {
+      return res.status(400).json({ success: false, message: 'Pièce jointe requise.' });
+    }
+    const buf = Buffer.from(attachment.contentBase64, 'base64');
+    if (buf.length > MAX_ATTACHMENT_BYTES) {
+      return res.status(400).json({ success: false, message: 'Pièce jointe trop volumineuse (max 8 Mo).' });
+    }
+
+    const destinataires = await User.find({ role, statut: 'actif', email: { $exists: true, $ne: '' } }).select('email prenom nom');
+    if (destinataires.length === 0) {
+      return res.json({ success: true, envoyes: 0, echecs: 0, message: `Aucun utilisateur actif du rôle "${role}" avec un email connu.` });
+    }
+
+    let envoyes = 0, echecs = 0;
+    for (const u of destinataires) {
+      try {
+        await mail.sendAnalyticsReportEmail({
+          email: u.email, prenom: u.prenom || '', nom: u.nom || '',
+          attachment: { filename: attachment.filename || 'rapport-analytics.pdf', content: buf },
+        });
+        envoyes++;
+      } catch (err) {
+        echecs++;
+        logger.error('[analytics] Échec envoi rapport', { userId: u._id.toString(), error: err.message });
+      }
+    }
+
+    await logAction({
+      utilisateur: req.user._id, action: 'ANALYTICS_REPORT_EMAIL', module: 'analytics', ip: req.ip,
+      message: `Rapport Analytics envoyé au rôle "${role}" — ${envoyes} envoyé(s), ${echecs} échec(s)`,
+    });
+
+    res.json({ success: true, envoyes, echecs });
+  } catch (err) { next(err); }
+};
+
 // AUDIT-B4 — le cache dashboard (T9.9, TTL 30s) n'était pas étendu aux
 // endpoints Analytics, de coût comparable (mêmes agrégations lourdes sur
 // les mêmes collections, même audience superadmin/adminclinique). Réassigné
@@ -798,7 +880,19 @@ exports.getGlobalStats = async (req, res, next) => {
 // paramètre qui changerait le résultat, clé globale comme
 // medecinStats/superAdminStats côté dashboard.
 const { cacheStats } = require('../utils/dashboardCache');
-exports.getStats        = cacheStats('analyticsStats', (req) => req.query.periode || 'mois', exports.getStats);
+// AUDIT-ANALYTICS-P1 — la clé de cache ne portait que sur `periode` : pour
+// periode='custom', deux plages date_debut/date_fin différentes auraient
+// partagé le même résultat en cache (collision réelle, pas hypothétique,
+// puisque 'custom' est maintenant un cas géré). Les deux dates rejoignent la
+// clé pour ce cas.
+// AUDIT-ANALYTICS-P1 — le qualificatif date_debut/date_fin n'est ajouté que
+// pour periode='custom' : garde la clé identique à avant ("mois", "annee"...)
+// dans tous les autres cas, pour ne pas casser auditB4CacheAnalytics.test.js
+// qui vérifie la clé exacte 'analyticsStats:mois'.
+exports.getStats        = cacheStats('analyticsStats', (req) => {
+  const p = req.query.periode || 'mois';
+  return p === 'custom' ? `${p}:${req.query.date_debut||''}:${req.query.date_fin||''}` : p;
+}, exports.getStats);
 exports.getReport       = cacheStats('analyticsReport', false, exports.getReport);
 exports.getFinancial    = cacheStats('analyticsFinancial', false, exports.getFinancial);
 exports.getPatientStats = cacheStats('analyticsPatientStats', false, exports.getPatientStats);
