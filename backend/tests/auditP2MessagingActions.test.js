@@ -140,6 +140,21 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
       assert.ok(!relu.messages.some(m => m._id.toString() === toDeleteId.toString()), 'le message doit être absent après relecture depuis MongoDB');
     });
 
+    // AUDIT-MESSAGES-PhaseC
+    await t.test('deleteMessage — dernier_message_apercu est recalculé, pas laissé à afficher un message supprimé', async () => {
+      await call(msgC.sendMessage, { user: membre1, params: { id: groupId }, body: { contenu: `Avant-dernier ${stamp}` } });
+      const { body: sendBody } = await call(msgC.sendMessage, { user: membre1, params: { id: groupId }, body: { contenu: `Dernier message ${stamp}` } });
+      const lastId = sendBody.message._id;
+
+      let relu = await Conversation.findById(groupId).lean();
+      assert.equal(relu.dernier_message_apercu, `Dernier message ${stamp}`);
+
+      await call(msgC.deleteMessage, { user: membre1, params: { msgId: lastId } });
+
+      relu = await Conversation.findById(groupId).lean();
+      assert.equal(relu.dernier_message_apercu, `Avant-dernier ${stamp}`, "l'aperçu doit refléter le nouveau dernier message, pas celui qui vient d'être supprimé");
+    });
+
     await t.test('deleteMessage — un autre membre (non-auteur) reçoit 403, le message survit', async () => {
       const { body: sendBody } = await call(msgC.sendMessage, { user: membre1, params: { id: groupId }, body: { contenu: `Protégé ${stamp}` } });
       const protectedId = sendBody.message._id;

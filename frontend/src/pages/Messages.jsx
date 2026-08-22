@@ -9,6 +9,9 @@ import toast from "react-hot-toast";
 import { MessageSquare, Plus, Bell } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── CSS (same design system: Medical Navy + Teal) ────────────
 const CSS = `
@@ -308,10 +311,6 @@ const fmtTime = (d) => {
   return dt.toLocaleDateString("fr-FR", { day:"2-digit", month:"2-digit" });
 };
 const fmtFull = (d) => d ? new Date(d).toLocaleString("fr-FR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" }) : "—";
-const fmtRecTime = (s) => {
-  const sec = Math.max(0, Math.round(s || 0));
-  return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
-};
 const isSameDay = (d1, d2) => {
   const a = new Date(d1), b = new Date(d2);
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -367,126 +366,6 @@ const getConvDisplayName = (conv, meId) => {
 const DEMO_USERS = [];
 
 const buildDemoConvs = (userId) => [];
-
-const buildDemoMessages = (convId, userId) => {
-  const msgs = {
-    c1: [
-      { _id:"m1", contenu:"Bonjour Dr. Martin, les résultats du bilan préopératoire de M. Dupont viennent d'arriver.", expediteur:{ _id:"u1", prenom:"Sophie", nom:"Martin", role:"medecin" }, date_envoi:"2025-06-01T09:45:00", lu:true, reactions:[{ emoji:"👍", utilisateur:"u1" }] },
-      { _id:"m2", contenu:"Parfait, je les examine. Hb à 12.5, c'est limite mais acceptable. La glycémie à jeun est un peu élevée à 7.2 mmol/L.", expediteur:{ _id:"me", prenom:"Moi", nom:"", role:"medecin" }, date_envoi:"2025-06-01T09:52:00", lu:true, reactions:[] },
-      { _id:"m3", contenu:"Je recommande de contacter l'anesthésiste avant de confirmer l'intervention du 10 juin.", expediteur:{ _id:"u1", prenom:"Sophie", nom:"Martin", role:"medecin" }, date_envoi:"2025-06-01T10:05:00", lu:false, reactions:[] },
-      { _id:"m4", contenu:"Résultats du patient Dupont reçus. Hb : 12.5 g/dL — à discuter avant l'intervention.", expediteur:{ _id:"u1", prenom:"Sophie", nom:"Martin", role:"medecin" }, date_envoi:"2025-06-01T10:30:00", lu:false, reactions:[], type_special:"resultat" },
-    ],
-    c2: [
-      { _id:"m1", contenu:"Bonjour, la réunion de direction est reportée à jeudi 14h. Pouvez-vous confirmer votre présence ?", expediteur:{ _id:"u2", prenom:"Alain", nom:"Koumba", role:"admin" }, date_envoi:"2025-06-01T09:15:00", lu:true, reactions:[] },
-      { _id:"m2", contenu:"Confirmé, je serai présent. Merci pour l'information.", expediteur:{ _id:"me", prenom:"Moi", nom:"", role:"medecin" }, date_envoi:"2025-06-01T09:18:00", lu:true, reactions:[{ emoji:"✅", utilisateur:"me" }] },
-    ],
-    c3: [
-      { _id:"m1", contenu:"Bonsoir docteur, le patient en chambre 12 présente une fièvre à 39.2°C depuis 18h.", expediteur:{ _id:"u3", prenom:"Marie", nom:"Nzigou", role:"infirmier" }, date_envoi:"2025-05-31T22:10:00", lu:false, reactions:[] },
-    ],
-  };
-  return msgs[convId] || [];
-};
-
-const DEMO_NOTIFS = [];
-
-// ─── AudioMessage ─────────────────────────────────────────────
-function AudioMessage({ msg, isMe, onDelete }) {
-  const audioRef  = useRef(null);
-  const trackRef  = useRef(null);
-  const [playing,  setPlaying]  = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [elapsed,  setElapsed]  = useState(0);
-  const [total,    setTotal]    = useState(msg.duration || 0);
-
-  const toggle = () => {
-    const a = audioRef.current;
-    if (!a) return;
-    if (playing) a.pause(); else a.play().catch(() => {});
-  };
-
-  const seek = (e) => {
-    const a = audioRef.current;
-    if (!a || !a.duration) return;
-    const rect = (trackRef.current || e.currentTarget).getBoundingClientRect();
-    const pct  = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    a.currentTime = pct * a.duration;
-    setProgress(pct * 100);
-  };
-
-  const accent   = isMe ? "rgba(255,255,255,.9)" : "var(--cb)";
-  const subColor = isMe ? "rgba(255,255,255,.5)"  : "#9CA3AF";
-  const timeColor= isMe ? "rgba(255,255,255,.8)"  : "var(--cn)";
-
-  return (
-    <div className={`msg-audio-bubble ${isMe ? "me" : "other"}`}>
-      {/* Audio element caché — lecture réelle dans le navigateur */}
-      <audio
-        ref={audioRef}
-        src={msg.audio_url}
-        onPlay={()        => setPlaying(true)}
-        onPause={() =>      setPlaying(false)}
-        onEnded={() =>    { setPlaying(false); setProgress(0); setElapsed(0); }}
-        onLoadedMetadata={(e) => setTotal(e.currentTarget.duration || msg.duration || 0)}
-        onTimeUpdate={(e) => {
-          const a = e.currentTarget;
-          if (!a.duration) return;
-          setElapsed(a.currentTime);
-          setTotal(a.duration);
-          setProgress((a.currentTime / a.duration) * 100);
-        }}
-      />
-
-      {/* Bouton Play / Pause */}
-      <button className={`msg-audio-play ${isMe ? "me" : "other"}`} onClick={toggle}>
-        {playing
-          ? <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="5" height="18" rx="1"/><rect x="14" y="3" width="5" height="18" rx="1"/></svg>
-          : <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft:2 }}><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        }
-      </button>
-
-      {/* Zone centrale */}
-      <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:5 }}>
-        {/* Waveform + temps */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <div className="msg-rec-wave" style={{ opacity: playing ? 1 : 0.38 }}>
-            {[0,1,2,3,4].map(n => (
-              <span key={n} style={{ animationPlayState: playing ? "running" : "paused", background: accent }} />
-            ))}
-          </div>
-          <span style={{ fontSize:10, fontWeight:700, color:timeColor, fontVariantNumeric:"tabular-nums", flexShrink:0, marginLeft:8 }}>
-            {fmtRecTime(playing ? elapsed : total)}
-          </span>
-        </div>
-
-        {/* Barre de progression cliquable */}
-        <div ref={trackRef} className={`msg-audio-track ${isMe ? "me" : "other"}`}
-          style={{ position:"relative" }} onClick={seek}>
-          <div className={`msg-audio-fill ${isMe ? "me" : "other"}`} style={{ width:`${progress}%` }} />
-          {progress > 0 && (
-            <div className={`msg-audio-knob ${isMe ? "me" : "other"}`} style={{ left:`${progress}%` }} />
-          )}
-        </div>
-
-        {/* Label + actions */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <span style={{ fontSize:10, color:subColor }}>🎙️ Message vocal</span>
-          {isMe && (
-            <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-              <button title="Télécharger" style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, color:subColor, padding:0, lineHeight:1 }}
-                onClick={() => { const a = document.createElement("a"); a.href = msg.audio_url; a.download = `vocal.webm`; a.click(); }}>
-                ⬇️
-              </button>
-              <button title="Supprimer" style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, color:subColor, padding:0, lineHeight:1 }}
-                onClick={onDelete}>
-                🗑️
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Modal ────────────────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth = 580 }) {
@@ -546,15 +425,35 @@ export default function Messagerie() {
   const [users, setUsers]           = useState([]);
   const [selected, setSelected]     = useState(null);
   const [messages, setMessages]     = useState([]);
+  const [messagesError, setMessagesError] = useState(false);
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(true);
   const [sending, setSending]       = useState(false);
   const [showInfo, setShowInfo]     = useState(false);
-  const [notifs, setNotifs]         = useState(DEMO_NOTIFS);
+  const [notifs, setNotifs]         = useState([]);
   const [showNewGrp, setShowNewGrp] = useState(false);
   const [forwardMsg, setForwardMsg] = useState(null);
   const [showEmoji, setShowEmoji] = useState(false);
   const [newGrpForm, setNewGrpForm] = useState({ nom:"", membres:[], description:"" });
+
+  // AUDIT-MESSAGES-PhaseC — les 4 "actions rapides" du panneau info
+  // (partager résultat labo/imagerie/dossier, envoyer ordonnance)
+  // affichaient un faux succès sans rien envoyer. Réutilise la brique
+  // d'upload de pièce jointe de la Phase B : le document réel du patient
+  // (généré en PDF côté client pour labo/dossier/ordonnance, ou le fichier
+  // d'imagerie déjà stocké tel quel) est envoyé comme une vraie pièce
+  // jointe via sendFileAttachment, sans nouvel endpoint backend.
+  const [shareType, setShareType]           = useState(null); // 'labo' | 'imagerie' | 'dossier' | 'ordonnance'
+  const [shareStep, setShareStep]           = useState("patient"); // 'patient' | 'record' | 'confirm'
+  const [shareQuery, setShareQuery]         = useState("");
+  const [sharePatients, setSharePatients]   = useState([]);
+  const [sharePatient, setSharePatient]     = useState(null);
+  const [shareRecords, setShareRecords]     = useState([]);
+  const [shareRecord, setShareRecord]       = useState(null);
+  const [shareImage, setShareImage]         = useState(null);
+  const [shareRecordsLoading, setShareRecordsLoading] = useState(false);
+  const [shareSending, setShareSending]     = useState(false);
+
   const bottomRef     = useRef(null);
   const textRef       = useRef(null);
   const fileInputRef  = useRef(null);
@@ -586,7 +485,19 @@ export default function Messagerie() {
     } catch { setUsers(DEMO_USERS); }
   }, []);
 
-  useEffect(() => { loadConvs(); loadUsers(); }, [loadConvs, loadUsers]);
+  // AUDIT-MESSAGES-PhaseC — l'onglet Notifications affichait DEMO_NOTIFS (un
+  // tableau vide, jamais peuplé) : "Aucune notification" en permanence, quel
+  // que soit l'état réel du compte. Branché sur GET /api/notifications, déjà
+  // utilisé par d'autres modules (labo, radiologie, hospitalisation...) pour
+  // créer de vraies notifications, mais jamais consommé ici.
+  const loadNotifs = useCallback(async () => {
+    try {
+      const { data } = await api.get("/notifications");
+      setNotifs(data.notifications || []);
+    } catch { /* silencieux — l'onglet affichera "Aucune notification" */ }
+  }, []);
+
+  useEffect(() => { loadConvs(); loadUsers(); loadNotifs(); }, [loadConvs, loadUsers, loadNotifs]);
 
   // ── Socket.IO : réception des messages en temps réel ─────
   const selectedRef = useRef(null);
@@ -662,15 +573,23 @@ export default function Messagerie() {
     }
     setSelected(conv);
     setShowInfo(false);
+    setMessagesError(false);
     try {
       const { data } = await api.get(`/messages/${conv._id}`);
       setMessages(data.messages || []);
     } catch {
-      setMessages(buildDemoMessages(conv._id, me._id));
+      // AUDIT-MESSAGES-PhaseC — un échec de chargement affichait buildDemoMessages
+      // (des messages fabriqués, indiscernables d'une vraie conversation) : même
+      // problème que les faux succès déjà corrigés ailleurs dans ce module.
+      // État d'erreur explicite à la place, aucun contenu fictif.
+      setMessages([]);
+      setMessagesError(true);
     }
     // Mark as read
     setConvs(prev => prev.map(c => c._id === conv._id ? { ...c, non_lus: 0 } : c));
   };
+
+  const retryLoadMessages = () => { if (selected) openConv(selected); };
 
   // ── Start new conv ────────────────────────────────────────
   const startConv = async (userId) => {
@@ -821,7 +740,15 @@ export default function Messagerie() {
   };
 
   // ── Mark notif read ───────────────────────────────────────
-  const readNotif = (id) => setNotifs(prev => prev.map(n => n._id === id ? { ...n, lu:true } : n));
+  const readNotif = async (id) => {
+    setNotifs(prev => prev.map(n => n._id === id ? { ...n, lu:true } : n));
+    try { await api.put(`/notifications/${id}/read`); } catch { /* déjà mis à jour localement, non bloquant */ }
+  };
+
+  const readAllNotifs = async () => {
+    setNotifs(prev => prev.map(n => ({ ...n, lu:true })));
+    try { await api.put("/notifications/read-all"); } catch { toast.error("Échec de la mise à jour."); }
+  };
 
   // ── Keyboard: Enter sends, Shift+Enter = newline ──────────
   const handleKey = (e) => {
@@ -952,6 +879,205 @@ export default function Messagerie() {
     sendFileAttachment(file, pendingAttachTypeRef.current);
   };
 
+  // ── Partage de documents patient (panneau info) ────────────
+  // AUDIT-MESSAGES-PhaseC — voir la note de commentaire près des états
+  // share* : réutilise sendFileAttachment ci-dessus, donc le mécanisme de
+  // stockage/diffusion est strictement identique aux pièces jointes déjà
+  // envoyées en Phase B (mêmes contrôles d'accès, même endpoint).
+  const SHARE_CFG = {
+    labo:       { icon:"🔬", title:"Partager un résultat labo", endpoint:"/laboratory",    listKey:"results" },
+    imagerie:   { icon:"🩻", title:"Partager imagerie",         endpoint:"/radiology",     listKey:"examens" },
+    dossier:    { icon:"📋", title:"Partager dossier patient",  endpoint:null,             listKey:null },
+    ordonnance: { icon:"💊", title:"Envoyer ordonnance",        endpoint:"/prescriptions", listKey:"prescriptions" },
+  };
+
+  const openShare = (type) => {
+    setShareType(type);
+    setShareStep("patient");
+    setShareQuery("");
+    setSharePatients([]);
+    setSharePatient(null);
+    setShareRecords([]);
+    setShareRecord(null);
+    setShareImage(null);
+  };
+  const closeShare = () => { setShareType(null); };
+
+  // Recherche patient débouncée — même endpoint que les autres modules (GET /patients/search)
+  useEffect(() => {
+    if (!shareType || shareStep !== "patient" || shareQuery.trim().length < 2) { setSharePatients([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(shareQuery.trim())}`);
+        setSharePatients(data.patients || []);
+      } catch { setSharePatients([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [shareQuery, shareType, shareStep]);
+
+  const pickSharePatient = async (p) => {
+    setSharePatient(p);
+    if (shareType === "dossier") { setShareStep("confirm"); return; }
+    setShareStep("record");
+    setShareRecordsLoading(true);
+    try {
+      const cfg = SHARE_CFG[shareType];
+      const { data } = await api.get(`${cfg.endpoint}?patient=${p._id}&limit=50`);
+      setShareRecords(data[cfg.listKey] || []);
+    } catch {
+      toast.error("Impossible de charger les documents de ce patient.");
+      setShareRecords([]);
+    }
+    setShareRecordsLoading(false);
+  };
+
+  const pdfHeader = (doc, title) => {
+    const W = doc.internal.pageSize.getWidth();
+    doc.setFillColor(11, 30, 59); doc.rect(0, 0, W, 24, "F");
+    doc.setTextColor(255, 255, 255); doc.setFontSize(13); doc.setFont("helvetica", "bold");
+    doc.text(`${title.toUpperCase()} — ${CLINIC_NAME.toUpperCase()}`, W / 2, 10, { align: "center" });
+    doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
+    doc.text(`${CLINIC_NAME} ${CLINIC_SUBTITLE} · Généré le ${new Date().toLocaleDateString("fr-FR")}`, W / 2, 17, { align: "center" });
+    return W;
+  };
+
+  const buildLaboFile = (patient, r) => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    pdfHeader(doc, "Résultat de laboratoire");
+    const resultats = r.resultats && typeof r.resultats === "object"
+      ? Object.entries(r.resultats).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)])
+      : [["Résultats", r.resultats != null ? String(r.resultats) : "—"]];
+    autoTable(doc, {
+      startY: 32, margin: { left: 14, right: 14 },
+      body: [
+        ["Patient", `${patient.prenom} ${patient.nom}`],
+        ["N° dossier", patient.numero_dossier || "—"],
+        ["Prescripteur", r.medecin_prescripteur_nom || "—"],
+        ["Date de prescription", r.date_prescription ? new Date(r.date_prescription).toLocaleDateString("fr-FR") : "—"],
+        ["Statut", r.statut || "—"],
+        ["Critique", r.est_critique ? "Oui" : "Non"],
+      ],
+      theme: "grid", styles: { fontSize: 9.5 },
+      columnStyles: { 0: { fontStyle: "bold", fillColor: [244, 247, 252], cellWidth: 50 } },
+    });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8, margin: { left: 14, right: 14 },
+      head: [["Paramètre", "Valeur"]], body: resultats,
+      theme: "grid", headStyles: { fillColor: [11, 30, 59] }, styles: { fontSize: 9 },
+    });
+    if (r.commentaires) {
+      doc.setFontSize(9.5); doc.setTextColor(30, 30, 30);
+      doc.text(`Commentaires : ${r.commentaires}`, 14, doc.lastAutoTable.finalY + 10, { maxWidth: doc.internal.pageSize.getWidth() - 28 });
+    }
+    const blob = doc.output("blob");
+    return new File([blob], `resultat-labo-${patient.nom}-${r._id}.pdf`, { type: "application/pdf" });
+  };
+
+  const buildOrdonnanceFile = (patient, rx) => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    pdfHeader(doc, "Ordonnance");
+    autoTable(doc, {
+      startY: 32, margin: { left: 14, right: 14 },
+      body: [
+        ["N° ordonnance", rx.numero_rx || "—"],
+        ["Patient", `${patient.prenom} ${patient.nom}`],
+        ["N° dossier", patient.numero_dossier || "—"],
+        ["Médecin", rx.medecin ? `${rx.medecin.prenom || ""} ${rx.medecin.nom || ""}`.trim() : "—"],
+        ["Date de prescription", rx.date_prescription ? new Date(rx.date_prescription).toLocaleDateString("fr-FR") : "—"],
+        ["Statut", rx.statut || "—"],
+      ],
+      theme: "grid", styles: { fontSize: 9.5 },
+      columnStyles: { 0: { fontStyle: "bold", fillColor: [244, 247, 252], cellWidth: 50 } },
+    });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8, margin: { left: 14, right: 14 },
+      head: [["Médicament", "Posologie", "Durée", "Qté", "Notes"]],
+      body: (rx.lignes || []).map(l => [
+        l.medicament_nom || l.medicament?.nom_commercial || l.medicament?.dci || "—",
+        l.posologie || "—", l.duree || "—", l.quantite ?? "—", l.notes || "—",
+      ]),
+      theme: "grid", headStyles: { fillColor: [11, 30, 59] }, styles: { fontSize: 9 },
+    });
+    const blob = doc.output("blob");
+    return new File([blob], `ordonnance-${rx.numero_rx || rx._id}.pdf`, { type: "application/pdf" });
+  };
+
+  const buildDossierFile = async (patientLite) => {
+    const { data } = await api.get(`/patients/${patientLite._id}`);
+    const p = data.patient;
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    pdfHeader(doc, "Dossier patient");
+    autoTable(doc, {
+      startY: 32, margin: { left: 14, right: 14 },
+      body: [
+        ["Nom complet", `${p.prenom} ${p.nom}`],
+        ["N° dossier", p.numero_dossier || "—"],
+        ["Date de naissance", p.date_naissance ? new Date(p.date_naissance).toLocaleDateString("fr-FR") : "—"],
+        ["Sexe", p.sexe || "—"],
+        ["Téléphone", p.telephone || "—"],
+        ["Groupe sanguin", p.groupe_sanguin || "—"],
+        ["Allergies", (p.allergies || []).join(", ") || "—"],
+        ["Antécédents médicaux", (p.antecedents_medicaux || []).join(", ") || "—"],
+        ["Maladies chroniques", (p.maladies_chroniques || []).join(", ") || "—"],
+        ["Médecin référent", p.medecin_referent ? `${p.medecin_referent.prenom || ""} ${p.medecin_referent.nom || ""}`.trim() : "—"],
+        ["Statut", p.statut || "—"],
+      ],
+      theme: "grid", styles: { fontSize: 9.5 },
+      columnStyles: { 0: { fontStyle: "bold", fillColor: [244, 247, 252], cellWidth: 55 } },
+    });
+    const blob = doc.output("blob");
+    return new File([blob], `dossier-${p.nom}-${p.numero_dossier || p._id}.pdf`, { type: "application/pdf" });
+  };
+
+  const confirmShare = async () => {
+    if (!selected || !sharePatient) return;
+    setShareSending(true);
+    try {
+      if (shareType === "dossier") {
+        const file = await buildDossierFile(sharePatient);
+        await sendFileAttachment(file, "document");
+      } else if (shareType === "labo") {
+        if (!shareRecord) throw new Error("Aucun résultat sélectionné.");
+        await sendFileAttachment(buildLaboFile(sharePatient, shareRecord), "document");
+      } else if (shareType === "ordonnance") {
+        if (!shareRecord) throw new Error("Aucune ordonnance sélectionnée.");
+        await sendFileAttachment(buildOrdonnanceFile(sharePatient, shareRecord), "document");
+      } else if (shareType === "imagerie") {
+        if (!shareImage) throw new Error("Aucune image sélectionnée.");
+        const res = await fetch(shareImage.path, { credentials: "include" });
+        if (!res.ok) throw new Error("Fichier d'imagerie introuvable.");
+        const blob = await res.blob();
+        const isImg = (shareImage.type_mime || "").startsWith("image/");
+        const file = new File([blob], shareImage.filename || `imagerie-${shareRecord._id}`, { type: shareImage.type_mime || "application/octet-stream" });
+        await sendFileAttachment(file, isImg ? "image" : "document");
+      }
+      closeShare();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err.message || "Échec du partage du document.");
+    }
+    setShareSending(false);
+  };
+
+  // Sélection d'un enregistrement (résultat labo / ordonnance) dans la liste
+  const pickShareRecord = (rec) => {
+    setShareRecord(rec);
+    setShareStep("confirm");
+  };
+  // Imagerie : un examen peut contenir plusieurs images réelles — on choisit l'examen puis l'image
+  const pickShareExam = (exam) => {
+    setShareRecord(exam);
+    if ((exam.images || []).length === 1) {
+      setShareImage(exam.images[0]);
+      setShareStep("confirm");
+    } else {
+      setShareStep("image");
+    }
+  };
+  const pickShareImage = (img) => {
+    setShareImage(img);
+    setShareStep("confirm");
+  };
+
   // ── Audio playback ────────────────────────────────────────
   const toggleAudio = (msg) => {
     if (currentAudioRef.current) {
@@ -982,7 +1108,23 @@ export default function Messagerie() {
   const deleteMsg = async (msgId) => {
     try {
       await api.delete(`/messages/${msgId}`);
-      setMessages(prev => prev.filter(m => m._id !== msgId));
+      setMessages(prev => {
+        const next = prev.filter(m => m._id !== msgId);
+        // AUDIT-MESSAGES-PhaseC — même correctif que côté backend
+        // (dernier_message_apercu) : sans ça, la liste des conversations
+        // affichait encore l'aperçu du message qui vient d'être supprimé
+        // jusqu'au prochain rechargement.
+        const last = next[next.length - 1];
+        const apercu = last ? (last.contenu || (last.pieceJointe
+          ? ({ audio:"🎙️ Message vocal", image:"🖼️ Image", document:"📄 Document" }[last.pieceJointe.type] || "📎 Pièce jointe")
+          : "")) : "";
+        if (selected) {
+          setConvs(cs => cs.map(c => c._id === selected._id
+            ? { ...c, dernier_message_apercu: apercu, dernier_message: last ? last.date_envoi : c.dernier_message }
+            : c));
+        }
+        return next;
+      });
       if (playingId === msgId) {
         currentAudioRef.current?.pause();
         setPlayingId(null);
@@ -1030,7 +1172,10 @@ export default function Messagerie() {
     return acc;
   }, []);
 
-  const notifIcons = { resultat:"🔬", rdv:"📅", urgent:"🚨", facture:"💰", patient:"👤", stock:"💊" };
+  // Types réels du modèle backend Notification (enum), pas les catégories
+  // fictives d'origine (resultat/rdv/urgent/facture/patient/stock) qui ne
+  // correspondaient à aucune valeur jamais renvoyée par l'API.
+  const notifIcons = { info:"ℹ️", warning:"⚠️", critical:"🚨", success:"✅", ai_alert:"🤖", rappel:"⏰", alert:"🔔" };
   const notifColors = { critique:"#DC2626", haute:"#D97706", normale:"#0EA5A0" };
 
   // ═══════════════════════════════════════════════════════════
@@ -1226,12 +1371,19 @@ export default function Messagerie() {
                   {/* Messages area */}
                   <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
                     <div className="msg-area" style={{ flex:1 }}>
-                      {groupedMessages.length === 0 && (
+                      {messagesError && (
+                        <div style={{ flex:1, height:"100%", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10, color:"var(--cm)", fontSize:13 }}>
+                          <div style={{ fontSize:28 }}>⚠️</div>
+                          <div>Impossible de charger cette conversation.</div>
+                          <button type="button" className="cbtn cbtn-ghost cbtn-sm" onClick={retryLoadMessages}>Réessayer</button>
+                        </div>
+                      )}
+                      {!messagesError && groupedMessages.length === 0 && (
                         <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", color:"var(--cm)", fontSize:13 }}>
                           Aucun message — Commencez la conversation !
                         </div>
                       )}
-                      {groupedMessages.map((item) => {
+                      {!messagesError && groupedMessages.map((item) => {
                         if (item.type === "date") return (
                           <div key={item.key} className="msg-date-sep"><span>{item.label}</span></div>
                         );
@@ -1419,14 +1571,9 @@ export default function Messagerie() {
                           </div>
                         )}
                         <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Actions rapides</div>
-                        {[
-                          { icon:"🔬", label:"Partager un résultat labo" },
-                          { icon:"🩻", label:"Partager imagerie" },
-                          { icon:"📋", label:"Partager dossier patient" },
-                          { icon:"💊", label:"Envoyer ordonnance" },
-                        ].map(a => (
-                          <button key={a.label} className="cbtn cbtn-ghost cbtn-sm" style={{ width:"100%", justifyContent:"flex-start", marginBottom:6, fontSize:11 }} onClick={() => toast.success(`${a.icon} Partage en cours...`)}>
-                            <span>{a.icon}</span> {a.label}
+                        {Object.entries(SHARE_CFG).map(([key, a]) => (
+                          <button key={key} className="cbtn cbtn-ghost cbtn-sm" style={{ width:"100%", justifyContent:"flex-start", marginBottom:6, fontSize:11 }} onClick={() => openShare(key)}>
+                            <span>{a.icon}</span> {a.title}
                           </button>
                         ))}
                         {/* AUDIT-MESSAGES-PhaseA — "Messages chiffrés de bout
@@ -1564,7 +1711,7 @@ export default function Messagerie() {
                 <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Notifications</div>
                 <div style={{ fontSize:12, color:"var(--cm)" }}>{notifsNonLues} non lue(s) · {notifs.length} au total</div>
               </div>
-              <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => setNotifs(prev => prev.map(n => ({ ...n, lu:true })))}>
+              <button className="cbtn cbtn-ghost cbtn-sm" onClick={readAllNotifs}>
                 {I.check2} Tout marquer comme lu
               </button>
             </div>
@@ -1583,7 +1730,7 @@ export default function Messagerie() {
                       {!n.lu && <span style={{ width:8, height:8, borderRadius:"50%", background:"var(--ct)", display:"inline-block" }} />}
                     </div>
                     <div style={{ fontSize:12, color:"var(--cm)", marginTop:3 }}>{n.message}</div>
-                    <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>{fmtFull(n.date)}</div>
+                    <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>{fmtFull(n.createdAt)}</div>
                   </div>
                 </div>
               ))}
@@ -1777,6 +1924,109 @@ export default function Messagerie() {
               </div>
             ))}
           </div>
+        </Modal>
+
+        {/* ═══ MODAL : PARTAGE DE DOCUMENT (Actions rapides) ═══ */}
+        <Modal open={!!shareType} onClose={closeShare} title={shareType ? <>{SHARE_CFG[shareType].icon} {SHARE_CFG[shareType].title}</> : ""} maxWidth={460}>
+          {shareType && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              {/* Étape 1 : patient */}
+              {shareStep === "patient" && (
+                <>
+                  <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={shareQuery} onChange={e => setShareQuery(e.target.value)} />
+                  <div style={{ maxHeight:320, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
+                    {shareQuery.trim().length >= 2 && sharePatients.length === 0 && (
+                      <div style={{ textAlign:"center", padding:16, color:"var(--cm)", fontSize:12 }}>Aucun patient trouvé.</div>
+                    )}
+                    {sharePatients.map(p => (
+                      <div key={p._id} className="msg-conv-item" style={{ borderRadius:10, cursor:"pointer" }} onClick={() => pickSharePatient(p)}>
+                        <div style={{ width:34, height:34, borderRadius:9, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+                        <div style={{ minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{p.prenom} {p.nom}</div>
+                          <div style={{ fontSize:11, color:"var(--cm)" }}>{p.numero_dossier || "—"} · {p.telephone || "—"}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Étape 2 : sélection du document réel (labo / ordonnance / imagerie) */}
+              {shareStep === "record" && (
+                <>
+                  <div style={{ fontSize:12, color:"var(--cm)" }}>Patient : <strong style={{ color:"var(--cn)" }}>{sharePatient?.prenom} {sharePatient?.nom}</strong></div>
+                  <div style={{ maxHeight:320, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
+                    {shareRecordsLoading && <div style={{ textAlign:"center", padding:16, color:"var(--cm)", fontSize:12 }}>Chargement...</div>}
+                    {!shareRecordsLoading && shareRecords.length === 0 && (
+                      <div style={{ textAlign:"center", padding:16, color:"var(--cm)", fontSize:12 }}>Aucun document disponible pour ce patient.</div>
+                    )}
+                    {!shareRecordsLoading && shareType === "labo" && shareRecords.map(r => (
+                      <div key={r._id} className="msg-conv-item" style={{ borderRadius:10, cursor:"pointer" }} onClick={() => pickShareRecord(r)}>
+                        <div style={{ width:34, height:34, borderRadius:9, background:"#F0FDF4", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🔬</div>
+                        <div style={{ minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{r.date_prescription ? new Date(r.date_prescription).toLocaleDateString("fr-FR") : "—"} · {r.statut}</div>
+                          <div style={{ fontSize:11, color:"var(--cm)" }}>{r.medecin_prescripteur_nom || "Prescripteur inconnu"}{r.est_critique ? " · ⚠️ critique" : ""}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {!shareRecordsLoading && shareType === "ordonnance" && shareRecords.map(rx => (
+                      <div key={rx._id} className="msg-conv-item" style={{ borderRadius:10, cursor:"pointer" }} onClick={() => pickShareRecord(rx)}>
+                        <div style={{ width:34, height:34, borderRadius:9, background:"#FEF3C7", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>💊</div>
+                        <div style={{ minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{rx.numero_rx} · {rx.statut}</div>
+                          <div style={{ fontSize:11, color:"var(--cm)" }}>{(rx.lignes || []).length} médicament(s) · {rx.date_prescription ? new Date(rx.date_prescription).toLocaleDateString("fr-FR") : "—"}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {!shareRecordsLoading && shareType === "imagerie" && shareRecords.map(exam => (
+                      <div key={exam._id} className="msg-conv-item" style={{ borderRadius:10, cursor: (exam.images || []).length ? "pointer" : "not-allowed", opacity: (exam.images || []).length ? 1 : .5 }} onClick={() => (exam.images || []).length && pickShareExam(exam)}>
+                        <div style={{ width:34, height:34, borderRadius:9, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🩻</div>
+                        <div style={{ minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{exam.type_categorie || "Examen"} · {exam.statut}</div>
+                          <div style={{ fontSize:11, color:"var(--cm)" }}>{(exam.images || []).length} image(s) réelle(s){!(exam.images || []).length ? " — aucune image enregistrée" : ""}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" className="cbtn cbtn-ghost cbtn-sm" onClick={() => setShareStep("patient")}>← Changer de patient</button>
+                </>
+              )}
+
+              {/* Étape 2bis : choix de l'image réelle au sein d'un examen d'imagerie */}
+              {shareStep === "image" && (
+                <>
+                  <div style={{ fontSize:12, color:"var(--cm)" }}>Examen : <strong style={{ color:"var(--cn)" }}>{shareRecord?.type_categorie || "Imagerie"}</strong></div>
+                  <div style={{ maxHeight:320, overflowY:"auto", display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                    {(shareRecord?.images || []).map((img, i) => (
+                      <div key={i} style={{ border:"1.5px solid var(--cbr)", borderRadius:10, padding:8, cursor:"pointer", textAlign:"center" }} onClick={() => pickShareImage(img)}>
+                        <div style={{ fontSize:22 }}>🖼️</div>
+                        <div style={{ fontSize:10, color:"var(--cm)", wordBreak:"break-all" }}>{img.filename}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" className="cbtn cbtn-ghost cbtn-sm" onClick={() => setShareStep("record")}>← Retour aux examens</button>
+                </>
+              )}
+
+              {/* Étape 3 : confirmation d'envoi */}
+              {shareStep === "confirm" && (
+                <>
+                  <div style={{ background:"#F8FAFD", border:"1.5px solid var(--cbr)", borderRadius:12, padding:14, fontSize:13, color:"var(--cn)" }}>
+                    {shareType === "dossier" && <>Envoyer le dossier de <strong>{sharePatient?.prenom} {sharePatient?.nom}</strong> à {getConvDisplayName(selected, me._id)} ?</>}
+                    {shareType === "labo" && <>Envoyer le résultat labo du <strong>{shareRecord?.date_prescription ? new Date(shareRecord.date_prescription).toLocaleDateString("fr-FR") : ""}</strong> de {sharePatient?.prenom} {sharePatient?.nom} à {getConvDisplayName(selected, me._id)} ?</>}
+                    {shareType === "ordonnance" && <>Envoyer l'ordonnance <strong>{shareRecord?.numero_rx}</strong> de {sharePatient?.prenom} {sharePatient?.nom} à {getConvDisplayName(selected, me._id)} ?</>}
+                    {shareType === "imagerie" && <>Envoyer l'image <strong>{shareImage?.filename}</strong> ({shareRecord?.type_categorie}) de {sharePatient?.prenom} {sharePatient?.nom} à {getConvDisplayName(selected, me._id)} ?</>}
+                  </div>
+                  <div style={{ display:"flex", gap:10 }}>
+                    <button type="button" className="cbtn cbtn-ghost" onClick={() => setShareStep(shareType === "dossier" ? "patient" : shareType === "imagerie" && (shareRecord?.images || []).length > 1 ? "image" : "record")} disabled={shareSending}>← Retour</button>
+                    <button type="button" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} onClick={confirmShare} disabled={shareSending}>
+                      {shareSending ? "Envoi..." : <>{I.send} Envoyer</>}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </Modal>
 
       </div>

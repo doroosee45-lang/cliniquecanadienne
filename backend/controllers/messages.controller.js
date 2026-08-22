@@ -277,6 +277,14 @@ exports.deleteMessage = async (req, res, next) => {
     }
 
     msg.deleteOne();
+    // AUDIT-MESSAGES-PhaseC — dernier_message_apercu n'était jamais recalculé
+    // après une suppression : la liste des conversations continuait
+    // d'afficher l'aperçu du message supprimé jusqu'au prochain message.
+    const last = conv.messages[conv.messages.length - 1];
+    conv.dernier_message_apercu = last ? (last.contenu || (last.pieceJointe
+      ? ({ audio: '🎙️ Message vocal', image: '🖼️ Image', document: '📄 Document' }[last.pieceJointe.type] || '📎 Pièce jointe')
+      : '')) : '';
+    if (last) conv.dernier_message = last.date_envoi;
     await conv.save();
     await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: conv._id, ip: req.ip, message: 'Message supprimé' });
 
