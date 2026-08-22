@@ -9,9 +9,11 @@
 // 80mm), InvoicePrint.jsx (impression du DOM Tailwind A4 affiché à l'écran).
 //
 // Mécanisme : fenêtre popup + window.print(), comme le faisait déjà
-// Pharmacy.jsx — un seul moteur de rendu (pas de jsPDF pour ce document :
+// Pharmacy.jsx — un seul moteur de rendu (pas de jsPDF pour l'impression :
 // "Enregistrer en PDF" reste possible via la boîte de dialogue d'impression
-// du navigateur).
+// du navigateur). Un second moteur (buildReceiptPdfBlob) existe séparément,
+// réservé au partage (email/WhatsApp) — jamais à l'impression elle-même.
+import QRCode from 'qrcode';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 const fmtCFA = (n) => (n != null && !isNaN(Number(n)) ? Number(n).toLocaleString('fr-FR') : '0') + ' CFA';
@@ -49,7 +51,27 @@ const CSS_58MM = `
   .total-row  { font-size:10px; }
   .total-row.emph { font-size:12px; font-weight:800; }
   .footer { font-size:9px; text-align:center; color:#333; }
+  .qr-wrap { display:flex; justify-content:center; margin:6px 0; }
+  .qr-wrap img { width:26mm; height:26mm; }
 `;
+
+// AUDIT-RECU-QR — le QR n'encode jamais que la référence (n° facture/
+// dossier/ticket), jamais de données personnelles (nom, téléphone, adresse)
+// : aucune route de consultation publique par référence n'existe côté
+// backend (finance.routes.js est réservé staff), donc pas de lien
+// cliquable non plus — un ticket perdu ou photographié n'expose rien.
+// 300px de large en interne (mis à l'échelle à 26mm en CSS) pour une
+// densité suffisante au DPI d'une imprimante thermique typique (~203dpi) ;
+// une référence courte (~15 caractères) reste sur une version basse du QR
+// (modules larges), donc lisible même à cette petite taille physique.
+const buildQrDataUrl = async (text) => {
+  if (!text) return null;
+  try {
+    return await QRCode.toDataURL(String(text), { margin: 1, width: 300 });
+  } catch {
+    return null;
+  }
+};
 
 /**
  * @typedef {{ label:string, value:string }} MetaLine
@@ -60,14 +82,18 @@ const CSS_58MM = `
  *   billedTo?:{ label:string, name:string, sub?:string },
  *   meta?:MetaLine[], lines:ReceiptLine[], totals:TotalLine[],
  *   note?:string, footer?:string, clinicAddressLines?:string[],
+ *   qrData?:string,
  * }} Receipt
  * @param {Receipt} receipt
  */
-export const buildReceipt58mmHtml = (receipt) => {
+export const buildReceipt58mmHtml = async (receipt) => {
   const {
     docType, docNumber, date, billedTo, meta = [], lines = [], totals = [],
-    note, footer, clinicAddressLines = [],
+    note, footer, clinicAddressLines = [], qrData,
   } = receipt;
+
+  const qrDataUrl = await buildQrDataUrl(qrData);
+  const qrHtml = qrDataUrl ? `<div class="qr-wrap"><img src="${qrDataUrl}" alt="QR ${esc(qrData)}"></div>` : '';
 
   const addressHtml = clinicAddressLines.length
     ? `<div class="muted">${clinicAddressLines.map(esc).join('<br>')}</div>`
@@ -131,6 +157,7 @@ export const buildReceipt58mmHtml = (receipt) => {
   ${note ? `<div class="sep"></div><div class="muted center">${esc(note)}</div>` : ''}
 
   <div class="sep"></div>
+  ${qrHtml}
   <div class="footer">
     ${footer ? esc(footer) : 'Merci de votre confiance.'}<br>
     ${esc(CLINIC_NAME)} ${esc(CLINIC_SUBTITLE)}
@@ -142,8 +169,8 @@ export const buildReceipt58mmHtml = (receipt) => {
  * Ouvre une fenêtre popup au format ticket et déclenche l'impression.
  * @param {Receipt} receipt
  */
-export const printReceipt58mm = (receipt) => {
-  const html = buildReceipt58mmHtml(receipt);
+export const printReceipt58mm = async (receipt) => {
+  const html = await buildReceipt58mmHtml(receipt);
   const win = window.open('', '_blank', 'width=380,height=640');
   if (!win) { window.print(); return; }
   win.document.write(html);

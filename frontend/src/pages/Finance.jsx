@@ -217,9 +217,9 @@ const normalizeFacture = (f) => {
 // (frontend/src/utils/receipt58mm.js) : le bouton "Télécharger PDF" a été
 // retiré (redondant — "Enregistrer en PDF" reste possible depuis la boîte
 // de dialogue d'impression du navigateur).
-const printInvoice58mm = (f) => {
+const printInvoice58mm = async (f) => {
   const statutLabel = f.statut === 'paye' ? 'Payée' : f.statut === 'partiellement_paye' ? 'Partiellement payée' : 'Non payée';
-  printReceipt58mm({
+  await printReceipt58mm({
     docType: 'FACTURE',
     docNumber: f.numero,
     date: fmtDate(f.date),
@@ -237,6 +237,7 @@ const printInvoice58mm = (f) => {
     note: f.statut === 'paye'
       ? 'Facture réglée intégralement.'
       : `À régler avant le ${fmtDate(f.echeance) || "la date d'échéance"}.`,
+    qrData: f.numero,
   });
 };
 

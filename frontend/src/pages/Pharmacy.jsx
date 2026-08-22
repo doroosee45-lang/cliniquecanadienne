@@ -831,10 +831,10 @@ export default function Pharmacie() {
   // par tous les modules facture/reçu/ticket de l'app. Le bouton "PDF
   // complet (A4)" ci-dessous reste inchangé (usage différent : document à
   // archiver/envoyer, pas à imprimer au comptoir).
-  const printTicket58mm = () => {
+  const printTicket58mm = async () => {
     if (!venteTicket) return;
     const t = venteTicket;
-    printReceipt58mm({
+    await printReceipt58mm({
       docType: 'TICKET DE VENTE',
       docNumber: t.numero,
       date: new Date(t.date).toLocaleString('fr-FR'),
@@ -848,6 +848,7 @@ export default function Pharmacie() {
       })),
       totals: [{ label: 'TOTAL', value: t.total, emphasis: true }],
       note: 'Conservez ce ticket pour tout remboursement.',
+      qrData: t.numero,
     });
   };
 

@@ -60,12 +60,12 @@ export default function InvoicePrint() {
   // AUDIT-RECU-58MM — l'aperçu écran (Tailwind, A4/letter) ne change pas ;
   // seule la sortie imprimée passe par le gabarit thermique commun
   // (frontend/src/utils/receipt58mm.js), comme Finance.jsx/Pharmacy.jsx.
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const statutLabels = {
       payee: 'Payée', partiellement_payee: 'Partiellement payée', emise: 'Non payée',
       annulee: 'Annulée', contentieux: 'Contentieux', brouillon: 'Brouillon',
     };
-    printReceipt58mm({
+    await printReceipt58mm({
       docType: 'FACTURE',
       docNumber: invoice.numero_facture,
       date: fmtDate(invoice.date_facture),
@@ -92,6 +92,7 @@ export default function InvoicePrint() {
       note: invoice.montant_restant > 0
         ? `Merci de régler avant le ${fmtDate(invoice.date_echeance) || "la date d'échéance"}.`
         : 'Facture réglée intégralement. Merci pour votre confiance.',
+      qrData: invoice.numero_facture,
     });
   };
 
