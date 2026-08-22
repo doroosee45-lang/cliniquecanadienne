@@ -29,6 +29,7 @@ import {
 import { HeartPulse, Plus } from 'lucide-react';
 import Hero, { HeroButton } from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import api from '../api';
 
 // ─── CSS Medical Navy + Teal (même palette qu'Analytics) ─────
 const CSS = `
@@ -204,10 +205,62 @@ function Prog({ pct, color, h=8 }) {
   return <div className="mat-prog" style={{height:h}}><div className="mat-prog-f" style={{width:`${Math.min(100,pct)}%`,background:color}}/></div>;
 }
 
+// AUDIT-MATERNITE-PATIENT — règle d'affichage générale (pas seulement les 2
+// dossiers déjà identifiés) : tout enregistrement sans patient_nom NI
+// patient_prenom NI patient_id doit afficher un indicateur d'alerte
+// explicite plutôt qu'un nom vide silencieux — même badge d'alerte rouge
+// (.mbdg.red) déjà utilisé partout ailleurs sur cette page (niveaux de
+// risque "🔴 Élevé", etc.), pour que le personnel reconnaisse immédiatement
+// un problème de donnée plutôt qu'un nom de famille inhabituel. Fonction
+// simple (pas un composant nommé/capitalisé rendu comme balise JSX) —
+// appelée directement dans le rendu, aucun risque de perte de focus.
+function patientLabel(record) {
+  const identifie = record?.patient_nom || record?.patient_prenom || record?.patient_id;
+  if (!identifie) {
+    return <span className="mbdg red" style={{ fontSize:11, fontWeight:700 }}>⚠️ Patiente non identifiée</span>;
+  }
+  return <>{record?.patient_prenom} {record?.patient_nom}</>;
+}
+
+// Même règle pour la mère d'un nouveau-né (Newborn.mere_nom, dérivé
+// désormais côté backend depuis Pregnancy.patient_id quand elle existe —
+// voir maternityController.js::createNewborn). Champ simple (pas de
+// prenom/nom séparés comme pour patientLabel), donc son propre helper.
+function mereLabel(record) {
+  const identifie = record?.mere_nom || record?.patient_id;
+  if (!identifie) {
+    return <span className="mbdg red" style={{ fontSize:11, fontWeight:700 }}>⚠️ Patiente non identifiée</span>;
+  }
+  return <>{record?.mere_nom}</>;
+}
+
 // ─── MODAL Nouveau dossier grossesse ────────────────────────
+// AUDIT-MATERNITE-PATIENT — même correctif que Pediatrie.jsx::ModalDossier.
+// Diagnostic confirmé avant correctif (pas seulement supposé) : la liste
+// affiche bien patient_nom/patient_prenom (champs plats sur Pregnancy, pas
+// un populate de patient_id), mais maternityController.js::create ne les
+// reprend dans le corps créé QUE si patient_id est fourni (bloc "if
+// (patient_id) { body.patient_nom = pat.nom; ... }") — sinon ils sont
+// purement et simplement absents de la destructuration initiale et donc
+// jamais persistés, même si l'utilisateur les a bien tapés dans le
+// formulaire. Vérifié sur les 2 dossiers réels existants en base : aucun
+// des deux n'a patient_nom/patient_prenom/patient_id, confirmant que ce
+// n'est jamais arrivé jusqu'ici. patient_id devenant obligatoire ci-dessous,
+// ce bloc s'exécute désormais à chaque création — même correctif qui
+// résout donc les deux problèmes signalés.
+// Téléphone rendu lecture-seule en plus de nom/prénom (au-delà de la
+// demande initiale) : le contrôleur écrase aussi inconditionnellement
+// `body.telephone = pat.telephone` dès que patient_id est fourni (même bloc,
+// ligne 106) — le laisser éditable aurait affiché une valeur different de
+// celle réellement enregistrée. groupe_sanguin/antécédents restent
+// éditables : le contrôleur ne les écrase qu'en repli (uniquement si vides),
+// jamais inconditionnellement.
 function ModalDossier({ onClose, saving }) {
   const dispatch = useDispatch();
-  const [form, setForm] = useState({ patient_nom:"", patient_prenom:"", telephone:"", ddr:"", groupe_sanguin:"", medecin_responsable:"", antecedents_medicaux:"", facteurs_risque:[] });
+  const [form, setForm] = useState({ ddr:"", groupe_sanguin:"", medecin_responsable:"", antecedents_medicaux:"", facteurs_risque:[] });
+  const [patientQuery, setPatientQuery] = useState("");
+  const [patientResults, setPatientResults] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
   const boxRef = useRef(null);
   const titleId = useId();
   // Extension du correctif fix/modal-focus-loss-on-keystroke : onClose est
@@ -225,11 +278,27 @@ function ModalDossier({ onClose, saving }) {
     return () => window.removeEventListener("keydown", h);
   }, []);
 
+  useEffect(() => {
+    if (selectedPatient || patientQuery.trim().length < 2) { setPatientResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(patientQuery.trim())}`);
+        setPatientResults(data.patients || []);
+      } catch { setPatientResults([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [patientQuery, selectedPatient]);
+
+  const pickPatient = (p) => { setSelectedPatient(p); setPatientQuery(""); setPatientResults([]); };
+  const clearPatient = () => setSelectedPatient(null);
+
   const handleSubmit = async () => {
-    if (!form.patient_nom || !form.ddr) { toast.error("Veuillez remplir les champs obligatoires"); return; }
-    const result = await dispatch(createGrossesse(form));
+    if (!selectedPatient) { toast.error("Sélectionnez un patient existant avant de créer le dossier."); return; }
+    if (!form.ddr) { toast.error("Veuillez remplir les champs obligatoires"); return; }
+    const body = { ...form, patient_id: selectedPatient._id };
+    const result = await dispatch(createGrossesse(body));
     if (createGrossesse.fulfilled.match(result)) {
-      toast.success(`✅ Dossier grossesse créé pour ${form.patient_prenom} ${form.patient_nom}`);
+      toast.success(`✅ Dossier grossesse créé pour ${selectedPatient.prenom} ${selectedPatient.nom}`);
       onClose();
     } else {
       toast.error(result.payload || "Erreur création");
@@ -244,20 +313,51 @@ function ModalDossier({ onClose, saving }) {
           <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="mat-modal-body">
+          {!selectedPatient && (
+            <div className="mat-field" style={{ marginBottom:10 }}>
+              <label className="mat-label">Patient *</label>
+              <input className="mat-input" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={patientQuery} onChange={e => setPatientQuery(e.target.value)} />
+              <div style={{ maxHeight:220, overflowY:"auto", display:"flex", flexDirection:"column", gap:4, marginTop:8 }}>
+                {patientQuery.trim().length >= 2 && patientResults.length === 0 && (
+                  <div style={{ textAlign:"center", padding:12, color:"var(--am)", fontSize:12 }}>Aucun patient trouvé.</div>
+                )}
+                {patientResults.map(p => (
+                  <div key={p._id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", borderRadius:10, cursor:"pointer", border:"1.5px solid var(--abr)" }} onClick={() => pickPatient(p)}>
+                    <div style={{ width:32, height:32, borderRadius:8, background:"var(--al)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:"var(--an)" }}>{p.prenom} {p.nom}</div>
+                      <div style={{ fontSize:11, color:"var(--am)" }}>{p.numero_dossier || "—"} · {p.telephone || "—"}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {selectedPatient && (
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"var(--al)", border:"1.5px solid var(--apk)", marginBottom:10 }}>
+              <div style={{ width:32, height:32, borderRadius:8, background:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:"var(--an)" }}>{selectedPatient.prenom} {selectedPatient.nom}</div>
+                <div style={{ fontSize:11, color:"var(--am)" }}>{selectedPatient.numero_dossier || "—"}</div>
+              </div>
+              <button type="button" className="mbtn mbtn-ghost mbtn-sm" onClick={clearPatient}>Changer</button>
+            </div>
+          )}
+
           <div className="mat-g2">
             <div className="mat-field">
-              <label className="mat-label">Nom *</label>
-              <input className="mat-input" placeholder="Nom de famille" value={form.patient_nom} onChange={e=>setForm({...form,patient_nom:e.target.value})}/>
+              <label className="mat-label">Nom</label>
+              <input className="mat-input" value={selectedPatient?.nom || ""} readOnly disabled placeholder="Dérivé du patient sélectionné"/>
             </div>
             <div className="mat-field">
-              <label className="mat-label">Prénom *</label>
-              <input className="mat-input" placeholder="Prénom" value={form.patient_prenom} onChange={e=>setForm({...form,patient_prenom:e.target.value})}/>
+              <label className="mat-label">Prénom</label>
+              <input className="mat-input" value={selectedPatient?.prenom || ""} readOnly disabled placeholder="Dérivé du patient sélectionné"/>
             </div>
           </div>
           <div className="mat-g2">
             <div className="mat-field">
               <label className="mat-label">Téléphone</label>
-              <input className="mat-input" placeholder="06-XX-XX-XX" value={form.telephone} onChange={e=>setForm({...form,telephone:e.target.value})}/>
+              <input className="mat-input" value={selectedPatient?.telephone || ""} readOnly disabled placeholder="Dérivé du patient sélectionné"/>
             </div>
             <div className="mat-field">
               <label className="mat-label">Groupe sanguin</label>
@@ -286,7 +386,7 @@ function ModalDossier({ onClose, saving }) {
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}}>
             <button className="mbtn mbtn-ghost" onClick={onClose}>Annuler</button>
-            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving}>{saving?"⏳ Création...":"💾 Créer le dossier"}</button>
+            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving || !selectedPatient} title={!selectedPatient ? "Sélectionnez d'abord un patient" : undefined}>{saving?"⏳ Création...":"💾 Créer le dossier"}</button>
           </div>
         </div>
       </div>
@@ -882,7 +982,7 @@ export default function Maternite() {
                       <div key={i} style={{background:"#FDF8FD",borderRadius:14,padding:14,border:"1.5px solid #F9A8D4"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                           <div>
-                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)",cursor:p.patient_id?._id?"pointer":"default",textDecoration:p.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>p.patient_id?._id&&navigate(`/patients/${p.patient_id._id}`)}>{p.patient_prenom} {p.patient_nom}</div>
+                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)",cursor:p.patient_id?._id?"pointer":"default",textDecoration:p.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>p.patient_id?._id&&navigate(`/patients/${p.patient_id._id}`)}>{patientLabel(p)}</div>
                             {p.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,display:"inline-block",marginBottom:4}}>{p.patient_id.numero_dossier}</span>}
                             <div style={{fontSize:11,color:"var(--am)"}}>Entrée : {fmtDate(p.salle_travail?.date_admission)}</div>
                           </div>
@@ -918,7 +1018,7 @@ export default function Maternite() {
                       <div key={i} className={r.niveau_risque==="eleve"?"al-danger":"al-warn"}>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                           <div>
-                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)",cursor:r.patient_id?._id?"pointer":"default",textDecoration:r.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>r.patient_id?._id&&navigate(`/patients/${r.patient_id._id}`)}>{r.patient_prenom} {r.patient_nom}</div>
+                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)",cursor:r.patient_id?._id?"pointer":"default",textDecoration:r.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>r.patient_id?._id&&navigate(`/patients/${r.patient_id._id}`)}>{patientLabel(r)}</div>
                             {r.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,display:"inline-block",marginBottom:4}}>{r.patient_id.numero_dossier}</span>}
                             <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap"}}>
                               {(r.facteurs_risque||[]).slice(0,3).map(f=><Badge key={f} cls={r.niveau_risque==="eleve"?"red":"orange"}>{f}</Badge>)}
@@ -988,7 +1088,7 @@ export default function Maternite() {
                         ) : grossessesFiltrees.map(p=>(
                           <tr key={p._id}>
                             <td><span style={{fontWeight:700,color:"var(--apk)"}}>{p.numero||p._id?.slice(-6)}</span></td>
-                            <td><div style={{fontWeight:600,color:"var(--an)",cursor:p.patient_id?._id?"pointer":"default",textDecoration:p.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>p.patient_id?._id&&navigate(`/patients/${p.patient_id._id}`)}>{p.patient_prenom} {p.patient_nom}</div>{p.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,display:"inline-block",marginTop:2}}>{p.patient_id.numero_dossier}</span>}</td>
+                            <td><div style={{fontWeight:600,color:"var(--an)",cursor:p.patient_id?._id?"pointer":"default",textDecoration:p.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>p.patient_id?._id&&navigate(`/patients/${p.patient_id._id}`)}>{patientLabel(p)}</div>{p.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,display:"inline-block",marginTop:2}}>{p.patient_id.numero_dossier}</span>}</td>
                             <td style={{fontSize:12}}>{p.telephone||"—"}</td>
                             <td style={{fontWeight:600,color:"var(--ab)"}}>{fmtDate(p.dpa)}</td>
                             <td><Badge cls="purple">{agSemaines(p.ddr)}</Badge></td>
@@ -1036,7 +1136,7 @@ export default function Maternite() {
                       <div key={`${i}-${j}`} style={{background:"#F8FAFD",borderRadius:14,padding:14,border:"1.5px solid var(--abr)"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
                           <div>
-                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)"}}><span style={{cursor:g.patient_id?._id?"pointer":"default",textDecoration:g.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>g.patient_id?._id&&navigate(`/patients/${g.patient_id._id}`)}>{g.patient_prenom} {g.patient_nom}</span>{g.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,marginLeft:6}}>{g.patient_id.numero_dossier}</span>} — <span style={{color:"var(--apk)"}}>CPN n°{g.cpns.length}</span></div>
+                            <div style={{fontSize:14,fontWeight:700,color:"var(--an)"}}><span style={{cursor:g.patient_id?._id?"pointer":"default",textDecoration:g.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>g.patient_id?._id&&navigate(`/patients/${g.patient_id._id}`)}>{patientLabel(g)}</span>{g.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,marginLeft:6}}>{g.patient_id.numero_dossier}</span>} — <span style={{color:"var(--apk)"}}>CPN n°{g.cpns.length}</span></div>
                             <div style={{fontSize:11,color:"var(--am)"}}>{fmtDate(cpn.date)} · {cpn.medecin||g.medecin_responsable||"—"}</div>
                           </div>
                           <Badge cls="green">Enregistrée</Badge>
@@ -1134,7 +1234,7 @@ export default function Maternite() {
                   <div key={r._id} className={`mat-card fu d${Math.min(i+1,6)}`}>
                     <div className="mat-card-hdr">
                       <div>
-                        <h3><span style={{cursor:r.patient_id?._id?"pointer":"default",textDecoration:r.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>r.patient_id?._id&&navigate(`/patients/${r.patient_id._id}`)}>{r.patient_prenom} {r.patient_nom}</span>{r.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,marginLeft:8}}>{r.patient_id.numero_dossier}</span>}</h3>
+                        <h3><span style={{cursor:r.patient_id?._id?"pointer":"default",textDecoration:r.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>r.patient_id?._id&&navigate(`/patients/${r.patient_id._id}`)}>{patientLabel(r)}</span>{r.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,marginLeft:8}}>{r.patient_id.numero_dossier}</span>}</h3>
                         <p>DPA : {fmtDate(r.dpa)} · {r.medecin_responsable||"—"}</p>
                       </div>
                       <Badge cls={risqueBadge(r.niveau_risque)}>Risque {risqueLabel(r.niveau_risque)}</Badge>
@@ -1185,7 +1285,7 @@ export default function Maternite() {
                   <div key={p._id} className="mat-card fu">
                     <div className="mat-card-hdr">
                       <div>
-                        <h3>🏥 <span style={{cursor:p.patient_id?._id?"pointer":"default",textDecoration:p.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>p.patient_id?._id&&navigate(`/patients/${p.patient_id._id}`)}>{p.patient_prenom} {p.patient_nom}</span>{p.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,marginLeft:8}}>{p.patient_id.numero_dossier}</span>}</h3>
+                        <h3>🏥 <span style={{cursor:p.patient_id?._id?"pointer":"default",textDecoration:p.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>p.patient_id?._id&&navigate(`/patients/${p.patient_id._id}`)}>{patientLabel(p)}</span>{p.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,marginLeft:8}}>{p.patient_id.numero_dossier}</span>}</h3>
                         <p>Admission : {fmtDate(p.salle_travail?.date_admission)} · Membranes : {p.salle_travail?.rupture_membranes?"Rompues":"Intactes"}</p>
                       </div>
                       <Badge cls="red">En travail</Badge>
@@ -1248,7 +1348,7 @@ export default function Maternite() {
                         ) : accouchements.map(a=>(
                           <tr key={a._id}>
                             <td><span style={{fontWeight:700,color:"var(--apk)"}}>{a.numero||a._id?.slice(-6)}</span></td>
-                            <td style={{fontWeight:600,color:"var(--an)"}}>{a.patient_nom||"—"}</td>
+                            <td style={{fontWeight:600,color:"var(--an)"}}>{patientLabel(a)}</td>
                             <td style={{fontSize:12}}>{fmtDate(a.date_heure)}</td>
                             <td>
                               <Badge cls={a.type_accouchement==="voie_basse"?"green":a.type_accouchement==="cesarienne"?"purple":"orange"}>
@@ -1305,7 +1405,7 @@ export default function Maternite() {
                       </div>
                       {/* Mère */}
                       <div style={{fontSize:12,color:"var(--am)",marginBottom:10}}>
-                        Mère : <span style={{fontWeight:600,color:"var(--an)"}}>{n.mere_nom||"—"}</span>
+                        Mère : <span style={{fontWeight:600,color:"var(--an)"}}>{mereLabel(n)}</span>
                       </div>
                       {/* Vaccinations */}
                       <div style={{marginBottom:14}}>
@@ -1365,7 +1465,7 @@ export default function Maternite() {
                             return (
                               <div key={i} style={{background:"#F8FAFD",borderRadius:12,padding:12,border:"1.5px solid var(--abr)"}}>
                                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                                  <div style={{fontWeight:700,fontSize:13,color:"var(--an)",cursor:m.patient_id?._id?"pointer":"default",textDecoration:m.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>m.patient_id?._id&&navigate(`/patients/${m.patient_id._id}`)}>{m.patient_prenom} {m.patient_nom}{m.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,marginLeft:6}}>{m.patient_id.numero_dossier}</span>}</div>
+                                  <div style={{fontWeight:700,fontSize:13,color:"var(--an)",cursor:m.patient_id?._id?"pointer":"default",textDecoration:m.patient_id?._id?"underline dotted":"none",textUnderlineOffset:2}} onClick={()=>m.patient_id?._id&&navigate(`/patients/${m.patient_id._id}`)}>{patientLabel(m)}{m.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,marginLeft:6}}>{m.patient_id.numero_dossier}</span>}</div>
                                   <Badge cls={dernier?"green":"orange"}>{dernier?"Consultée":"À consulter"}</Badge>
                                 </div>
                                 {dernier && (
@@ -1449,7 +1549,7 @@ export default function Maternite() {
                   <div style={{ display:"flex", alignItems:"center", gap:14 }}>
                     <div style={{ width:54, height:54, borderRadius:14, background:"#FDF2F8", border:"2px solid var(--apk)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>🤰</div>
                     <div>
-                      <div style={{ fontSize:17, fontWeight:800, color:"var(--an)", cursor:grossesseDossier.patient_id?._id?"pointer":"default", textDecoration:grossesseDossier.patient_id?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>grossesseDossier.patient_id?._id&&navigate(`/patients/${grossesseDossier.patient_id._id}`)}>{grossesseDossier.patient_prenom} {grossesseDossier.patient_nom}{grossesseDossier.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,marginLeft:8}}>{grossesseDossier.patient_id.numero_dossier}</span>}</div>
+                      <div style={{ fontSize:17, fontWeight:800, color:"var(--an)", cursor:grossesseDossier.patient_id?._id?"pointer":"default", textDecoration:grossesseDossier.patient_id?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>grossesseDossier.patient_id?._id&&navigate(`/patients/${grossesseDossier.patient_id._id}`)}>{patientLabel(grossesseDossier)}{grossesseDossier.patient_id?.numero_dossier&&<span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 6px",borderRadius:4,marginLeft:8}}>{grossesseDossier.patient_id.numero_dossier}</span>}</div>
                       <div style={{ fontSize:12, color:"var(--am)", marginTop:3 }}>
                         {grossesseDossier.numero||grossesseDossier._id?.slice(-6)} · {agSemaines(grossesseDossier.ddr)} · DPA : {fmtDate(grossesseDossier.dpa)}
                       </div>

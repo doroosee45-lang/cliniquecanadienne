@@ -251,6 +251,23 @@ exports.createNewborn = async (req, res, next) => {
       { vaccin: 'VPO 0 (Polio naissance)', date: new Date(), dose: '2 gouttes' },
       { vaccin: 'Hépatite B naissance', date: new Date(), dose: '0,5ml intramusculaire' },
     ];
+
+    // AUDIT-MATERNITE-PATIENT (extension nouveau-nés) — mere_nom était repris
+    // tel quel du frontend (construit depuis patient_nom/patient_prenom de la
+    // grossesse), donc vide dès que la grossesse elle-même n'a pas de
+    // patiente identifiée (mêmes 2 dossiers historiques). Même principe que
+    // le bloc "if (patient_id)" ci-dessus pour Pregnancy : si la grossesse
+    // liée a bien un patient_id réel, on re-dérive mere_nom/patient_id
+    // depuis elle plutôt que de faire confiance à ce que le frontend a
+    // envoyé — source unique de vérité, jamais de duplication qui diverge.
+    if (body.grossesse_id) {
+      const g = await Pregnancy.findById(body.grossesse_id);
+      if (g?.patient_id) {
+        body.patient_id = g.patient_id;
+        body.mere_nom   = `${g.patient_prenom || ''} ${g.patient_nom || ''}`.trim();
+      }
+    }
+
     const nb = await Newborn.create(body);
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: nb._id, ip: req.ip, message: `Nouveau-né enregistré ${nb.numero} — ${nb.prenom || ''} (mère : ${nb.mere_nom || '—'})` });
     emitDashboardUpdate();

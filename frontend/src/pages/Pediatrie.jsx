@@ -26,6 +26,7 @@ import {
 import { Baby, Plus, Printer } from 'lucide-react';
 import Hero, { HeroButton } from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import api from '../api';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -269,9 +270,19 @@ const ageTexte     = (ddn) => {
 };
 
 // ─── MODAL Nouveau dossier pédiatrique ──────────────────────
+// AUDIT-PEDIATRIE-PATIENT — nom/prénom étaient retapés à la main, sans lien
+// vers un vrai document Patient (patient_id du schéma Child jamais rempli
+// par ce formulaire). Recherche/sélection identique au pattern déjà établi
+// dans Messages.jsx (Phase C) : même endpoint GET /patients/search, même
+// debounce — aucun composant partagé n'existe pour ça dans le projet
+// (vérifié), chaque module qui en a besoin réimplémente la même logique
+// locale (Appointments.jsx, Finance.jsx, Consultations.jsx, Messages.jsx).
 function ModalDossier({ onClose, saving }) {
   const dispatch = useDispatch();
-  const [form, setForm] = useState({ nom:"", prenom:"", date_naissance:"", sexe:"M", parent_nom:"", parent_tel:"", groupe_sanguin:"", allergies:"", antecedents_medicaux:"" });
+  const [form, setForm] = useState({ date_naissance:"", sexe:"M", parent_nom:"", parent_tel:"", groupe_sanguin:"", allergies:"", antecedents_medicaux:"" });
+  const [patientQuery, setPatientQuery] = useState("");
+  const [patientResults, setPatientResults] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
   const boxRef = useRef(null);
   const titleId = useId();
   // Extension du correctif fix/modal-focus-loss-on-keystroke : onClose est
@@ -289,12 +300,33 @@ function ModalDossier({ onClose, saving }) {
     return () => window.removeEventListener("keydown", h);
   }, []);
 
+  useEffect(() => {
+    if (selectedPatient || patientQuery.trim().length < 2) { setPatientResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(patientQuery.trim())}`);
+        setPatientResults(data.patients || []);
+      } catch { setPatientResults([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [patientQuery, selectedPatient]);
+
+  const pickPatient = (p) => { setSelectedPatient(p); setPatientQuery(""); setPatientResults([]); };
+  const clearPatient = () => setSelectedPatient(null);
+
   const submit = async () => {
-    if (!form.nom || !form.date_naissance) { toast.error("Nom et date de naissance obligatoires"); return; }
-    const body = { ...form, allergies: form.allergies ? form.allergies.split(",").map(s => s.trim()).filter(Boolean) : [] };
+    if (!selectedPatient) { toast.error("Sélectionnez un patient existant avant de créer le dossier."); return; }
+    if (!form.date_naissance) { toast.error("Date de naissance obligatoire"); return; }
+    const body = {
+      ...form,
+      patient_id: selectedPatient._id,
+      nom: selectedPatient.nom,
+      prenom: selectedPatient.prenom,
+      allergies: form.allergies ? form.allergies.split(",").map(s => s.trim()).filter(Boolean) : [],
+    };
     const result = await dispatch(createEnfant(body));
     if (createEnfant.fulfilled.match(result)) {
-      toast.success(`✅ Dossier pédiatrique créé pour ${form.prenom} ${form.nom}`);
+      toast.success(`✅ Dossier pédiatrique créé pour ${selectedPatient.prenom} ${selectedPatient.nom}`);
       onClose();
     } else {
       toast.error(result.payload || "Erreur création");
@@ -310,9 +342,41 @@ function ModalDossier({ onClose, saving }) {
         </div>
         <div className="ped-modal-body">
           <div style={{ fontSize:13, fontWeight:700, color:"var(--pg)", marginBottom:10 }}>🧒 Identité de l'enfant</div>
+
+          {!selectedPatient && (
+            <div className="pfield" style={{ marginBottom:10 }}>
+              <label className="plabel">Patient *</label>
+              <input className="pinput" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={patientQuery} onChange={e => setPatientQuery(e.target.value)} />
+              <div style={{ maxHeight:220, overflowY:"auto", display:"flex", flexDirection:"column", gap:4, marginTop:8 }}>
+                {patientQuery.trim().length >= 2 && patientResults.length === 0 && (
+                  <div style={{ textAlign:"center", padding:12, color:"var(--pm)", fontSize:12 }}>Aucun patient trouvé.</div>
+                )}
+                {patientResults.map(p => (
+                  <div key={p._id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", borderRadius:10, cursor:"pointer", border:"1.5px solid var(--pbr)" }} onClick={() => pickPatient(p)}>
+                    <div style={{ width:32, height:32, borderRadius:8, background:"var(--pl)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:"var(--pn)" }}>{p.prenom} {p.nom}</div>
+                      <div style={{ fontSize:11, color:"var(--pm)" }}>{p.numero_dossier || "—"} · {p.telephone || "—"}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {selectedPatient && (
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"var(--pl)", border:"1.5px solid var(--pg)", marginBottom:10 }}>
+              <div style={{ width:32, height:32, borderRadius:8, background:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:"var(--pn)" }}>{selectedPatient.prenom} {selectedPatient.nom}</div>
+                <div style={{ fontSize:11, color:"var(--pm)" }}>{selectedPatient.numero_dossier || "—"}</div>
+              </div>
+              <button type="button" className="pbtn pbtn-ghost pbtn-sm" onClick={clearPatient}>Changer</button>
+            </div>
+          )}
+
           <div className="pg2">
-            <div className="pfield"><label className="plabel">Nom *</label><input className="pinput" placeholder="Nom de famille" value={form.nom} onChange={e => setForm({...form,nom:e.target.value})}/></div>
-            <div className="pfield"><label className="plabel">Prénom</label><input className="pinput" placeholder="Prénom" value={form.prenom} onChange={e => setForm({...form,prenom:e.target.value})}/></div>
+            <div className="pfield"><label className="plabel">Nom</label><input className="pinput" value={selectedPatient?.nom || ""} readOnly disabled placeholder="Dérivé du patient sélectionné" /></div>
+            <div className="pfield"><label className="plabel">Prénom</label><input className="pinput" value={selectedPatient?.prenom || ""} readOnly disabled placeholder="Dérivé du patient sélectionné" /></div>
             <div className="pfield"><label className="plabel">Date de naissance *</label><input className="pinput" type="date" value={form.date_naissance} onChange={e => setForm({...form,date_naissance:e.target.value})}/></div>
             <div className="pfield"><label className="plabel">Sexe</label>
               <select className="pselect" value={form.sexe} onChange={e => setForm({...form,sexe:e.target.value})}>
@@ -336,7 +400,7 @@ function ModalDossier({ onClose, saving }) {
           <div className="pfield"><label className="plabel">Antécédents médicaux</label><textarea className="pinput" rows={3} value={form.antecedents_medicaux} onChange={e => setForm({...form,antecedents_medicaux:e.target.value})} style={{resize:"vertical"}}/></div>
           <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:8 }}>
             <button className="pbtn pbtn-ghost" onClick={onClose}>Annuler</button>
-            <button className="pbtn pbtn-green" onClick={submit} disabled={saving}>{saving?"⏳ Création...":"💾 Créer le dossier"}</button>
+            <button className="pbtn pbtn-green" onClick={submit} disabled={saving || !selectedPatient} title={!selectedPatient ? "Sélectionnez d'abord un patient" : undefined}>{saving?"⏳ Création...":"💾 Créer le dossier"}</button>
           </div>
         </div>
       </div>
