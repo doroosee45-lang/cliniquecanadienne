@@ -3,17 +3,23 @@ import { useEffect, useRef, useId } from 'react';
 export default function Modal({ isOpen, onClose, title, children, size = 'md' }) {
   const boxRef = useRef(null);
   const titleId = useId();
+  const onCloseRef = useRef(onClose);
 
+  // AUDIT-URGENCES-FOCUS — même défaut que celui trouvé et corrigé dans
+  // Urgences.jsx : onClose dans les dépendances d'un effet qui appelle
+  // aussi .focus() referait perdre le focus à chaque frappe dans un champ
+  // contrôlé dès que ce composant serait utilisé dans un formulaire (il ne
+  // l'est actuellement nulle part — aucun import de components/UI/Modal
+  // trouvé dans le projet — mais corrigé par précaution avant réutilisation).
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
-    if (isOpen) {
-      document.addEventListener('keydown', handleKey);
-      // Focus le panneau à l'ouverture — sans ça le focus clavier reste
-      // derrière la modale, sur un élément invisible/inaccessible.
-      boxRef.current?.focus();
-    }
+    const handleKey = (e) => { if (e.key === 'Escape') onCloseRef.current(); };
+    document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [isOpen, onClose]);
+  }, []);
+  useEffect(() => {
+    if (isOpen) boxRef.current?.focus();
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

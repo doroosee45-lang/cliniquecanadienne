@@ -418,12 +418,24 @@ function DoughnutChart({ labels, data, colors, height = 180 }) {
 function Modal({ open, onClose, title, children, maxWidth = 760 }) {
   const boxRef = useRef(null);
   const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  // AUDIT-URGENCES-FOCUS — seul fichier du projet où cet effet dépendait de
+  // `onClose` (prop recréée à chaque rendu du parent, ex. onClose={() =>
+  // setModal(false)}). Un input contrôlé change de valeur → le parent se
+  // re-rend → nouvelle référence onClose → cet effet se redéclenche →
+  // boxRef.current.focus() vole le focus au champ en cours de saisie après
+  // chaque caractère. Repris à l'identique du pattern déjà utilisé par tous
+  // les autres composants Modal du projet (ref stable + effet de focus
+  // séparé, dépendant uniquement de `open`).
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", h);
-    if (open) boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
-  }, [onClose, open]);
+  }, []);
+  useEffect(() => {
+    if (open) boxRef.current?.focus();
+  }, [open]);
   if (!open) return null;
   return (
     <div className="uov" onClick={e => e.target === e.currentTarget && onClose()}>
