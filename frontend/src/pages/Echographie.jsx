@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   fetchEchographieStats, fetchDemandes, createDemande,
-  planifierDemande, saveRapport, annulerDemande,
+  planifierDemande, saveRapport, uploadEchoImages, annulerDemande,
   selectDemandesList, selectEchographieSaving, selectEchographieChart,
 } from "../store/slices/echographieSlice";
 import { Activity, Plus } from 'lucide-react';
@@ -894,7 +894,10 @@ function Realisation({ demandes }) {
   const [step, setStep] = useState(0);
   const [selectedDemande, setSelectedDemande] = useState(demandes.find(d=>d.statut==="planifiee")||null);
   const [typeEcho, setTypeEcho] = useState(null);
-  const [images, setImages] = useState([]);
+  // AUDIT-ECHOGRAPHIE-IMAGES — les images déjà enregistrées vivent sur
+  // selDem.images (persisté côté serveur) ; pendingFiles ne contient que les
+  // fichiers fraîchement déposés, pas encore envoyés (bouton Enregistrer).
+  const [pendingFiles, setPendingFiles] = useState([]);
   const [observations, setObservations] = useState({});
   const [sendingEmail, setSendingEmail] = useState(false);
   const dragRef = useRef(false);
@@ -915,6 +918,37 @@ function Realisation({ demandes }) {
     ? (demandes.find(d=>d._id===selectedDemande._id) || selectedDemande)
     : selectedDemande;
   const te = typeEcho ? TYPES_ECHO.find(t=>t.id===typeEcho) : (selDem ? TYPES_ECHO.find(t=>t.label===selDem.type) : null);
+
+  // Les fichiers en attente n'ont de sens que pour la demande actuellement
+  // sélectionnée — repartir de zéro en changeant de demande évite d'envoyer
+  // par erreur des images vers le mauvais dossier.
+  useEffect(() => { setPendingFiles([]); }, [selDem?._id]);
+
+  const addPendingFiles = (fileList) => {
+    const files = Array.from(fileList).filter(f=>f.type.startsWith("image/"));
+    if (!files.length) return;
+    setPendingFiles(p => [...p, ...files.map(f => ({ id:Date.now()+Math.random(), name:f.name, previewUrl:URL.createObjectURL(f), file:f }))]);
+  };
+  const removePendingFile = (id) => {
+    setPendingFiles(p => {
+      const target = p.find(x=>x.id===id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return p.filter(x=>x.id!==id);
+    });
+  };
+  const handleSaveImages = async () => {
+    if (!selDem?._id || pendingFiles.length===0) return;
+    const formData = new FormData();
+    pendingFiles.forEach(p => formData.append("images", p.file));
+    const result = await dispatch(uploadEchoImages({ id: selDem._id, formData }));
+    if (uploadEchoImages.fulfilled.match(result)) {
+      toast.success(`✅ ${pendingFiles.length} image(s) enregistrée(s)`);
+      pendingFiles.forEach(p => URL.revokeObjectURL(p.previewUrl));
+      setPendingFiles([]);
+    } else {
+      toast.error(result.payload || "Erreur lors de l'enregistrement des images.");
+    }
+  };
 
   // Construit un texte de rapport structuré à partir des observations
   // saisies organe par organe au step 4 du wizard.
@@ -1134,7 +1168,7 @@ function Realisation({ demandes }) {
             <div className="echo-card-hdr">
               <h3>🖼️ Gestion des images échographiques</h3>
               <div style={{ display:"flex", gap:8 }}>
-                <span className="cbdg teal">{images.length} image(s)</span>
+                <span className="cbdg teal">{(selDem?.images?.length||0) + pendingFiles.length} image(s)</span>
                 <button className="cbtn cbtn-ghost cbtn-sm">+ Vidéo</button>
                 <button className="cbtn cbtn-ghost cbtn-sm">+ PDF</button>
               </div>
@@ -1144,48 +1178,52 @@ function Realisation({ demandes }) {
               <div className="upload-zone" style={{ marginBottom:16 }}
                 onClick={()=>document.getElementById("echo-file-input").click()}
                 onDragOver={e=>{e.preventDefault();dragRef.current=true;}}
-                onDrop={e=>{
-                  e.preventDefault();
-                  const files = Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/"));
-                  if(files.length) {
-                    const readers = files.map(f => new Promise(res=>{
-                      const r=new FileReader();
-                      r.onload=ev=>res({name:f.name,url:ev.target.result,id:Date.now()+Math.random(),annot:""});
-                      r.readAsDataURL(f);
-                    }));
-                    Promise.all(readers).then(imgs=>setImages(p=>[...p,...imgs]));
-                  }
-                }}>
-                <input id="echo-file-input" type="file" accept="image/*" multiple style={{ display:"none" }} onChange={e=>{
-                  const files = Array.from(e.target.files);
-                  const readers = files.map(f => new Promise(res=>{
-                    const r=new FileReader();
-                    r.onload=ev=>res({name:f.name,url:ev.target.result,id:Date.now()+Math.random(),annot:""});
-                    r.readAsDataURL(f);
-                  }));
-                  Promise.all(readers).then(imgs=>setImages(p=>[...p,...imgs]));
-                }} />
+                onDrop={e=>{ e.preventDefault(); addPendingFiles(e.dataTransfer.files); }}>
+                <input id="echo-file-input" type="file" accept="image/*" multiple style={{ display:"none" }} onChange={e=>addPendingFiles(e.target.files)} />
                 <div style={{ fontSize:40, marginBottom:10 }}>🖼️</div>
                 <div style={{ fontWeight:700, color:"var(--cn)", marginBottom:4 }}>Glisser-déposer des images échographiques</div>
                 <div style={{ fontSize:12, color:"var(--cm)" }}>ou cliquez pour parcourir · JPEG, PNG, DICOM · max 50 Mo</div>
               </div>
-              {/* Galerie */}
-              {images.length>0 ? (
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12 }}>
-                  {images.map((img,i)=>(
-                    <div key={img.id} className="img-thumb">
-                      <img src={img.url} alt={img.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                      <div className="img-thumb-overlay">
-                        <button className="cbtn cbtn-ghost cbtn-sm" style={{ background:"rgba(255,255,255,.9)", color:"var(--cn)", fontSize:11 }}>🔍 Zoom</button>
-                        <button className="cbtn cbtn-danger cbtn-sm" style={{ fontSize:11 }} onClick={()=>setImages(p=>p.filter(x=>x.id!==img.id))}>✕</button>
+
+              {/* Galerie — images déjà enregistrées côté serveur */}
+              {selDem?.images?.length>0 && (
+                <>
+                  <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Enregistrées</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12, marginBottom:16 }}>
+                    {selDem.images.map((img,i)=>(
+                      <div key={img._id||i} className="img-thumb">
+                        <img src={img.url} alt={img.description||`Image ${i+1}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                        <div style={{ position:"absolute", top:4, right:4, background:"#059669", color:"#fff", fontSize:9, fontWeight:700, borderRadius:6, padding:"2px 6px" }}>✓ Enregistrée</div>
+                        <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(11,30,59,.7)", padding:"4px 8px" }}>
+                          <div style={{ fontSize:10, color:"rgba(255,255,255,.8)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.description || `Image ${i+1}`}</div>
+                        </div>
                       </div>
-                      <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(11,30,59,.7)", padding:"4px 8px" }}>
-                        <div style={{ fontSize:10, color:"rgba(255,255,255,.8)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>Image {i+1}</div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Galerie — fichiers en attente d'enregistrement */}
+              {pendingFiles.length>0 && (
+                <>
+                  <div style={{ fontSize:11, fontWeight:700, color:"var(--co)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>En attente d'enregistrement</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12, marginBottom:16 }}>
+                    {pendingFiles.map((img,i)=>(
+                      <div key={img.id} className="img-thumb">
+                        <img src={img.previewUrl} alt={img.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                        <div className="img-thumb-overlay">
+                          <button className="cbtn cbtn-danger cbtn-sm" style={{ fontSize:11 }} onClick={()=>removePendingFile(img.id)}>✕</button>
+                        </div>
+                        <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(217,119,6,.85)", padding:"4px 8px" }}>
+                          <div style={{ fontSize:10, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.name}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {(selDem?.images?.length||0)===0 && pendingFiles.length===0 && (
                 <div style={{ textAlign:"center", color:"var(--cm)", fontSize:13, padding:"20px 0" }}>
                   Aucune image chargée — importez des images depuis l'appareil d'échographie
                 </div>
@@ -1194,7 +1232,10 @@ function Realisation({ demandes }) {
           </div>
           <div style={{ display:"flex", gap:10 }}>
             <button className="cbtn cbtn-ghost" onClick={()=>setStep(2)}>← Retour</button>
-            <button className="cbtn cbtn-teal" onClick={()=>setStep(4)}>Continuer vers le compte rendu →</button>
+            <button className="cbtn cbtn-teal" disabled={pendingFiles.length===0||saving} onClick={handleSaveImages}>
+              {saving ? "⏳ Enregistrement..." : `💾 Enregistrer${pendingFiles.length>0?` (${pendingFiles.length})`:""}`}
+            </button>
+            <button className="cbtn cbtn-ghost" onClick={()=>setStep(4)} style={{ marginLeft:"auto" }}>Continuer vers le compte rendu →</button>
           </div>
         </div>
       )}

@@ -143,4 +143,27 @@ const uploadMessageAttachment = multer({
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
 });
 
-module.exports = { uploadImages, uploadPatientPhoto, uploadMedPhoto, uploadDocument, uploadMessageAttachment };
+// AUDIT-ECHOGRAPHIE-IMAGES — l'étape "Images" du wizard de réalisation
+// capturait les fichiers via FileReader côté navigateur (state React local
+// uniquement, jamais envoyés au serveur) : perdues au rafraîchissement.
+// Même pattern que uploadImages (radiology) ci-dessus, dossier dédié.
+const storageEchographieImages = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../uploads/echographie');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext  = path.extname(file.originalname).toLowerCase();
+    const base = path.basename(file.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
+    cb(null, `${Date.now()}-${base}${ext}`);
+  },
+});
+
+const uploadEchographieImages = multer({
+  storage: storageEchographieImages,
+  fileFilter,
+  limits: { fileSize: 50 * 1024 * 1024, files: 20 },
+});
+
+module.exports = { uploadImages, uploadPatientPhoto, uploadMedPhoto, uploadDocument, uploadMessageAttachment, uploadEchographieImages };

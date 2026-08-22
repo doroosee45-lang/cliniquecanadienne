@@ -80,6 +80,23 @@ export const saveRapport = createAsyncThunk(
   }
 );
 
+// AUDIT-ECHOGRAPHIE-IMAGES — l'étape "Images" ne persistait jamais les
+// fichiers (FileReader + state local uniquement). Envoie réellement au
+// serveur, même pattern que updateDemande/saveRapport ci-dessus.
+export const uploadEchoImages = createAsyncThunk(
+  'echographie/uploadImages',
+  async ({ id, formData }, { rejectWithValue }) => {
+    try {
+      const { data } = await api.post(`/echographie/${id}/images`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return data.demande;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur envoi des images');
+    }
+  }
+);
+
 export const annulerDemande = createAsyncThunk(
   'echographie/annuler',
   async (id, { rejectWithValue }) => {
@@ -181,6 +198,11 @@ const echographieSlice = createSlice({
       .addCase(saveRapport.pending,   pendingFn)
       .addCase(saveRapport.fulfilled, patchFulfilled)
       .addCase(saveRapport.rejected,  rejectFn);
+
+    builder
+      .addCase(uploadEchoImages.pending,   pendingFn)
+      .addCase(uploadEchoImages.fulfilled, patchFulfilled)
+      .addCase(uploadEchoImages.rejected,  rejectFn);
 
     builder
       .addCase(annulerDemande.pending,   pendingFn)

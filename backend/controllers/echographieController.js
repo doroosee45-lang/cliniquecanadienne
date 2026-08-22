@@ -164,6 +164,35 @@ exports.saveRapport = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-ECHOGRAPHIE-IMAGES — l'étape "Images" du wizard de réalisation
+// capturait les fichiers en local (FileReader, state React) sans jamais les
+// envoyer ici : perdus au rafraîchissement/à la navigation. Même pattern
+// que radiology.controller.js::uploadImages.
+// ── POST /echographie/:id/images
+exports.uploadImages = async (req, res, next) => {
+  try {
+    if (!req.files || req.files.length === 0)
+      return res.status(400).json({ success: false, message: 'Aucun fichier reçu.' });
+
+    const nouvelles = req.files.map(f => ({
+      url: `/uploads/echographie/${f.filename}`,
+      description: f.originalname,
+      date: new Date(),
+    }));
+
+    const avant = await Echographie.findById(req.params.id).lean();
+    const demande = await Echographie.findByIdAndUpdate(
+      req.params.id,
+      { $push: { images: { $each: nouvelles } } },
+      { new: true }
+    );
+    if (!demande) return res.status(404).json({ success: false, message: 'Demande non trouvée' });
+
+    await logAction({ utilisateur: req.user?._id, action: 'UPLOAD_IMAGES', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `${nouvelles.length} image(s) ajoutée(s) à la demande ${demande.numero}`, avant, apres: demande });
+    res.json({ success: true, images: demande.images, demande });
+  } catch (err) { next(err); }
+};
+
 // ── PUT /echographie/:id/annuler
 exports.annuler = async (req, res, next) => {
   try {
