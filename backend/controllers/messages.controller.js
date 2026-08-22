@@ -1,6 +1,24 @@
 const Conversation = require('../models/Conversation');
+const User = require('../models/User');
 const { emitTo } = require('../utils/socket');
 const { logAction } = require('../utils/helpers');
+
+// AUDIT-MESSAGES-PhaseA — la modale "Nouveau message" appelait GET
+// /admin/users (authorize(superadmin, adminclinique)) pour peupler la liste
+// de destinataires, alors que POST /messages (getOrCreate) n'a lui-même
+// aucune restriction de rôle. Résultat : un médecin/infirmier/pharmacien/
+// laborantin/radiologue/sage_femme/réceptionniste ne pouvait démarrer aucune
+// conversation (403, liste vide) — confirmé en direct. Annuaire minimal,
+// protect seul, projection volontairement restreinte (identité + service,
+// jamais statut/permissions/tokens), sans les patients (annuaire "collègues").
+exports.getDirectory = async (req, res, next) => {
+  try {
+    const users = await User.find({ role: { $ne: 'patient' }, statut: 'actif', _id: { $ne: req.user._id } })
+      .select('nom prenom role avatar service')
+      .sort('role nom');
+    res.json({ success: true, users });
+  } catch (err) { next(err); }
+};
 
 exports.getConversations = async (req, res, next) => {
   try {
@@ -37,6 +55,11 @@ exports.sendMessage = async (req, res, next) => {
     const msg = { expediteur: req.user._id, contenu, lu_par: [req.user._id] };
     conv.messages.push(msg);
     conv.dernier_message = new Date();
+    // AUDIT-MESSAGES-PhaseA — le frontend affichait un aperçu du dernier
+    // message dans la liste des conversations en lisant `dernier_message`
+    // (une Date), jamais le texte réel — champ dédié ajouté au schéma,
+    // renseigné ici.
+    conv.dernier_message_apercu = contenu;
     await conv.save();
 
     // Populer l'expéditeur pour l'affichage temps réel

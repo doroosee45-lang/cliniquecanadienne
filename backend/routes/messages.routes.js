@@ -3,6 +3,7 @@ const router  = require('express').Router();
 const msgC    = require('../controllers/messages.controller');
 const { protect } = require('../middleware/auth');
 
+router.get('/directory',         protect, msgC.getDirectory);
 router.get('/',                  protect, msgC.getConversations);
 router.post('/',                 protect, msgC.getOrCreate);
 router.post('/groups',           protect, msgC.createGroup);

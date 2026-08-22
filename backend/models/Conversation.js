@@ -30,6 +30,12 @@ const ConversationSchema = new Schema({
   membres: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   messages: [MessageSchema],
   dernier_message: Date,
+  // AUDIT-MESSAGES-PhaseA — le frontend affichait un aperçu du dernier
+  // message (liste des conversations) en lisant `dernier_message` comme si
+  // c'était le texte, alors que ce champ n'a jamais été qu'une Date
+  // (horodatage, utilisé pour le tri .sort('-dernier_message')). Ajouté
+  // séparément pour ne pas casser le tri existant, comportement additif.
+  dernier_message_apercu: String,
   created_by: { type: Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 

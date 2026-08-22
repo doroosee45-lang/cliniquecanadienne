@@ -2,11 +2,6 @@
 
 
 import { useState, useEffect, useCallback, useRef, useId } from "react";
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchConversations, fetchMessages, sendMessage, markAsRead,
-  selectConversations, selectMessages, selectUnreadCount, selectMessagesLoading,
-} from '../store/slices/messagesSlice';
 import api from "../api";
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
@@ -189,11 +184,6 @@ const CSS = `
 @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 .fu { animation:fadeUp .3s ease both; }
 
-/* ─ Bouton appel professionnel ─ */
-.msg-call-btn { display:inline-flex; align-items:center; gap:7px; padding:8px 16px; border-radius:10px; border:1.5px solid var(--cbr); background:linear-gradient(to bottom,#EEF4FF,#E8F0FE); color:var(--cn); font-size:12.5px; font-weight:600; cursor:pointer; transition:all .22s; font-family:'Poppins',sans-serif; white-space:nowrap; }
-.msg-call-btn:hover { background:linear-gradient(135deg,#1B4F9E,#0EA5A0); color:#fff; border-color:transparent; box-shadow:0 4px 14px rgba(27,79,158,.3); transform:translateY(-1px); }
-.msg-call-btn svg { flex-shrink:0; }
-
 /* ─ Enregistrement vocal ─ */
 .msg-rec-wrap { flex:1; background:#FEF2F2; border:1.5px solid #FCA5A5; border-radius:14px; padding:10px 16px; display:flex; align-items:center; gap:12px; }
 .msg-rec-dot { width:10px; height:10px; border-radius:50%; background:#DC2626; animation:recBlink 1s infinite; flex-shrink:0; }
@@ -291,8 +281,6 @@ const I = {
   image:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
   file:   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
   emoji:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
-  phone:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.01 2.22 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91A16 16 0 0016 17.91l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0124 18z"/></svg>,
-  video:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>,
   mic:    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="9" y1="22" x2="15" y2="22"/></svg>,
   stop:   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>,
   play:   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
@@ -355,10 +343,23 @@ const getRoleCls  = (role) => ROLE_CFG[role]?.cls  || "gray";
 const getRoleLbl  = (role) => ROLE_CFG[role]?.label || role;
 const AV_COLORS = ["#1B4F9E","#0EA5A0","#7C3AED","#DC2626","#D97706","#059669","#4F46E5","#0B1E3B"];
 
+// ─── Helpers conversation (AUDIT-MESSAGES-PhaseA) ──────────────
+// Le backend (models/Conversation.js) renvoie type:'direct'|'groupe' et un
+// tableau membres[] (jamais un champ singulier "membre") ; pour un groupe,
+// nom/description/membres sont des champs directs de la conversation, pas
+// un sous-objet "groupe". Ces helpers centralisent la lecture correcte de
+// cette forme réelle, à la place des accès conv.membre / conv.groupe /
+// type==="group" qui ne matchaient jamais aucune donnée réelle.
+const isGroupConv = (conv) => conv?.type === "groupe";
+const getOtherMember = (conv, meId) => (conv?.membres || []).find(m => (m?._id || m) !== meId) || null;
+const getConvDisplayName = (conv, meId) => {
+  if (isGroupConv(conv)) return conv?.nom || "Groupe";
+  const c = getOtherMember(conv, meId);
+  return c ? `${c.prenom || ""} ${c.nom || ""}`.trim() : "—";
+};
+
 // ─── Demo data ────────────────────────────────────────────────
 const DEMO_USERS = [];
-
-const DEMO_GROUPS = [];
 
 const buildDemoConvs = (userId) => [];
 
@@ -526,13 +527,6 @@ function Av({ user, size = 42, idx = 0, showStatus = false }) {
 
 // ═══════════════════════════════════════════════════════════
 export default function Messagerie() {
-  const dispatch = useDispatch();
-  const reduxConvs = useSelector(selectConversations);
-  const reduxMessages = useSelector(selectMessages);
-  const reduxUnread = useSelector(selectUnreadCount);
-
-  useEffect(() => { dispatch(fetchConversations()); }, [dispatch]);
-
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
 
@@ -552,11 +546,8 @@ export default function Messagerie() {
   const [sending, setSending]       = useState(false);
   const [showInfo, setShowInfo]     = useState(false);
   const [notifs, setNotifs]         = useState(DEMO_NOTIFS);
-  const [showNewMsg, setShowNewMsg] = useState(false);
   const [showNewGrp, setShowNewGrp] = useState(false);
-  const [newMsgForm, setNewMsgForm] = useState({ destinataire:"", objet:"", contenu:"", priorite:"normale" });
   const [newGrpForm, setNewGrpForm] = useState({ nom:"", membres:[], description:"" });
-  const [groups, setGroups]         = useState(DEMO_GROUPS);
   const bottomRef     = useRef(null);
   const textRef       = useRef(null);
   const mediaRecRef   = useRef(null);
@@ -581,10 +572,10 @@ export default function Messagerie() {
 
   const loadUsers = useCallback(async () => {
     try {
-      const { data } = await api.get("/admin/users");
-      setUsers((data.users || data).filter(u => u._id !== me._id));
+      const { data } = await api.get("/messages/directory");
+      setUsers(data.users || data || []);
     } catch { setUsers(DEMO_USERS); }
-  }, [me._id]);
+  }, []);
 
   useEffect(() => { loadConvs(); loadUsers(); }, [loadConvs, loadUsers]);
 
@@ -621,7 +612,7 @@ export default function Messagerie() {
         // Badge non-lu sur la conversation non ouverte
         setConvs(prev => prev.map(c =>
           c._id === conversationId
-            ? { ...c, non_lus: (c.non_lus || 0) + 1, dernier_message: message.contenu, dernierMsg_at: message.date_envoi }
+            ? { ...c, non_lus: (c.non_lus || 0) + 1, dernier_message_apercu: message.contenu, dernier_message: message.date_envoi }
             : c
         ));
         toast('💬 Nouveau message', { duration: 2500 });
@@ -675,9 +666,9 @@ export default function Messagerie() {
   // ── Start new conv ────────────────────────────────────────
   const startConv = async (userId) => {
     const u = users.find(u => u._id === userId);
-    const existing = convs.find(c => c.type === "direct" && c.membre?._id === userId);
+    const existing = convs.find(c => c.type === "direct" && getOtherMember(c, me._id)?._id === userId);
     if (existing) { openConv(existing); return; }
-    const fakeConv = { _id:`c_${Date.now()}`, type:"direct", membre:u, dernier_message:"", dernierMsg_at: new Date().toISOString(), non_lus:0, favori:false };
+    const fakeConv = { _id:`c_${Date.now()}`, type:"direct", membres:[me, u], dernier_message_apercu:"", dernier_message: new Date().toISOString(), non_lus:0, favori:false };
     try {
       const { data } = await api.post("/messages", { userId });
       const conv = data.conversation || fakeConv;
@@ -714,7 +705,7 @@ export default function Messagerie() {
           return m.map(msg => msg._id === tmpMsg._id ? { ...tmpMsg, ...real } : msg);
         });
       }
-      setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message:txt, dernierMsg_at: new Date().toISOString() } : c));
+      setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message_apercu:txt, dernier_message: new Date().toISOString() } : c));
     } catch {
       // AUDIT-3.3 — le message optimiste restait affiché comme envoyé avec
       // succès même si l'appel réseau échouait (catch vide), sans aucune
@@ -735,21 +726,10 @@ export default function Messagerie() {
       const { data } = await api.post(`/messages/${selected._id}/send`, { contenu: msg.contenu });
       const real = data.message;
       setMessages(m => m.map(mm => mm._id === msg._id ? (real ? { ...mm, ...real, envoiEnCours: false } : { ...mm, envoiEnCours: false }) : mm));
-      setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message: msg.contenu, dernierMsg_at: new Date().toISOString() } : c));
+      setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message_apercu: msg.contenu, dernier_message: new Date().toISOString() } : c));
     } catch {
       setMessages(m => m.map(mm => mm._id === msg._id ? { ...mm, echec: true, envoiEnCours: false } : mm));
     }
-  };
-
-  // ── Send new message (compose) ────────────────────────────
-  // AUDIT-07 — neutralisé, pas implémenté : "objet + priorité + tous les
-  // employés" reste une décision produit non tranchée. Aucun appel vers
-  // /messages/compose (n'a jamais existé côté backend) ; les deux boutons
-  // déclencheurs sont désactivés (voir plus haut), ceci est un filet de
-  // sécurité si jamais le formulaire était quand même soumis.
-  const sendNewMsg = (e) => {
-    e.preventDefault();
-    toast.error("Fonctionnalité momentanément indisponible.");
   };
 
   // ── Create group ──────────────────────────────────────────
@@ -757,7 +737,7 @@ export default function Messagerie() {
     e.preventDefault();
     try {
       const { data } = await api.post("/messages/groups", newGrpForm);
-      setGroups(prev => [{ _id: data.conversation._id, nom: data.conversation.nom, membres: data.conversation.membres.length, icon:"💬", dernierMsg:"Groupe créé" }, ...prev]);
+      setConvs(prev => [data.conversation, ...prev]);
       toast.success("✅ Groupe créé");
       setShowNewGrp(false);
       setNewGrpForm({ nom:"", membres:[], description:"" });
@@ -885,20 +865,25 @@ export default function Messagerie() {
 
   // ── Filtered convs ────────────────────────────────────────
   const filteredConvs = convs.filter(c => {
-    const name = c.type === "direct" ? `${c.membre?.prenom} ${c.membre?.nom}` : c.groupe?.nom;
-    if (search && !name?.toLowerCase().includes(search.toLowerCase()) && !c.dernier_message?.toLowerCase().includes(search.toLowerCase())) return false;
+    const name = getConvDisplayName(c, me._id);
+    if (search && !name?.toLowerCase().includes(search.toLowerCase()) && !c.dernier_message_apercu?.toLowerCase().includes(search.toLowerCase())) return false;
     if (filter === "non_lus") return c.non_lus > 0;
     if (filter === "favoris") return c.favori;
-    if (filter === "groupes") return c.type === "group";
+    if (filter === "groupes") return isGroupConv(c);
     return true;
   });
 
+  // AUDIT-MESSAGES-PhaseA — remplace l'ancien état local "groups" (jamais
+  // rechargé depuis le backend, perdu au rafraîchissement) : dérivé des
+  // vraies conversations chargées via GET /messages, qui inclut déjà les
+  // conversations de type 'groupe'.
+  const groupConvs = convs.filter(isGroupConv);
   const totalNonLus = convs.reduce((s, c) => s + (c.non_lus || 0), 0);
   const notifsNonLues = notifs.filter(n => !n.lu).length;
 
   // ── Selected info ─────────────────────────────────────────
-  const selContact = selected?.type === "direct" ? selected.membre : null;
-  const selGroup   = selected?.type === "group"  ? selected.groupe : null;
+  const selContact = selected && !isGroupConv(selected) ? getOtherMember(selected, me._id) : null;
+  const selGroup   = selected && isGroupConv(selected)  ? selected : null;
 
   // ── Group messages by date ────────────────────────────────
   const groupedMessages = messages.reduce((acc, msg, i) => {
@@ -944,10 +929,9 @@ export default function Messagerie() {
         {(() => {
             const TABS = [
               { key:"inbox",         icon:I.chat,    label:"Conversations",         labelM:"Messages",   badge:totalNonLus>0?totalNonLus:null },
-              { key:"groupes",       icon:I.users,   label:`Groupes (${groups.length})`, labelM:"Groupes" },
+              { key:"groupes",       icon:I.users,   label:`Groupes (${groupConvs.length})`, labelM:"Groupes" },
               { key:"notifications", icon:I.bell,    label:"Notifications",         labelM:"Notifs",     badge:notifsNonLues>0?notifsNonLues:null },
               { key:"patients",      icon:"📱",       label:"Communication patients",labelM:"Patients" },
-              { key:"appels",        icon:I.phone,   label:"Appels Audio",          labelM:"Appels" },
               { key:"historique",    icon:I.archive, label:"Historique & Audit",    labelM:"Historique" },
             ];
             return (
@@ -999,17 +983,16 @@ export default function Messagerie() {
                     <div style={{ color:"var(--cm)", fontSize:13 }}>{search ? `Aucun résultat pour "${search}"` : "Aucune conversation"}</div>
                   </div>
                 ) : filteredConvs.map((conv, i) => {
-                  const isGroup = conv.type === "group";
-                  const contact = isGroup ? null : conv.membre;
-                  const grp = isGroup ? conv.groupe : null;
-                  const name = isGroup ? grp?.nom : `${contact?.prenom} ${contact?.nom}`;
+                  const isGroup = isGroupConv(conv);
+                  const contact = isGroup ? null : getOtherMember(conv, me._id);
+                  const name = getConvDisplayName(conv, me._id);
                   const isActive = selected?._id === conv._id;
                   const hasUnread = conv.non_lus > 0;
                   return (
                     <div key={conv._id} className={`msg-conv-item ${isActive ? "active" : ""} ${hasUnread ? "unread" : ""}`} onClick={() => openConv(conv)}>
                       {isGroup ? (
                         <div style={{ width:42, height:42, borderRadius:12, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>
-                          {grp?.icon || "👥"}
+                          👥
                         </div>
                       ) : (
                         <Av user={contact} size={42} idx={i} showStatus />
@@ -1017,10 +1000,11 @@ export default function Messagerie() {
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:4 }}>
                           <div className="conv-name">{name}</div>
-                          <div className="conv-time">{fmtTime(conv.dernierMsg_at)}</div>
+                          <div className="conv-time">{fmtTime(conv.dernier_message)}</div>
                         </div>
                         {!isGroup && <div className="conv-role">{getRoleLbl(contact?.role)} · {contact?.service}</div>}
-                        <div className="conv-preview">{conv.dernier_message || "Démarrer la conversation"}</div>
+                        {isGroup && <div className="conv-role">{(conv.membres || []).length} membre(s)</div>}
+                        <div className="conv-preview">{conv.dernier_message_apercu || "Démarrer la conversation"}</div>
                       </div>
                       {hasUnread && <div className="conv-unread-dot">{conv.non_lus}</div>}
                       {conv.favori && !hasUnread && <span style={{ position:"absolute", top:10, right:10, fontSize:10 }}>⭐</span>}
@@ -1066,18 +1050,18 @@ export default function Messagerie() {
                       </button>
                     )}
                     <div className="msg-chat-hdr-info">
-                      {selected.type === "group" ? (
-                        <div style={{ width:42, height:42, borderRadius:12, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{selGroup?.icon || "👥"}</div>
+                      {isGroupConv(selected) ? (
+                        <div style={{ width:42, height:42, borderRadius:12, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>👥</div>
                       ) : (
                         <Av user={selContact} size={42} idx={0} showStatus />
                       )}
                       <div>
                         <div style={{ fontWeight:700, fontSize:15, color:"var(--cn)" }}>
-                          {selected.type === "group" ? selGroup?.nom : `${selContact?.prenom} ${selContact?.nom}`}
+                          {getConvDisplayName(selected, me._id)}
                         </div>
                         <div style={{ fontSize:12, color:"var(--cm)", display:"flex", alignItems:"center", gap:8 }}>
-                          {selected.type === "group" ? (
-                            <span>{selGroup?.membres} membre(s)</span>
+                          {isGroupConv(selected) ? (
+                            <span>{(selGroup?.membres || []).length} membre(s)</span>
                           ) : (
                             <>
                               <span>{getRoleLbl(selContact?.role)} · {selContact?.service}</span>
@@ -1091,13 +1075,6 @@ export default function Messagerie() {
                       </div>
                     </div>
                     <div className="msg-chat-actions" style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      {/* Appel audio — bouton professionnel */}
-                      <button className="msg-call-btn" onClick={() => toast.success("📞 Appel audio en cours...")}>
-                        {I.phone}
-                        <span className="msg-hint" style={{ display:"inline" }}>Appel audio</span>
-                      </button>
-                      {/* Séparateur */}
-                      <div style={{ width:1, height:28, background:"var(--cbr)", flexShrink:0 }} />
                       <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px", background: showInfo?"#EEF4FF":"", color: showInfo?"var(--cb)":"" }} title="Informations" onClick={() => setShowInfo(!showInfo)}>
                         {I.info}
                       </button>
@@ -1309,12 +1286,11 @@ export default function Messagerie() {
                             <span>{a.icon}</span> {a.label}
                           </button>
                         ))}
-                        <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid var(--cbr)" }}>
-                          <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Sécurité</div>
-                          <div style={{ fontSize:11, color:"var(--cm)", display:"flex", alignItems:"center", gap:6 }}>
-                            <span>🔒</span> Messages chiffrés de bout en bout
-                          </div>
-                        </div>
+                        {/* AUDIT-MESSAGES-PhaseA — "Messages chiffrés de bout
+                            en bout" retiré : affirmation fausse, aucun
+                            chiffrement E2E n'existe (contenu stocké en clair
+                            dans MongoDB). Ne pas réintroduire de mention de
+                            sécurité tant qu'aucune mesure réelle ne l'appuie. */}
                       </div>
                     )}
                   </div>
@@ -1346,7 +1322,7 @@ export default function Messagerie() {
                           <textarea
                             ref={textRef}
                             className="msg-textarea"
-                            placeholder={`Message à ${selected.type === "group" ? selGroup?.nom : selContact?.prenom}…`}
+                            placeholder={`Message à ${getConvDisplayName(selected, me._id)}…`}
                             value={input}
                             onChange={handleInput}
                             onKeyDown={handleKey}
@@ -1388,38 +1364,38 @@ export default function Messagerie() {
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
               <div>
                 <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Groupes de discussion</div>
-                <div style={{ fontSize:12, color:"var(--cm)" }}>{groups.length} groupe(s) actif(s)</div>
+                <div style={{ fontSize:12, color:"var(--cm)" }}>{groupConvs.length} groupe(s) actif(s)</div>
               </div>
               <button className="cbtn cbtn-teal" onClick={() => setShowNewGrp(true)}>{I.plus} Créer un groupe</button>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:16 }}>
-              {groups.map((g, i) => (
-                <div key={g._id} className="adm-card fu" style={{ cursor:"pointer" }} onClick={() => {
-                  const fakeConv = { _id:`cg_${g._id}`, type:"group", groupe:g, dernier_message:g.dernierMsg, dernierMsg_at: new Date().toISOString(), non_lus:0 };
-                  setTab("inbox");
-                  setTimeout(() => openConv(fakeConv), 100);
-                }}>
-                  <div style={{ padding:20 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
-                      <div style={{ width:52, height:52, borderRadius:14, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:26 }}>{g.icon}</div>
-                      <div>
-                        <div style={{ fontWeight:700, color:"var(--cn)", fontSize:15 }}>{g.nom}</div>
-                        <span className="cbdg blue">{g.membres} membre(s)</span>
+            {groupConvs.length === 0 ? (
+              <div style={{ textAlign:"center", padding:"40px 0", color:"var(--cm)" }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>👥</div>
+                <div>Aucun groupe pour l'instant</div>
+              </div>
+            ) : (
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:16 }}>
+                {groupConvs.map((g) => (
+                  <div key={g._id} className="adm-card fu" style={{ cursor:"pointer" }} onClick={() => { setTab("inbox"); openConv(g); }}>
+                    <div style={{ padding:20 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
+                        <div style={{ width:52, height:52, borderRadius:14, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:26 }}>👥</div>
+                        <div>
+                          <div style={{ fontWeight:700, color:"var(--cn)", fontSize:15 }}>{g.nom}</div>
+                          <span className="cbdg blue">{(g.membres || []).length} membre(s)</span>
+                        </div>
+                      </div>
+                      <div style={{ fontSize:12, color:"var(--cm)", background:"#F8FAFD", borderRadius:8, padding:"8px 10px" }}>
+                        <strong>Dernier message :</strong> {g.dernier_message_apercu || "Aucun message"}
+                      </div>
+                      <div style={{ display:"flex", gap:8, marginTop:14 }}>
+                        <button className="cbtn cbtn-primary cbtn-sm" style={{ flex:1 }}>{I.chat} Ouvrir</button>
                       </div>
                     </div>
-                    <div style={{ fontSize:12, color:"var(--cm)", background:"#F8FAFD", borderRadius:8, padding:"8px 10px" }}>
-                      <strong>Dernier message :</strong> {g.dernierMsg}
-                    </div>
-                    <div style={{ display:"flex", gap:8, marginTop:14 }}>
-                      <button className="cbtn cbtn-primary cbtn-sm" style={{ flex:1 }}>{I.chat} Ouvrir</button>
-                      <button className="msg-call-btn" style={{ padding:"6px 12px", fontSize:11 }} onClick={e => { e.stopPropagation(); toast.success("📞 Appel audio groupe…"); }}>
-                        {I.phone} Audio
-                      </button>
-                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1514,105 +1490,6 @@ export default function Messagerie() {
           </div>
         )}
 
-        {/* ══ APPELS AUDIO ══ */}
-        {tab === "appels" && (
-          <div style={{ padding:24 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:24 }}>
-              <div style={{ width:50, height:50, borderRadius:14, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>📞</div>
-              <div>
-                <div style={{ fontSize:18, fontWeight:700, color:"var(--cn)" }}>Appels Audio</div>
-                <div style={{ fontSize:12, color:"var(--cm)" }}>Communication vocale interne sécurisée</div>
-              </div>
-            </div>
-
-            {/* Cartes types d'appel */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:18, marginBottom:28 }}>
-              {[
-                { icon:"📞", titre:"Appel individuel",       desc:"Appel audio direct entre deux membres du personnel", color:"#1B4F9E", tag:"1-à-1" },
-                { icon:"👥", titre:"Conférence audio",        desc:"Appel multi-participants — réunion vocale de groupe",  color:"#7C3AED", tag:"Groupe" },
-                { icon:"🩺", titre:"Téléconsultation vocale", desc:"Consultation médicale audio à distance avec un patient", color:"#DC2626", tag:"Patient" },
-              ].map(a => (
-                <div key={a.titre} className="adm-card fu" style={{ cursor:"pointer", transition:"transform .2s, box-shadow .2s" }}
-                  onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow="0 8px 28px rgba(11,30,59,.12)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow=""; }}
-                  onClick={() => toast.success(`${a.icon} Démarrage : ${a.titre}…`)}>
-                  <div style={{ padding:24 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
-                      <div style={{ width:54, height:54, borderRadius:14, background:`${a.color}12`, border:`1.5px solid ${a.color}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26 }}>{a.icon}</div>
-                      <span style={{ background:`${a.color}12`, color:a.color, border:`1px solid ${a.color}30`, borderRadius:99, padding:"3px 10px", fontSize:10, fontWeight:700 }}>{a.tag}</span>
-                    </div>
-                    <div style={{ fontWeight:700, fontSize:15, color:"var(--cn)", marginBottom:6 }}>{a.titre}</div>
-                    <div style={{ fontSize:12, color:"var(--cm)", lineHeight:1.6, marginBottom:18 }}>{a.desc}</div>
-                    <button className="cbtn cbtn-sm" style={{ width:"100%", background:`${a.color}`, color:"#fff", border:"none", justifyContent:"center" }}
-                      onClick={e => { e.stopPropagation(); toast.success(`${a.icon} ${a.titre} en cours…`); }}>
-                      📞 Démarrer l'appel
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* KPIs appels */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:28 }}>
-              {[
-                { label:"Appels aujourd'hui",   val:"12",   col:"#1B4F9E", icon:"📞" },
-                { label:"Durée totale",          val:"3h 24m",col:"#7C3AED", icon:"⏱️" },
-                { label:"Appels manqués",         val:"2",    col:"#DC2626", icon:"📵" },
-                { label:"Durée moy.",             val:"17 min",col:"#059669", icon:"📊" },
-              ].map(k => (
-                <div key={k.label} className="msg-kpi" style={{ borderTop:`3px solid ${k.col}` }}>
-                  <div style={{ fontSize:20, marginBottom:6 }}>{k.icon}</div>
-                  <div style={{ fontSize:22, fontWeight:800, color:k.col }}>{k.val}</div>
-                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:3 }}>{k.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Historique */}
-            <div className="adm-card">
-              <div className="adm-card-hdr">
-                <h3>📋 Historique des appels audio</h3>
-                <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => toast.success("📥 Export en cours…")}>Export</button>
-              </div>
-              <div style={{ overflowX:"auto" }}>
-                <table className="adm-tbl">
-                  <thead><tr><th>Type</th><th>Participant(s)</th><th>Date</th><th>Durée</th><th>Statut</th><th></th></tr></thead>
-                  <tbody>
-                    {[
-                      { type:"Individuel",  parts:"Dr. Martin ↔ Dr. Leblanc",       date:"2025-06-01T09:00:00", duree:"18 min", statut:"Terminé" },
-                      { type:"Individuel",  parts:"Infirmerie → Urgences",           date:"2025-05-31T22:05:00", duree:"5 min",  statut:"Terminé" },
-                      { type:"Conférence",  parts:"Direction (5 participants)",      date:"2025-05-31T14:00:00", duree:"45 min", statut:"Terminé" },
-                      { type:"Téléconsult", parts:"Consultation — Patient Dupont",   date:"2025-05-30T10:30:00", duree:"22 min", statut:"Terminé" },
-                      { type:"Individuel",  parts:"Dr. Nzigou ↔ Pharmacie",         date:"2025-05-29T08:15:00", duree:"8 min",  statut:"Manqué" },
-                    ].map((a, i) => (
-                      <tr key={i}>
-                        <td>
-                          <span className="cbdg" style={{ background: a.type==="Conférence"?"#F5F3FF": a.type==="Téléconsult"?"#FEF2F2":"#EFF6FF", color: a.type==="Conférence"?"#7C3AED": a.type==="Téléconsult"?"#DC2626":"#1B4F9E", border:`1px solid ${a.type==="Conférence"?"#DDD6FE": a.type==="Téléconsult"?"#FECACA":"#BFDBFE"}` }}>
-                            {a.type==="Conférence"?"👥": a.type==="Téléconsult"?"🩺":"📞"} {a.type}
-                          </span>
-                        </td>
-                        <td style={{ fontSize:12, color:"var(--cn)", fontWeight:500 }}>{a.parts}</td>
-                        <td style={{ fontSize:12, color:"var(--cm)" }}>{fmtFull(a.date)}</td>
-                        <td style={{ fontSize:12, fontWeight:700, color:"var(--cn)" }}>{a.duree}</td>
-                        <td>
-                          <span className={`cbdg ${a.statut==="Manqué"?"red":"green"}`}>
-                            {a.statut==="Manqué"?"📵":"✅"} {a.statut}
-                          </span>
-                        </td>
-                        <td>
-                          <button className="cbtn cbtn-ghost cbtn-sm" style={{ fontSize:11 }} onClick={() => toast.success("📞 Rappel en cours…")}>
-                            {I.phone} Rappeler
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* ══ HISTORIQUE ══ */}
         {tab === "historique" && (
           <div style={{ padding:24 }}>
@@ -1625,7 +1502,7 @@ export default function Messagerie() {
                     {[
                       { lbl:"Messages envoyés", val:"1 284", col:"#1B4F9E" },
                       { lbl:"Messages reçus",   val:"1 102", col:"#0EA5A0" },
-                      { lbl:"Groupes actifs",   val:groups.length, col:"#7C3AED" },
+                      { lbl:"Groupes actifs",   val:groupConvs.length, col:"#7C3AED" },
                       { lbl:"Taux de réponse",  val:"94%",  col:"#059669" },
                     ].map(k => (
                       <div key={k.lbl} style={{ background:"#F8FAFD", border:"1.5px solid var(--cbr)", borderRadius:12, padding:14, textAlign:"center" }}>
@@ -1668,9 +1545,8 @@ export default function Messagerie() {
                     { ic:"📎", act:"Document partagé",      user:"Paul Obiang",        det:"Résultat NFS — Patient Dupont",       d:"2025-06-01T09:45:00" },
                     { ic:"🗑️", act:"Message supprimé",      user:"Marie Nzigou",       det:"Message de la conv. Urgences",        d:"2025-05-31T22:30:00" },
                     { ic:"👥", act:"Groupe créé",           user:"Alain Koumba",       det:"Groupe 'Bloc Opératoire' (5 membres)",d:"2025-05-31T14:00:00" },
-                    { ic:"📞", act:"Appel audio effectué",   user:"Dr. Martin",         det:"Téléconsultation audio — 22 min",     d:"2025-05-30T10:30:00" },
                   ].map((a, i) => (
-                    <div key={i} style={{ display:"flex", gap:12, padding:"12px 20px", borderBottom: i < 5 ? "1px solid #F3F7FF" : "" }}>
+                    <div key={i} style={{ display:"flex", gap:12, padding:"12px 20px", borderBottom: i < 4 ? "1px solid #F3F7FF" : "" }}>
                       <div style={{ width:32, height:32, borderRadius:8, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:15 }}>{a.ic}</div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontWeight:600, fontSize:12, color:"var(--cn)" }}>{a.act}</div>
@@ -1684,53 +1560,6 @@ export default function Messagerie() {
             </div>
           </div>
         )}
-
-        {/* ═══ MODAL : NOUVEAU MESSAGE ═══ */}
-        <Modal open={showNewMsg} onClose={() => setShowNewMsg(false)} title={`${I.plus} Nouveau message`}>
-          <form onSubmit={sendNewMsg}>
-            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <div>
-                <label className="clbl">Destinataire(s) *</label>
-                <select className="cinp" required value={newMsgForm.destinataire} onChange={e => setNewMsgForm(f => ({ ...f, destinataire:e.target.value }))}>
-                  <option value="">— Sélectionner —</option>
-                  <optgroup label="Individuel">
-                    {users.map(u => <option key={u._id} value={u._id}>{u.prenom} {u.nom} — {getRoleLbl(u.role)}</option>)}
-                  </optgroup>
-                  <optgroup label="Groupes">
-                    {groups.map(g => <option key={g._id} value={`g_${g._id}`}>{g.icon} {g.nom}</option>)}
-                  </optgroup>
-                  <option value="all">📢 Tous les employés</option>
-                </select>
-              </div>
-              <div>
-                <label className="clbl">Objet</label>
-                <input className="cinp" placeholder="Objet du message" value={newMsgForm.objet} onChange={e => setNewMsgForm(f => ({ ...f, objet:e.target.value }))} />
-              </div>
-              <div>
-                <label className="clbl">Priorité</label>
-                <select className="cinp" value={newMsgForm.priorite} onChange={e => setNewMsgForm(f => ({ ...f, priorite:e.target.value }))}>
-                  <option value="normale">🔵 Normale</option>
-                  <option value="haute">🟠 Haute</option>
-                  <option value="critique">🔴 Critique / Urgent</option>
-                </select>
-              </div>
-              <div>
-                <label className="clbl">Message *</label>
-                <textarea className="cinp" required rows={5} placeholder="Votre message..." value={newMsgForm.contenu} onChange={e => setNewMsgForm(f => ({ ...f, contenu:e.target.value }))} />
-              </div>
-              <div style={{ background:"#F8FAFD", border:"1.5px dashed var(--cbr)", borderRadius:12, padding:"12px 14px", display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={() => toast.success("📎 Sélectionner un fichier...")}>
-                {I.attach}
-                <span style={{ fontSize:12, color:"var(--cm)" }}>Ajouter une pièce jointe (PDF, DOCX, Image, DICOM...)</span>
-              </div>
-              <div style={{ display:"flex", gap:10 }}>
-                <button type="button" className="cbtn cbtn-ghost" onClick={() => setShowNewMsg(false)}>Annuler</button>
-                <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }}>
-                  {I.send} Envoyer
-                </button>
-              </div>
-            </div>
-          </form>
-        </Modal>
 
         {/* ═══ MODAL : CRÉER GROUPE ═══ */}
         <Modal open={showNewGrp} onClose={() => setShowNewGrp(false)} title={`${I.plus} Créer un groupe`}>
