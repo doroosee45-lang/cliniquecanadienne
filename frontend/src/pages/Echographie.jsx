@@ -896,6 +896,7 @@ function Realisation({ demandes }) {
   const [typeEcho, setTypeEcho] = useState(null);
   const [images, setImages] = useState([]);
   const [observations, setObservations] = useState({});
+  const [sendingEmail, setSendingEmail] = useState(false);
   const dragRef = useRef(false);
 
   const STEPS_R = [
@@ -1365,8 +1366,12 @@ function Realisation({ demandes }) {
           <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
             <button className="cbtn cbtn-ghost" onClick={()=>setStep(4)}>← Modifier le rapport</button>
             <button className="cbtn cbtn-primary" onClick={()=>window.print()}>🖨️ Imprimer le rapport</button>
-            <button className="cbtn cbtn-ghost" disabled title="Envoi par email indisponible : aucune route backend d'envoi d'email n'existe pour le module Échographie.">📧 Envoyer par email</button>
-            <span style={{ fontSize:10.5, color:"var(--cm)" }}>L'envoi par email n'est pas encore disponible pour ce module.</span>
+            <button
+              className="cbtn cbtn-ghost"
+              disabled={sendingEmail || !selDem}
+              title={!selDem?.patient_ref ? "Ce dossier n'est lié à aucun patient réel — impossible d'envoyer l'email." : undefined}
+              onClick={async () => { if (!selDem) return; setSendingEmail(true); await sendEchoReportEmail(selDem); setSendingEmail(false); }}
+            >{sendingEmail ? "⏳ Envoi..." : "📧 Envoyer par email"}</button>
           </div>
         </div>
       )}
@@ -1583,6 +1588,40 @@ const computeAge = (dob) => {
   return Math.max(0, Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000)));
 };
 
+// AUDIT-ECHOGRAPHIE-EMAIL — met en forme le compte-rendu (organe par organe
+// + conclusion + recommandations, déjà persistés via saveRapport) pour
+// l'email patient. Pas de pièce jointe : mail.js::sendEmail n'a de support
+// d'attachment pour aucun module de l'app — plutôt que d'ajouter cette
+// brique pour ce seul cas, le rapport est mis en forme directement dans le
+// corps HTML (sendPatientEmail enveloppe déjà tout contenu dans un <p>).
+const buildRapportEmailHtml = (d) => {
+  const parts = [`<strong>Type d'examen :</strong> ${d.type}${d.sous_type ? ` — ${d.sous_type}` : ""}`];
+  if (d.rapport_texte) parts.push(d.rapport_texte.replace(/\n/g, "<br>"));
+  if (d.conclusion) parts.push(`<strong>Conclusion :</strong><br>${d.conclusion.replace(/\n/g, "<br>")}`);
+  if (d.recommandations) parts.push(`<strong>Recommandations :</strong><br>${d.recommandations.replace(/\n/g, "<br>")}`);
+  return parts.join("<br><br>");
+};
+
+// Réutilise le pattern d'envoi email patient réel (POST /messages/patient-
+// email, construit en Phase D du module Messages) — jamais de faux succès :
+// si le dossier n'est pas lié à un patient réel (patient_ref), l'envoi est
+// refusé plutôt que d'envoyer au hasard ou de rester silencieux.
+const sendEchoReportEmail = async (d) => {
+  const patientRefId = typeof d.patient_ref === "object" ? d.patient_ref?._id : d.patient_ref;
+  if (!patientRefId) { toast.error("Ce dossier n'est lié à aucun patient réel — impossible d'envoyer l'email."); return false; }
+  try {
+    const { data } = await api.post("/messages/patient-email", {
+      patient: patientRefId,
+      sujet: `Compte-rendu d'échographie — ${d.type}${d.sous_type ? ` (${d.sous_type})` : ""} — ${d.numero}`,
+      contenu: buildRapportEmailHtml(d),
+    });
+    toast.success(data.simulated ? "📧 Email simulé (SMTP non configuré en environnement local)" : "📧 Email envoyé");
+    return true;
+  } catch (err) {
+    toast.error(err?.response?.data?.message || "Échec de l'envoi de l'email.");
+    return false;
+  }
+};
 
 // AUDIT-ECHOGRAPHIE-PATIENT — le patient était saisi en texte libre (aucun
 // patient_ref jamais renseigné à la création), rendant morts les liens
@@ -1737,6 +1776,7 @@ export default function Echographie() {
   const chart     = useSelector(selectEchographieChart);
   const [mainTab, setMainTab] = useState("dashboard");
   const [modalNouv, setModalNouv] = useState(false);
+  const [sendingEmailIds, setSendingEmailIds] = useState({});
 
   useEffect(() => {
     dispatch(fetchEchographieStats());
@@ -1823,7 +1863,16 @@ export default function Echographie() {
                     <span className="cbdg green">✅ Validé</span>
                     <div style={{ display:"flex", gap:6, marginTop:10 }}>
                       <button className="cbtn cbtn-teal cbtn-sm">📄 Rapport</button>
-                      <button className="cbtn cbtn-ghost cbtn-sm">📧 Envoyer</button>
+                      <button
+                        className="cbtn cbtn-ghost cbtn-sm"
+                        disabled={!!sendingEmailIds[d.id]}
+                        title={!d.patient_ref ? "Ce dossier n'est lié à aucun patient réel — impossible d'envoyer l'email." : undefined}
+                        onClick={async () => {
+                          setSendingEmailIds(p=>({...p,[d.id]:true}));
+                          await sendEchoReportEmail(d);
+                          setSendingEmailIds(p=>({...p,[d.id]:false}));
+                        }}
+                      >{sendingEmailIds[d.id] ? "⏳..." : "📧 Envoyer"}</button>
                     </div>
                   </div>
                 ))}
