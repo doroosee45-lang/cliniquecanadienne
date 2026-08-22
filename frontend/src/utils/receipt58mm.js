@@ -55,7 +55,7 @@ const CSS_58MM = `
   .total-row.emph { font-size:12px; font-weight:800; }
   .footer { font-size:9px; text-align:center; color:#333; }
   .qr-wrap { display:flex; justify-content:center; margin:6px 0; }
-  .qr-wrap img { width:26mm; height:26mm; }
+  .qr-wrap img { width:26mm; height:26mm; image-rendering:pixelated; image-rendering:crisp-edges; }
 `;
 
 // AUDIT-RECU-QR — le QR n'encode jamais que la référence (n° facture/
@@ -63,14 +63,23 @@ const CSS_58MM = `
 // : aucune route de consultation publique par référence n'existe côté
 // backend (finance.routes.js est réservé staff), donc pas de lien
 // cliquable non plus — un ticket perdu ou photographié n'expose rien.
-// 300px de large en interne (mis à l'échelle à 26mm en CSS) pour une
-// densité suffisante au DPI d'une imprimante thermique typique (~203dpi) ;
-// une référence courte (~15 caractères) reste sur une version basse du QR
-// (modules larges), donc lisible même à cette petite taille physique.
+// AUDIT-RECU-QR-NETTETE — `width` (utilisé initialement) fait calculer à
+// qrcode un facteur d'échelle = width / (nb de modules + marge*2), presque
+// jamais entier (lib/renderer/utils.js::getScale) ; qrToImageData retrouve
+// ensuite le module source de chaque pixel via un floor() sur ce facteur
+// fractionnaire, ce qui produit des bords de module en escalier (largeur de
+// module qui varie de ±1px d'un module à l'autre) — repéré sur un vrai
+// rendu, pas un flou d'anti-aliasing (putImageData copie les pixels tels
+// quels, aucun lissage n'est appliqué à ce stade). `scale` (entier) donne
+// des modules pixel-parfaits, toujours la même largeur. Les références
+// courtes utilisées ici (n° facture/ticket/dossier, ~15 caractères) tiennent
+// toutes sur un QR V1 (21x21 modules) ; scale:13 donne ~299px, une densité
+// comparable à l'ancien réglage, pour une imprimante thermique typique
+// (~203dpi) à la taille d'impression retenue (26mm).
 const buildQrDataUrl = async (text) => {
   if (!text) return null;
   try {
-    return await QRCode.toDataURL(String(text), { margin: 1, width: 300 });
+    return await QRCode.toDataURL(String(text), { margin: 1, scale: 13 });
   } catch {
     return null;
   }
