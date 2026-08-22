@@ -39,5 +39,6 @@ router.get('/kpis',           protect, authorize(...ADMIN),   settingsC.getKpis)
 // ── Assurances ────────────────────────────────────────────────
 router.get('/insurances',     protect, authorize(...STAFF),   settingsC.getInsurances);
 router.post('/insurances',    protect, authorize(...ADMIN),   settingsC.createInsurance);
+router.put('/insurances/:id', protect, authorize(...ADMIN),   settingsC.updateInsurance);
 
 module.exports = router;

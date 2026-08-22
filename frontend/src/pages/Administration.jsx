@@ -387,6 +387,7 @@ export default function Administration() {
   const [tasks, setTasks]       = useState([]);
   const [audit, setAudit]       = useState([]);
   const [revenus, setRevenus]   = useState(REVENUS_DATA);
+  const [depenses, setDepenses] = useState([]);
 
   // Modals
   const [modalUser, setModalUser]         = useState(false);
@@ -414,7 +415,7 @@ export default function Administration() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [kRes, uRes, dRes, rRes, sRes, tRes, aRes] = await Promise.allSettled([
+      const [kRes, uRes, dRes, rRes, sRes, tRes, aRes, depRes] = await Promise.allSettled([
         api.get("/admin/kpis"),
         api.get("/admin/users"),
         api.get("/admin/departments"),
@@ -422,6 +423,7 @@ export default function Administration() {
         api.get("/admin/suppliers"),
         api.get("/admin/tasks"),
         api.get("/admin/audit?limit=20"),
+        api.get("/finance/depenses?limit=10"),
       ]);
       const toArr = (v, fallback) => Array.isArray(v) ? v : fallback;
       if (kRes.status === "fulfilled" && kRes.value.data) {
@@ -435,6 +437,9 @@ export default function Administration() {
       setSuppliers(sRes.status === "fulfilled" ? toArr(sRes.value.data.suppliers || sRes.value.data, DEMO_SUPPLIERS) : DEMO_SUPPLIERS);
       setTasks(tRes.status === "fulfilled"  ? toArr(tRes.value.data.tasks  || tRes.value.data, DEMO_TASKS)     : DEMO_TASKS);
       setAudit(aRes.status === "fulfilled"  ? toArr(aRes.value.data.logs   || aRes.value.data, DEMO_AUDIT)     : DEMO_AUDIT);
+      // AUDIT-GLOBAL — "Transactions récentes" affichait 5 lignes fabriquées ;
+      // charge maintenant les vraies dépenses (GET /finance/depenses, déjà réel).
+      setDepenses(depRes.status === "fulfilled" ? toArr(depRes.value.data.depenses || depRes.value.data, []) : []);
     } catch {
       setUsers(DEMO_USERS); setDepts(DEMO_DEPTS); setRooms(DEMO_ROOMS);
       setSuppliers(DEMO_SUPPLIERS); setTasks(DEMO_TASKS); setAudit(DEMO_AUDIT);
@@ -484,12 +489,30 @@ export default function Administration() {
   };
 
   // ── Reset password ────────────────────────────────────────
+  // AUDIT-GLOBAL — appelait POST /admin/users/:id/reset-password, une route
+  // qui n'existe nulle part dans le backend (404 systématique, correctement
+  // remonté en erreur mais la fonctionnalité n'a jamais marché). Réutilise
+  // le vrai mécanisme déjà existant (auth.controller.js::forgotPassword,
+  // utilisé par ForgotPassword.jsx), qui envoie un vrai email via mail.js.
   const resetPassword = async (user) => {
     try {
-      await api.post(`/admin/users/${user._id}/reset-password`);
+      await api.post(`/auth/forgot-password`, { email: user.email });
       toast.success(`🔑 Email de réinitialisation envoyé à ${user.email}`);
     } catch (err) {
       toast.error(err?.response?.data?.message || "❌ Échec de l'envoi de l'email de réinitialisation.");
+    }
+  };
+
+  // AUDIT-GLOBAL — "Valider" une dépense affichait un faux succès (toast
+  // seul, tableau fabriqué). Utilise le nouvel endpoint réel
+  // PUT /finance/depenses/:id/valider.
+  const validerDepense = async (dep) => {
+    try {
+      await api.put(`/finance/depenses/${dep._id}/valider`);
+      setDepenses(prev => prev.map(d => d._id === dep._id ? { ...d, statut: "paye" } : d));
+      toast.success("✅ Dépense validée");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la validation.");
     }
   };
 
@@ -1137,18 +1160,17 @@ export default function Administration() {
                       { icon:"👥", titre:"Dossiers RH",         desc:"Dossiers du personnel",               nb:42 },
                       { icon:"🏥", titre:"Registres médicaux",  desc:"Registres d'activité médicale",        nb:9  },
                     ].map(doc => (
-                      <div key={doc.titre} className="adm-card" style={{ cursor:"pointer" }} onClick={() => toast.success(`📂 Ouverture : ${doc.titre}`)}>
-                        <div style={{ padding:16 }}>
+                      // AUDIT-GLOBAL — cette carte ouvrait un faux succès et
+                      // ses 2 boutons ne faisaient littéralement rien
+                      // (e.stopPropagation() seul). Le classement documentaire
+                      // par catégorie n'a pas de contrepartie backend (le
+                      // modèle Document réel n'a pas cette taxonomie) — rendu
+                      // honnêtement non interactif plutôt que simulé.
+                      <div key={doc.titre} className="adm-card" title="Classement par catégorie non connecté au stockage de documents réel — consultez le module Archives pour les dossiers réellement enregistrés.">
+                        <div style={{ padding:16, opacity:0.75 }}>
                           <div style={{ fontSize:28, marginBottom:10 }}>{doc.icon}</div>
                           <div style={{ fontWeight:700, color:"var(--cn)", fontSize:13, marginBottom:4 }}>{doc.titre}</div>
-                          <div style={{ fontSize:11, color:"var(--cm)", marginBottom:12 }}>{doc.desc}</div>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                            <Badge cls="blue">{doc.nb} fichier(s)</Badge>
-                            <div style={{ display:"flex", gap:4 }}>
-                              <button className="cbtn cbtn-ghost cbtn-sm" style={{ padding:"3px 8px" }} onClick={e => { e.stopPropagation(); }}>{I.plus}</button>
-                              <button className="cbtn cbtn-ghost cbtn-sm" style={{ padding:"3px 8px" }} onClick={e => { e.stopPropagation(); }}>{I.dl}</button>
-                            </div>
-                          </div>
+                          <div style={{ fontSize:11, color:"var(--cm)" }}>{doc.desc}</div>
                         </div>
                       </div>
                     ))}
@@ -1195,31 +1217,28 @@ export default function Administration() {
                 <div className="adm-card-hdr">
                   <div><h3>{I.dollar} Transactions récentes</h3><p>Dépenses et validations</p></div>
                   <div style={{ display:"flex", gap:8 }}>
-                    <button className="cbtn cbtn-ghost cbtn-sm">{I.dl} Excel</button>
-                    <button className="cbtn cbtn-ghost cbtn-sm">{I.dl} PDF</button>
+                    <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Utilisez l'export du module Finance (Rapports) pour un export complet des dépenses." style={{opacity:0.5,cursor:"not-allowed"}}>{I.dl} Excel</button>
+                    <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Utilisez l'export du module Finance (Rapports) pour un export complet des dépenses." style={{opacity:0.5,cursor:"not-allowed"}}>{I.dl} PDF</button>
                   </div>
                 </div>
                 <div style={{ overflowX:"auto" }}>
                   <table className="adm-tbl">
-                    <thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Validé par</th><th>Statut</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Enregistré par</th><th>Statut</th></tr></thead>
                     <tbody>
-                      {[
-                        { d:"2025-06-01", lib:"Commande MedPharma Congo",      cat:"Pharmacie",    mnt:850000,  valid:"Henri Mboula", ok:true  },
-                        { d:"2025-05-31", lib:"Salaires mai 2025",             cat:"RH",           mnt:9800000, valid:"Alain Koumba", ok:true  },
-                        { d:"2025-05-30", lib:"Maintenance équipements labo",  cat:"Maintenance",  mnt:250000,  valid:"En attente",   ok:false },
-                        { d:"2025-05-28", lib:"Fournitures de bureau",         cat:"Admin.",       mnt:85000,   valid:"Alain Koumba", ok:true  },
-                        { d:"2025-05-25", lib:"Commande TechMed équipements",  cat:"Équipements",  mnt:2500000, valid:"En attente",   ok:false },
-                      ].map((row, i) => (
-                        <tr key={i}>
-                          <td style={{ fontSize:12 }}>{fmtDate(row.d)}</td>
-                          <td style={{ fontWeight:600, color:"var(--cn)" }}>{row.lib}</td>
-                          <td><Badge cls="gray">{row.cat}</Badge></td>
-                          <td style={{ fontWeight:700, color:"var(--cb)" }}>{fmtMoney(row.mnt)}</td>
-                          <td style={{ fontSize:12, color:"var(--cm)" }}>{row.valid}</td>
+                      {depenses.length === 0 && (
+                        <tr><td colSpan={6} style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:12.5 }}>Aucune dépense enregistrée.</td></tr>
+                      )}
+                      {depenses.map((row) => (
+                        <tr key={row._id}>
+                          <td style={{ fontSize:12 }}>{fmtDate(row.date)}</td>
+                          <td style={{ fontWeight:600, color:"var(--cn)" }}>{row.description}</td>
+                          <td><Badge cls="gray">{row.categorie}</Badge></td>
+                          <td style={{ fontWeight:700, color:"var(--cb)" }}>{fmtMoney(row.montant)}</td>
+                          <td style={{ fontSize:12, color:"var(--cm)" }}>{row.enregistre_par?.prenom ? `${row.enregistre_par.prenom} ${row.enregistre_par.nom}` : "—"}</td>
                           <td>
-                            {row.ok
+                            {row.statut === "paye"
                               ? <Badge cls="green">✅ Validée</Badge>
-                              : <button className="cbtn cbtn-success cbtn-sm" onClick={() => toast.success("✅ Dépense validée")}>Valider</button>}
+                              : <button className="cbtn cbtn-success cbtn-sm" onClick={() => validerDepense(row)}>Valider</button>}
                           </td>
                         </tr>
                       ))}
@@ -1416,10 +1435,10 @@ export default function Administration() {
                           <div style={{ fontSize:11, color:"var(--cm)" }}>{g.desc}</div>
                         </div>
                         <Badge cls="blue">{g.nb}</Badge>
-                        <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => toast.success(`💬 Messagerie groupe ${g.group}`)}>{I.msg}</button>
+                        <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Fonctionnalité indisponible : la messagerie ne gère que des conversations individuelles (module Messages), pas de groupes — un envoi de groupe nécessiterait une nouvelle route backend." style={{opacity:0.5,cursor:"not-allowed"}}>{I.msg}</button>
                       </div>
                     ))}
-                    <button className="cbtn cbtn-teal" style={{ marginTop:14, width:"100%" }} onClick={() => toast.success("📢 Diffusion d'une note de service à tous les utilisateurs")}>
+                    <button className="cbtn cbtn-teal" disabled title="Fonctionnalité indisponible : aucune route backend de diffusion en masse n'existe (createNotification est un utilitaire interne, non exposé en API)." style={{ marginTop:14, width:"100%", opacity:0.5, cursor:"not-allowed" }}>
                       {I.msg} Envoyer une note de service générale
                     </button>
                   </div>

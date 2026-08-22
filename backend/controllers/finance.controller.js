@@ -15,6 +15,7 @@ function normalizeInvoice(inv) {
     date:     inv.date_facture    || inv.date      || inv.createdAt,
     echeance: inv.date_echeance   || inv.echeance  || null,
     patient:  inv.patient_nom     || (pat ? `${pat.prenom} ${pat.nom}` : (typeof inv.patient === 'string' ? inv.patient : '—')),
+    patient_telephone: pat?.telephone || null,
     service:  inv.service_label   || inv.service   || '—',
     montant:  inv.montant_direct  || inv.montant_ttc || inv.montant || 0,
     statut:   statutMap[inv.statut] || inv.statut  || 'non_paye',
@@ -31,7 +32,7 @@ exports.getAll = async (req, res, next) => {
     const total = await Invoice.countDocuments(filter);
     const raw = await paginate(
       Invoice.find(filter)
-        .populate('patient', 'nom prenom numero_dossier')
+        .populate('patient', 'nom prenom numero_dossier telephone')
         .populate('created_by', 'nom prenom')
         .sort('-date_facture'),
       page, limit
@@ -108,7 +109,7 @@ exports.create = async (req, res, next) => {
     emitDashboardUpdate();
 
     const populated = await Invoice.findById(invoice._id)
-      .populate('patient', 'nom prenom numero_dossier')
+      .populate('patient', 'nom prenom numero_dossier telephone')
       .lean();
     const facture = normalizeInvoice(populated);
     res.status(201).json({ success: true, invoice: facture, facture });
@@ -262,6 +263,20 @@ exports.createDepense = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-GLOBAL — Administration.jsx affichait un tableau de "Transactions
+// récentes" entièrement fabriqué et un bouton "Valider" factice, alors
+// qu'aucune route de validation de dépense n'existait. Ajoutée ici (même
+// style que createDepense ci-dessus).
+exports.validerDepense = async (req, res, next) => {
+  try {
+    const depense = await Depense.findByIdAndUpdate(req.params.id, { statut: 'paye' }, { new: true });
+    if (!depense) return res.status(404).json({ success: false, message: 'Dépense introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'finance', entite_id: depense._id, ip: req.ip, message: `Dépense validée : ${depense.description}` });
+    emitDashboardUpdate();
+    res.json({ success: true, depense });
+  } catch (err) { next(err); }
+};
+
 // ── SALAIRES ─────────────────────────────────────────────────────────────
 // Un bulletin par employé actif et par mois — généré à la demande (pas de
 // tâche planifiée) : le premier GET du mois crée les bulletins manquants
@@ -281,16 +296,26 @@ exports.getSalaires = async (req, res, next) => {
       ).catch(() => {}); // course possible entre deux requêtes simultanées — non bloquant, re-fetch ci-dessous
     }
 
-    const bulletins = await Salaire.find({ mois }).populate('staff', 'prenom nom poste');
+    // AUDIT-GLOBAL — Staff.prenom/nom sont vides quand l'employé est lié à
+    // un compte User (utilisateur), auquel cas le vrai nom vit sur ce compte
+    // — même repli déjà appliqué côté HR (hr.controller.js/HR.jsx::normalizeEmp).
+    // Sans lui, "Employé" restait vide pour tout le personnel avec compte.
+    const bulletins = await Salaire.find({ mois }).populate({
+      path: 'staff', select: 'prenom nom poste utilisateur',
+      populate: { path: 'utilisateur', select: 'prenom nom' },
+    });
     const salaires = bulletins
       .filter(b => b.staff) // employé supprimé depuis
-      .map(b => ({
-        _id: b._id,
-        employe: `${b.staff.prenom || ''} ${b.staff.nom || ''}`.trim(),
-        fonction: b.staff.poste,
-        base: b.base, primes: b.primes, deductions: b.deductions, net: b.net,
-        statut: b.statut, date_paiement: b.date_paiement,
-      }));
+      .map(b => {
+        const u = b.staff.utilisateur;
+        return {
+          _id: b._id,
+          employe: `${b.staff.prenom || u?.prenom || ''} ${b.staff.nom || u?.nom || ''}`.trim(),
+          fonction: b.staff.poste,
+          base: b.base, primes: b.primes, deductions: b.deductions, net: b.net,
+          statut: b.statut, date_paiement: b.date_paiement,
+        };
+      });
     res.json({ success: true, salaires });
   } catch (err) { next(err); }
 };

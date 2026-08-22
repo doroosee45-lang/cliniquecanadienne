@@ -390,6 +390,13 @@ export default function Pharmacie() {
 
   const [tab, setTab]         = useState("dashboard");
   const [medicaments, setMeds] = useState([]);
+  // AUDIT-GLOBAL — comptage réel saisi par l'utilisateur lors d'un
+  // inventaire physique (medicament._id -> quantité comptée), remplace les
+  // valeurs fictives précédemment codées en dur.
+  const [comptageReel, setComptageReel] = useState({});
+  const [validatingInv, setValidatingInv] = useState(false);
+  const [qteCmdIA, setQteCmdIA] = useState({});
+  const [sendingCmdIA, setSendingCmdIA] = useState(false);
   const [mvts, setMvts]       = useState([]);
   const [commandes, setCmds]  = useState([]);
   const [fournisseurs, setFrns] = useState([]);
@@ -642,11 +649,62 @@ export default function Pharmacie() {
       setModalMvt(false);
       setFormMvt(EMPTY_MVT);
       loadStats();
-    } catch {
-      toast.success("✅ Mouvement enregistré (local)");
-      setModalMvt(false);
-      setFormMvt(EMPTY_MVT);
+    } catch (err) {
+      // AUDIT-GLOBAL — affichait auparavant un faux succès ("enregistré
+      // (local)") sur échec de l'appel API, alors qu'aucun mouvement n'était
+      // réellement persisté (ex. stock insuffisant, 400 de l'endpoint réel).
+      toast.error(err?.response?.data?.message || "❌ Échec de l'enregistrement du mouvement.");
     } finally { setSaving(false); }
+  };
+
+  // AUDIT-GLOBAL — "Valider l'inventaire" affichait un faux succès (toast
+  // seul, aucune écriture) sur un tableau dont l'écart était de toute façon
+  // fabriqué (i%5===0?-2:...). Le comptage réel est maintenant saisi par
+  // l'utilisateur (état comptageReel) ; seuls les médicaments avec un écart
+  // réel génèrent un mouvement de stock réel (même endpoint atomique que
+  // createMvt/retirerLotPerime), un par un, avec compte-rendu réel.
+  const validerInventaire = async () => {
+    const ecarts = meds
+      .map(m => ({ m, compte: comptageReel[m._id] === undefined || comptageReel[m._id] === "" ? m.stock_quantite : Number(comptageReel[m._id]) }))
+      .filter(({ m, compte }) => compte !== m.stock_quantite);
+    if (ecarts.length === 0) { toast.success("Aucun écart à enregistrer — stock conforme."); return; }
+    if (!window.confirm(`Enregistrer ${ecarts.length} écart(s) d'inventaire détecté(s) ?`)) return;
+    setValidatingInv(true);
+    let ok = 0, fail = 0;
+    for (const { m, compte } of ecarts) {
+      const delta = compte - m.stock_quantite;
+      try {
+        await api.post(`/pharmacy/${m._id}/mouvement`, {
+          type: delta > 0 ? "entree" : "sortie",
+          quantite: Math.abs(delta),
+          reference: "Inventaire physique",
+          notes: `Ajustement inventaire — comptage ${compte} vs théorique ${m.stock_quantite}`,
+        });
+        setMeds(prev => prev.map(x => x._id === m._id ? { ...x, stock_quantite: compte } : x));
+        ok++;
+      } catch { fail++; }
+    }
+    setValidatingInv(false);
+    setComptageReel({});
+    if (fail === 0) toast.success(`✅ Inventaire validé — ${ok} ajustement(s) enregistré(s)`);
+    else toast.error(`${ok} ajustement(s) enregistré(s), ${fail} échec(s)`);
+    loadStats();
+  };
+
+  // AUDIT-GLOBAL — "Retirer" un lot périmé affichait un faux succès (toast
+  // seul). Réutilise le même mouvement de stock réel que createMvt
+  // ci-dessus, type 'peremption' pour la quantité totale du lot.
+  const retirerLotPerime = async (m) => {
+    if (!window.confirm(`Retirer ${m.stock_quantite} unité(s) de ${m.nom_commercial} (lot ${m.lot||'—'}) du stock — péremption ?`)) return;
+    try {
+      const payload = { type: "peremption", quantite: m.stock_quantite, reference: m.lot || "", notes: "Retrait pour péremption" };
+      await api.post(`/pharmacy/${m._id}/mouvement`, payload);
+      setMeds(prev => prev.map(x => x._id === m._id ? { ...x, stock_quantite: 0 } : x));
+      toast.success(`🗑 Lot retiré du stock — ${m.nom_commercial}`);
+      loadStats();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec du retrait du stock.");
+    }
   };
 
   // ── Recherche d'ordonnance (P7-3) ─────────────────────────────
@@ -849,6 +907,36 @@ ${lignes}
     const subject = `Ticket de vente N° ${t.numero} — Clinique Canadienne de Souanké`;
     const body = `Clinique Canadienne de Souanké\nSouanké, Congo-Brazzaville\n\nTICKET DE VENTE\nN° ${t.numero}\nDate : ${new Date(t.date).toLocaleString("fr-FR")}\nClient : ${t.client}\nPaiement : ${modeLabel[t.mode_paiement] || t.mode_paiement}\n\nDétail :\n${lignes}\n\nTOTAL : ${fmtCFA(t.total)}\n\nMerci de votre confiance !`;
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
+  // AUDIT-GLOBAL — "Transmettre la commande" (réappro. suggéré) affichait un
+  // faux succès (toast seul, aucune écriture). Construit de vrais bons de
+  // commande réels via le même endpoint que createCommande ci-dessous
+  // (POST /pharmacy/commandes), un par fournisseur puisque le modèle attend
+  // un fournisseur unique par commande.
+  const transmettreCommandeIA = async () => {
+    const suggestions = alertsMeds.filter(m => stockSt(m.stock_quantite, m.stock_minimum) !== "ok");
+    if (suggestions.length === 0) return;
+    const parFournisseur = {};
+    for (const m of suggestions) {
+      const qte = Number(qteCmdIA[m._id]) || m.stock_minimum * 3;
+      const four = m.fournisseur || "Fournisseur non spécifié";
+      (parFournisseur[four] ||= []).push({ nom: m.nom_commercial, forme: m.forme, dosage: m.dosage, quantite: qte, prix_unitaire: m.prix_achat, medicament: m._id });
+    }
+    setSendingCmdIA(true);
+    let ok = 0, fail = 0;
+    for (const [fournisseur, lignes] of Object.entries(parFournisseur)) {
+      try {
+        await api.post("/pharmacy/commandes", { fournisseur, notes: "Généré depuis le réapprovisionnement suggéré", lignes });
+        ok++;
+      } catch { fail++; }
+    }
+    setSendingCmdIA(false);
+    setQteCmdIA({});
+    setModalIACmd(false);
+    if (fail === 0) toast.success(`📦 ${ok} bon(s) de commande créé(s)`);
+    else toast.error(`${ok} bon(s) créé(s), ${fail} échec(s)`);
+    loadCommandes();
   };
 
   // ── Commande ───────────────────────────────────────────────
@@ -1833,7 +1921,7 @@ ${lignes}
                                 <Badge cls={ps==="perime"?"red":"orange"}>{ps==="perime"?"PÉRIMÉ !":`${days}j restants`}</Badge>
                               </td>
                               <td>
-                                <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:11 }} onClick={() => toast.success("🗑 Lot retiré du stock")}>🗑 Retirer</button>
+                                <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:11 }} onClick={() => retirerLotPerime(m)}>🗑 Retirer</button>
                               </td>
                             </tr>
                           );
@@ -1982,24 +2070,16 @@ ${lignes}
                 </div>
               </div>
 
-              <div className="al-ia" style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
-                <span style={{ fontSize:20, flexShrink:0 }}>🤖</span>
-                <div>
-                  <strong style={{ color:"#1E40AF", fontSize:13 }}>IA — Assistance à l'inventaire</strong>
-                  <div style={{ fontSize:12, color:"#3B82F6", marginTop:4 }}>
-                    Dernier inventaire complet : <strong>15/05/2025</strong>. L'IA détecte <strong>3 écarts potentiels</strong> entre stock théorique et réel. Cibles prioritaires : Amoxicilline, Paracétamol, Sérum physiologique.
-                  </div>
-                </div>
-              </div>
-
               <div className="ph-card">
-                <div className="ph-card-hdr"><h3>📊 Tableau d'inventaire</h3><p>Stock théorique vs réel</p></div>
+                <div className="ph-card-hdr"><h3>📊 Tableau d'inventaire</h3><p>Saisissez le stock compté physiquement — l'écart se calcule automatiquement par rapport au stock théorique du système</p></div>
                 <div className="ph-tbl-wrap">
                   <table className="ph-tbl" style={{ minWidth:800 }}>
-                    <thead><tr><th>Code</th><th>Médicament</th><th>Emplacement</th><th>Stock théorique</th><th>Stock réel</th><th>Écart</th><th>Statut</th></tr></thead>
+                    <thead><tr><th>Code</th><th>Médicament</th><th>Emplacement</th><th>Stock théorique</th><th>Stock réel (comptage)</th><th>Écart</th><th>Statut</th></tr></thead>
                     <tbody>
-                      {meds.map((m,i)=>{
-                        const ecart = i%5===0?-2:i%7===0?3:0;
+                      {meds.map((m)=>{
+                        const saisie = comptageReel[m._id];
+                        const compte = saisie === undefined || saisie === "" ? m.stock_quantite : Number(saisie);
+                        const ecart = compte - m.stock_quantite;
                         return (
                           <tr key={m._id} style={{ background:ecart!==0?"#FFFBF0":"" }}>
                             <td style={{ fontFamily:"monospace", fontSize:11, color:"var(--pb)" }}>{m.code}</td>
@@ -2010,7 +2090,7 @@ ${lignes}
                             <td><Badge cls="gray">{m.emplacement||"—"}</Badge></td>
                             <td style={{ fontWeight:700, color:"var(--pn)", textAlign:"center" }}>{m.stock_quantite}</td>
                             <td style={{ textAlign:"center" }}>
-                              <input type="number" defaultValue={m.stock_quantite+ecart} style={{ width:80, padding:"4px 8px", border:"1.5px solid var(--pbr)", borderRadius:8, textAlign:"center", fontWeight:700, fontSize:13, outline:"none" }} />
+                              <input type="number" min="0" value={saisie ?? m.stock_quantite} onChange={e => setComptageReel(prev => ({ ...prev, [m._id]: e.target.value }))} style={{ width:80, padding:"4px 8px", border:"1.5px solid var(--pbr)", borderRadius:8, textAlign:"center", fontWeight:700, fontSize:13, outline:"none" }} />
                             </td>
                             <td style={{ textAlign:"center" }}>
                               <span style={{ fontWeight:800, fontSize:14, color:ecart<0?"var(--pr)":ecart>0?"var(--pg)":"var(--pm)" }}>
@@ -2025,7 +2105,7 @@ ${lignes}
                   </table>
                 </div>
                 <div style={{ padding:"14px 20px", borderTop:"1.5px solid var(--pbr)", display:"flex", gap:10 }}>
-                  <button className="pbtn pbtn-teal" onClick={() => toast.success("✅ Inventaire validé et enregistré")}>{I.save} Valider l'inventaire</button>
+                  <button className="pbtn pbtn-teal" disabled={validatingInv} onClick={validerInventaire}>{I.save} {validatingInv ? "Enregistrement..." : "Valider l'inventaire"}</button>
                   <button className="pbtn pbtn-ghost" onClick={exportInventairePDF}>{I.dl} Export PDF</button>
                 </div>
               </div>
@@ -2700,8 +2780,8 @@ ${lignes}
                       <div style={{ fontSize:11, color:"var(--pm)" }}>{m.fournisseur} · Stock : <strong style={{ color:stockColor(stockSt(m.stock_quantite,m.stock_minimum)) }}>{m.stock_quantite}</strong></div>
                     </div>
                     <div style={{ textAlign:"right", flexShrink:0 }}>
-                      <input type="number" defaultValue={qteSugg} min={1} style={{ width:80, padding:"6px 8px", border:"1.5px solid var(--pbr)", borderRadius:8, textAlign:"center", fontWeight:700, fontSize:13, outline:"none" }} />
-                      <div style={{ fontSize:10, color:"var(--pm)", marginTop:2 }}>{fmtCFA(qteSugg*m.prix_achat)}</div>
+                      <input type="number" value={qteCmdIA[m._id] ?? qteSugg} min={1} onChange={e => setQteCmdIA(prev => ({ ...prev, [m._id]: e.target.value }))} style={{ width:80, padding:"6px 8px", border:"1.5px solid var(--pbr)", borderRadius:8, textAlign:"center", fontWeight:700, fontSize:13, outline:"none" }} />
+                      <div style={{ fontSize:10, color:"var(--pm)", marginTop:2 }}>{fmtCFA((Number(qteCmdIA[m._id]) || qteSugg)*m.prix_achat)}</div>
                     </div>
                   </div>
                 );
@@ -2716,7 +2796,7 @@ ${lignes}
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="pbtn pbtn-ghost" onClick={() => setModalIACmd(false)}>Fermer</button>
-              <button className="pbtn pbtn-teal" style={{ marginLeft:"auto" }} onClick={() => { toast.success("📦 Bon de commande IA transmis — En attente validation Admin"); setModalIACmd(false); }}>📧 Transmettre la commande</button>
+              <button className="pbtn pbtn-teal" style={{ marginLeft:"auto" }} disabled={sendingCmdIA} onClick={transmettreCommandeIA}>📧 {sendingCmdIA ? "Envoi..." : "Transmettre la commande"}</button>
             </div>
           </div>
         </Modal>
@@ -2816,7 +2896,7 @@ ${lignes}
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="pbtn pbtn-ghost" onClick={() => setModalInv(false)}>Annuler</button>
-              <button className="pbtn pbtn-teal" style={{ marginLeft:"auto" }} onClick={() => { toast.success("📋 Session d'inventaire démarrée"); setModalInv(false); setTab("inventaire"); }}>🚀 Démarrer l'inventaire</button>
+              <button className="pbtn pbtn-teal" style={{ marginLeft:"auto" }} onClick={() => { setComptageReel({}); setModalInv(false); setTab("inventaire"); }}>🚀 Démarrer l'inventaire</button>
             </div>
           </div>
         </Modal>

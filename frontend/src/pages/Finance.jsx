@@ -439,7 +439,14 @@ const downloadInvoicePDF = (f) => {
 const shareWhatsApp = (f) => {
   const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
   const msg = `🏥 *${clinicFull}*\n\n📋 *FACTURE N° ${f.numero}*\n\n👤 Patient : ${f.patient}\n💼 Service : ${f.service}\n💰 Montant : ${fmtMontant(f.montant)}\n📅 Date : ${fmtDate(f.date)}\n⏰ Échéance : ${fmtDate(f.echeance)}\n✅ Statut : ${f.statut === 'paye' ? 'Payée ✓' : f.statut === 'partiellement_paye' ? 'Partiellement payée ⚠' : 'Non payée ✗'}\n\nModes de paiement : Espèces · Mobile Money · Virement · Assurance\n\n📞 Contact : +236 XX XX XX XX`;
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  // AUDIT-GLOBAL — le patient a un numéro réel (Patient.telephone) : cibler
+  // directement sa conversation WhatsApp plutôt que d'ouvrir le sélecteur de
+  // contact générique quand aucun numéro n'est transmis dans l'URL wa.me.
+  const digits = (f.patient_telephone || '').replace(/\D/g, '');
+  const url = digits
+    ? `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(url, '_blank');
 };
 
 const shareEmail = (f) => {
@@ -447,6 +454,17 @@ const shareEmail = (f) => {
   const subject = `Facture N° ${f.numero} — ${clinicFull}`;
   const statutTxt = f.statut === 'paye' ? 'Payée' : f.statut === 'partiellement_paye' ? 'Partiellement payée' : 'Non payée';
   const body = `Bonjour,\n\nVeuillez trouver ci-dessous votre facture de la ${clinicFull}.\n\nN° Facture  : ${f.numero}\nPatient     : ${f.patient}\nPrestation  : ${f.service}\nMontant     : ${fmtMontant(f.montant)}\nDate émise  : ${fmtDate(f.date)}\nÉchéance    : ${fmtDate(f.echeance)}\nStatut      : ${statutTxt}\n\nPour toute question, contactez notre service comptabilité.\n\nCordialement,\nService Comptabilité — ${clinicFull}\nTél : +236 XX XX XX XX`;
+  window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+};
+
+// AUDIT-GLOBAL — "Relancer" (dossier assurance) affichait un faux succès
+// (toast seul). Même pattern mailto: réel que shareEmail ci-dessus — aucune
+// adresse de compagnie d'assurance n'est stockée dans le modèle, donc le
+// client mail de l'utilisateur s'ouvre pré-rempli pour qu'il choisisse le
+// bon destinataire, comme pour le partage de facture.
+const relancerAssurance = (a) => {
+  const subject = `Relance — Dossier assurance ${a.facture} — ${a.compagnie}`;
+  const body = `Bonjour,\n\nNous vous relançons concernant le remboursement du dossier suivant :\n\nCompagnie   : ${a.compagnie}\nFacture     : ${a.facture}\nPatient     : ${a.patient}\nMontant facturé : ${fmtMontant(a.facture_montant)}\nDéjà remboursé  : ${fmtMontant(a.rembourse)}\nEn attente      : ${fmtMontant(a.en_attente)}\nDate de soumission : ${fmtDate(a.date_soumission)}\n\nMerci de nous indiquer l'état de traitement de ce dossier.\n\nCordialement,\nService Comptabilité — ${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
   window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
 };
 
@@ -682,6 +700,7 @@ export default function Finance() {
   const [modalFacture, setModalFacture] = useState(false);
   const [modalCaisse, setModalCaisse] = useState(false);
   const [modalExport, setModalExport] = useState(false);
+  const [exportFormat, setExportFormat] = useState("pdf");
   const [modalFactureDetail, setModalFactureDetail] = useState(false);
   const [selectedFacture, setSelectedFacture] = useState(null);
   const [modalPaiement, setModalPaiement] = useState(false);
@@ -842,6 +861,30 @@ export default function Finance() {
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erreur lors du paiement du salaire");
     }
+  };
+
+  // AUDIT-GLOBAL — "Payer tout le monde" affichait un faux succès sans
+  // appeler l'API (toast.success seul). Réutilise le même endpoint réel que
+  // le paiement individuel (PUT /finance/salaires/:id/payer), en séquentiel
+  // pour rester dans les mêmes garanties transactionnelles que ce endpoint,
+  // avec un vrai compte-rendu (succès/échecs) au lieu d'un succès fabriqué.
+  const [payingAll, setPayingAll] = useState(false);
+  const payerTousLesSalaires = async () => {
+    const impayes = salaires.filter(s => s.statut !== "paye");
+    if (impayes.length === 0) { toast.success("Tous les salaires sont déjà payés."); return; }
+    if (!window.confirm(`Confirmer le paiement de ${impayes.length} salaire(s) impayé(s) ?`)) return;
+    setPayingAll(true);
+    let ok = 0, fail = 0;
+    for (const s of impayes) {
+      try {
+        const { data } = await api.put(`/finance/salaires/${s._id}/payer`);
+        setSalaires(prev => prev.map(x => x._id === s._id ? { ...x, statut: data.salaire.statut, date_paiement: data.salaire.date_paiement } : x));
+        ok++;
+      } catch { fail++; }
+    }
+    setPayingAll(false);
+    if (fail === 0) toast.success(`✅ ${ok} salaire(s) payé(s)`);
+    else toast.error(`${ok} payé(s), ${fail} échec(s) — voir le tableau pour les cas en attente`);
   };
 
   // ── Create facture ───────────────────────────────────────
@@ -1030,6 +1073,55 @@ export default function Finance() {
     a.download = `finance-revenus-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     toast.success('📋 CSV exporté');
+  };
+
+  // AUDIT-GLOBAL — l'icône imprimante par ligne salariale affichait un faux
+  // succès ("Fiche de paie imprimée") sans jamais générer ni ouvrir de PDF.
+  // Génère une vraie fiche de paie individuelle (jsPDF, déjà utilisé ailleurs
+  // dans ce fichier) avec les données réelles de la ligne.
+  const printFicheDePaie = (s) => {
+    const doc = new jsPDF();
+    const W = doc.internal.pageSize.getWidth();
+    const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
+    doc.setFillColor(11,30,59); doc.rect(0,0,W,28,'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(14);
+    doc.text(clinicFull, 14, 13);
+    doc.setFontSize(10); doc.setFont('helvetica','normal');
+    doc.text('Fiche de paie', 14, 21);
+    doc.setTextColor(20,20,30); doc.setFontSize(11); doc.setFont('helvetica','bold');
+    doc.text(s.employe || '—', 14, 40);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,100,120);
+    doc.text(s.fonction || '', 14, 46);
+    doc.text(`Période : ${new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'})}`, 14, 52);
+    autoTable(doc, {
+      startY: 60, margin:{left:14,right:14},
+      head:[['Élément','Montant (CFA)']],
+      body:[
+        ['Salaire de base', Number(s.base||0).toLocaleString('fr-FR')],
+        ['Primes', `+${Number(s.primes||0).toLocaleString('fr-FR')}`],
+        ['Déductions', `-${Number(s.deductions||0).toLocaleString('fr-FR')}`],
+        ['Salaire net', Number(s.net||0).toLocaleString('fr-FR')],
+      ],
+      headStyles:{ fillColor:[27,79,158], textColor:255, fontSize:9 },
+      bodyStyles:{ fontSize:9.5 },
+      didParseCell:(d)=>{ if(d.section==='body' && d.row.index===3) d.cell.styles.fontStyle='bold'; },
+    });
+    const y = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(9); doc.setTextColor(90,100,120);
+    doc.text(`Statut : ${s.statut === 'paye' ? 'Payé' : 'En attente'}${s.date_paiement ? ' — ' + fmtDate(s.date_paiement) : ''}`, 14, y);
+    doc.save(`fiche-paie-${(s.employe||'employe').replace(/\s+/g,'-')}-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  // AUDIT-GLOBAL — "Exporter fiches" (salaires) affichait un faux succès
+  // (toast seul, aucun fichier). Génération réelle, même pattern que
+  // exportFinanceExcel ci-dessus.
+  const exportSalairesExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const data = [['Employé','Fonction','Salaire base CFA','Primes CFA','Déductions CFA','Salaire net CFA','Statut','Date paiement'],
+      ...salaires.map(s => [s.employe||'', s.fonction||'', Number(s.base||0), Number(s.primes||0), Number(s.deductions||0), Number(s.net||0), s.statut === 'paye' ? 'Payé' : 'En attente', fmtDate(s.date_paiement) || ''])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Salaires');
+    XLSX.writeFile(wb, `fiches-salaires-${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('📊 Fiches salaires exportées');
   };
 
   // ═══════════════════════════════════════════════════════════
@@ -1405,7 +1497,7 @@ export default function Finance() {
                       <button className="fbtn fbtn-danger fbtn-sm" onClick={() => { setFormCaisse({...EMPTY_CAISSE, type:"sortie"}); setModalCaisse(true); }}>
                         {I.trendD} Sortie de caisse
                       </button>
-                      <button className="fbtn fbtn-ghost fbtn-sm" style={{ color:"rgba(255,255,255,.7)", borderColor:"rgba(255,255,255,.25)" }} onClick={() => toast.success("🔒 Clôture de caisse effectuée")}>
+                      <button className="fbtn fbtn-ghost fbtn-sm" style={{ color:"rgba(255,255,255,.4)", borderColor:"rgba(255,255,255,.15)", cursor:"not-allowed" }} disabled title="Fonctionnalité indisponible : aucune notion de session de caisse (ouverture/clôture, réconciliation) n'existe dans le modèle de données actuel — seules les entrées/sorties individuelles sont enregistrées.">
                         🔒 Clôturer la caisse
                       </button>
                     </div>
@@ -1679,7 +1771,7 @@ export default function Finance() {
                             <td><span className={`fbdg ${sc.cls}`}>{sc.lbl}</span></td>
                             <td>
                               {a.statut !== "rembourse" && (
-                                <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} onClick={() => toast.success("📧 Relance envoyée à " + a.compagnie)}>
+                                <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} onClick={() => relancerAssurance(a)}>
                                   📧 Relancer
                                 </button>
                               )}
@@ -1703,8 +1795,8 @@ export default function Finance() {
                   <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>Masse salariale : <strong style={{ color:"var(--fb)" }}>{fmtMontant(totalSalaires)}</strong></div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  <button className="fbtn fbtn-ghost fbtn-sm" onClick={() => toast.success("📊 Rapport salaires exporté")}>{I.dl} Exporter fiches</button>
-                  <button className="fbtn fbtn-primary" onClick={() => toast.success("💸 Virement en masse lancé...")}>💸 Payer tout le monde</button>
+                  <button className="fbtn fbtn-ghost fbtn-sm" onClick={exportSalairesExcel}>{I.dl} Exporter fiches</button>
+                  <button className="fbtn fbtn-primary" disabled={payingAll} onClick={payerTousLesSalaires}>💸 {payingAll ? "Paiement en cours..." : "Payer tout le monde"}</button>
                 </div>
               </div>
 
@@ -1730,7 +1822,7 @@ export default function Finance() {
                                   💸 Payer
                                 </button>
                               )}
-                              <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} onClick={() => toast.success("🖨️ Fiche de paie imprimée")}>{I.print}</button>
+                              <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} onClick={() => printFicheDePaie(s)}>{I.print}</button>
                             </div>
                           </td>
                         </tr>
@@ -1785,18 +1877,25 @@ export default function Finance() {
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr"><h3>📒 Journaux comptables</h3></div>
                   <div style={{ padding:16, display:"flex", flexDirection:"column", gap:8 }}>
+                    {/* AUDIT-GLOBAL — "24/12/38/18 écritures" étaient des
+                        chiffres fabriqués (aucune segmentation caisse/
+                        banque/ventes/achats n'existe dans le modèle) et
+                        "Consulter" n'ouvrait rien. Remplacé par les 4
+                        catégories réellement suivies (mêmes tableaux que le
+                        reste de la page), avec un compte réel et une
+                        navigation réelle vers l'onglet correspondant. */}
                     {[
-                      ["Journal de caisse", "24 écritures ce mois", "teal"],
-                      ["Journal bancaire", "12 écritures ce mois", "blue"],
-                      ["Journal des ventes", "38 écritures ce mois", "green"],
-                      ["Journal des achats", "18 écritures ce mois", "orange"],
-                    ].map(([lbl, sub, col]) => (
+                      ["Revenus",  `${revenus.length} écriture(s)`,  "teal",   "revenus"],
+                      ["Dépenses", `${depenses.length} écriture(s)`, "orange", "depenses"],
+                      ["Factures", `${factures.length} écriture(s)`, "blue",   "facturation"],
+                      ["Paiements",`${paiements.length} écriture(s)`,"green",  "paiements"],
+                    ].map(([lbl, sub, col, tabKey]) => (
                       <div key={lbl} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#F8FAFD", borderRadius:10, padding:"11px 14px" }}>
                         <div>
                           <div style={{ fontSize:13, fontWeight:600, color:"var(--fn)" }}>{lbl}</div>
                           <div style={{ fontSize:11, color:"var(--cm)" }}>{sub}</div>
                         </div>
-                        <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} onClick={() => toast.success(`📒 Ouverture : ${lbl}`)}>Consulter →</button>
+                        <button className="fbtn fbtn-ghost fbtn-sm" style={{ fontSize:11 }} onClick={() => setTab(tabKey)}>Consulter →</button>
                       </div>
                     ))}
                   </div>
@@ -2478,38 +2577,18 @@ export default function Finance() {
             <div>
               <label className="flbl">Format</label>
               <div style={{ display:"flex", gap:10 }}>
-                {[["pdf","📄","PDF",exportFinancePDF],["excel","📊","Excel",exportFinanceExcel],["csv","📋","CSV",exportFinanceCSV]].map(([val,icon,lbl,fn]) => (
-                  <div key={val} style={{ flex:1, padding:"12px 8px", border:"2px solid var(--cbr)", borderRadius:12, cursor:"pointer", textAlign:"center" }} onClick={() => { fn(); setModalExport(false); }}>
+                {[["pdf","📄","PDF"],["excel","📊","Excel"],["csv","📋","CSV"]].map(([val,icon,lbl]) => (
+                  <div key={val} style={{ flex:1, padding:"12px 8px", border:`2px solid ${exportFormat===val?"var(--ft)":"var(--cbr)"}`, background:exportFormat===val?"#EFF8F6":"transparent", borderRadius:12, cursor:"pointer", textAlign:"center" }} onClick={() => setExportFormat(val)}>
                     <div style={{ fontSize:22 }}>{icon}</div>
                     <div style={{ fontSize:12, fontWeight:600, color:"var(--fn)", marginTop:4 }}>{lbl}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <div>
-              <label className="flbl">Données à exporter</label>
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                {[["Revenus",true],["Dépenses",true],["Factures",true],["Paiements",false],["Salaires",false],["Rapport mensuel complet",false]].map(([lbl,checked]) => (
-                  <label key={lbl} style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer", padding:"8px 12px", background:"#F8FAFD", borderRadius:8 }}>
-                    <input type="checkbox" defaultChecked={checked} style={{ accentColor:"var(--ft)", width:15, height:15 }} />
-                    <span style={{ fontSize:12, color:"var(--fn)" }}>{lbl}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
-              <div>
-                <label className="flbl">Période début</label>
-                <input type="date" className="finp" defaultValue="2026-06-01" />
-              </div>
-              <div>
-                <label className="flbl">Période fin</label>
-                <input type="date" className="finp" defaultValue="2026-06-30" />
-              </div>
-            </div>
+            <div style={{ fontSize:12, color:"var(--cm)" }}>Exporte Revenus, Dépenses, Factures et Paiements du mois en cours — filtrage par période à venir.</div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="fbtn fbtn-ghost" onClick={() => setModalExport(false)}>Annuler</button>
-              <button className="fbtn fbtn-teal" style={{ marginLeft:"auto" }} onClick={() => { toast.success("✅ Export en cours — Téléchargement démarré"); setModalExport(false); }}>
+              <button className="fbtn fbtn-teal" style={{ marginLeft:"auto" }} onClick={() => { ({pdf:exportFinancePDF, excel:exportFinanceExcel, csv:exportFinanceCSV}[exportFormat])(); setModalExport(false); }}>
                 {I.dl} Exporter maintenant
               </button>
             </div>

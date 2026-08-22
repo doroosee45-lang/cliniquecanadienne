@@ -175,6 +175,19 @@ exports.createInsurance = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-GLOBAL — Settings.jsx affichait un tableau d'assurances entièrement
+// fabriqué (5 lignes codées en dur) et un bouton "Modifier" factice, alors
+// que createInsurance/getInsurances existaient déjà réellement. Aucune
+// route de modification n'existait — ajoutée ici, même style que ci-dessus.
+exports.updateInsurance = async (req, res, next) => {
+  try {
+    const insurance = await Insurance.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!insurance) return res.status(404).json({ success: false, message: 'Assurance introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'settings', entite_id: insurance._id, ip: req.ip, message: `Assurance modifiée : ${insurance.nom}` });
+    res.json({ success: true, insurance });
+  } catch (err) { next(err); }
+};
+
 // ── KPIs tableau de bord administration ──────────────────────
 exports.getKpis = async (req, res, next) => {
   try {

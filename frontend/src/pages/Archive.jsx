@@ -305,7 +305,7 @@ function Modal({ open, onClose, title, children, maxWidth = 660 }) {
 }
 
 // ─── Archive Table (réutilisable) ─────────────────────────────
-function ArchiveTable({ data, onView, onRestore, onDelete, selectedIds, onSelect, onSelectAll }) {
+function ArchiveTable({ data, onView, onRestore, onDelete, onDownload, onPrint, selectedIds, onSelect, onSelectAll }) {
   const allSelected = data.length > 0 && data.every(d => selectedIds.includes(d._id));
   return (
     <div style={{ overflowX:"auto" }}>
@@ -365,10 +365,10 @@ function ArchiveTable({ data, onView, onRestore, onDelete, selectedIds, onSelect
                     <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:11 }} title="Voir" onClick={() => onView(d)}>
                       {I.eye} Voir
                     </button>
-                    <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:11 }} title="Télécharger" onClick={() => toast.success(`📥 Téléchargement : ${d.reference}`)}>
+                    <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:11 }} title="Télécharger" onClick={() => onDownload(d)}>
                       {I.download}
                     </button>
-                    <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:11 }} title="Imprimer" onClick={() => toast.success(`🖨 Impression : ${d.reference}`)}>
+                    <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:11 }} title="Imprimer" onClick={() => onPrint(d)}>
                       {I.print}
                     </button>
                     {/* AUDIT-11 (Vague 2, A-2) — archive.controller.js::restore
@@ -438,6 +438,9 @@ export default function Archivage() {
   const [modalRestore, setModalRestore] = useState(false);
   const [modalDelete, setModalDelete]   = useState(false);
   const [modalArchiver, setModalArchiver] = useState(false);
+  const EMPTY_ARCHIVER = { titre:"", categorie:"", service:"", motif:"" };
+  const [formArchiver, setFormArchiver] = useState(EMPTY_ARCHIVER);
+  const [savingArchiver, setSavingArchiver] = useState(false);
   const [restoreMotif, setRestoreMotif]   = useState("");
   const [configAuto, setConfigAutoLocal] = useState({
     actif: true, duree: "1an", consultations: true, hospitalisations: true,
@@ -478,7 +481,12 @@ export default function Archivage() {
       if (filterDate1) p.set("date_debut", filterDate1);
       if (filterDate2) p.set("date_fin", filterDate2);
       const { data } = await api.get(`/archives?${p}`);
-      setArchives(data.archives || data.data || []);
+      // AUDIT-GLOBAL — le backend (ArchiveEntry.titre) n'a jamais eu de
+      // champ "reference" ; toute la page lit pourtant a.reference partout
+      // (colonne, exports, impression, modales) — resté invisible car le
+      // repli DEMO_ARCHIVES (ci-dessous) utilise lui bien "reference",
+      // masquant que les vraies données remontaient toujours vides.
+      setArchives((data.archives || data.data || []).map(a => ({ ...a, reference: a.reference || a.titre || '—' })));
       setTotal(data.total || 0);
     } catch {
       let filtered = DEMO_ARCHIVES;
@@ -538,6 +546,51 @@ export default function Archivage() {
     setModalRestore(false);
   };
 
+  // AUDIT-GLOBAL — "Archiver" (archivage manuel) affichait un faux succès
+  // (toast seul, formulaire non contrôlé) alors que POST /archives existe
+  // déjà réellement (archive.controller.js::create).
+  const soumettreArchivageManuel = async () => {
+    if (!formArchiver.titre.trim() || !formArchiver.categorie || !formArchiver.motif.trim()) {
+      toast.error("Référence, catégorie et motif sont obligatoires.");
+      return;
+    }
+    setSavingArchiver(true);
+    try {
+      const { data } = await api.post("/archives", {
+        titre: formArchiver.titre,
+        description: `${formArchiver.motif}${formArchiver.service ? ` (Service : ${formArchiver.service})` : ""}`,
+        categorie: formArchiver.categorie,
+        patient_nom: formArchiver.titre,
+      });
+      setArchives(prev => [{ ...data.archive, reference: data.archive.titre }, ...prev]);
+      toast.success("📦 Dossier archivé avec succès");
+      setModalArchiver(false);
+      setFormArchiver(EMPTY_ARCHIVER);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'archivage.");
+    } finally { setSavingArchiver(false); }
+  };
+
+  // AUDIT-GLOBAL — "Restaurer (N)" affichait un faux succès (toast seul,
+  // aucun appel API) alors que le vrai endpoint POST /archives/bulk-restore
+  // existe déjà côté backend (marque les entrées sélectionnées restauré: e,
+  // journalise l'action). Contrairement à confirmRestore ci-dessus (qui
+  // restaure aussi le document source pour source_model==='Patient'), ce
+  // bulk ne touche que le statut de l'entrée d'archive elle-même — cohérent
+  // avec ce que fait réellement bulkRestore côté serveur.
+  const handleBulkRestore = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Restaurer ${selectedIds.length} dossier(s) d'archive sélectionné(s) ?`)) return;
+    try {
+      const { data } = await api.post("/archives/bulk-restore", { ids: selectedIds });
+      setArchives(prev => prev.map(a => selectedIds.includes(a._id) ? { ...a, statut: "restauré" } : a));
+      toast.success(`✅ ${data.count} dossier(s) restauré(s)`);
+      setSelectedIds([]);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la restauration groupée.");
+    }
+  };
+
   const confirmDelete = async () => {
     const result = await dispatch(deleteArchive(currentArc._id));
     if (deleteArchive.fulfilled.match(result)) {
@@ -552,8 +605,8 @@ export default function Archivage() {
   // ─── Export helpers ────────────────────────────────────────
   const today = new Date().toISOString().split('T')[0];
 
-  const getExportData = () => {
-    const src = filteredByNav.length > 0 ? filteredByNav : archives;
+  const getExportData = (overrideList) => {
+    const src = overrideList || (filteredByNav.length > 0 ? filteredByNav : archives);
     return src.map(a => ({
       Référence:       a.reference || '—',
       Patient:         a.patient_nom || '—',
@@ -567,8 +620,72 @@ export default function Archivage() {
     }));
   };
 
-  const exportPDF = () => {
-    const rows = getExportData();
+  // AUDIT-GLOBAL — "Télécharger"/"Imprimer" par document affichaient un
+  // faux succès (toast seul, déjà signalé en commentaire dans ce fichier).
+  // Génère une vraie fiche PDF pour ce dossier d'archive précis, même
+  // en-tête que exportPDF ci-dessous.
+  const printOneArchive = (d) => {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    doc.setFillColor(11, 30, 59); doc.rect(0, 0, W, 24, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+    doc.text(`FICHE D'ARCHIVE — ${CLINIC_NAME.toUpperCase()}`, W / 2, 10, { align: 'center' });
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
+    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, W / 2, 17, { align: 'center' });
+    autoTable(doc, {
+      startY: 32, margin: { left: 14, right: 14 },
+      body: [
+        ['Référence', d.reference || '—'],
+        ['Patient', d.patient_nom || '—'],
+        ['Catégorie', d.categorie || '—'],
+        ['Service', d.service || '—'],
+        ['Archivé par', d.archive_par || '—'],
+        ["Date d'archivage", fmtDate(d.date_archive)],
+        ['Nb documents', d.nb_docs ?? '—'],
+        ['Taille', d.taille || '—'],
+        ['Statut', d.statut === 'restauré' ? 'Restauré' : 'Archivé'],
+      ],
+      theme: 'grid', styles: { fontSize: 9.5 },
+      columnStyles: { 0: { fontStyle: 'bold', fillColor: [244, 247, 252], cellWidth: 50 } },
+    });
+    return doc;
+  };
+  const downloadOneArchive = (d) => printOneArchive(d).save(`archive-${(d.reference||'dossier').replace(/[^a-z0-9-]+/gi,'-')}.pdf`);
+  const printOneArchiveNow = (d) => { const doc = printOneArchive(d); doc.autoPrint(); window.open(doc.output('bloburl'), '_blank'); };
+
+  // AUDIT-GLOBAL — le panneau "Options d'exportation" affichait 4 boutons
+  // fake (toast seul). 3 sont maintenant réels (réutilisent exportPDF avec
+  // un sous-ensemble réel des archives) ; "Sauvegarde complète (ZIP)" reste
+  // désactivé honnêtement — aucune librairie de génération ZIP (jszip)
+  // n'est installée, l'ajouter serait une nouvelle dépendance, pas un
+  // correctif de bug.
+  const exportIndividuel = () => {
+    const ref = window.prompt("Référence exacte du dossier à exporter :");
+    if (!ref) return;
+    const found = archives.find(a => (a.reference||'').toLowerCase() === ref.trim().toLowerCase());
+    if (!found) { toast.error(`Aucun dossier trouvé pour la référence "${ref}".`); return; }
+    downloadOneArchive(found);
+  };
+  const exportParPeriode = () => {
+    const debut = window.prompt("Date de début (AAAA-MM-JJ) :");
+    if (!debut) return;
+    const fin = window.prompt("Date de fin (AAAA-MM-JJ) :", new Date().toISOString().split('T')[0]);
+    if (!fin) return;
+    const d0 = new Date(debut), d1 = new Date(fin);
+    const subset = archives.filter(a => { const d = new Date(a.date_archive); return d >= d0 && d <= d1; });
+    if (subset.length === 0) { toast.error("Aucune archive dans cette période."); return; }
+    exportPDF(subset);
+  };
+  const exportParService = () => {
+    const service = window.prompt("Nom du service (ex: Chirurgie, Maternité, Laboratoire...) :");
+    if (!service) return;
+    const subset = archives.filter(a => (a.service||'').toLowerCase().includes(service.trim().toLowerCase()));
+    if (subset.length === 0) { toast.error(`Aucune archive pour le service "${service}".`); return; }
+    exportPDF(subset);
+  };
+
+  const exportPDF = (overrideList) => {
+    const rows = getExportData(overrideList);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
 
@@ -827,7 +944,7 @@ export default function Archivage() {
           </div>
           <ArchiveTable
             data={archives.slice(0, 6)}
-            onView={handleView} onRestore={handleRestore} onDelete={handleDelete}
+            onView={handleView} onRestore={handleRestore} onDelete={handleDelete} onDownload={downloadOneArchive} onPrint={printOneArchiveNow}
             selectedIds={selectedIds} onSelect={handleSelect} onSelectAll={handleSelectAll}
           />
         </div>
@@ -845,7 +962,7 @@ export default function Archivage() {
           <div style={{ display:"flex", gap:8 }}>
             {selectedIds.length > 0 && (
               <>
-                <button className="abtn abtn-success abtn-sm" onClick={() => toast.success(`✅ ${selectedIds.length} dossier(s) restaurés`)}>
+                <button className="abtn abtn-success abtn-sm" onClick={handleBulkRestore}>
                   {I.restore} Restaurer ({selectedIds.length})
                 </button>
                 <button className="abtn abtn-ghost abtn-sm" onClick={() => handleExport("pdf")}>
@@ -921,7 +1038,7 @@ export default function Archivage() {
           ) : (
             <ArchiveTable
               data={filteredByNav}
-              onView={handleView} onRestore={handleRestore} onDelete={handleDelete}
+              onView={handleView} onRestore={handleRestore} onDelete={handleDelete} onDownload={downloadOneArchive} onPrint={printOneArchiveNow}
               selectedIds={selectedIds} onSelect={handleSelect} onSelectAll={handleSelectAll}
             />
           )}
@@ -955,7 +1072,7 @@ export default function Archivage() {
               <button className="abtn abtn-ghost abtn-sm" onClick={() => handleExport("pdf")}>{I.export} PDF</button>
               <button className="abtn abtn-ghost abtn-sm" onClick={() => handleExport("excel")}>{I.export} Excel</button>
               {selectedIds.length > 0 && (
-                <button className="abtn abtn-success abtn-sm" onClick={() => toast.success(`✅ ${selectedIds.length} restaurés`)}>
+                <button className="abtn abtn-success abtn-sm" onClick={handleBulkRestore}>
                   {I.restore} Restaurer ({selectedIds.length})
                 </button>
               )}
@@ -981,7 +1098,7 @@ export default function Archivage() {
           <div className="arc-card">
             <ArchiveTable
               data={catData}
-              onView={handleView} onRestore={handleRestore} onDelete={handleDelete}
+              onView={handleView} onRestore={handleRestore} onDelete={handleDelete} onDownload={downloadOneArchive} onPrint={printOneArchiveNow}
               selectedIds={selectedIds} onSelect={handleSelect} onSelectAll={handleSelectAll}
             />
           </div>
@@ -1191,13 +1308,13 @@ export default function Archivage() {
           <div className="arc-card-body">
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:12 }}>
               {[
-                { ico:"📄", label:"Export individuel",      desc:"Un seul dossier archive",      onClick:() => toast.success("📄 Export individuel") },
-                { ico:"📊", label:"Export par période",     desc:"Sélection d'une plage de dates",onClick:() => toast.success("📊 Export par période") },
-                { ico:"🗂️",  label:"Export par service",    desc:"Tous les dossiers d'un service",onClick:() => toast.success("🗂️ Export par service") },
-                { ico:"💾", label:"Sauvegarde complète",   desc:"Toutes les archives en ZIP",    onClick:() => toast.success("💾 Sauvegarde complète lancée") },
+                { ico:"📄", label:"Export individuel",      desc:"Un seul dossier archive",      onClick:exportIndividuel },
+                { ico:"📊", label:"Export par période",     desc:"Sélection d'une plage de dates",onClick:exportParPeriode },
+                { ico:"🗂️",  label:"Export par service",    desc:"Tous les dossiers d'un service",onClick:exportParService },
+                { ico:"💾", label:"Sauvegarde complète",   desc:"Indisponible : génération ZIP non installée", onClick:null, disabled:true },
               ].map(e => (
-                <button key={e.label} style={{ background:"#F8FAFD", border:"1.5px solid var(--abr)", borderRadius:14, padding:"14px 16px", textAlign:"left", cursor:"pointer", display:"flex", flexDirection:"column", gap:6, transition:"all .2s", fontFamily:"Poppins,sans-serif" }}
-                  onMouseOver={ev=>ev.currentTarget.style.background="#EEF4FF"}
+                <button key={e.label} disabled={e.disabled} title={e.disabled?"Fonctionnalité indisponible : aucune librairie de génération ZIP n'est installée dans le projet.":undefined} style={{ background:"#F8FAFD", border:"1.5px solid var(--abr)", borderRadius:14, padding:"14px 16px", textAlign:"left", cursor:e.disabled?"not-allowed":"pointer", opacity:e.disabled?0.5:1, display:"flex", flexDirection:"column", gap:6, transition:"all .2s", fontFamily:"Poppins,sans-serif" }}
+                  onMouseOver={ev=>{ if(!e.disabled) ev.currentTarget.style.background="#EEF4FF"; }}
                   onMouseOut={ev=>ev.currentTarget.style.background="#F8FAFD"}
                   onClick={e.onClick}>
                   <span style={{ fontSize:22 }}>{e.ico}</span>
@@ -1322,7 +1439,7 @@ export default function Archivage() {
                   réel, non traité par ce correctif (hors du périmètre W5),
                   à signaler séparément. */}
               <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
-                <button className="abtn abtn-ghost" onClick={() => toast.success(`🖨 Impression : ${currentArc.reference}`)}>{I.print} Imprimer</button>
+                <button className="abtn abtn-ghost" onClick={() => printOneArchiveNow(currentArc)}>{I.print} Imprimer</button>
                 {/* AUDIT-11 (Vague 2, A-2) — même restriction que dans
                     ArchiveTable : seul source_model==='Patient' réactive
                     réellement le dossier d'origine (archive.controller.js
@@ -1401,27 +1518,27 @@ export default function Archivage() {
             </div>
             <div>
               <label className="albl">Numéro de dossier / Référence *</label>
-              <input className="ainp" placeholder="Ex: CHIR-2025-0001, PAT-0042..." />
+              <input className="ainp" value={formArchiver.titre} onChange={e=>setFormArchiver(f=>({...f,titre:e.target.value}))} placeholder="Ex: CHIR-2025-0001, PAT-0042..." />
             </div>
             <div>
               <label className="albl">Catégorie *</label>
-              <select className="ainp">
+              <select className="ainp" value={formArchiver.categorie} onChange={e=>setFormArchiver(f=>({...f,categorie:e.target.value}))}>
                 <option value="">— Sélectionner —</option>
                 {Object.entries(CAT_CONFIG).map(([k,v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
               </select>
             </div>
             <div>
               <label className="albl">Service</label>
-              <input className="ainp" placeholder="Ex: Médecine générale, Chirurgie..." />
+              <input className="ainp" value={formArchiver.service} onChange={e=>setFormArchiver(f=>({...f,service:e.target.value}))} placeholder="Ex: Médecine générale, Chirurgie..." />
             </div>
             <div>
               <label className="albl">Motif d'archivage *</label>
-              <textarea className="ainp" rows={3} placeholder="Ex: Dossier clôturé, patient inactif depuis 1 an, demande de service..." />
+              <textarea className="ainp" rows={3} value={formArchiver.motif} onChange={e=>setFormArchiver(f=>({...f,motif:e.target.value}))} placeholder="Ex: Dossier clôturé, patient inactif depuis 1 an, demande de service..." />
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="abtn abtn-ghost" onClick={() => setModalArchiver(false)}>Annuler</button>
-              <button className="abtn abtn-primary" style={{ marginLeft:"auto" }} onClick={() => { toast.success("📦 Dossier archivé avec succès"); setModalArchiver(false); }}>
-                {I.archive} Archiver
+              <button className="abtn abtn-primary" disabled={savingArchiver} style={{ marginLeft:"auto" }} onClick={soumettreArchivageManuel}>
+                {I.archive} {savingArchiver ? "Enregistrement..." : "Archiver"}
               </button>
             </div>
           </div>

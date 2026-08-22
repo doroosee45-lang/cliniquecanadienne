@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../api";
 import toast from "react-hot-toast";
 import { Settings as SettingsIcon } from 'lucide-react';
@@ -282,6 +283,7 @@ const ParamRow = ({ cle, label, desc, type = "string", children }) => {
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function Settings() {
+  const navigate = useNavigate();
   const [active, setActive]       = useState("clinique");
   const [settings, setSettings]   = useState([]);    // données brutes API
   const [values, setValues]       = useState({});    // { cle: valeur }
@@ -293,6 +295,8 @@ export default function Settings() {
   const [saved, setSaved]         = useState({});    // { cle: true } pour l'animation
   const [users, setUsers]         = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [insurances, setInsurances] = useState([]);
+  const [loadingInsurances, setLoadingInsurances] = useState(false);
   const [logs, setLogs]           = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [services, setServices]   = useState([]);
@@ -362,6 +366,74 @@ export default function Settings() {
     finally { setLoadingUsers(false); }
   }, [users.length]);
 
+  // AUDIT-GLOBAL — "Réinitialisation envoyée" et "Compte désactivé"
+  // affichaient un faux succès (toast seul, aucune écriture). Réutilise les
+  // vrais mécanismes déjà existants : auth.controller.js::forgotPassword
+  // (même endpoint que ForgotPassword.jsx) et PUT /admin/users/:id (même
+  // endpoint que Administration.jsx::toggleStatut).
+  const resetUserPassword = async (u) => {
+    try {
+      await api.post("/auth/forgot-password", { email: u.email });
+      toast.success(`🔑 Email de réinitialisation envoyé à ${u.email}`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'envoi de l'email.");
+    }
+  };
+  const desactiverCompte = async (u) => {
+    if (!window.confirm(`Désactiver le compte de ${u.prenom} ${u.nom} ?`)) return;
+    try {
+      await api.put(`/admin/users/${u.id || u._id}`, { statut: "suspendu" });
+      setUsers(prev => prev.map(x => (x.id||x._id) === (u.id||u._id) ? { ...x, statut: "inactif" } : x));
+      toast.success("🔒 Compte désactivé");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la désactivation du compte.");
+    }
+  };
+
+  // AUDIT-GLOBAL — le tableau "Assurances" affichait 5 lignes entièrement
+  // fabriquées (CNSS Congo, AXA...) au lieu d'appeler l'API /admin/insurances
+  // qui existe déjà réellement. "Ajouter"/"Modifier" utilisent des invites
+  // de saisie plutôt qu'un formulaire modal complet — priorité donnée à une
+  // action réelle plutôt qu'à une UI non testée dans le temps imparti.
+  const loadInsurances = useCallback(async () => {
+    if (insurances.length > 0) return;
+    setLoadingInsurances(true);
+    try {
+      const { data } = await api.get("/admin/insurances");
+      setInsurances(data.insurances || []);
+    } catch { setInsurances([]); }
+    finally { setLoadingInsurances(false); }
+  }, [insurances.length]);
+
+  const ajouterAssurance = async () => {
+    const nom = window.prompt("Nom de la compagnie d'assurance :");
+    if (!nom) return;
+    const tauxStr = window.prompt("Taux de prise en charge (%) :", "80");
+    const taux = Number(tauxStr);
+    if (tauxStr !== null && Number.isNaN(taux)) { toast.error("Taux invalide."); return; }
+    try {
+      const { data } = await api.post("/admin/insurances", { nom, taux_prise_en_charge: Number.isNaN(taux) ? 80 : taux });
+      setInsurances(prev => [...prev, data.insurance]);
+      toast.success(`✅ Assurance ${nom} ajoutée`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la création de l'assurance.");
+    }
+  };
+
+  const modifierAssurance = async (ins) => {
+    const tauxStr = window.prompt(`Taux de prise en charge pour ${ins.nom} (%) :`, String(ins.taux_prise_en_charge ?? 80));
+    if (tauxStr === null) return;
+    const taux = Number(tauxStr);
+    if (Number.isNaN(taux)) { toast.error("Taux invalide."); return; }
+    try {
+      const { data } = await api.put(`/admin/insurances/${ins._id}`, { taux_prise_en_charge: taux });
+      setInsurances(prev => prev.map(x => x._id === ins._id ? data.insurance : x));
+      toast.success(`✅ ${ins.nom} mise à jour`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la modification.");
+    }
+  };
+
   // ── Chargement logs ───────────────────────────────────────
   const loadLogs = useCallback(async () => {
     if (logs.length > 0) return;
@@ -392,8 +464,9 @@ export default function Settings() {
   useEffect(() => {
     if (active === "utilisateurs") loadUsers();
     if (active === "audit")        loadLogs();
+    if (active === "assurances")   loadInsurances();
     if (["services","consultations","laboratoire","imagerie","hospitalisation","bloc"].includes(active)) loadServicesData();
-  }, [active, loadUsers, loadLogs, loadServicesData]);
+  }, [active, loadUsers, loadLogs, loadInsurances, loadServicesData]);
 
   // ── get / set helpers ─────────────────────────────────────
   const val = (key, def = "") => values[key] !== undefined ? values[key] : def;
@@ -646,7 +719,7 @@ export default function Settings() {
       <div className="fu">
         <div className="set-section-top">
           <div><div className="set-section-title">👥 Gestion des utilisateurs</div><div className="set-section-sub">API /admin/users — {users.length} compte(s)</div></div>
-          <button className="sbtn sbtn-primary" onClick={() => toast.success("➕ Formulaire nouvel utilisateur")}>{I.plus} Ajouter</button>
+          <button className="sbtn sbtn-primary" title="Ouvre la création d'utilisateur dans le module Administration" onClick={() => navigate("/administration")}>{I.plus} Ajouter</button>
         </div>
         {loadingUsers ? <Skeleton rows={8} /> : (
           <div className="set-card">
@@ -673,9 +746,9 @@ export default function Settings() {
                         <td style={{ fontSize:12, color:"var(--muted)" }}>{u.last || u.derniere_connexion || "—"}</td>
                         <td>
                           <div style={{ display:"flex", gap:4 }}>
-                            <button className="sbtn sbtn-ghost sbtn-sm" onClick={() => toast.success(`✏️ Modifier ${u.prenom}`)}>{I.edit}</button>
-                            <button className="sbtn sbtn-ghost sbtn-sm" onClick={() => toast.success("🔑 Réinitialisation envoyée")}>{I.key}</button>
-                            {u.role !== "superadmin" && <button className="sbtn sbtn-danger sbtn-sm" onClick={() => toast.success("🔒 Compte désactivé")}>{I.lock}</button>}
+                            <button className="sbtn sbtn-ghost sbtn-sm" title="Modifier — ouvre la gestion complète des utilisateurs (module Administration)" onClick={() => navigate("/administration")}>{I.edit}</button>
+                            <button className="sbtn sbtn-ghost sbtn-sm" onClick={() => resetUserPassword(u)}>{I.key}</button>
+                            {u.role !== "superadmin" && <button className="sbtn sbtn-danger sbtn-sm" onClick={() => desactiverCompte(u)}>{I.lock}</button>}
                           </div>
                         </td>
                       </tr>
@@ -694,7 +767,7 @@ export default function Settings() {
       <div className="fu">
         <div className="set-section-top">
           <div><div className="set-section-title">🛡️ Rôles & Permissions</div><div className="set-section-sub">Contrôle d'accès par rôle (RBAC)</div></div>
-          <button className="sbtn sbtn-primary" onClick={() => toast.success("➕ Créer un rôle")}>{I.plus} Nouveau rôle</button>
+          <button className="sbtn sbtn-primary" disabled title="Fonctionnalité indisponible : les rôles sont un enum fixe du modèle User (11 valeurs), pas une table configurable — créer un rôle personnalisé nécessiterait un nouveau modèle de permissions (changement d'architecture)." style={{ opacity:0.55, cursor:"not-allowed" }}>{I.plus} Nouveau rôle</button>
         </div>
         <div className="al-info" style={{ fontSize:12 }}>
           <strong>ℹ️ Conseil :</strong> Les permissions sont appliquées globalement sur tous les modules.
@@ -1067,29 +1140,33 @@ export default function Settings() {
     case "assurances": return (
       <div className="fu">
         <div className="set-section-top">
-          <div><div className="set-section-title">🛡️ Assurances & tiers payants</div><div className="set-section-sub">API /assurances</div></div>
-          <button className="sbtn sbtn-primary" onClick={() => toast.success("➕ Ajouter assurance")}>{I.plus} Ajouter</button>
+          <div><div className="set-section-title">🛡️ Assurances & tiers payants</div><div className="set-section-sub">API /admin/insurances — {insurances.length} compagnie(s)</div></div>
+          <button className="sbtn sbtn-primary" onClick={ajouterAssurance}>{I.plus} Ajouter</button>
         </div>
+        {loadingInsurances ? <Skeleton rows={4} /> : (
         <div className="set-card">
           <div style={{ overflowX:"auto" }}>
             <table className="set-tbl">
-              <thead><tr><th>Compagnie</th><th>Contact</th><th>Prise en charge</th><th>N° contrat</th><th>Validité</th><th>Statut</th><th></th></tr></thead>
+              <thead><tr><th>Compagnie</th><th>Contact</th><th>Prise en charge</th><th>Code</th><th>Statut</th><th></th></tr></thead>
               <tbody>
-                {[["CNSS Congo","cnss@congosocial.cg",80,"CNSS-CG-2024","2025-12-31","actif"],["AXA Assurances","axa@axa-congo.cg",70,"AXA-CG-2024","2025-06-30","actif"],["NSIA Assurances","nsia@nsia.cg",75,"NSIA-2024-001","2025-09-30","actif"],["Mutuelle FPC","fpc@mutuelle.cg",60,"FPC-2024-012","2024-12-31","expiré"],["UAB Assurances","uab@uab-congo.cg",65,"UAB-2025-003","2026-03-31","actif"]].map(([nom,email,taux,contrat,exp,st])=>(
-                  <tr key={nom}>
-                    <td style={{ fontWeight:700, color:"var(--ink)", fontSize:12.5 }}>{nom}</td>
-                    <td style={{ fontSize:11, color:"var(--muted)" }}>{email}</td>
-                    <td><span style={{ fontWeight:800, fontSize:15, color:taux>=75?"var(--success)":"var(--warning)" }}>{taux}%</span></td>
-                    <td style={{ fontFamily:"monospace", fontSize:12, color:"var(--primary)" }}>{contrat}</td>
-                    <td style={{ fontSize:12, color:new Date(exp)<new Date()?"var(--danger)":"var(--muted)" }}>{exp}</td>
-                    <td><Badge cls={st==="actif"?"green":"red"}>{st}</Badge></td>
-                    <td><button className="sbtn sbtn-ghost sbtn-sm" onClick={() => toast.success(`✏️ Modifier ${nom}`)}>{I.edit}</button></td>
+                {insurances.length === 0 && (
+                  <tr><td colSpan={6} style={{ textAlign:"center", padding:20, color:"var(--muted)", fontSize:12.5 }}>Aucune assurance enregistrée.</td></tr>
+                )}
+                {insurances.map(ins => (
+                  <tr key={ins._id}>
+                    <td style={{ fontWeight:700, color:"var(--ink)", fontSize:12.5 }}>{ins.nom}</td>
+                    <td style={{ fontSize:11, color:"var(--muted)" }}>{ins.contact?.email || "—"}</td>
+                    <td><span style={{ fontWeight:800, fontSize:15, color:ins.taux_prise_en_charge>=75?"var(--success)":"var(--warning)" }}>{ins.taux_prise_en_charge}%</span></td>
+                    <td style={{ fontFamily:"monospace", fontSize:12, color:"var(--primary)" }}>{ins.code || "—"}</td>
+                    <td><Badge cls={ins.statut==="actif"?"green":"red"}>{ins.statut}</Badge></td>
+                    <td><button className="sbtn sbtn-ghost sbtn-sm" onClick={() => modifierAssurance(ins)}>{I.edit}</button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </div>
+        )}
       </div>
     );
 
@@ -1099,8 +1176,8 @@ export default function Settings() {
         <div className="set-section-top">
           <div><div className="set-section-title">📋 Audit & Journaux</div><div className="set-section-sub">API /admin/logs — Traçabilité complète</div></div>
           <div style={{ display:"flex", gap:8 }}>
-            <button className="sbtn sbtn-ghost" onClick={async () => { try { await api.get("/admin/logs/export?format=pdf"); toast.success("📄 Export PDF lancé"); } catch { toast.error("Erreur export"); } }}>📄 PDF</button>
-            <button className="sbtn sbtn-ghost" onClick={async () => { try { await api.get("/admin/logs/export?format=excel"); toast.success("📊 Export Excel lancé"); } catch { toast.error("Erreur export"); } }}>📊 Excel</button>
+            <button className="sbtn sbtn-ghost" disabled title="Fonctionnalité indisponible : aucune route backend d'export de logs n'existe pour cette page — utilisez le module Audit (menu Audit), qui dispose d'un export PDF/Excel/CSV réel.">📄 PDF</button>
+            <button className="sbtn sbtn-ghost" disabled title="Fonctionnalité indisponible : aucune route backend d'export de logs n'existe pour cette page — utilisez le module Audit (menu Audit), qui dispose d'un export PDF/Excel/CSV réel.">📊 Excel</button>
             <button className="sbtn sbtn-ghost sbtn-sm" onClick={loadLogs} title="Rafraîchir">{I.refresh}</button>
           </div>
         </div>

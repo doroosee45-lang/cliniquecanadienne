@@ -141,6 +141,7 @@ router.get('/paiements', protect, authorize(...CAN_ACCESS), async (req, res, nex
 
 router.get('/depenses',            protect, authorize(...CAN_ACCESS), finC.getDepenses);
 router.post('/depenses',           protect, authorize(...CAN_ACCESS), finC.createDepense);
+router.put('/depenses/:id/valider',protect, authorize(...CAN_ACCESS), finC.validerDepense);
 router.get('/salaires',            protect, authorize(...CAN_ACCESS), finC.getSalaires);
 router.put('/salaires/:id/payer',  protect, authorize(...CAN_ACCESS), finC.payerSalaire);
 router.get('/assurances',          protect, authorize(...CAN_ACCESS), finC.getAssurances);
