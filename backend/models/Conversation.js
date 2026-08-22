@@ -10,12 +10,22 @@ const ReactionSchema = new Schema({
   utilisateur: { type: Schema.Types.ObjectId, ref: 'User', required: true },
 }, { _id: false });
 
+// AUDIT-MESSAGES-PhaseB — messages vocaux/image/document : duration ajoutée
+// (nécessaire pour l'affichage de la durée d'un message vocal sans avoir à
+// re-décoder le fichier côté client).
+const PieceJointeSchema = new Schema({
+  filename: String, path: String, type: String, duration: Number,
+}, { _id: false });
+
 const MessageSchema = new Schema({
   expediteur: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  contenu: { type: String, required: true },
+  // AUDIT-MESSAGES-PhaseB — un message peut désormais être une pièce jointe
+  // seule (vocal/image/document), sans texte : contenu n'est requis que
+  // lorsqu'il n'y a pas de pieceJointe.
+  contenu: { type: String, required: function () { return !this.pieceJointe; } },
   lu_par: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   date_envoi: { type: Date, default: Date.now },
-  pieceJointe: { filename: String, path: String, type: String },
+  pieceJointe: PieceJointeSchema,
   reactions: [ReactionSchema],
 }, { _id: true });
 
@@ -36,6 +46,12 @@ const ConversationSchema = new Schema({
   // (horodatage, utilisé pour le tri .sort('-dernier_message')). Ajouté
   // séparément pour ne pas casser le tri existant, comportement additif.
   dernier_message_apercu: String,
+  // AUDIT-MESSAGES-PhaseB — favoris/archivage étaient purement locaux côté
+  // frontend (état React jamais persisté, perdu au rafraîchissement) ; par
+  // utilisateur (pas un simple booléen global), une conversation archivée
+  // par un membre ne doit pas l'être pour les autres.
+  favoris: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+  archivee_par: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   created_by: { type: Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 

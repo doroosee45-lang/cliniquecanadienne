@@ -122,6 +122,50 @@ test('messages.controller — les 4 endpoints réellement utilisés (base réell
       assert.equal(sample.email, undefined, 'la projection ne doit jamais exposer l\'email');
       assert.equal(sample.reset_password_token, undefined, 'la projection ne doit jamais exposer de champ sensible');
     });
+
+    // AUDIT-MESSAGES-PhaseB
+    await t.test('toggleFavori — bascule et persiste par utilisateur, refuse un non-membre (403)', async () => {
+      const { status, body } = await call(msgC.toggleFavori, { user: userA, params: { id: convId } });
+      assert.equal(status, 200);
+      assert.equal(body.favori, true);
+      const relu = await Conversation.findById(convId).lean();
+      assert.ok(relu.favoris.some(id => id.toString() === userA._id.toString()));
+
+      const { body: body2 } = await call(msgC.toggleFavori, { user: userA, params: { id: convId } });
+      assert.equal(body2.favori, false, 'un second appel doit retirer le favori');
+
+      let statusTiers;
+      const resTiers = { status: (c) => { statusTiers = c; return resTiers; }, json: () => {} };
+      await msgC.toggleFavori({ user: userTiers, params: { id: convId } }, resTiers, (e) => { if (e) throw e; });
+      assert.equal(statusTiers, 403, 'un utilisateur non membre ne doit pas pouvoir favoriser la conversation');
+    });
+
+    await t.test('toggleArchive — masque la conversation pour cet utilisateur uniquement', async () => {
+      const { status, body } = await call(msgC.toggleArchive, { user: userB, params: { id: convId } });
+      assert.equal(status, 200);
+      assert.equal(body.archivee, true);
+      const relu = await Conversation.findById(convId).lean();
+      assert.ok(relu.archivee_par.some(id => id.toString() === userB._id.toString()));
+      assert.ok(!relu.archivee_par.some(id => id.toString() === userA._id.toString()), 'archiver ne doit affecter que l\'utilisateur qui archive');
+      // Restaure pour ne pas affecter les tests suivants.
+      await call(msgC.toggleArchive, { user: userB, params: { id: convId } });
+    });
+
+    await t.test('sendAttachment — persiste la pièce jointe et l\'aperçu de conversation', async () => {
+      const fakeFile = { originalname: 'vocal.webm', filename: '123-vocal.webm' };
+      const { status, body } = await call(msgC.sendAttachment, { user: userA, params: { id: convId }, body: { type: 'audio', duration: '7' }, file: fakeFile });
+      assert.equal(status, 200);
+      assert.equal(body.message.pieceJointe.type, 'audio');
+      assert.equal(body.message.pieceJointe.path, '/uploads/messages/123-vocal.webm');
+      const relu = await Conversation.findById(convId).lean();
+      assert.equal(relu.dernier_message_apercu, '🎙️ Message vocal');
+    });
+
+    await t.test('sendMessage — refuse un transfert de pièce jointe hors /uploads/messages/ (path traversal)', async () => {
+      const { status, body } = await call(msgC.sendMessage, { user: userA, params: { id: convId }, body: { contenu: '', pieceJointe: { path: '/uploads/patients/secret.jpg', type: 'image' } } });
+      assert.equal(status, 400);
+      assert.equal(body.success, false);
+    });
   } finally {
     for (const fn of cleanup) await fn();
     await mongoose.disconnect();

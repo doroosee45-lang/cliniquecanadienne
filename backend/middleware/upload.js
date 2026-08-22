@@ -109,4 +109,38 @@ const uploadDocument = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 1 },
 });
 
-module.exports = { uploadImages, uploadPatientPhoto, uploadMedPhoto, uploadDocument };
+// ── Pièce jointe messagerie (vocal, image, document) — AUDIT-MESSAGES-PhaseB ──
+// Brique commune pour les 2 fonctionnalités de la Phase B (messages vocaux et
+// pièces jointes image/document) — même pattern que uploadDocument ci-dessus,
+// filtre élargi aux formats audio produits par MediaRecorder côté navigateur.
+const storageMessageAttachment = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../uploads/messages');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext  = path.extname(file.originalname).toLowerCase() || '.bin';
+    const base = path.basename(file.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
+    cb(null, `${Date.now()}-${base}${ext}`);
+  },
+});
+
+const fileFilterMessageAttachment = (req, file, cb) => {
+  const allowed = [
+    '.webm', '.mp3', '.wav', '.ogg', '.m4a',       // audio (messages vocaux)
+    '.jpg', '.jpeg', '.png', '.webp', '.gif',      // images
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx',      // documents
+  ];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowed.includes(ext)) return cb(null, true);
+  cb(new Error(`Type de fichier non autorisé : ${ext}`), false);
+};
+
+const uploadMessageAttachment = multer({
+  storage: storageMessageAttachment,
+  fileFilter: fileFilterMessageAttachment,
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+});
+
+module.exports = { uploadImages, uploadPatientPhoto, uploadMedPhoto, uploadDocument, uploadMessageAttachment };

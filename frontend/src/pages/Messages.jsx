@@ -343,6 +343,11 @@ const getRoleCls  = (role) => ROLE_CFG[role]?.cls  || "gray";
 const getRoleLbl  = (role) => ROLE_CFG[role]?.label || role;
 const AV_COLORS = ["#1B4F9E","#0EA5A0","#7C3AED","#DC2626","#D97706","#059669","#4F46E5","#0B1E3B"];
 
+// AUDIT-MESSAGES-PhaseB — le bouton Emoji n'avait aucun onClick. Sélecteur
+// réel (pas de nouvelle dépendance) : insère l'emoji choisi dans le champ
+// de saisie.
+const EMOJI_LIST = ["😀","😂","🙂","😉","😍","😢","😮","😡","👍","👎","🙏","👏","🎉","❤️","🔥","✅","❌","⚠️","⏰","💊","🩺","📋","🚑","🤔"];
+
 // ─── Helpers conversation (AUDIT-MESSAGES-PhaseA) ──────────────
 // Le backend (models/Conversation.js) renvoie type:'direct'|'groupe' et un
 // tableau membres[] (jamais un champ singulier "membre") ; pour un groupe,
@@ -547,9 +552,13 @@ export default function Messagerie() {
   const [showInfo, setShowInfo]     = useState(false);
   const [notifs, setNotifs]         = useState(DEMO_NOTIFS);
   const [showNewGrp, setShowNewGrp] = useState(false);
+  const [forwardMsg, setForwardMsg] = useState(null);
+  const [showEmoji, setShowEmoji] = useState(false);
   const [newGrpForm, setNewGrpForm] = useState({ nom:"", membres:[], description:"" });
   const bottomRef     = useRef(null);
   const textRef       = useRef(null);
+  const fileInputRef  = useRef(null);
+  const pendingAttachTypeRef = useRef("document");
   const mediaRecRef   = useRef(null);
   const recTimerRef   = useRef(null);
   const audioChunksRef= useRef([]);
@@ -760,6 +769,57 @@ export default function Messagerie() {
     }
   };
 
+  // AUDIT-MESSAGES-PhaseB — favoris/archiver étaient purement locaux (état
+  // React, jamais persisté, perdu au rafraîchissement). Appelle maintenant
+  // les vrais endpoints ; l'état local n'est mis à jour qu'avec la vraie
+  // réponse serveur (jamais avant), même principe que toggleReaction.
+  const toggleFavoriConv = async (conv) => {
+    try {
+      const { data } = await api.put(`/messages/${conv._id}/favori`);
+      setConvs(prev => prev.map(c => c._id === conv._id ? { ...c, favori: data.favori } : c));
+      setSelected(s => s && s._id === conv._id ? { ...s, favori: data.favori } : s);
+      toast.success(data.favori ? "⭐ Ajouté aux favoris" : "Retiré des favoris");
+    } catch {
+      toast.error("Impossible de mettre à jour les favoris.");
+    }
+  };
+
+  const toggleArchiveConv = async (conv) => {
+    try {
+      const { data } = await api.put(`/messages/${conv._id}/archiver`);
+      setConvs(prev => prev.map(c => c._id === conv._id ? { ...c, archivee: data.archivee } : c));
+      if (data.archivee) setSelected(null);
+      toast.success(data.archivee ? "📦 Conversation archivée" : "Conversation restaurée");
+    } catch {
+      toast.error("Impossible d'archiver la conversation.");
+    }
+  };
+
+  // AUDIT-MESSAGES-PhaseB — "Transférer" affichait un faux succès (toast
+  // seul). Réutilise le vrai endpoint d'envoi ; pour une pièce jointe, ne
+  // transmet qu'une référence au fichier déjà stocké (le backend valide que
+  // le chemin reste dans /uploads/messages/), aucun re-upload.
+  const forwardMessage = async (targetConvId) => {
+    if (!forwardMsg) return;
+    try {
+      const body = forwardMsg.pieceJointe
+        ? { contenu: "", pieceJointe: {
+            filename: forwardMsg.pieceJointe.filename,
+            path: forwardMsg.pieceJointe.path,
+            type: forwardMsg.pieceJointe.type,
+            duration: forwardMsg.pieceJointe.duration,
+          } }
+        : { contenu: forwardMsg.contenu };
+      await api.post(`/messages/${targetConvId}/send`, body);
+      toast.success("↪️ Message transféré");
+      setForwardMsg(null);
+      if (selected?._id === targetConvId) openConv(selected);
+      loadConvs();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Échec du transfert.");
+    }
+  };
+
   // ── Mark notif read ───────────────────────────────────────
   const readNotif = (id) => setNotifs(prev => prev.map(n => n._id === id ? { ...n, lu:true } : n));
 
@@ -793,24 +853,45 @@ export default function Messagerie() {
     }
   };
 
+  // AUDIT-MESSAGES-PhaseB — bug n°3 : l'enregistrement était réel (micro,
+  // MediaRecorder) mais rien n'était jamais envoyé au serveur (blob local +
+  // faux succès). Envoie maintenant réellement le fichier via l'endpoint
+  // d'upload commun (POST /messages/:id/attachment), avec mise à jour
+  // optimiste identique au texte (tmp_ remplacé par le vrai message via le
+  // même canal Socket.IO message:new que sendMsg).
   const stopVoice = (send = false) => {
     const mr = mediaRecRef.current;
     if (!mr) return;
-    mr.onstop = () => {
+    mr.onstop = async () => {
       mr.stream?.getTracks().forEach(t => t.stop());
-      if (send && audioChunksRef.current.length > 0) {
-        const blob  = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const url   = URL.createObjectURL(blob);
-        const dur   = recSeconds;
+      if (send && audioChunksRef.current.length > 0 && selected) {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const dur  = recSeconds;
+        const localUrl = URL.createObjectURL(blob);
+        const tmpId = `tmp_${Date.now()}`;
         const tmpMsg = {
-          _id: `tmp_${Date.now()}`, type_special:"audio", audio_url: url, duration: dur,
+          _id: tmpId, pieceJointe: { type:"audio", path: localUrl, duration: dur },
           expediteur: { _id: me._id, prenom: me.prenom, nom: me.nom, role: me.role },
-          date_envoi: new Date().toISOString(), lu: false, reactions: [],
+          date_envoi: new Date().toISOString(), lu: false, reactions: [], envoiEnCours: true,
         };
         setMessages(m => [...m, tmpMsg]);
-        setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message:"🎙️ Message vocal", dernierMsg_at: new Date().toISOString() } : c));
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:"smooth" }), 50);
-        toast.success(`🎙️ Message vocal envoyé (${dur}s)`);
+        try {
+          const form = new FormData();
+          form.append("fichier", blob, "vocal.webm");
+          form.append("type", "audio");
+          form.append("duration", String(dur));
+          const { data } = await api.post(`/messages/${selected._id}/attachment`, form, { headers: { "Content-Type": "multipart/form-data" } });
+          setMessages(m => {
+            if (m.some(msg => msg._id === data.message._id)) return m.filter(msg => msg._id !== tmpId);
+            return m.map(msg => msg._id === tmpId ? { ...data.message } : msg);
+          });
+          setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message_apercu:"🎙️ Message vocal", dernier_message: new Date().toISOString() } : c));
+          toast.success(`🎙️ Message vocal envoyé (${dur}s)`);
+        } catch (err) {
+          setMessages(m => m.map(msg => msg._id === tmpId ? { ...msg, echec: true, envoiEnCours: false } : msg));
+          toast.error(err?.response?.data?.message || "Échec de l'envoi du message vocal.");
+        }
       }
       audioChunksRef.current = [];
     };
@@ -823,6 +904,54 @@ export default function Messagerie() {
 
   const fmtRecTime = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 
+  // AUDIT-MESSAGES-PhaseB — "Pièce jointe"/"Image"/"Document médical"
+  // affichaient un faux succès (toast seul, aucun sélecteur de fichier).
+  // Réutilise le même endpoint d'upload que le message vocal ci-dessus.
+  const triggerFilePicker = (type) => {
+    if (!selected) return;
+    pendingAttachTypeRef.current = type;
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = type === "image" ? "image/*" : type === "document" ? ".pdf,.doc,.docx,.xls,.xlsx" : "*/*";
+      fileInputRef.current.click();
+    }
+  };
+
+  const sendFileAttachment = async (file, type) => {
+    if (!selected) return;
+    const localUrl = type === "image" ? URL.createObjectURL(file) : null;
+    const tmpId = `tmp_${Date.now()}`;
+    const tmpMsg = {
+      _id: tmpId, pieceJointe: { type, path: localUrl, filename: file.name },
+      expediteur: { _id: me._id, prenom: me.prenom, nom: me.nom, role: me.role },
+      date_envoi: new Date().toISOString(), lu: false, reactions: [], envoiEnCours: true,
+    };
+    setMessages(m => [...m, tmpMsg]);
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:"smooth" }), 50);
+    const apercu = { image: "🖼️ Image", document: "📄 Document" }[type] || "📎 Pièce jointe";
+    try {
+      const form = new FormData();
+      form.append("fichier", file, file.name);
+      form.append("type", type);
+      const { data } = await api.post(`/messages/${selected._id}/attachment`, form, { headers: { "Content-Type": "multipart/form-data" } });
+      setMessages(m => {
+        if (m.some(msg => msg._id === data.message._id)) return m.filter(msg => msg._id !== tmpId);
+        return m.map(msg => msg._id === tmpId ? { ...data.message } : msg);
+      });
+      setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, dernier_message_apercu: apercu, dernier_message: new Date().toISOString() } : c));
+      toast.success(`${apercu} envoyé(e)`);
+    } catch (err) {
+      setMessages(m => m.map(msg => msg._id === tmpId ? { ...msg, echec: true, envoiEnCours: false } : msg));
+      toast.error(err?.response?.data?.message || "Échec de l'envoi de la pièce jointe.");
+    }
+  };
+
+  const handleFileSelected = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    sendFileAttachment(file, pendingAttachTypeRef.current);
+  };
+
   // ── Audio playback ────────────────────────────────────────
   const toggleAudio = (msg) => {
     if (currentAudioRef.current) {
@@ -834,13 +963,13 @@ export default function Messagerie() {
       setPlayingId(null);
       return;
     }
-    const audio = new Audio(msg.audio_url);
+    const audio = new Audio(msg.pieceJointe?.path);
     audio.ontimeupdate = () => {
-      setAudioProgress(p => ({ ...p, [msg._id]: { current: audio.currentTime, total: audio.duration || msg.duration || 0 } }));
+      setAudioProgress(p => ({ ...p, [msg._id]: { current: audio.currentTime, total: audio.duration || msg.pieceJointe?.duration || 0 } }));
     };
     audio.onended = () => {
       setPlayingId(null);
-      setAudioProgress(p => ({ ...p, [msg._id]: { current: 0, total: audio.duration || msg.duration || 0 } }));
+      setAudioProgress(p => ({ ...p, [msg._id]: { current: 0, total: audio.duration || msg.pieceJointe?.duration || 0 } }));
     };
     audio.play().catch(() => toast.error("Lecture impossible"));
     currentAudioRef.current = audio;
@@ -867,6 +996,12 @@ export default function Messagerie() {
   const filteredConvs = convs.filter(c => {
     const name = getConvDisplayName(c, me._id);
     if (search && !name?.toLowerCase().includes(search.toLowerCase()) && !c.dernier_message_apercu?.toLowerCase().includes(search.toLowerCase())) return false;
+    // AUDIT-MESSAGES-PhaseB — une conversation archivée reste réellement
+    // masquée de la vue par défaut ("Tous") — sinon archiver n'aurait aucun
+    // effet visible — mais reste consultable via le filtre dédié "Archivées"
+    // (sinon impossible de la restaurer sans nouvelle activité).
+    if (filter === "archivees") return c.archivee;
+    if (c.archivee) return false;
     if (filter === "non_lus") return c.non_lus > 0;
     if (filter === "favoris") return c.favori;
     if (filter === "groupes") return isGroupConv(c);
@@ -966,6 +1101,7 @@ export default function Messagerie() {
                   { id:"non_lus",  label:`Non lus ${totalNonLus > 0 ? `(${totalNonLus})` : ""}` },
                   { id:"favoris",  label:"⭐ Favoris" },
                   { id:"groupes",  label:"👥 Groupes" },
+                  { id:"archivees",label:"📦 Archivées" },
                 ].map(f => (
                   <button key={f.id} className={`msg-filter ${filter === f.id ? "active" : ""}`} onClick={() => setFilter(f.id)}>
                     {f.label}
@@ -1078,18 +1214,10 @@ export default function Messagerie() {
                       <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px", background: showInfo?"#EEF4FF":"", color: showInfo?"var(--cb)":"" }} title="Informations" onClick={() => setShowInfo(!showInfo)}>
                         {I.info}
                       </button>
-                      <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px" }} title={selected.favori ? "Retirer des favoris" : "Ajouter aux favoris"} onClick={() => {
-                        setConvs(prev => prev.map(c => c._id === selected._id ? { ...c, favori: !c.favori } : c));
-                        setSelected(s => ({ ...s, favori: !s.favori }));
-                        toast.success(selected.favori ? "Retiré des favoris" : "⭐ Ajouté aux favoris");
-                      }}>
+                      <button className="msg-tool-btn cbtn-ghost cbtn" style={{ padding:"6px 10px" }} title={selected.favori ? "Retirer des favoris" : "Ajouter aux favoris"} onClick={() => toggleFavoriConv(selected)}>
                         <span style={{ color: selected.favori ? "#D97706" : "var(--cm)", fontSize:15 }}>{selected.favori ? "⭐" : I.star}</span>
                       </button>
-                      <button className="cbtn-danger cbtn cbtn-sm" title="Archiver la conversation" onClick={() => {
-                        setConvs(prev => prev.filter(c => c._id !== selected._id));
-                        setSelected(null);
-                        toast.success("📦 Conversation archivée");
-                      }}>
+                      <button className="cbtn-danger cbtn cbtn-sm" title="Archiver la conversation" onClick={() => toggleArchiveConv(selected)}>
                         {I.archive}
                       </button>
                     </div>
@@ -1113,7 +1241,7 @@ export default function Messagerie() {
                         const isPlaying = playingId === msg._id;
                         const prog = audioProgress[msg._id];
                         const progPct = prog && prog.total > 0 ? Math.min(100, (prog.current / prog.total) * 100) : 0;
-                        const progTime = prog ? fmtRecTime(Math.floor(prog.current)) : fmtRecTime(msg.duration || 0);
+                        const progTime = prog ? fmtRecTime(Math.floor(prog.current)) : fmtRecTime(msg.pieceJointe?.duration || 0);
                         return (
                           <div key={msg._id} className="fu msg-wrap" style={{ display:"flex", flexDirection:"column", alignItems: isMe ? "flex-end" : "flex-start", marginBottom:4, position:"relative" }}>
                             {!isMe && <div style={{ fontSize:10, color:"var(--cm)", marginLeft:38, marginBottom:2, fontWeight:600 }}>{senderName}</div>}
@@ -1124,7 +1252,7 @@ export default function Messagerie() {
                                 <button key={e} className="mha-btn" onClick={() => toggleReaction(msg._id, e)} title={e}>{e}</button>
                               ))}
                               <div style={{ width:1, background:"var(--cbr)", margin:"0 2px" }} />
-                              <button className="mha-btn" title="Transférer" onClick={() => toast.success("↪️ Transfert...")}>{I.forward}</button>
+                              <button className="mha-btn" title="Transférer" onClick={() => setForwardMsg(msg)}>{I.forward}</button>
                               {isMe && (
                                 <button className="mha-btn del" title="Supprimer" onClick={() => deleteMsg(msg._id)}>🗑️</button>
                               )}
@@ -1147,7 +1275,7 @@ export default function Messagerie() {
                                     </button>
                                   </div>
 
-                                ) : msg.type_special === "audio" ? (
+                                ) : msg.pieceJointe?.type === "audio" ? (
                                   /* ── Bulle audio ── */
                                   <div className={`msg-audio-bubble ${isMe ? "me" : "other"}`}>
                                     {/* Bouton play/pause */}
@@ -1182,7 +1310,7 @@ export default function Messagerie() {
                                         {isMe && (
                                           <div style={{ display:"flex", gap:4 }}>
                                             <button style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, opacity:.7, padding:"0 2px" }} title="Télécharger"
-                                              onClick={() => { const a=document.createElement('a'); a.href=msg.audio_url; a.download=`vocal-${msg._id}.webm`; a.click(); }}>
+                                              onClick={() => { const a=document.createElement('a'); a.href=msg.pieceJointe?.path; a.download=`vocal-${msg._id}.webm`; a.click(); }}>
                                               ⬇️
                                             </button>
                                             <button style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, opacity:.7, padding:"0 2px" }} title="Supprimer"
@@ -1194,6 +1322,21 @@ export default function Messagerie() {
                                       </div>
                                     </div>
                                   </div>
+
+                                ) : msg.pieceJointe?.type === "image" ? (
+                                  /* ── Bulle image ── */
+                                  <div style={{ maxWidth:260 }}>
+                                    <a href={msg.pieceJointe.path} target="_blank" rel="noreferrer">
+                                      <img src={msg.pieceJointe.path} alt={msg.pieceJointe.filename || "Image"} style={{ maxWidth:"100%", borderRadius:14, display:"block", border:isMe?"1.5px solid rgba(255,255,255,.3)":"1.5px solid var(--cbr)" }} />
+                                    </a>
+                                  </div>
+
+                                ) : msg.pieceJointe?.type === "document" ? (
+                                  /* ── Bulle document ── */
+                                  <a href={msg.pieceJointe.path} target="_blank" rel="noreferrer" className="msg-attachment" style={isMe ? { color:"#fff" } : undefined}>
+                                    {I.file}
+                                    <span style={{ fontSize:12.5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{msg.pieceJointe.filename || "Document"}</span>
+                                  </a>
 
                                 ) : (
                                   /* ── Bulle texte ── */
@@ -1329,10 +1472,24 @@ export default function Messagerie() {
                             rows={1}
                           />
                           <div className="msg-input-tools">
-                            <button className="msg-tool-btn" title="Pièce jointe" onClick={() => toast.success("📎 Sélectionner un fichier...")}>{I.attach}</button>
-                            <button className="msg-tool-btn" title="Image" onClick={() => toast.success("🖼️ Sélectionner une image...")}>{I.image}</button>
-                            <button className="msg-tool-btn" title="Document médical" onClick={() => toast.success("📄 Partager un document médical...")}>{I.file}</button>
-                            <button className="msg-tool-btn" title="Emoji">{I.emoji}</button>
+                            <input ref={fileInputRef} type="file" style={{ display:"none" }} onChange={handleFileSelected} />
+                            <button className="msg-tool-btn" title="Pièce jointe" onClick={() => triggerFilePicker("document")}>{I.attach}</button>
+                            <button className="msg-tool-btn" title="Image" onClick={() => triggerFilePicker("image")}>{I.image}</button>
+                            <button className="msg-tool-btn" title="Document médical" onClick={() => triggerFilePicker("document")}>{I.file}</button>
+                            <div style={{ position:"relative" }}>
+                              <button className="msg-tool-btn" title="Emoji" onClick={() => setShowEmoji(v => !v)}>{I.emoji}</button>
+                              {showEmoji && (
+                                <div style={{ position:"absolute", bottom:"calc(100% + 8px)", left:0, background:"#fff", border:"1.5px solid var(--cbr)", borderRadius:12, boxShadow:"var(--shl)", padding:10, display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:2, zIndex:30, width:216 }}>
+                                  {EMOJI_LIST.map(e => (
+                                    <button key={e} type="button" style={{ background:"none", border:"none", cursor:"pointer", fontSize:19, padding:5, borderRadius:8 }}
+                                      onMouseOver={ev => ev.currentTarget.style.background="#F0F5FF"} onMouseOut={ev => ev.currentTarget.style.background="none"}
+                                      onClick={() => { setInput(v => v + e); setShowEmoji(false); textRef.current?.focus(); }}>
+                                      {e}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                             <div style={{ flex:1 }} />
                             <div className="msg-hint" style={{ fontSize:10, color:"var(--cm)" }}>Entrée pour envoyer · Maj+Entrée pour saut de ligne</div>
                           </div>
@@ -1562,7 +1719,7 @@ export default function Messagerie() {
         )}
 
         {/* ═══ MODAL : CRÉER GROUPE ═══ */}
-        <Modal open={showNewGrp} onClose={() => setShowNewGrp(false)} title={`${I.plus} Créer un groupe`}>
+        <Modal open={showNewGrp} onClose={() => setShowNewGrp(false)} title={<>{I.plus} Créer un groupe</>}>
           <form onSubmit={createGroup}>
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
               <div>
@@ -1601,6 +1758,25 @@ export default function Messagerie() {
               </div>
             </div>
           </form>
+        </Modal>
+
+        {/* ═══ MODAL : TRANSFÉRER ═══ */}
+        <Modal open={!!forwardMsg} onClose={() => setForwardMsg(null)} title={<>{I.forward} Transférer le message</>} maxWidth={440}>
+          <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:360, overflowY:"auto" }}>
+            {convs.filter(c => !c.archivee).length === 0 && (
+              <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:13 }}>Aucune conversation disponible.</div>
+            )}
+            {convs.filter(c => !c.archivee).map((c, i) => (
+              <div key={c._id} className="msg-conv-item" style={{ borderRadius:10, cursor:"pointer" }} onClick={() => forwardMessage(c._id)}>
+                {isGroupConv(c) ? (
+                  <div style={{ width:36, height:36, borderRadius:10, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>👥</div>
+                ) : (
+                  <Av user={getOtherMember(c, me._id)} size={36} idx={i} />
+                )}
+                <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{getConvDisplayName(c, me._id)}</div>
+              </div>
+            ))}
+          </div>
         </Modal>
 
       </div>

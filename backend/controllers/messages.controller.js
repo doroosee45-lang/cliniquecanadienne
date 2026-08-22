@@ -24,8 +24,17 @@ exports.getConversations = async (req, res, next) => {
   try {
     const convs = await Conversation.find({ membres: req.user._id })
       .populate('membres', 'nom prenom role avatar')
-      .sort('-dernier_message');
-    res.json({ success: true, conversations: convs });
+      .sort('-dernier_message')
+      .lean();
+    // AUDIT-MESSAGES-PhaseB — favoris/archivee_par sont stockés par
+    // utilisateur ; le frontend n'a besoin que d'un booléen scopé à
+    // l'utilisateur courant (favori/archivee), jamais de la liste complète.
+    const withFlags = convs.map(c => ({
+      ...c,
+      favori: (c.favoris || []).some(id => id.toString() === req.user._id.toString()),
+      archivee: (c.archivee_par || []).some(id => id.toString() === req.user._id.toString()),
+    }));
+    res.json({ success: true, conversations: withFlags });
   } catch (err) { next(err); }
 };
 
@@ -48,18 +57,35 @@ exports.getOrCreate = async (req, res, next) => {
 
 exports.sendMessage = async (req, res, next) => {
   try {
-    const { contenu } = req.body;
+    const { contenu, pieceJointe } = req.body;
     const conv = await Conversation.findOne({ _id: req.params.id, membres: req.user._id });
     if (!conv) return res.status(403).json({ success: false, message: 'Accès refusé.' });
 
-    const msg = { expediteur: req.user._id, contenu, lu_par: [req.user._id] };
+    const msg = { expediteur: req.user._id, contenu: contenu || '', lu_par: [req.user._id] };
+    let apercu = contenu;
+    if (pieceJointe) {
+      // AUDIT-MESSAGES-PhaseB — "Transférer" ne re-upload jamais un fichier
+      // (référence uniquement) : le chemin fourni doit obligatoirement
+      // pointer vers un fichier déjà stocké par cette messagerie, jamais un
+      // chemin arbitraire (path traversal).
+      if (typeof pieceJointe.path !== 'string' || !pieceJointe.path.startsWith('/uploads/messages/')) {
+        return res.status(400).json({ success: false, message: 'Pièce jointe invalide.' });
+      }
+      msg.pieceJointe = {
+        filename: pieceJointe.filename,
+        path: pieceJointe.path,
+        type: pieceJointe.type,
+        duration: pieceJointe.duration,
+      };
+      apercu = { audio: '🎙️ Message vocal', image: '🖼️ Image', document: '📄 Document' }[pieceJointe.type] || '📎 Pièce jointe';
+    }
     conv.messages.push(msg);
     conv.dernier_message = new Date();
     // AUDIT-MESSAGES-PhaseA — le frontend affichait un aperçu du dernier
     // message dans la liste des conversations en lisant `dernier_message`
     // (une Date), jamais le texte réel — champ dédié ajouté au schéma,
     // renseigné ici.
-    conv.dernier_message_apercu = contenu;
+    conv.dernier_message_apercu = apercu;
     await conv.save();
 
     // Populer l'expéditeur pour l'affichage temps réel
@@ -78,6 +104,75 @@ exports.sendMessage = async (req, res, next) => {
           conversationId: conv._id,
           message: lastMsg,
         });
+      }
+    });
+
+    res.json({ success: true, message: lastMsg });
+  } catch (err) { next(err); }
+};
+
+// AUDIT-MESSAGES-PhaseB — favoris/archiver étaient purement locaux (état
+// React, jamais persisté). Toggle par utilisateur (favoris/archivee_par sont
+// des tableaux de membres, pas un simple booléen global sur la conversation).
+exports.toggleFavori = async (req, res, next) => {
+  try {
+    const conv = await Conversation.findOne({ _id: req.params.id, membres: req.user._id });
+    if (!conv) return res.status(403).json({ success: false, message: 'Accès refusé.' });
+    const idx = conv.favoris.findIndex(id => id.toString() === req.user._id.toString());
+    let favori;
+    if (idx === -1) { conv.favoris.push(req.user._id); favori = true; }
+    else { conv.favoris.splice(idx, 1); favori = false; }
+    await conv.save();
+    res.json({ success: true, favori });
+  } catch (err) { next(err); }
+};
+
+exports.toggleArchive = async (req, res, next) => {
+  try {
+    const conv = await Conversation.findOne({ _id: req.params.id, membres: req.user._id });
+    if (!conv) return res.status(403).json({ success: false, message: 'Accès refusé.' });
+    const idx = conv.archivee_par.findIndex(id => id.toString() === req.user._id.toString());
+    let archivee;
+    if (idx === -1) { conv.archivee_par.push(req.user._id); archivee = true; }
+    else { conv.archivee_par.splice(idx, 1); archivee = false; }
+    await conv.save();
+    res.json({ success: true, archivee });
+  } catch (err) { next(err); }
+};
+
+// AUDIT-MESSAGES-PhaseB — messages vocaux/image/document affichaient un faux
+// succès (blob local jamais envoyé au serveur). Le fichier est déjà validé et
+// stocké par le middleware uploadMessageAttachment (routes/messages.routes.js) ;
+// ce contrôleur ne fait que créer le message référençant ce fichier, même
+// flux temps réel (Socket.IO) que sendMessage.
+exports.sendAttachment = async (req, res, next) => {
+  try {
+    const conv = await Conversation.findOne({ _id: req.params.id, membres: req.user._id });
+    if (!conv) return res.status(403).json({ success: false, message: 'Accès refusé.' });
+    if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier reçu.' });
+
+    const { type, duration } = req.body;
+    const pieceJointe = {
+      filename: req.file.originalname,
+      path: `/uploads/messages/${req.file.filename}`,
+      type: type || 'document',
+      duration: duration ? Number(duration) : undefined,
+    };
+    const apercu = { audio: '🎙️ Message vocal', image: '🖼️ Image', document: '📄 Document' }[pieceJointe.type] || '📎 Pièce jointe';
+
+    const msg = { expediteur: req.user._id, contenu: '', pieceJointe, lu_par: [req.user._id] };
+    conv.messages.push(msg);
+    conv.dernier_message = new Date();
+    conv.dernier_message_apercu = apercu;
+    await conv.save();
+
+    await conv.populate('messages.expediteur', 'nom prenom avatar role');
+    const lastMsg = conv.messages[conv.messages.length - 1];
+
+    emitTo(`conversation:${conv._id}`, 'message:new', { conversationId: conv._id, message: lastMsg });
+    conv.membres.forEach(memberId => {
+      if (memberId.toString() !== req.user._id.toString()) {
+        emitTo(`user:${memberId}`, 'message:new', { conversationId: conv._id, message: lastMsg });
       }
     });
 

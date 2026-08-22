@@ -22,6 +22,12 @@ const SUBPATH_ROLES = {
   radiology: ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'radiologue'],
   // document.routes.js — module entier réservé à l'administration (ADMIN)
   documents: ['superadmin', 'adminclinique'],
+  // AUDIT-MESSAGES-PhaseB — messages.routes.js n'a aucune restriction de
+  // rôle (protect seul, comme getDirectory ajoutée en Phase A) : mêmes
+  // rôles non-patient, cohérent avec qui peut réellement envoyer/recevoir
+  // des pièces jointes de messagerie.
+  messages: ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme',
+             'radiologue', 'pharmacien', 'laborantin', 'comptable', 'receptionniste'],
 };
 
 const uploadsRoot = path.resolve(path.join(__dirname, '..', 'uploads'));
