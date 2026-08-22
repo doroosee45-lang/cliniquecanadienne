@@ -287,6 +287,15 @@ textarea.cinp { resize:vertical; min-height:80px; }
 .echo-g4    { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
 .echo-g6    { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; }
 
+/* ── Impression — AUDIT-ECHOGRAPHIE-PRINT : @media print manquant, même
+   défaut que les autres pages déjà signalées (Patients, Chirurgie,
+   Radiology, Laboratory, Appointments). Le compte-rendu reste en A4 (vrai
+   document médical multi-lignes) — masque uniquement l'habillage écran. ── */
+@media print {
+  .hero, .tab-bar, .steps, .cbtn, .no-print { display:none!important; }
+  .echo-card { box-shadow:none!important; border:1px solid #ddd!important; }
+}
+
 /* ── Mobile ── */
 @media(max-width:767px) {
   .echo-top { padding:12px 14px 0; }
