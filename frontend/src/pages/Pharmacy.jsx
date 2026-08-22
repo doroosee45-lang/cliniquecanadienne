@@ -13,6 +13,7 @@ import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import autoTable from 'jspdf-autotable';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
+import { printReceipt58mm } from '../utils/receipt58mm';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -825,14 +826,39 @@ export default function Pharmacie() {
   // ── Impression ticket thermique ───────────────────────────
   const modeLabel = { especes:"Espèces 💵", mobile_money:"Mobile Money 📱", carte_bancaire:"Carte bancaire 💳", assurance:"Assurance 🏥" };
 
-  const printThermal = (fullA4 = false) => {
+  // AUDIT-RECU-58MM — remplace l'ancienne impression thermique en dur à
+  // 80mm par le gabarit commun (frontend/src/utils/receipt58mm.js), utilisé
+  // par tous les modules facture/reçu/ticket de l'app. Le bouton "PDF
+  // complet (A4)" ci-dessous reste inchangé (usage différent : document à
+  // archiver/envoyer, pas à imprimer au comptoir).
+  const printTicket58mm = () => {
+    if (!venteTicket) return;
+    const t = venteTicket;
+    printReceipt58mm({
+      docType: 'TICKET DE VENTE',
+      docNumber: t.numero,
+      date: new Date(t.date).toLocaleString('fr-FR'),
+      billedTo: { label: 'Client', name: t.client },
+      meta: [{ label: 'Paiement', value: modeLabel[t.mode_paiement] || t.mode_paiement }],
+      lines: t.items.map(i => ({
+        label: i.nom + (i.dosage ? ` (${i.dosage})` : ''),
+        qty: i.quantite,
+        unitPrice: i.prix_unitaire,
+        amount: i.sous_total,
+      })),
+      totals: [{ label: 'TOTAL', value: t.total, emphasis: true }],
+      note: 'Conservez ce ticket pour tout remboursement.',
+    });
+  };
+
+  const printTicketA4 = () => {
     if (!venteTicket) return;
     const t = venteTicket;
     const dateStr = new Date(t.date).toLocaleString("fr-FR");
     const rows = t.items.map(i =>
       `<tr><td>${i.nom}${i.dosage?" ("+i.dosage+")":""}</td><td style="text-align:center">${i.quantite}</td><td style="text-align:right">${fmtCFA(i.prix_unitaire)}</td><td style="text-align:right">${fmtCFA(i.sous_total)}</td></tr>`
     ).join("");
-    const css = fullA4 ? `
+    const css = `
       body { font-family:'Arial',sans-serif; font-size:12px; max-width:210mm; margin:auto; padding:20mm 15mm; }
       h2 { font-size:18px; } .sep { border:1px dashed #ccc; margin:8px 0; }
       table { width:100%; border-collapse:collapse; margin:10px 0; }
@@ -840,14 +866,6 @@ export default function Pharmacie() {
       th { background:#f5f5f5; font-weight:700; text-align:left; }
       td:last-child,th:last-child { text-align:right; }
       .total { font-size:16px; font-weight:800; }
-    ` : `
-      @page { size:80mm auto; margin:5mm 3mm; }
-      body { font-family:'Courier New',monospace; font-size:10px; width:72mm; }
-      h2 { font-size:12px; text-align:center; } .sep { border-top:1px dashed #000; margin:4px 0; }
-      table { width:100%; border-collapse:collapse; font-size:9px; }
-      th { font-weight:700; border-bottom:1px solid #000; } td,th { padding:2px 1px; }
-      td:last-child,th:last-child { text-align:right; }
-      .total { font-size:13px; font-weight:800; }
     `;
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ticket ${t.numero}</title>
     <style>${css}</style></head><body>
@@ -2850,10 +2868,10 @@ ${lignes}
 
               {/* Actions */}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                <button className="pbtn pbtn-primary" onClick={() => printThermal(false)}>
+                <button className="pbtn pbtn-primary" onClick={printTicket58mm}>
                   {I.print} Impr. thermique
                 </button>
-                <button className="pbtn pbtn-teal" onClick={() => printThermal(true)}>
+                <button className="pbtn pbtn-teal" onClick={printTicketA4}>
                   📄 PDF complet (A4)
                 </button>
                 <button
