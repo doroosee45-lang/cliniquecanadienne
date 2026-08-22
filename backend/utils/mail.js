@@ -526,4 +526,52 @@ const sendAccountSuspendedEmail = async ({ email, prenom, nom }) => {
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail };
+// AUDIT-RH-PLANNING-NOTIF — un email par créneau publié (pas de
+// consolidation — décision explicite) : hr.controller.js::publishSchedules
+// appelle cette fonction une fois par créneau brouillon.
+// @param {{ email, prenom, nom, poste, date, heure_debut, heure_fin, type }} opts
+const sendPlanningPublishedEmail = async ({ email, prenom, nom, poste, date, heure_debut, heure_fin, type }) => {
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#EFF6FF;border-left:4px solid #1B4F9E;border-radius:8px;padding:14px 18px;margin-bottom:22px;">
+        <div style="font-size:11px;color:#6B7A99;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Planning</div>
+        <div style="font-size:18px;font-weight:800;color:#0B1E3B;margin-top:4px;">📅 Un créneau a été publié</div>
+      </div>
+      <h2 style="color:#0B1E3B;font-size:16px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Un créneau vient d'être publié à votre planning${poste ? ` (${poste})` : ''}. Récapitulatif :
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;width:40%;">📅 Date</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:8px 8px 0 0;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;text-transform:capitalize;">${date}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:12px;color:#6B7A99;font-weight:700;">🕐 Horaire</td>
+          <td style="padding:10px 14px;background:#fff;border-bottom:1px solid #E2EAF4;font-size:14px;color:#0B1E3B;font-weight:700;">${heure_debut || '—'} – ${heure_fin || '—'}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:0 0 8px 8px;font-size:12px;color:#6B7A99;font-weight:700;">🩺 Type</td>
+          <td style="padding:10px 14px;background:#F8FAFD;border-radius:0 0 8px 8px;font-size:14px;color:#0B1E3B;">${type}</td>
+        </tr>
+      </table>
+    </div>
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: `Planning publié — ${date}`,
+    html,
+  });
+};
+
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendPlanningPublishedEmail };

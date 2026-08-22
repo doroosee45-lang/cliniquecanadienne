@@ -22,5 +22,6 @@ router.put('/:id',       protect, authorize(...ADMIN), hrC.update);
 router.post('/:id/conge',            protect, authorize(...STAFF), hrC.leave);
 router.put('/:id/conge/:congeId',    protect, authorize(...ADMIN), hrC.updateLeaveStatus);
 router.post('/:id/planning',         protect, authorize(...ADMIN), hrC.addSchedule);
+router.put('/:id/planning/publier',  protect, authorize(...ADMIN), hrC.publishSchedules);
 
 module.exports = router;

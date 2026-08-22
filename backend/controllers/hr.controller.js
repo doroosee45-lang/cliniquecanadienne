@@ -3,6 +3,9 @@ const Staff = require('../models/Staff');
 const User = require('../models/User');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const mail = require('../utils/mail');
+const sms = require('../utils/sms');
+const { logger } = require('../utils/logger');
 
 // Aplatir Staff + utilisateur populé en un objet frontend-compatible
 function normalizeStaff(s) {
@@ -234,15 +237,89 @@ exports.getSchedules = async (req, res, next) => {
 };
 
 // POST /hr/:id/planning — assigner un créneau à un employé
+// AUDIT-RH-PLANNING-NOTIF — créé systématiquement en statut 'brouillon' :
+// tant statut que notifie_publication/rappel_2h_envoye sont ignorés du body
+// (jamais acceptés en entrée) pour qu'un créneau ne puisse être marqué
+// "déjà notifié" qu'en passant réellement par publishSchedules ci-dessous.
 exports.addSchedule = async (req, res, next) => {
   try {
     const staff = await Staff.findById(req.params.id);
     if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
     const { date, heure_debut, heure_fin, type } = req.body;
-    staff.planning.push({ date, heure_debut, heure_fin, type });
+    staff.planning.push({ date, heure_debut, heure_fin, type, statut: 'brouillon' });
     await staff.save();
     await logAction({ utilisateur: req.user._id, action: 'SCHEDULE_ADD', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Créneau planning (${type || '—'}) assigné — ${staff.prenom || ''} ${staff.nom || ''}`.trim() });
     emitDashboardUpdate();
     res.json({ success: true, staff });
+  } catch (err) { next(err); }
+};
+
+const PLANNING_TYPE_LABELS = { travail: 'Travail', garde: 'Garde', astreinte: 'Astreinte', repos: 'Repos', conge: 'Congé' };
+
+// PUT /hr/:id/planning/publier — publie tous les créneaux brouillon d'un
+// employé. AUDIT-RH-PLANNING-NOTIF — décision explicite : une notification
+// (email + SMS) par créneau publié, jamais un message consolidé — l'idempotence
+// (notifie_publication) est donc posée par créneau, pas au niveau de
+// l'employé, pour qu'un second appel (ex. nouveaux créneaux ajoutés entre
+// temps) ne renotifie jamais les créneaux déjà publiés.
+exports.publishSchedules = async (req, res, next) => {
+  try {
+    const staff = await Staff.findById(req.params.id).populate('utilisateur', 'email telephone');
+    if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
+
+    // Même repli que normalizeStaff : le champ direct sur Staff prime,
+    // l'email/téléphone du compte utilisateur lié sert de secours.
+    const email = staff.email || staff.utilisateur?.email || '';
+    const telephone = staff.telephone || staff.utilisateur?.telephone || '';
+
+    const brouillons = staff.planning.filter(p => p.statut !== 'publie');
+    if (brouillons.length === 0) {
+      return res.json({ success: true, publies: 0, message: 'Aucun créneau brouillon à publier.' });
+    }
+
+    let emailOk = 0, emailFail = 0, smsOk = 0, smsSimule = 0, smsFail = 0;
+    for (const slot of brouillons) {
+      const dateStr = slot.date
+        ? new Date(slot.date).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+        : '—';
+      const typeLabel = PLANNING_TYPE_LABELS[slot.type] || slot.type || '—';
+
+      if (email) {
+        try {
+          await mail.sendPlanningPublishedEmail({
+            email, prenom: staff.prenom || '', nom: staff.nom || '', poste: staff.poste,
+            date: dateStr, heure_debut: slot.heure_debut, heure_fin: slot.heure_fin, type: typeLabel,
+          });
+          emailOk++;
+        } catch (err) {
+          emailFail++;
+          logger.error('[planning] Échec email publication créneau', { staffId: staff._id.toString(), error: err.message });
+        }
+      }
+
+      if (telephone) {
+        const body = `Bonjour ${staff.prenom || ''}, votre créneau du ${dateStr} (${slot.heure_debut || '—'}-${slot.heure_fin || '—'}, ${typeLabel}) a été publié. Clinique Canadienne.`;
+        try {
+          const result = await sms.sendSms({ to: telephone, body });
+          if (result?.simulated) smsSimule++; else smsOk++;
+        } catch (err) {
+          smsFail++;
+          logger.error('[planning] Échec SMS publication créneau', { staffId: staff._id.toString(), error: err.message });
+        }
+      }
+
+      slot.statut = 'publie';
+      slot.notifie_publication = true;
+    }
+
+    await staff.save();
+
+    await logAction({
+      utilisateur: req.user._id, action: 'PLANNING_PUBLISH', module: 'hr', entite_id: staff._id, ip: req.ip,
+      message: `${brouillons.length} créneau(x) publié(s) — ${staff.prenom || ''} ${staff.nom || ''} — email: ${emailOk} ok/${emailFail} échec (${email ? 'destinataire connu' : 'aucun email'}), SMS: ${smsOk} ok/${smsSimule} simulé/${smsFail} échec (${telephone ? 'destinataire connu' : 'aucun téléphone'})`.trim(),
+    });
+    emitDashboardUpdate();
+
+    res.json({ success: true, staff, publies: brouillons.length });
   } catch (err) { next(err); }
 };

@@ -146,6 +146,7 @@ const CSS = `
 .plan-cell.repos    { background:#F9FAFB; color:#6B7280; border:1px solid #E5E7EB; }
 .plan-cell.absence  { background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; }
 .plan-cell.astreinte{ background:#F5F3FF; color:#5B21B6; border:1px solid #DDD6FE; }
+.plan-cell.brouillon{ border-style:dashed; opacity:.65; }
 
 /* Note stars */
 .star-filled { color:#F59E0B; }
@@ -389,6 +390,7 @@ const PLAN_LABEL = { travail:"Travail", garde:"Garde", conge:"Congé", repos:"Re
 
 const EMPTY_EMP = { matricule:"", prenom:"", nom:"", sexe:"homme", date_naissance:"", nationalite:"", telephone:"", email:"", adresse:"", poste:"infirmier", departement:"", service:"", date_embauche:"", contrat:"cdi", statut:"actif", salaire_base:"" };
 const EMPTY_CONGE = { employe_id:"", type:"annuel", date_debut:"", date_fin:"", motif:"" };
+const EMPTY_PLAN = { employe_id:"", date:"", heure_debut:"", heure_fin:"", type:"travail" };
 const EMPTY_CANDIDATURE = { nom:"", poste:"infirmier", experience:"", diplome:"", email:"", telephone:"", statut:"recu" };
 const EMPTY_EVAL = { employe_id:"", periode:"2025-S1", ponctualite:3, qualite:3, productivite:3, discipline:3, relation_patient:3, commentaire:"", evaluateur:"" };
 const EMPTY_FORMATION = { titre:"", type:"interne", date:"", duree_h:"", participants:"", certificat:false };
@@ -462,10 +464,13 @@ export default function RessourcesHumaines() {
   const [modalFormation,  setModalFormation]   = useState(false);
   const [modalSanction,   setModalSanction]    = useState(false);
   const [modalPointage,   setModalPointage]    = useState(false);
+  const [modalPlan,       setModalPlan]        = useState(false);
+  const [publishingId,    setPublishingId]     = useState(null);
 
   // Forms
   const [formEmp,       setFormEmp]       = useState(EMPTY_EMP);
   const [formConge,     setFormConge]     = useState(EMPTY_CONGE);
+  const [formPlan,      setFormPlan]      = useState(EMPTY_PLAN);
   const [formCandidat,  setFormCandidat]  = useState(EMPTY_CANDIDATURE);
   const [formEval,      setFormEval]      = useState(EMPTY_EVAL);
   const [formFormation, setFormFormation] = useState(EMPTY_FORMATION);
@@ -543,12 +548,15 @@ export default function RessourcesHumaines() {
   // Pivot des créneaux plats (schedules) en grille employé × jour de la
   // semaine courante, pour le rendu du planning hebdomadaire.
   const scheduleByEmp = {};
-  employes.forEach(e => { scheduleByEmp[e._id] = weekDates.map(() => ''); });
+  employes.forEach(e => { scheduleByEmp[e._id] = weekDates.map(() => null); });
   schedules.forEach(s => {
     const day = s.date ? String(s.date).substring(0, 10) : '';
     const dayIdx = weekDates.findIndex(d => isoDay(d) === day);
-    if (dayIdx !== -1 && scheduleByEmp[s.employe_id]) scheduleByEmp[s.employe_id][dayIdx] = s.type;
+    if (dayIdx !== -1 && scheduleByEmp[s.employe_id]) scheduleByEmp[s.employe_id][dayIdx] = { type: s.type, statut: s.statut };
   });
+  // Un employé a-t-il au moins un créneau brouillon cette semaine (bouton
+  // "Publier" affiché seulement dans ce cas) ?
+  const hasBrouillon = (empId) => (scheduleByEmp[empId] || []).some(c => c && c.statut !== 'publie');
 
   const filteredEmps = employes.filter(e => {
     const q = search.toLowerCase();
@@ -627,6 +635,36 @@ export default function RessourcesHumaines() {
     }
   };
   const approuverConge = (c) => decideConge(c, 'approuve');
+
+  // AUDIT-RH-PLANNING-NOTIF — créé en brouillon côté serveur (aucune
+  // notification à ce stade) ; seul publierPlanning ci-dessous déclenche
+  // l'envoi, un message par créneau (pas de consolidation).
+  const addPlanning = async (ev) => {
+    ev.preventDefault();
+    try {
+      const { employe_id, date, heure_debut, heure_fin, type } = formPlan;
+      await api.post(`/hr/${employe_id}/planning`, { date, heure_debut, heure_fin, type });
+      await loadSchedules();
+      toast.success("✅ Créneau ajouté en brouillon — à publier pour notifier l'employé");
+      setModalPlan(false); setFormPlan(EMPTY_PLAN);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'ajout du créneau");
+    }
+  };
+
+  const publierPlanning = async (empId) => {
+    setPublishingId(empId);
+    try {
+      const { data } = await api.put(`/hr/${empId}/planning/publier`);
+      await loadSchedules();
+      if (data.publies > 0) toast.success(`✅ ${data.publies} créneau(x) publié(s) — notification envoyée`);
+      else toast("Aucun créneau brouillon à publier pour cet employé.");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la publication du planning");
+    } finally {
+      setPublishingId(null);
+    }
+  };
 
   const addCandidat = (ev) => {
     ev.preventDefault();
@@ -1925,22 +1963,27 @@ export default function RessourcesHumaines() {
           {/* ══ PLANNING ══ */}
           {tab === "planning" && (
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Planning hebdomadaire — Semaine du {weekLabels[0]} au {weekLabels[6]} {weekDates[6].toLocaleDateString('fr-FR',{month:'long',year:'numeric'})}</div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:20 }}>
+                <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Planning hebdomadaire — Semaine du {weekLabels[0]} au {weekLabels[6]} {weekDates[6].toLocaleDateString('fr-FR',{month:'long',year:'numeric'})}</div>
+                <button className="rbtn rbtn-primary" onClick={() => { setFormPlan(EMPTY_PLAN); setModalPlan(true); }}>{I.plus} Nouveau créneau</button>
+              </div>
               <div className="rh-card fu" style={{ overflowX:"auto" }}>
-                <table style={{ width:"100%", borderCollapse:"collapse", minWidth:900 }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", minWidth:1000 }}>
                   <thead>
                     <tr style={{ background:"linear-gradient(to right,#F8FAFD,#EEF4FF)" }}>
                       <th style={{ padding:"11px 14px", textAlign:"left", fontSize:11, fontWeight:700, color:"var(--rm)", textTransform:"uppercase", borderBottom:"1.5px solid var(--rbr)", width:160 }}>Employé</th>
                       {weekLabels.map(j => (
                         <th key={j} style={{ padding:"11px 8px", textAlign:"center", fontSize:11, fontWeight:700, color:"var(--rm)", textTransform:"uppercase", letterSpacing:.4, borderBottom:"1.5px solid var(--rbr)" }}>{j}</th>
                       ))}
+                      <th style={{ padding:"11px 8px", textAlign:"center", fontSize:11, fontWeight:700, color:"var(--rm)", textTransform:"uppercase", borderBottom:"1.5px solid var(--rbr)", width:110 }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {employes.map((emp) => {
                       const nom = `${emp.prenom} ${emp.nom}`;
                       const pc  = POSTE_COLORS[emp.poste] || { color:"#6B7280" };
-                      const jours = scheduleByEmp[emp._id] || weekDates.map(() => '');
+                      const jours = scheduleByEmp[emp._id] || weekDates.map(() => null);
+                      const enAttente = hasBrouillon(emp._id);
                       return (
                         <tr key={emp._id} style={{ borderBottom:"1px solid #F3F7FF" }}>
                           <td style={{ padding:"10px 14px" }}>
@@ -1949,22 +1992,41 @@ export default function RessourcesHumaines() {
                               <span style={{ fontSize:12, fontWeight:600, color:"var(--rn)" }}>{nom}</span>
                             </div>
                           </td>
-                          {jours.map((type, i) => (
+                          {jours.map((cell, i) => (
                             <td key={i} style={{ padding:"8px 6px", textAlign:"center" }}>
-                              <div className={`plan-cell ${type}`}>{PLAN_LABEL[type] || (type ? type : '—')}</div>
+                              {cell ? (
+                                <div className={`plan-cell ${cell.type} ${cell.statut !== 'publie' ? 'brouillon' : ''}`} title={cell.statut !== 'publie' ? 'Brouillon — pas encore notifié' : 'Publié'}>
+                                  {PLAN_LABEL[cell.type] || cell.type || '—'}
+                                </div>
+                              ) : '—'}
                             </td>
                           ))}
+                          <td style={{ padding:"8px 6px", textAlign:"center" }}>
+                            {enAttente && (
+                              <button
+                                className="rbtn rbtn-teal rbtn-sm"
+                                disabled={publishingId === emp._id}
+                                onClick={() => publierPlanning(emp._id)}
+                                title="Publier les créneaux brouillon — envoie une notification email+SMS par créneau"
+                              >
+                                {publishingId === emp._id ? '…' : `${I.check} Publier`}
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-                <div style={{ padding:"12px 20px", borderTop:"1.5px solid var(--rbr)", display:"flex", gap:12, flexWrap:"wrap" }}>
+                <div style={{ padding:"12px 20px", borderTop:"1.5px solid var(--rbr)", display:"flex", gap:12, flexWrap:"wrap", alignItems:"center" }}>
                   {[["travail","Travail","#059669"],["garde","Garde","#1B4F9E"],["conge","Congé","#D97706"],["repos","Repos","#6B7280"],["absence","Absent","#DC2626"],["astreinte","Astreinte","#7C3AED"]].map(([key,lbl,col]) => (
                     <div key={key} style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--rm)" }}>
                       <span style={{ width:12, height:12, borderRadius:3, background:col, display:"inline-block", opacity:.7 }} />{lbl}
                     </div>
                   ))}
+                  <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--rm)" }}>
+                    <span style={{ width:12, height:12, borderRadius:3, border:"1.5px dashed #6B7280", display:"inline-block" }} />Brouillon (pas encore notifié)
+                  </div>
                 </div>
               </div>
             </div>
@@ -2336,6 +2398,40 @@ export default function RessourcesHumaines() {
               <div style={{ display:"flex", gap:10 }}>
                 <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalConge(false)}>Annuler</button>
                 <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Soumettre</button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : NOUVEAU CRÉNEAU PLANNING ═══ */}
+        <Modal open={modalPlan} onClose={() => setModalPlan(false)} title="🗓️ Nouveau créneau" maxWidth={480}>
+          <form onSubmit={addPlanning}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div><label className="rlbl">Employé *</label>
+                <select className="rinp" required value={formPlan.employe_id} onChange={e=>setFormPlan(f=>({...f,employe_id:e.target.value}))}>
+                  <option value="">— Sélectionner —</option>
+                  {employes.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
+                </select>
+              </div>
+              <div><label className="rlbl">Date *</label><input type="date" className="rinp" required value={formPlan.date} onChange={e=>setFormPlan(f=>({...f,date:e.target.value}))} /></div>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div><label className="rlbl">Heure début *</label><input type="time" className="rinp" required value={formPlan.heure_debut} onChange={e=>setFormPlan(f=>({...f,heure_debut:e.target.value}))} /></div>
+                <div><label className="rlbl">Heure fin *</label><input type="time" className="rinp" required value={formPlan.heure_fin} onChange={e=>setFormPlan(f=>({...f,heure_fin:e.target.value}))} /></div>
+              </div>
+              <div><label className="rlbl">Type</label>
+                {/* AUDIT-RH-PLANNING-NOTIF — PLAN_LABEL inclut "absence" pour
+                    l'affichage seul ; l'enum réel de Staff.planning.type
+                    (models/Staff.js) ne l'accepte pas, donc exclu ici. */}
+                <select className="rinp" value={formPlan.type} onChange={e=>setFormPlan(f=>({...f,type:e.target.value}))}>
+                  {['travail','garde','astreinte','repos','conge'].map(k => <option key={k} value={k}>{PLAN_LABEL[k]}</option>)}
+                </select>
+              </div>
+              <div style={{ background:"#EFF6FF", borderRadius:10, padding:"10px 14px", fontSize:12, color:"var(--rb)" }}>
+                📋 Ce créneau sera créé en <strong>brouillon</strong> — l'employé ne sera notifié qu'après un clic sur "Publier".
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalPlan(false)}>Annuler</button>
+                <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Ajouter en brouillon</button>
               </div>
             </div>
           </form>

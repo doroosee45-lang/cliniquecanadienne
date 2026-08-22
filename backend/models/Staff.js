@@ -22,11 +22,20 @@ const StaffSchema = new Schema({
   type_contrat:   { type: String, enum: ['cdi','cdd','stage','vacataire'] },
   salaire_base:   Number,
   conges_restants:{ type: Number, default: 20 },
+  // AUDIT-RH-PLANNING-NOTIF — statut brouillon/publie ajouté pour distinguer
+  // un créneau juste créé (pas encore notifié) d'un créneau réellement
+  // communiqué à l'employé. notifie_publication/rappel_2h_envoye sont des
+  // garde-fous d'idempotence par créneau (jamais par employé — un employé
+  // publié avec plusieurs créneaux reçoit une notification par créneau, pas
+  // une notification consolidée), même principe que Appointment.rappels_envoyes.
   planning: [{
     date: Date,
     heure_debut: String,
     heure_fin: String,
     type: { type: String, enum: ['travail','garde','astreinte','repos','conge'] },
+    statut: { type: String, enum: ['brouillon','publie'], default: 'brouillon' },
+    notifie_publication: { type: Boolean, default: false },
+    rappel_2h_envoye: { type: Boolean, default: false },
   }],
   conges: [{
     type: { type: String, enum: ['annuel','maladie','maternite','paternite','exceptionnel','sans_solde'] },
