@@ -816,22 +816,24 @@ export default function Pharmacie() {
       return;
     }
 
-    // ── Vente comptoir directe (comportement existant, inchangé) ──
+    // ── Vente comptoir directe ──
+    // Erreur réelle affichée en cas d'échec (pas de faux succès sur une
+    // action financière/stock réelle) — même principe que la dispensation
+    // sur ordonnance ci-dessus.
     try {
       const { data } = await api.post("/pharmacy/ventes", { client:clientNom, mode_paiement:modePaiement, items:items.map(it=>({medicament_id:it.med._id,quantite:it.quantite,prix_unitaire:it.med.prix_vente})) });
       setVenteTicket(buildTicket(data.vente?.numero));
       toast.success(`✅ Vente enregistrée — ${fmtCFA(total)}`);
       loadMeds(); loadStats();
-    } catch {
-      setVenteTicket(buildTicket(null));
-      toast.success(`✅ Vente enregistrée — ${fmtCFA(total)}`);
-    } finally {
-      setSaving(false);
       setPanier([{id:Date.now(),med:null,quantite:1}]);
       setPanierSearch({}); setPanierOpen({});
       setClientNom(""); setRxNum("");
       setModalVente(false);
       setModalTicket(true);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Échec de l'enregistrement de la vente.");
+    } finally {
+      setSaving(false);
     }
   };
 
