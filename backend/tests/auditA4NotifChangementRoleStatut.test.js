@@ -16,11 +16,16 @@ test('A-4 — notification (et email si suspension) sur changement de rôle/stat
   await mongoose.connect(process.env.MONGO_URI);
   const settingsC = require('../controllers/settings.controller');
   const User = require('../models/User');
+  const Service = require('../models/Service');
   const Notification = require('../models/Notification');
   const mailModule = require('../utils/mail');
 
   const stamp = Date.now();
   const superadmin = { _id: new mongoose.Types.ObjectId(), role: 'superadmin' };
+  // AUDIT-M-A1 — service est désormais une vraie référence ObjectId ; le
+  // service exact n'est jamais vérifié par ce test (seul role/statut le
+  // sont), une seule fiche réelle suffit pour les deux payloads ci-dessous.
+  const svcUrgences = await Service.create({ nom: `Urgences ${stamp}` });
 
   // SMTP est réellement configuré dans cet environnement (.env pointe vers
   // un vrai compte) — sans ce stub, l'email de suspension déclenche un
@@ -50,7 +55,7 @@ test('A-4 — notification (et email si suspension) sur changement de rôle/stat
 
       const { status } = await call(settingsC.updateUser, {
         params: { id: userId },
-        body: { prenom: 'Compte', nom: 'Stable', email: user.email, telephone: '+242060000001', role: 'infirmier', service: 'Urgences', statut: 'actif' },
+        body: { prenom: 'Compte', nom: 'Stable', email: user.email, telephone: '+242060000001', role: 'infirmier', service: svcUrgences._id.toString(), statut: 'actif' },
         user: superadmin, ip: '127.0.0.1',
       });
       assert.equal(status, 200);
@@ -62,7 +67,7 @@ test('A-4 — notification (et email si suspension) sur changement de rôle/stat
     await t.test('changement de rôle seul — notification de type info', async () => {
       const { status } = await call(settingsC.updateUser, {
         params: { id: userId },
-        body: { prenom: 'Compte', nom: 'Stable', email: `_a4-nochange-${stamp}@_test.local`, telephone: '+242060000001', role: 'medecin', service: 'Urgences', statut: 'actif' },
+        body: { prenom: 'Compte', nom: 'Stable', email: `_a4-nochange-${stamp}@_test.local`, telephone: '+242060000001', role: 'medecin', service: svcUrgences._id.toString(), statut: 'actif' },
         user: superadmin, ip: '127.0.0.1',
       });
       assert.equal(status, 200);
@@ -122,6 +127,7 @@ test('A-4 — notification (et email si suspension) sur changement de rôle/stat
   } finally {
     mailModule.sendAccountSuspendedEmail = originalSendAccountSuspendedEmail;
     for (const fn of cleanup) await fn();
+    await Service.findByIdAndDelete(svcUrgences._id);
     await mongoose.disconnect();
   }
 });

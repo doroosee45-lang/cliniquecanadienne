@@ -436,17 +436,27 @@ exports.getHistorique = async (req, res, next) => {
     const mesConvs = await Conversation.find({ membres: req.user._id }).select('_id').lean();
     const convIds = mesConvs.map(c => c._id);
 
+    // AUDIT-M-A1 — User.service est désormais une référence (comme
+    // Staff.service), résolue ici avec la même priorité que partout ailleurs :
+    // Staff.service (via Staff.utilisateur) prioritaire, User.service en
+    // repli seulement si l'expéditeur n'a aucune fiche Staff liée — jamais
+    // les deux affichés séparément.
     const [{ counts = [], parService = [] } = {}] = await Message.aggregate([
       { $match: { conversation_id: { $in: convIds } } },
       { $lookup: { from: 'users', localField: 'expediteur', foreignField: '_id', as: 'exp' } },
       { $unwind: { path: '$exp', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'staffs', localField: 'exp._id', foreignField: 'utilisateur', as: 'staffLink' } },
+      { $unwind: { path: '$staffLink', preserveNullAndEmptyArrays: true } },
+      { $addFields: { serviceId: { $ifNull: ['$staffLink.service', '$exp.service'] } } },
+      { $lookup: { from: 'services', localField: 'serviceId', foreignField: '_id', as: 'serviceDoc' } },
+      { $unwind: { path: '$serviceDoc', preserveNullAndEmptyArrays: true } },
       { $facet: {
         counts: [
           { $group: { _id: { $eq: ['$expediteur', req.user._id] }, count: { $sum: 1 } } },
         ],
         parService: [
           { $match: { expediteur: { $ne: req.user._id } } },
-          { $group: { _id: { $ifNull: ['$exp.service', 'Autre'] }, count: { $sum: 1 } } },
+          { $group: { _id: { $ifNull: ['$serviceDoc.nom', 'Autre'] }, count: { $sum: 1 } } },
           { $sort: { count: -1 } },
         ],
       } },

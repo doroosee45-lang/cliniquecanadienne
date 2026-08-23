@@ -190,6 +190,85 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
   }
 });
 
+// AUDIT-MESSAGES-PhaseD — sendPatientSms : sms.sendSms est stubbée pour la
+// durée du test (même pattern que appointmentReminders.test.js avec
+// utils/mail.js) — TWILIO_* est réellement configuré dans le .env de dev,
+// donc sans ce stub la suite automatisée enverrait un vrai SMS à chaque
+// exécution. La vérification d'un envoi Twilio réel se fait séparément
+// (hors suite automatisée), avec preuve manuelle.
+test('messages.controller — sendPatientSms (base réelle, Twilio stubbé)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
+  await mongoose.connect(process.env.MONGO_URI);
+  const msgC = require('../controllers/messages.controller');
+  const Patient = require('../models/Patient');
+  const User = require('../models/User');
+  const AuditLog = require('../models/AuditLog');
+  const smsModule = require('../utils/sms');
+
+  const stamp = Date.now();
+  const originalSendSms = smsModule.sendSms;
+  const agent = await User.create({ email: `_sms-agent-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Agent', prenom: 'Sms', role: 'infirmier', statut: 'actif' });
+  const patientAvecTel = await Patient.create({ nom: `Sms${stamp}`, prenom: 'AvecTel', date_naissance: '1990-01-01', sexe: 'F', telephone: '+242060000000' });
+  const patientSansTel = await Patient.create({ nom: `Sms${stamp}`, prenom: 'SansTel', date_naissance: '1990-01-01', sexe: 'M' });
+
+  const call = async (fn, req) => {
+    let status = 200, body = null;
+    const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
+    await fn(req, res, (err) => { if (err) throw err; });
+    return { status, body };
+  };
+
+  try {
+    await t.test('patient avec téléphone, envoi réussi (stub) — 200, tracé succès dans AuditLog, sans le contenu du secret Twilio', async () => {
+      smsModule.sendSms = async ({ to }) => { assert.equal(to, '+242060000000'); return { simulated: true }; };
+      const { status, body } = await call(msgC.sendPatientSms, { user: agent, body: { patient: patientAvecTel._id.toString(), contenu: `Test ${stamp}` }, ip: '127.0.0.1' });
+      assert.equal(status, 200);
+      assert.equal(body.success, true);
+
+      const entry = await AuditLog.findOne({ module: 'messages', action: 'SEND_SMS', entite_id: patientAvecTel._id.toString() }).sort('-createdAt').lean();
+      assert.ok(entry, "l'envoi doit être tracé dans AuditLog");
+      assert.equal(entry.statut, 'succes');
+      assert.ok(!JSON.stringify(entry).includes(process.env.TWILIO_AUTH_TOKEN || '§never§'), 'le AuditLog ne doit jamais contenir le token Twilio');
+    });
+
+    await t.test('échec Twilio (stub qui rejette) — vraie erreur renvoyée, pas un faux succès, tracé en échec', async () => {
+      smsModule.sendSms = async () => { throw new Error("Numéro de destination invalide (simulation d'échec Twilio réel)"); };
+      const { status, body } = await call(msgC.sendPatientSms, { user: agent, body: { patient: patientAvecTel._id.toString(), contenu: `Test échec ${stamp}` }, ip: '127.0.0.1' });
+      assert.equal(status, 502);
+      assert.equal(body.success, false);
+      assert.match(body.message, /invalide/);
+
+      const entry = await AuditLog.findOne({ module: 'messages', action: 'SEND_SMS', entite_id: patientAvecTel._id.toString(), statut: 'echec' }).sort('-createdAt').lean();
+      assert.ok(entry, "l'échec doit aussi être tracé dans AuditLog");
+    });
+
+    await t.test('patient sans téléphone — 400, aucun envoi tenté', async () => {
+      let called = false;
+      smsModule.sendSms = async () => { called = true; return { simulated: true }; };
+      const { status, body } = await call(msgC.sendPatientSms, { user: agent, body: { patient: patientSansTel._id.toString(), contenu: `Test ${stamp}` }, ip: '127.0.0.1' });
+      assert.equal(status, 400);
+      assert.equal(body.success, false);
+      assert.equal(called, false, 'sendSms ne doit jamais être appelée si le patient n\'a pas de téléphone');
+    });
+
+    await t.test('patient introuvable — 404', async () => {
+      const { status } = await call(msgC.sendPatientSms, { user: agent, body: { patient: new mongoose.Types.ObjectId().toString(), contenu: 'x' }, ip: '127.0.0.1' });
+      assert.equal(status, 404);
+    });
+
+    await t.test('message vide — 400', async () => {
+      const { status } = await call(msgC.sendPatientSms, { user: agent, body: { patient: patientAvecTel._id.toString(), contenu: '  ' }, ip: '127.0.0.1' });
+      assert.equal(status, 400);
+    });
+  } finally {
+    smsModule.sendSms = originalSendSms;
+    await User.findByIdAndDelete(agent._id);
+    await Patient.findByIdAndDelete(patientAvecTel._id);
+    await Patient.findByIdAndDelete(patientSansTel._id);
+    await AuditLog.deleteMany({ module: 'messages', action: 'SEND_SMS', entite_id: { $in: [patientAvecTel._id.toString(), patientSansTel._id.toString()] } });
+    await mongoose.disconnect();
+  }
+});
+
 // AUDIT-MESSAGES-PhaseD — sendPatientEmail : mail.sendEmail stubbée pour la
 // même raison que sms.sendSms ci-dessus — SMTP est réellement configuré
 // dans le .env de dev, sans stub la suite enverrait un vrai email.
@@ -265,10 +344,17 @@ test('messages.controller — getHistorique (base réelle)', { skip: !process.en
   const Conversation = require('../models/Conversation');
   const Message = require('../models/Message');
   const User = require('../models/User');
+  const Service = require('../models/Service');
 
   const stamp = Date.now();
-  const medecin = await User.create({ email: `_hist-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Med', prenom: 'Hist', role: 'medecin', statut: 'actif', service: 'Médecine générale' });
-  const infirmier = await User.create({ email: `_hist-inf-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Inf', prenom: 'Hist', role: 'infirmier', statut: 'actif', service: 'Soins infirmiers' });
+  // AUDIT-M-A1 — User.service est désormais une référence (plus une chaîne
+  // libre) : services réels créés ici, ni medecin ni infirmier n'ont de
+  // fiche Staff liée dans ce test, donc User.service est bien la valeur
+  // effectivement résolue (repli attendu en l'absence de liaison Staff).
+  const svcMedecine = await Service.create({ nom: `Médecine générale ${stamp}` });
+  const svcInfirmier = await Service.create({ nom: `Soins infirmiers ${stamp}` });
+  const medecin = await User.create({ email: `_hist-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Med', prenom: 'Hist', role: 'medecin', statut: 'actif', service: svcMedecine._id });
+  const infirmier = await User.create({ email: `_hist-inf-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Inf', prenom: 'Hist', role: 'infirmier', statut: 'actif', service: svcInfirmier._id });
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -299,7 +385,7 @@ test('messages.controller — getHistorique (base réelle)', { skip: !process.en
 
     await t.test('répartition par service réelle : les 2 messages reçus sont attribués au service infirmier', async () => {
       const { body } = await call(msgC.getHistorique, { user: medecin });
-      const infService = body.par_service.find(s => s.service === 'Soins infirmiers');
+      const infService = body.par_service.find(s => s.service === svcInfirmier.nom);
       assert.ok(infService, 'le service de l\'expéditeur réel doit apparaître');
       assert.equal(infService.count, 2);
     });
@@ -359,6 +445,8 @@ test('messages.controller — getHistorique (base réelle)', { skip: !process.en
     if (convId) await Conversation.findByIdAndDelete(convId);
     await User.findByIdAndDelete(medecin._id);
     await User.findByIdAndDelete(infirmier._id);
+    await Service.findByIdAndDelete(svcMedecine._id);
+    await Service.findByIdAndDelete(svcInfirmier._id);
     const AuditLog = require('../models/AuditLog');
     await AuditLog.deleteMany({ message: `Conversation créée ${stamp}` });
     await mongoose.disconnect();

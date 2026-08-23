@@ -918,13 +918,20 @@ export default function Administration() {
                                   </div>
                                 </td>
                                 <td><Badge cls={rc.cls}>{rc.label}</Badge></td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{u.service || "—"}</td>
+                                {/* AUDIT-M-A1 — service_effectif est résolu côté backend : Staff.service
+                                    (fiche RH liée) prioritaire, User.service en repli sinon — jamais
+                                    les deux affichés séparément. */}
+                                <td style={{ fontSize:12, color:"var(--cm)" }}>{u.service_effectif?.nom || "—"}</td>
                                 <td style={{ fontSize:12, color:"var(--cm)" }}>{u.telephone || "—"}</td>
                                 <td style={{ fontSize:12, color:"var(--cm)" }}>{u.derniere_connexion ? fmtDate(u.derniere_connexion) : "Jamais"}</td>
                                 <td><Badge cls={sc.cls}>{sc.label}</Badge></td>
                                 <td>
                                   <div style={{ display:"flex", gap:6 }}>
-                                    <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setEditUser(u); setFormUser({ prenom:u.prenom, nom:u.nom, email:u.email, telephone:u.telephone, role:u.role, service:u.service, statut:u.statut, mot_de_passe:"", must_change_password:!!u.must_change_password }); setModalUser(true); }}>
+                                    {/* AUDIT-M-A1 — préremplit depuis u.service (la propre référence
+                                        du compte), jamais u.service_effectif (dérivé de Staff) : sinon
+                                        enregistrer sans rien changer copierait silencieusement la
+                                        valeur Staff dans User.service, cassant la source unique. */}
+                                    <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setEditUser(u); setFormUser({ prenom:u.prenom, nom:u.nom, email:u.email, telephone:u.telephone, role:u.role, service:u.service?._id || "", statut:u.statut, mot_de_passe:"", must_change_password:!!u.must_change_password }); setModalUser(true); }}>
                                       {I.edit}
                                     </button>
                                     <button className="cbtn cbtn-ghost cbtn-sm" title="Réinitialiser mot de passe" onClick={() => resetPassword(u)}>
@@ -1544,9 +1551,15 @@ export default function Administration() {
               </div>
               <div>
                 <label className="clbl">Service / Département</label>
+                {/* AUDIT-M-A1 — service est désormais une vraie référence
+                    ObjectId (plus une liste de noms codée en dur, déconnectée
+                    de la vraie collection Service). N'a d'effet que pour les
+                    comptes sans fiche Staff liée : Staff.service reste
+                    prioritaire dès qu'une liaison existe (voir
+                    service_effectif dans le tableau ci-dessous). */}
                 <select className="cinp" value={formUser.service} onChange={e => setFormUser(f=>({...f,service:e.target.value}))}>
                   <option value="">— Sélectionner —</option>
-                  {["Administration","Chirurgie","Médecine Générale","Urgences","Maternité","Pédiatrie","Laboratoire","Imagerie","Pharmacie","Comptabilité","Informatique","RH"].map(s => <option key={s} value={s}>{s}</option>)}
+                  {services.map(s => <option key={s._id} value={s._id}>{s.nom}</option>)}
                 </select>
               </div>
               <div>

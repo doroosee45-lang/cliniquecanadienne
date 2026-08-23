@@ -92,12 +92,16 @@ const UserSchema = new mongoose.Schema({
   },
   specialite:  String,
   telephone:   String,
-  // AUDIT-01 — Administration.jsx envoie ce champ (select "Service /
-  // Département") depuis toujours ; jamais déclaré ici, donc silencieusement
-  // supprimé par Mongoose à chaque création/modification de compte. Chaîne
-  // libre (valeurs prédéfinies côté frontend), pas une référence vers
-  // Service — cohérent avec ce que le formulaire envoie réellement.
-  service:     { type: String, default: '' },
+  // AUDIT-M-A1 — était une chaîne libre alimentée par une liste codée en dur
+  // côté frontend, déconnectée de la vraie collection Service (constaté :
+  // 0/46 comptes non-patients l'avaient renseigné en pratique). Migré en
+  // vraie référence, comme Staff.service. Reste distinct de Staff.service
+  // (pas fusionné dans un seul champ) : un User n'a pas toujours de fiche
+  // Staff liée (32/46 comptes réels n'en ont aucune) — settings.controller.js
+  // ne résout ce champ que pour les comptes SANS fiche Staff, Staff.service
+  // restant prioritaire dès qu'une liaison Staff.utilisateur existe (une
+  // seule valeur consultée par personne, jamais un conflit à arbitrer).
+  service:     { type: mongoose.Schema.Types.ObjectId, ref: 'Service' },
   statut:      { type: String, enum: ['actif','inactif','suspendu'], default: 'actif' },
   avatar:      { type: String, default: '' },        // déjà présent ✅
   couleur_theme: { type: String, default: '#2563eb' },

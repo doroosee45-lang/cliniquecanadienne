@@ -15,6 +15,7 @@ test('AUDIT-11 — mass-assignment bloqué sur settings.controller.js::createUse
   await mongoose.connect(process.env.MONGO_URI);
   const settingsC = require('../controllers/settings.controller');
   const User = require('../models/User');
+  const Service = require('../models/Service');
 
   const stamp = Date.now();
   const superadmin = { _id: new mongoose.Types.ObjectId(), role: 'superadmin' };
@@ -31,9 +32,13 @@ test('AUDIT-11 — mass-assignment bloqué sur settings.controller.js::createUse
 
   try {
     await t.test('createUser — champs légitimes du formulaire (EMPTY_USER) persistent, mot_de_passe devient un mot de passe utilisable', async () => {
+      // AUDIT-M-A1 — service est désormais une vraie référence ObjectId.
+      const svcUrgences = await Service.create({ nom: `Urgences ${stamp}` });
+      cleanup.push(() => Service.findByIdAndDelete(svcUrgences._id));
+
       const email = `_audit11-createuser-${stamp}@_test.local`;
       const { status, body } = await call(settingsC.createUser, {
-        body: { prenom: 'Nouveau', nom: 'Compte', email, telephone: '+242061112233', role: 'infirmier', service: 'Urgences', statut: 'actif', mot_de_passe: 'Xx1aaaaa' },
+        body: { prenom: 'Nouveau', nom: 'Compte', email, telephone: '+242061112233', role: 'infirmier', service: svcUrgences._id.toString(), statut: 'actif', mot_de_passe: 'Xx1aaaaa' },
         user: superadmin, ip: '127.0.0.1',
       });
       assert.equal(status, 201);
@@ -43,7 +48,7 @@ test('AUDIT-11 — mass-assignment bloqué sur settings.controller.js::createUse
       const fresh = await User.findById(userId).select('+password').lean();
       assert.equal(fresh.prenom, 'Nouveau');
       assert.equal(fresh.role, 'infirmier');
-      assert.equal(fresh.service, 'Urgences');
+      assert.equal(fresh.service.toString(), svcUrgences._id.toString());
       assert.ok(fresh.password, 'le mot de passe soumis sous mot_de_passe doit être réellement enregistré (non-régression T5.2)');
 
       const bcrypt = require('bcryptjs');

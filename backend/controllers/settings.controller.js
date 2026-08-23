@@ -1,5 +1,6 @@
 const Setting      = require('../models/Setting');
 const User         = require('../models/User');
+const Staff        = require('../models/Staff');
 const Service      = require('../models/Service');
 const Insurance    = require('../models/Insurance');
 const Patient      = require('../models/Patient');
@@ -38,10 +39,24 @@ exports.upsert = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-M-A1 — User.service (référence désormais réelle, plus une chaîne
+// libre) n'est qu'un repli : dès qu'un compte a une fiche Staff liée
+// (Staff.utilisateur), c'est Staff.service qui fait foi (fiche RH plus
+// riche, seule mise à jour par le module HR) — jamais les deux affichés
+// séparément, jamais de conflit à arbitrer. Un seul aller-retour
+// supplémentaire (Staff.find sur les utilisateurs listés) plutôt qu'une
+// requête par utilisateur.
 exports.getUsers = async (req, res, next) => {
   try {
-    const users = await User.find().sort('role nom').select('-password');
-    res.json({ success: true, users });
+    const users = await User.find().sort('role nom').select('-password').populate('service', 'nom').lean();
+    const staffLinks = await Staff.find({ utilisateur: { $in: users.map(u => u._id) } })
+      .select('utilisateur service').populate('service', 'nom').lean();
+    const staffServiceByUser = new Map(staffLinks.map(s => [s.utilisateur.toString(), s.service]));
+    const withResolvedService = users.map(u => ({
+      ...u,
+      service_effectif: staffServiceByUser.get(u._id.toString()) || u.service || null,
+    }));
+    res.json({ success: true, users: withResolvedService });
   } catch (err) { next(err); }
 };
 
@@ -91,7 +106,12 @@ exports.createUser = async (req, res, next) => {
       if (req.body[field] !== undefined) body[field] = req.body[field];
     }
     if (req.body.mot_de_passe) body.password = req.body.mot_de_passe;
+    // AUDIT-M-A1 — service est désormais une vraie référence ObjectId — une
+    // chaîne vide (aucun service sélectionné) doit rester "pas de service",
+    // pas être castée.
+    if (body.service === '') body.service = null;
     const user = await User.create(body);
+    await user.populate('service', 'nom');
     await logAction({ utilisateur: req.user._id, action: 'CREATE_USER', module: 'admin', ip: req.ip, message: `Nouvel utilisateur: ${user.email}` });
     res.status(201).json({ success: true, user });
   } catch (err) { next(err); }
@@ -108,10 +128,14 @@ exports.updateUser = async (req, res, next) => {
     for (const field of USER_WRITABLE_FIELDS) {
       if (req.body[field] !== undefined) data[field] = req.body[field];
     }
+    // AUDIT-M-A1 — même correctif que createUser (service est une vraie
+    // référence ObjectId depuis ce chantier).
+    if (data.service === '') data.service = null;
     const avant = await User.findById(req.params.id).select('role statut email').lean();
     if (!avant) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
     const user = await User.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (password) { user.password = password; await user.save(); }
+    await user.populate('service', 'nom');
     // Modification de compte utilisateur — traçabilité renforcée si le rôle
     // ou le statut change (élévation de privilèges, suspension...).
     await logAction({

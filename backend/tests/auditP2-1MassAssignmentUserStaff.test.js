@@ -17,9 +17,12 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
   const hrC = require('../controllers/hr.controller');
   const User = require('../models/User');
   const Staff = require('../models/Staff');
+  const Service = require('../models/Service');
 
   const stamp = Date.now();
   const superadmin = { _id: new mongoose.Types.ObjectId(), role: 'superadmin' };
+  // AUDIT-M-A1 — User.service est désormais une vraie référence ObjectId.
+  const svcChirurgie = await Service.create({ nom: `Chirurgie ${stamp}` });
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -40,7 +43,7 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
 
       const { status, body } = await call(settingsC.updateUser, {
         params: { id: userId },
-        body: { prenom: 'Après', nom: 'Modifié', email: user.email, telephone: '+242060000000', role: 'medecin', service: 'Chirurgie', statut: 'inactif' },
+        body: { prenom: 'Après', nom: 'Modifié', email: user.email, telephone: '+242060000000', role: 'medecin', service: svcChirurgie._id.toString(), statut: 'inactif' },
         user: superadmin, ip: '127.0.0.1',
       });
       assert.equal(status, 200);
@@ -50,7 +53,7 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
       assert.equal(fresh.prenom, 'Après');
       assert.equal(fresh.role, 'medecin');
       assert.equal(fresh.statut, 'inactif');
-      assert.equal(fresh.service, 'Chirurgie');
+      assert.equal(fresh.service.toString(), svcChirurgie._id.toString());
     });
 
     await t.test('updateUser — un champ hors liste blanche envoyé dans le même appel n\'est jamais persisté', async () => {
@@ -62,7 +65,7 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
       const { status } = await call(settingsC.updateUser, {
         params: { id: userId },
         body: {
-          prenom: 'Après', nom: 'Modifié', email: avant.email, telephone: '+242060000000', role: 'medecin', service: 'Chirurgie', statut: 'inactif',
+          prenom: 'Après', nom: 'Modifié', email: avant.email, telephone: '+242060000000', role: 'medecin', service: svcChirurgie._id.toString(), statut: 'inactif',
           // must_change_password (AUDIT-P2-3, ticket 0003 piste 2) est
           // volontairement dans la liste blanche depuis ce correctif — testé
           // séparément dans auditP2-3MustChangePasswordRH.test.js. Les
@@ -157,6 +160,7 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
     });
   } finally {
     for (const fn of cleanup) await fn();
+    await Service.findByIdAndDelete(svcChirurgie._id);
     await mongoose.disconnect();
   }
 });
