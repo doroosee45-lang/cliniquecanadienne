@@ -542,23 +542,8 @@ export default function Laboratoire() {
       setModalNouv(false);
       setFormNouv(EMPTY_FORM);
       loadAnalyses(); loadStats();
-    } catch {
-      // Demo mode
-      const newA = {
-        ...formNouv,
-        _id: Date.now().toString(),
-        numero: `LAB-2025-${String(analyses.length + 1).padStart(4,"0")}`,
-        statut: "en_attente",
-        date_demande: new Date().toISOString(),
-        resultats: [],
-        paye: false,
-      };
-      setAnalyses(prev => [newA, ...prev]);
-      setTotal(t => t + 1);
-      toast.success(`✅ Analyse ${newA.numero} créée avec succès`);
-      setModalNouv(false);
-      setFormNouv(EMPTY_FORM);
-      loadStats();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la création de l'analyse");
     } finally { setSaving(false); }
   };
 

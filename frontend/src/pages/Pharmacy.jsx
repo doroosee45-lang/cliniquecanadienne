@@ -593,12 +593,8 @@ export default function Pharmacie() {
       setModalAdd(false);
       setFormMed(EMPTY_MED);
       loadStats();
-    } catch {
-      const newMed = normalizeMed({ ...payload, _id: Date.now().toString() });
-      setMeds(prev => [newMed, ...prev]);
-      toast.success("✅ Médicament ajouté (local)");
-      setModalAdd(false);
-      setFormMed(EMPTY_MED);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'ajout du médicament.");
     } finally { setSaving(false); setPhotoFile(null); setPhotoPreview(null); }
   };
 
@@ -626,10 +622,8 @@ export default function Pharmacie() {
       await uploadMedPhotoFn(currentMed._id);
       toast.success("✅ Médicament mis à jour");
       setModalEdit(false);
-    } catch {
-      setMeds(prev => prev.map(m => m._id===currentMed._id ? normalizeMed({ ...m, ...payload }) : m));
-      toast.success("✅ Mis à jour (local)");
-      setModalEdit(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la mise à jour du médicament.");
     } finally { setSaving(false); setPhotoFile(null); setPhotoPreview(null); }
   };
 

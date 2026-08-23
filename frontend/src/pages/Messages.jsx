@@ -615,19 +615,15 @@ export default function Messagerie() {
 
   // ── Start new conv ────────────────────────────────────────
   const startConv = async (userId) => {
-    const u = users.find(u => u._id === userId);
     const existing = convs.find(c => c.type === "direct" && getOtherMember(c, me._id)?._id === userId);
     if (existing) { openConv(existing); return; }
-    const fakeConv = { _id:`c_${Date.now()}`, type:"direct", membres:[me, u], dernier_message_apercu:"", dernier_message: new Date().toISOString(), non_lus:0, favori:false };
     try {
       const { data } = await api.post("/messages", { userId });
-      const conv = data.conversation || fakeConv;
+      const conv = data.conversation;
       setConvs(prev => [conv, ...prev]);
       openConv(conv);
-    } catch {
-      setConvs(prev => [fakeConv, ...prev]);
-      openConv(fakeConv);
-      setMessages([]);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Échec de la création de la conversation.");
     }
   };
 
