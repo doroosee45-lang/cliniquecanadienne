@@ -3,6 +3,7 @@
 
 
 import { useState, useEffect, useCallback, useRef, useId, useMemo, memo } from "react";
+import { useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchInvoices, fetchFinanceStats, createInvoice, recordPayment,
@@ -540,6 +541,7 @@ const EMPTY_PAIEMENT  = { facture_id: "", facture_num: "", patient: "", montant_
 // ═══════════════════════════════════════════════════════════
 export default function Finance() {
   const dispatch = useDispatch();
+  const location = useLocation();
   const reduxInvoices = useSelector(selectInvoices);
   const reduxStats = useSelector(selectFinanceStats);
 
@@ -588,6 +590,16 @@ export default function Finance() {
   const [filterStatutFact, setFilterStatutFact] = useState("");
   const [searchDep, setSearchDep] = useState("");
   const [filterCatDep, setFilterCatDep] = useState("");
+
+  // AUDIT-ANALYTICS-P4 — navigation entrante depuis une alerte Analytics
+  // ("Consulter" sur des factures impayées agrégées, sans entité unique
+  // donc sans acquittement possible) : applique le filtre/onglet transmis
+  // via navigate(..., {state}), réutilise exactement le même pattern déjà
+  // en place pour le KPI interne "Factures impayées" plus bas.
+  useEffect(() => {
+    if (location.state?.filterStatutFact) setFilterStatutFact(location.state.filterStatutFact);
+    if (location.state?.tab) setTab(location.state.tab);
+  }, [location.state]);
 
   // Recherche patient pour formulaire facture
   const [patientResults, setPatientResults] = useState([]);

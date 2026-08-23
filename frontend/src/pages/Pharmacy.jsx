@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useId } from "react";
+import { useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchMedications, fetchInventory, fetchStockAlerts, createMedication, updateMedication, addStockMovement,
@@ -376,6 +377,7 @@ function CmdBadge({ statut }) {
 // ─── MAIN ────────────────────────────────────────────────────
 export default function Pharmacie() {
   const dispatch = useDispatch();
+  const location = useLocation();
   const reduxMeds = useSelector(selectMedications);
   const reduxInventory = useSelector(selectPharmacyInventory);
   const reduxAlerts = useSelector(selectStockAlerts);
@@ -408,6 +410,16 @@ export default function Pharmacie() {
   const [search, setSearch]   = useState("");
   const [filterCat, setFilterCat] = useState("");
   const [filterSt, setFilterSt]   = useState("");
+
+  // AUDIT-ANALYTICS-P4 — navigation entrante depuis une alerte Analytics
+  // ("Consulter" sur une rupture de stock agrégée, sans entité unique donc
+  // sans acquittement possible) : applique le filtre/onglet transmis via
+  // navigate(..., {state}), réutilise exactement le même pattern déjà en
+  // place pour les KPI internes (ex. onClick du KPI "Ruptures" plus bas).
+  useEffect(() => {
+    if (location.state?.filterStatut) setFilterSt(location.state.filterStatut);
+    if (location.state?.tab) setTab(location.state.tab);
+  }, [location.state]);
   const [currentMed, setCurrentMed] = useState(null);
   const [viewMode, setViewMode]   = useState("grid");
   const [photoFile, setPhotoFile] = useState(null);

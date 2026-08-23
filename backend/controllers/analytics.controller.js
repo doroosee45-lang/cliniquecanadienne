@@ -448,6 +448,7 @@ exports.getReport = async (req, res, next) => {
       factures_impayees_count,
       pharmaStats,
       med_ruptures,
+      labo_resolues_mois,
     ] = await Promise.all([
       // Charts
       safeAggregate(Consultation, [
@@ -525,6 +526,13 @@ exports.getReport = async (req, res, next) => {
         { $group: { _id: '$statut', count: { $sum: 1 } } },
       ]),
       safeCount(Medication, { statut: 'rupture' }),
+      // AUDIT-ANALYTICS-P4 — "Résolues ce mois" (Alertes) : compte réel des
+      // résultats labo acquittés sur le mois civil en cours, remplaçant le
+      // 12 codé en dur. Seul le mécanisme d'acquittement labo est réel
+      // aujourd'hui (acquitte_par/acquitte_at) ; les alertes agrégées
+      // (rupture stock, occupation, factures impayées) n'ont pas d'action de
+      // résolution individuelle, donc pas de contrepartie ici.
+      safeCount(LabResult, { acquitte_par: { $ne: null }, acquitte_at: { $gte: moisDebut } }),
     ]);
 
     // ── Revenus par service
@@ -570,23 +578,31 @@ exports.getReport = async (req, res, next) => {
     const taux_occupation = total_rooms > 0 ? Math.round((hospit_en_cours / total_rooms) * 100) : 0;
 
     // ── Alertes médicales
+    // AUDIT-ANALYTICS-P4 — entite_id/entite_type ajoutés pour que le
+    // frontend puisse distinguer une alerte réellement acquittable
+    // individuellement (labresult, via le mécanisme d'acquittement déjà
+    // réel de laboratory.controller.js::acquit) d'une alerte agrégée sans
+    // entité unique (pharmacy_rupture, finance_impayees,
+    // hospitalisation_occupation) — celles-ci ne peuvent que router vers
+    // le module concerné, jamais être "traitées" en un clic.
     const alertes_medicales = labo_critiques.map(l => ({
       type: 'danger', icon: '🔬',
       titre:  `Résultat critique — ${l.patient_nom || (l.patient ? `${l.patient.prenom} ${l.patient.nom}` : 'Patient')}`,
       detail: 'Résultat biologique anormal nécessitant une attention immédiate.',
       heure:  new Date(l.createdAt).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }),
+      entite_type: 'labresult', entite_id: l._id.toString(),
     }));
     if (med_ruptures > 0) {
-      alertes_medicales.push({ type:'warn', icon:'💊', titre:`${med_ruptures} médicament(s) en rupture de stock`, detail:'Stock pharmacie insuffisant — réapprovisionnement requis.', heure:'Maintenant' });
+      alertes_medicales.push({ type:'warn', icon:'💊', titre:`${med_ruptures} médicament(s) en rupture de stock`, detail:'Stock pharmacie insuffisant — réapprovisionnement requis.', heure:'Maintenant', entite_type: 'pharmacy_rupture' });
     }
 
     // ── Alertes admin
     const alertes_admin = [];
     if (factures_impayees_count > 0) {
-      alertes_admin.push({ type:'warn', icon:'💰', titre:`${factures_impayees_count} factures impayées`, detail:'Factures en attente de règlement.', heure:"Aujourd'hui" });
+      alertes_admin.push({ type:'warn', icon:'💰', titre:`${factures_impayees_count} factures impayées`, detail:'Factures en attente de règlement.', heure:"Aujourd'hui", entite_type: 'finance_impayees' });
     }
     if (taux_occupation > 80) {
-      alertes_admin.push({ type:'danger', icon:'🛏️', titre:`Taux d'occupation élevé (${taux_occupation}%)`, detail:"Capacité d'accueil presque atteinte.", heure:'Maintenant' });
+      alertes_admin.push({ type:'danger', icon:'🛏️', titre:`Taux d'occupation élevé (${taux_occupation}%)`, detail:"Capacité d'accueil presque atteinte.", heure:'Maintenant', entite_type: 'hospitalisation_occupation' });
     }
 
     // ── Pharma chart (statut distribution)
@@ -621,6 +637,7 @@ exports.getReport = async (req, res, next) => {
         top_medecins,
         alertes_medicales,
         alertes_admin,
+        alertes_resolues_mois: labo_resolues_mois,
         perf_indicateurs: [
           { label:'Taux complétion consultations', val:taux_completion, unit:'%',   color:'#0EA5A0', good:taux_completion>=80,  icon:'✅' },
           { label:'Taux occupation lits',          val:taux_occupation, unit:'%',   color:taux_occupation>85?'#DC2626':taux_occupation>70?'#D97706':'#059669', good:taux_occupation<=85, icon:'🛏️' },

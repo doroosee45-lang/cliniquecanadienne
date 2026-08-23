@@ -1,5 +1,7 @@
 ﻿import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
+import { useAuth } from '../contexts/AuthContext';
 import {
   fetchAnalyticsReport, fetchFinancialReport, fetchPatientStats, fetchKpis,
   selectAnalyticsChartData, selectFinancialData, selectPatientStats,
@@ -349,6 +351,8 @@ const DEMO_PERF = [];
 // ─── MAIN ───────────────────────────────────────────────────
 export default function Analytics() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { user: authUser } = useAuth() || {};
   const reduxChartData    = useSelector(selectAnalyticsChartData);
   const reduxFinancialData= useSelector(selectFinancialData);
   const reduxLoading      = useSelector(selectAnalyticsLoading);
@@ -554,6 +558,43 @@ export default function Analytics() {
       toast.error(err?.response?.data?.message || "Erreur lors de l'envoi du rapport.");
     } finally {
       setSendingReport(false);
+    }
+  };
+
+  // AUDIT-ANALYTICS-P4 — les 2 boutons "Traiter" (alertes médicales /
+  // administratives) ne faisaient qu'un toast.success factice, aucune
+  // action réelle. Deux cas distincts selon entite_type (voir
+  // analytics.controller.js::getReport) :
+  //  - 'labresult' : entité unique réelle → acquittement réel via le
+  //    mécanisme déjà existant (PUT /laboratory/:id/acquit), gaté côté
+  //    client sur le rôle réel de l'utilisateur (superadmin/medecin,
+  //    identique à l'authorize() de cette route — jamais élargi ici) car
+  //    /analytics autorise aussi adminclinique, qui serait rejeté (403)
+  //    par le vrai endpoint d'acquittement.
+  //  - alertes agrégées (pharmacy_rupture, finance_impayees,
+  //    hospitalisation_occupation) : pas d'entité unique, donc pas
+  //    d'acquittement possible — "Consulter" navigue vers le module
+  //    concerné (avec filtre déjà pré-appliqué où le module le permet),
+  //    jamais un verbe qui laisserait croire qu'un clic "traite" l'alerte.
+  const canAcquitLab = authUser && ['superadmin', 'medecin'].includes(authUser.role);
+
+  const handleAcquitLab = async (id) => {
+    try {
+      await api.put(`/laboratory/${id}/acquit`);
+      toast.success('✅ Résultat critique acquitté');
+      dispatch(fetchAnalyticsReport({ type: 'global', periode }));
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'acquittement.");
+    }
+  };
+
+  const handleConsulterAlerte = (entite_type) => {
+    if (entite_type === 'pharmacy_rupture') {
+      navigate('/pharmacy', { state: { filterStatut: 'rupture', tab: 'alertes' } });
+    } else if (entite_type === 'finance_impayees') {
+      navigate('/finance', { state: { filterStatutFact: 'non_paye', tab: 'facturation' } });
+    } else if (entite_type === 'hospitalisation_occupation') {
+      navigate('/hospitalization');
     }
   };
 
@@ -1398,7 +1439,7 @@ export default function Analytics() {
                   { color:"red",    val:DEMO_ALERTES_MED.filter(a=>a.type==="danger").length + DEMO_ALERTES_ADM.filter(a=>a.type==="danger").length, label:"Critiques", urgent:true },
                   { color:"orange", val:DEMO_ALERTES_MED.filter(a=>a.type==="warn").length + DEMO_ALERTES_ADM.filter(a=>a.type==="warn").length, label:"Avertissements" },
                   { color:"blue",   val:DEMO_ALERTES_MED.filter(a=>a.type==="info").length, label:"Informations" },
-                  { color:"green",  val:12, label:"Résolues ce mois" },
+                  { color:"green",  val:charts.alertes_resolues_mois || 0, label:"Résolues ce mois" },
                 ].map((k,i) => (
                   <div key={i} className={`anl-kpi ${k.color} fu`}>
                     {k.urgent && <div className="akpi-dot" />}
@@ -1426,7 +1467,17 @@ export default function Analytics() {
                         </div>
                         <div style={{ display:"flex", flexDirection:"column", gap:4, flexShrink:0 }}>
                           <Badge cls={al.type==="danger"?"red":al.type==="warn"?"orange":"blue"}>{al.type==="danger"?"🚨 Critique":al.type==="warn"?"⚠ Alerte":"ℹ Info"}</Badge>
-                          <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:10, padding:"3px 8px" }} onClick={() => toast.success("✅ Alerte marquée comme traitée")}>Traiter</button>
+                          {al.entite_type === "labresult" ? (
+                            <button
+                              className="abtn abtn-ghost abtn-sm"
+                              style={{ fontSize:10, padding:"3px 8px" }}
+                              disabled={!canAcquitLab}
+                              title={canAcquitLab ? "Acquitter ce résultat critique" : "Réservé aux médecins et super administrateurs"}
+                              onClick={() => handleAcquitLab(al.entite_id)}
+                            >Acquitter</button>
+                          ) : (
+                            <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:10, padding:"3px 8px" }} onClick={() => handleConsulterAlerte(al.entite_type)}>Consulter</button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1450,7 +1501,7 @@ export default function Analytics() {
                         </div>
                         <div style={{ display:"flex", flexDirection:"column", gap:4, flexShrink:0 }}>
                           <Badge cls={al.type==="danger"?"red":"orange"}>{al.type==="danger"?"🚨 Critique":"⚠ Alerte"}</Badge>
-                          <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:10, padding:"3px 8px" }} onClick={() => toast.success("✅ Alerte traitée")}>Traiter</button>
+                          <button className="abtn abtn-ghost abtn-sm" style={{ fontSize:10, padding:"3px 8px" }} onClick={() => handleConsulterAlerte(al.entite_type)}>Consulter</button>
                         </div>
                       </div>
                     ))}
