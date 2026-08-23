@@ -18,7 +18,7 @@ const Echographie    = require('../models/Echographie');
 const ArchiveEntry   = require('../models/ArchiveEntry');
 const Depense        = require('../models/Depense');
 const Ambulance      = require('../models/Ambulance');
-const Conversation   = require('../models/Conversation');
+const Message        = require('../models/Message');
 const Service        = require('../models/Service');
 const mail           = require('../utils/mail');
 const { logAction, escapeRegex } = require('../utils/helpers');
@@ -153,6 +153,23 @@ function computeAvgResponseTimeMin(conversations, depuis, fin) {
   }
   if (samples.length === 0) return null;
   return Math.round((samples.reduce((a, b) => a + b, 0) / samples.length) * 10) / 10;
+}
+
+// AUDIT-ELEVE-5 — regroupe des documents Message (collection dédiée depuis
+// la migration, chacun une ligne indépendante) par conversation_id, pour
+// reconstituer la forme {messages:[...]} que computeAvgResponseTimeMin
+// attend déjà ci-dessus — sa signature reste inchangée (voir
+// tests/analyticsPhase5.test.js, qui l'appelle directement avec cette
+// forme) : seule la source des messages a changé, jamais la fonction de
+// calcul elle-même.
+function groupMessagesByConversation(messages) {
+  const byConv = new Map();
+  for (const m of messages) {
+    const key = m.conversation_id.toString();
+    if (!byConv.has(key)) byConv.set(key, []);
+    byConv.get(key).push(m);
+  }
+  return Array.from(byConv.values()).map(msgs => ({ messages: msgs }));
 }
 
 // AUDIT-ANALYTICS-P3 — remplace la section "Recommandations IA" de
@@ -357,14 +374,16 @@ exports.getStats = async (req, res, next) => {
       safeAggregate(Ambulance, [
         { $group: { _id: '$statut', count: { $sum: 1 } } },
       ]),
-      // ── Messages
-      safeAggregate(Conversation, [
-        { $unwind: '$messages' },
-        { $match: { 'messages.date_envoi': { $gte: depuis, $lte: fin } } },
-        { $count: 'count' },
-      ]),
-      Conversation.find({ messages: { $elemMatch: { date_envoi: { $gte: depuis, $lte: fin } } } })
-        .select('messages').lean().catch(() => []),
+      // ── Messages — AUDIT-ELEVE-5 : Conversation.messages (tableau
+      // embarqué) migré vers une collection Message dédiée. safeCount
+      // remplace l'aggregate $unwind (plus simple et plus efficace, un
+      // vrai countDocuments indexé au lieu de dérouler tout le tableau) ;
+      // le find() ci-dessous alimente toujours computeAvgResponseTimeMin,
+      // via groupMessagesByConversation pour reconstituer la forme
+      // {messages:[...]} attendue par cette fonction inchangée.
+      safeCount(Message, { date_envoi: { $gte: depuis, $lte: fin } }),
+      Message.find({ date_envoi: { $gte: depuis, $lte: fin } })
+        .select('conversation_id expediteur date_envoi').lean().catch(() => []),
       // ── Finance (AUDIT-ANALYTICS-P7 — service_label, best-effort ; pas de
       // champ médecin sur Invoice/Depense — jamais filtré par médecin,
       // disclosed. Depense n'a aucun des deux champs — reste global.)
@@ -436,8 +455,10 @@ exports.getStats = async (req, res, next) => {
     const ambu_missions_periode = ambu_missions_result[0]?.count || 0;
     const ambuStatutMap = {}; ambu_statuts.forEach(({ _id, count }) => { if (_id) ambuStatutMap[_id] = count; });
 
-    const msg_volume_periode = msg_volume_result[0]?.count || 0;
-    const msg_temps_reponse_moyen_min = computeAvgResponseTimeMin(msg_conversations_periode, depuis, fin);
+    // AUDIT-ELEVE-5 — msg_volume_result est désormais un nombre direct
+    // (safeCount), plus le tableau [{count}] renvoyé par l'ancien aggregate.
+    const msg_volume_periode = msg_volume_result;
+    const msg_temps_reponse_moyen_min = computeAvgResponseTimeMin(groupMessagesByConversation(msg_conversations_periode), depuis, fin);
 
     // AUDIT-ANALYTICS-P2 — trends réels "vs période précédente" : jamais une
     // évolution inventée (même principe que realTrend/resolveGlobalPeriod,
@@ -1206,3 +1227,4 @@ exports.getGlobalStats  = cacheStats('analyticsGlobalStats', (req) => req.query.
 // une réimplémentation séparée pour les tests.
 exports.computeRecommandations = computeRecommandations;
 exports.computeAvgResponseTimeMin = computeAvgResponseTimeMin;
+exports.groupMessagesByConversation = groupMessagesByConversation;

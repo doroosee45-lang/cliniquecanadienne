@@ -13,6 +13,7 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
   await mongoose.connect(process.env.MONGO_URI);
   const msgC = require('../controllers/messages.controller');
   const Conversation = require('../models/Conversation');
+  const Message = require('../models/Message');
   const User = require('../models/User');
 
   const stamp = Date.now();
@@ -49,6 +50,7 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
       assert.equal(body.conversation.nom, `Groupe Test ${stamp}`);
       groupId = body.conversation._id;
       cleanup.push(() => Conversation.findByIdAndDelete(groupId));
+      cleanup.push(() => Message.deleteMany({ conversation_id: groupId }));
 
       const relu = await Conversation.findById(groupId).lean();
       assert.equal(relu.description, 'Une description', 'description doit être réellement persistée');
@@ -71,7 +73,7 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
     await t.test('createGroup — utilisable immédiatement avec sendMessage/getMessages existants', async () => {
       const { status } = await call(msgC.sendMessage, { user: membre2, params: { id: groupId }, body: { contenu: `Message groupe ${stamp}` } });
       assert.equal(status, 200);
-      const { body } = await call(msgC.getMessages, { user: createur, params: { id: groupId } });
+      const { body } = await call(msgC.getMessages, { user: createur, params: { id: groupId }, query: {} });
       assert.ok(body.messages.some(m => m.contenu === `Message groupe ${stamp}`), 'le message envoyé dans le groupe doit être lisible par un autre membre');
     });
 
@@ -97,8 +99,7 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
       assert.equal(body.action, 'ajoutee');
       assert.equal(body.reactions.length, 1);
 
-      const relu = await Conversation.findById(groupId).lean();
-      const reluMsg = relu.messages.find(m => m._id.toString() === msgId.toString());
+      const reluMsg = await Message.findById(msgId).lean();
       assert.equal(reluMsg.reactions.length, 1, 'la réaction doit être réellement persistée (relecture base fraîche)');
       assert.equal(reluMsg.reactions[0].emoji, '👍');
       assert.equal(reluMsg.reactions[0].utilisateur.toString(), membre1._id.toString());
@@ -110,8 +111,7 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
       assert.equal(body.action, 'retiree');
       assert.equal(body.reactions.length, 0);
 
-      const relu = await Conversation.findById(groupId).lean();
-      const reluMsg = relu.messages.find(m => m._id.toString() === msgId.toString());
+      const reluMsg = await Message.findById(msgId).lean();
       assert.equal(reluMsg.reactions.length, 0, 'la réaction retirée doit disparaître de la base, pas juste de la réponse');
     });
 
@@ -136,8 +136,8 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
       const { status } = await call(msgC.deleteMessage, { user: membre1, params: { msgId: toDeleteId } });
       assert.equal(status, 200);
 
-      const relu = await Conversation.findById(groupId).lean();
-      assert.ok(!relu.messages.some(m => m._id.toString() === toDeleteId.toString()), 'le message doit être absent après relecture depuis MongoDB');
+      const reluMsg = await Message.findById(toDeleteId).lean();
+      assert.equal(reluMsg, null, 'le message doit être absent après relecture depuis MongoDB');
     });
 
     // AUDIT-MESSAGES-PhaseC
@@ -164,8 +164,8 @@ test('messages.controller — créer un groupe, réactions, suppression (base r�
       await msgC.deleteMessage({ user: membre2, params: { msgId: protectedId } }, res, (e) => { if (e) throw e; });
       assert.equal(status, 403);
 
-      const relu = await Conversation.findById(groupId).lean();
-      assert.ok(relu.messages.some(m => m._id.toString() === protectedId.toString()), 'le message ne doit pas avoir été supprimé par un non-auteur');
+      const reluMsg = await Message.findById(protectedId).lean();
+      assert.ok(reluMsg, 'le message ne doit pas avoir été supprimé par un non-auteur');
     });
 
     await t.test('deleteMessage — un utilisateur extérieur reçoit 403', async () => {
@@ -263,6 +263,7 @@ test('messages.controller — getHistorique (base réelle)', { skip: !process.en
   await mongoose.connect(process.env.MONGO_URI);
   const msgC = require('../controllers/messages.controller');
   const Conversation = require('../models/Conversation');
+  const Message = require('../models/Message');
   const User = require('../models/User');
 
   const stamp = Date.now();
@@ -278,15 +279,15 @@ test('messages.controller — getHistorique (base réelle)', { skip: !process.en
 
   let convId;
   try {
-    const conv = await Conversation.create({
-      type: 'direct', membres: [medecin._id, infirmier._id],
-      messages: [
-        { expediteur: medecin._id, contenu: `Envoyé par moi ${stamp}`, lu_par: [medecin._id] },
-        { expediteur: infirmier._id, contenu: `Reçu ${stamp} 1`, lu_par: [infirmier._id] },
-        { expediteur: infirmier._id, contenu: `Reçu ${stamp} 2`, lu_par: [infirmier._id] },
-      ],
-    });
+    // AUDIT-ELEVE-5 — messages créés dans la collection Message dédiée
+    // (plus Conversation.messages, migré).
+    const conv = await Conversation.create({ type: 'direct', membres: [medecin._id, infirmier._id] });
     convId = conv._id;
+    await Message.create([
+      { conversation_id: convId, expediteur: medecin._id, contenu: `Envoyé par moi ${stamp}`, lu_par: [medecin._id] },
+      { conversation_id: convId, expediteur: infirmier._id, contenu: `Reçu ${stamp} 1`, lu_par: [infirmier._id] },
+      { conversation_id: convId, expediteur: infirmier._id, contenu: `Reçu ${stamp} 2`, lu_par: [infirmier._id] },
+    ]);
 
     await t.test('KPIs réels : envoyés/reçus corrects, scopés à mes conversations', async () => {
       const { status, body } = await call(msgC.getHistorique, { user: medecin });
@@ -354,6 +355,7 @@ test('messages.controller — getHistorique (base réelle)', { skip: !process.en
       }
     });
   } finally {
+    if (convId) await Message.deleteMany({ conversation_id: convId });
     if (convId) await Conversation.findByIdAndDelete(convId);
     await User.findByIdAndDelete(medecin._id);
     await User.findByIdAndDelete(infirmier._id);

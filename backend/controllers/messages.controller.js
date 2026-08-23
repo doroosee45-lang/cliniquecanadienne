@@ -1,4 +1,5 @@
 const Conversation = require('../models/Conversation');
+const Message = require('../models/Message');
 const User = require('../models/User');
 const Patient = require('../models/Patient');
 const AuditLog = require('../models/AuditLog');
@@ -58,13 +59,18 @@ exports.getOrCreate = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-ELEVE-5 — Conversation.messages (tableau embarqué en croissance
+// illimitée) migré vers une collection Message dédiée (voir plan de
+// migration validé). Un message est désormais un insert ciblé + une mise à
+// jour légère de la conversation (aperçu/date), plus jamais une réécriture
+// du document Conversation entier à chaque envoi.
 exports.sendMessage = async (req, res, next) => {
   try {
     const { contenu, pieceJointe } = req.body;
     const conv = await Conversation.findOne({ _id: req.params.id, membres: req.user._id });
     if (!conv) return res.status(403).json({ success: false, message: 'Accès refusé.' });
 
-    const msg = { expediteur: req.user._id, contenu: contenu || '', lu_par: [req.user._id] };
+    const msgData = { conversation_id: conv._id, expediteur: req.user._id, contenu: contenu || '', lu_par: [req.user._id] };
     let apercu = contenu;
     if (pieceJointe) {
       // AUDIT-MESSAGES-PhaseB — "Transférer" ne re-upload jamais un fichier
@@ -74,7 +80,7 @@ exports.sendMessage = async (req, res, next) => {
       if (typeof pieceJointe.path !== 'string' || !pieceJointe.path.startsWith('/uploads/messages/')) {
         return res.status(400).json({ success: false, message: 'Pièce jointe invalide.' });
       }
-      msg.pieceJointe = {
+      msgData.pieceJointe = {
         filename: pieceJointe.filename,
         path: pieceJointe.path,
         type: pieceJointe.type,
@@ -82,35 +88,34 @@ exports.sendMessage = async (req, res, next) => {
       };
       apercu = { audio: '🎙️ Message vocal', image: '🖼️ Image', document: '📄 Document' }[pieceJointe.type] || '📎 Pièce jointe';
     }
-    conv.messages.push(msg);
-    conv.dernier_message = new Date();
-    // AUDIT-MESSAGES-PhaseA — le frontend affichait un aperçu du dernier
-    // message dans la liste des conversations en lisant `dernier_message`
-    // (une Date), jamais le texte réel — champ dédié ajouté au schéma,
-    // renseigné ici.
-    conv.dernier_message_apercu = apercu;
-    await conv.save();
 
-    // Populer l'expéditeur pour l'affichage temps réel
-    await conv.populate('messages.expediteur', 'nom prenom avatar role');
-    const lastMsg = conv.messages[conv.messages.length - 1];
+    let msg = await Message.create(msgData);
+    await msg.populate('expediteur', 'nom prenom avatar role');
+
+    await Conversation.updateOne({ _id: conv._id }, {
+      dernier_message: new Date(),
+      // AUDIT-MESSAGES-PhaseA — le frontend affichait un aperçu du dernier
+      // message dans la liste des conversations en lisant `dernier_message`
+      // (une Date), jamais le texte réel — champ dédié, renseigné ici.
+      dernier_message_apercu: apercu,
+    });
 
     // Émettre le message à la room de la conversation
     emitTo(`conversation:${conv._id}`, 'message:new', {
       conversationId: conv._id,
-      message: lastMsg,
+      message: msg,
     });
     // Notifier aussi chaque membre via sa room privée (badge non-lus)
     conv.membres.forEach(memberId => {
       if (memberId.toString() !== req.user._id.toString()) {
         emitTo(`user:${memberId}`, 'message:new', {
           conversationId: conv._id,
-          message: lastMsg,
+          message: msg,
         });
       }
     });
 
-    res.json({ success: true, message: lastMsg });
+    res.json({ success: true, message: msg });
   } catch (err) { next(err); }
 };
 
@@ -169,38 +174,64 @@ exports.sendAttachment = async (req, res, next) => {
     };
     const apercu = { audio: '🎙️ Message vocal', image: '🖼️ Image', document: '📄 Document' }[pieceJointe.type] || '📎 Pièce jointe';
 
-    const msg = { expediteur: req.user._id, contenu: '', pieceJointe, lu_par: [req.user._id] };
-    conv.messages.push(msg);
-    conv.dernier_message = new Date();
-    conv.dernier_message_apercu = apercu;
-    await conv.save();
+    let msg = await Message.create({ conversation_id: conv._id, expediteur: req.user._id, contenu: '', pieceJointe, lu_par: [req.user._id] });
+    await Conversation.updateOne({ _id: conv._id }, { dernier_message: new Date(), dernier_message_apercu: apercu });
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'messages', entite_id: conv._id, ip: req.ip, message: `Pièce jointe envoyée (${pieceJointe.type})` });
 
-    await conv.populate('messages.expediteur', 'nom prenom avatar role');
-    const lastMsg = conv.messages[conv.messages.length - 1];
+    await msg.populate('expediteur', 'nom prenom avatar role');
 
-    emitTo(`conversation:${conv._id}`, 'message:new', { conversationId: conv._id, message: lastMsg });
+    emitTo(`conversation:${conv._id}`, 'message:new', { conversationId: conv._id, message: msg });
     conv.membres.forEach(memberId => {
       if (memberId.toString() !== req.user._id.toString()) {
-        emitTo(`user:${memberId}`, 'message:new', { conversationId: conv._id, message: lastMsg });
+        emitTo(`user:${memberId}`, 'message:new', { conversationId: conv._id, message: msg });
       }
     });
 
-    res.json({ success: true, message: lastMsg });
+    res.json({ success: true, message: msg });
   } catch (err) { next(err); }
 };
 
+// AUDIT-ELEVE-5 — chargeait auparavant TOUT le tableau embarqué puis
+// réécrivait le document Conversation entier juste pour marquer comme lu —
+// le bug principal ayant motivé cette migration. Pagination par curseur
+// (date_envoi, le plus récent d'abord ; ?before=<date_envoi> pour charger
+// les plus anciens) ; marquage comme lu via une seule mise à jour ciblée
+// sur les messages réellement non lus, jamais une réécriture de document.
+const MESSAGES_PAGE_SIZE = 50;
+
 exports.getMessages = async (req, res, next) => {
   try {
-    const conv = await Conversation.findOne({ _id: req.params.id, membres: req.user._id })
-      .populate('messages.expediteur', 'nom prenom avatar role');
+    const conv = await Conversation.findOne({ _id: req.params.id, membres: req.user._id });
     if (!conv) return res.status(403).json({ success: false, message: 'Accès refusé.' });
-    // Mark as read
-    conv.messages.forEach(m => {
-      if (!m.lu_par.includes(req.user._id)) m.lu_par.push(req.user._id);
-    });
-    await conv.save();
-    res.json({ success: true, messages: conv.messages });
+
+    // Marque TOUTE la conversation comme lue (pas seulement la page chargée
+    // ci-dessous) — même sémantique qu'avant la migration : ouvrir une
+    // conversation la marque intégralement lue, quel que soit le nombre de
+    // messages plus anciens non encore paginés. Fait AVANT la lecture de la
+    // page pour que celle-ci reflète directement le lu_par à jour, sans
+    // correctif local après-coup. Une seule opération ciblée sur les
+    // messages réellement non lus, jamais une réécriture de document.
+    await Message.updateMany(
+      { conversation_id: conv._id, lu_par: { $ne: req.user._id } },
+      { $addToSet: { lu_par: req.user._id } }
+    );
+
+    const limit = Math.min(parseInt(req.query.limit) || MESSAGES_PAGE_SIZE, 200);
+    const filter = { conversation_id: conv._id };
+    if (req.query.before) filter.date_envoi = { $lt: new Date(req.query.before) };
+
+    // +1 pour détecter s'il existe encore des messages plus anciens, sans
+    // requête de comptage séparée.
+    const page = await Message.find(filter)
+      .populate('expediteur', 'nom prenom avatar role')
+      .sort({ date_envoi: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const hasMore = page.length > limit;
+    const messages = page.slice(0, limit).reverse(); // ordre chronologique pour l'affichage
+
+    res.json({ success: true, messages, hasMore });
   } catch (err) { next(err); }
 };
 
@@ -239,29 +270,31 @@ exports.createGroup = async (req, res, next) => {
 // frontend) ; la conversation qui le contient est recherchée d'abord sans
 // filtre de membre pour distinguer "message inexistant" (404) de "existe
 // mais accès refusé" (403).
+// AUDIT-ELEVE-5 — le message est désormais son propre document ; la
+// conversation n'est plus interrogée que pour la vérification d'appartenance
+// (msg.conversation_id), plus jamais parcourue comme parent d'un sous-document.
 exports.toggleReaction = async (req, res, next) => {
   try {
     const { emoji } = req.body;
     if (!emoji) return res.status(400).json({ success: false, message: 'emoji requis.' });
 
-    const conv = await Conversation.findOne({ 'messages._id': req.params.msgId });
-    if (!conv) return res.status(404).json({ success: false, message: 'Message introuvable.' });
-    const msg = conv.messages.id(req.params.msgId);
+    const msg = await Message.findById(req.params.msgId);
     if (!msg) return res.status(404).json({ success: false, message: 'Message introuvable.' });
 
-    const estMembre = conv.membres.some(m => m.toString() === req.user._id.toString());
+    const conv = await Conversation.findById(msg.conversation_id).select('membres');
+    const estMembre = conv && conv.membres.some(m => m.toString() === req.user._id.toString());
     if (!estMembre) return res.status(403).json({ success: false, message: 'Accès refusé.' });
 
     const idx = msg.reactions.findIndex(r => r.emoji === emoji && r.utilisateur.toString() === req.user._id.toString());
     let action;
     if (idx === -1) { msg.reactions.push({ emoji, utilisateur: req.user._id }); action = 'ajoutee'; }
     else { msg.reactions.splice(idx, 1); action = 'retiree'; }
-    await conv.save();
+    await msg.save();
 
     // reactions complet (pas juste le delta) — évite de dupliquer la logique
     // de toggle côté client pour les autres membres qui reçoivent l'évènement.
-    emitTo(`conversation:${conv._id}`, 'message:reaction', {
-      conversationId: conv._id, msgId: msg._id, reactions: msg.reactions, action,
+    emitTo(`conversation:${msg.conversation_id}`, 'message:reaction', {
+      conversationId: msg.conversation_id, msgId: msg._id, reactions: msg.reactions, action,
     });
 
     res.json({ success: true, reactions: msg.reactions, action });
@@ -274,35 +307,38 @@ exports.toggleReaction = async (req, res, next) => {
 // non-membre ou membre non-auteur), comme demandé.
 exports.deleteMessage = async (req, res, next) => {
   try {
-    const conv = await Conversation.findOne({ 'messages._id': req.params.msgId });
-    if (!conv) return res.status(404).json({ success: false, message: 'Message introuvable.' });
-    const msg = conv.messages.id(req.params.msgId);
+    const msg = await Message.findById(req.params.msgId);
     if (!msg) return res.status(404).json({ success: false, message: 'Message introuvable.' });
 
-    const estMembre = conv.membres.some(m => m.toString() === req.user._id.toString());
+    const conv = await Conversation.findById(msg.conversation_id).select('membres');
+    const estMembre = conv && conv.membres.some(m => m.toString() === req.user._id.toString());
     if (!estMembre) {
-      await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: conv._id, ip: req.ip, statut: 'echec', message: 'Tentative de suppression refusée — utilisateur non membre de la conversation' });
+      await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: msg.conversation_id, ip: req.ip, statut: 'echec', message: 'Tentative de suppression refusée — utilisateur non membre de la conversation' });
       return res.status(403).json({ success: false, message: 'Accès refusé.' });
     }
 
     if (msg.expediteur.toString() !== req.user._id.toString()) {
-      await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: conv._id, ip: req.ip, statut: 'echec', message: "Tentative de suppression refusée — utilisateur non auteur du message" });
+      await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: msg.conversation_id, ip: req.ip, statut: 'echec', message: "Tentative de suppression refusée — utilisateur non auteur du message" });
       return res.status(403).json({ success: false, message: "Seul l'auteur peut supprimer ce message." });
     }
 
-    msg.deleteOne();
+    await Message.findByIdAndDelete(msg._id);
     // AUDIT-MESSAGES-PhaseC — dernier_message_apercu n'était jamais recalculé
     // après une suppression : la liste des conversations continuait
     // d'afficher l'aperçu du message supprimé jusqu'au prochain message.
-    const last = conv.messages[conv.messages.length - 1];
-    conv.dernier_message_apercu = last ? (last.contenu || (last.pieceJointe
+    // Recalculé ici depuis le nouveau dernier message réel de la collection
+    // Message (plus un sous-document en fin de tableau).
+    const last = await Message.findOne({ conversation_id: msg.conversation_id }).sort({ date_envoi: -1 });
+    const apercu = last ? (last.contenu || (last.pieceJointe
       ? ({ audio: '🎙️ Message vocal', image: '🖼️ Image', document: '📄 Document' }[last.pieceJointe.type] || '📎 Pièce jointe')
       : '')) : '';
-    if (last) conv.dernier_message = last.date_envoi;
-    await conv.save();
-    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: conv._id, ip: req.ip, message: 'Message supprimé' });
+    await Conversation.updateOne({ _id: msg.conversation_id }, {
+      dernier_message_apercu: apercu,
+      ...(last ? { dernier_message: last.date_envoi } : {}),
+    });
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: msg.conversation_id, ip: req.ip, message: 'Message supprimé' });
 
-    emitTo(`conversation:${conv._id}`, 'message:deleted', { conversationId: conv._id, msgId: req.params.msgId });
+    emitTo(`conversation:${msg.conversation_id}`, 'message:deleted', { conversationId: msg.conversation_id, msgId: req.params.msgId });
 
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -356,37 +392,41 @@ exports.sendPatientEmail = async (req, res, next) => {
 // SEND_EMAIL vers un patient ne sont visibles que par leur propre expéditeur
 // (jamais par un autre membre du personnel), car ils ne sont rattachés à
 // aucune conversation.
+// AUDIT-ELEVE-5 — chargeait auparavant TOUS les messages de TOUTES les
+// conversations de l'utilisateur en mémoire Node pour agréger des
+// compteurs (un second point de lecture non bornée, jamais cité dans le
+// constat initial sur getMessages/getConversations). Remplacé par une
+// vraie agrégation MongoDB sur la collection Message.
 exports.getHistorique = async (req, res, next) => {
   try {
-    const convs = await Conversation.find({ membres: req.user._id })
-      .populate('messages.expediteur', 'service')
-      .lean();
-    const convIds = convs.map(c => c._id.toString());
+    const mesConvs = await Conversation.find({ membres: req.user._id }).select('_id').lean();
+    const convIds = mesConvs.map(c => c._id);
 
-    let messages_envoyes = 0, messages_recus = 0;
-    const parServiceMap = {};
-    convs.forEach(c => {
-      (c.messages || []).forEach(m => {
-        const expId = (m.expediteur?._id || m.expediteur)?.toString();
-        if (expId === req.user._id.toString()) {
-          messages_envoyes += 1;
-        } else {
-          messages_recus += 1;
-          const service = m.expediteur?.service || 'Autre';
-          parServiceMap[service] = (parServiceMap[service] || 0) + 1;
-        }
-      });
-    });
-    const par_service = Object.entries(parServiceMap)
-      .map(([service, count]) => ({ service, count }))
-      .sort((a, b) => b.count - a.count);
+    const [{ counts = [], parService = [] } = {}] = await Message.aggregate([
+      { $match: { conversation_id: { $in: convIds } } },
+      { $lookup: { from: 'users', localField: 'expediteur', foreignField: '_id', as: 'exp' } },
+      { $unwind: { path: '$exp', preserveNullAndEmptyArrays: true } },
+      { $facet: {
+        counts: [
+          { $group: { _id: { $eq: ['$expediteur', req.user._id] }, count: { $sum: 1 } } },
+        ],
+        parService: [
+          { $match: { expediteur: { $ne: req.user._id } } },
+          { $group: { _id: { $ifNull: ['$exp.service', 'Autre'] }, count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+        ],
+      } },
+    ]);
+    const messages_envoyes = counts.find(c => c._id === true)?.count || 0;
+    const messages_recus = counts.find(c => c._id === false)?.count || 0;
+    const par_service = parService.map(s => ({ service: s._id, count: s.count }));
 
     const ICONS  = { CREATE: '👥', DELETE: '🗑️', SEND_SMS: '📱', SEND_EMAIL: '📧' };
     const LABELS = { CREATE: 'Conversation créée', DELETE: 'Message supprimé', SEND_SMS: 'SMS envoyé', SEND_EMAIL: 'Email envoyé' };
     const entries = await AuditLog.find({
       module: 'messages',
       $or: [
-        { action: { $in: ['CREATE', 'DELETE'] }, entite_id: { $in: convIds } },
+        { action: { $in: ['CREATE', 'DELETE'] }, entite_id: { $in: convIds.map(String) } },
         { action: { $in: ['SEND_SMS', 'SEND_EMAIL'] }, utilisateur: req.user._id },
       ],
     }).sort('-createdAt').limit(50).populate('utilisateur', 'nom prenom').lean();
@@ -402,7 +442,7 @@ exports.getHistorique = async (req, res, next) => {
 
     res.json({
       success: true,
-      kpis: { messages_envoyes, messages_recus, conversations_actives: convs.length },
+      kpis: { messages_envoyes, messages_recus, conversations_actives: convIds.length },
       par_service,
       journal,
     });

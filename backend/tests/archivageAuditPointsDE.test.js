@@ -80,6 +80,7 @@ test('Archivage/Audit — Point E : gaps mineurs désormais tracés (base réell
   const Medication = require('../models/Medication');
   const User = require('../models/User');
   const Conversation = require('../models/Conversation');
+  const Message = require('../models/Message');
   const AuditLog = require('../models/AuditLog');
   const patientsC = require('../controllers/patients.controller');
   const pharmacyC = require('../controllers/pharmacy.controller');
@@ -142,6 +143,10 @@ test('Archivage/Audit — Point E : gaps mineurs désormais tracés (base réell
       assert.ok(logRefus, 'un refus d\'envoi de pièce jointe (non membre) doit aussi être tracé en échec');
     });
   } finally {
+    // AUDIT-ELEVE-5 — sendAttachment crée désormais un vrai document Message
+    // (collection dédiée, plus Conversation.messages) : nettoyé ici pour ne
+    // pas laisser de débris de test.
+    for (const c of created.conversations) await Message.deleteMany({ conversation_id: c._id });
     for (const c of created.conversations) await Conversation.findByIdAndDelete(c._id);
     for (const m of created.meds) await Medication.findByIdAndDelete(m._id);
     for (const p of created.patients) await Patient.findByIdAndDelete(p._id);

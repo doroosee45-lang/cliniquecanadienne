@@ -13,6 +13,7 @@ test('messages.controller — les 4 endpoints réellement utilisés (base réell
   await mongoose.connect(process.env.MONGO_URI);
   const msgC = require('../controllers/messages.controller');
   const Conversation = require('../models/Conversation');
+  const Message = require('../models/Message');
   const User = require('../models/User');
 
   const stamp = Date.now();
@@ -43,6 +44,7 @@ test('messages.controller — les 4 endpoints réellement utilisés (base réell
       assert.equal(body.conversation.membres.length, 2);
       convId = body.conversation._id;
       cleanup.push(() => Conversation.findByIdAndDelete(convId));
+      cleanup.push(() => Message.deleteMany({ conversation_id: convId }));
 
       // Rappel avec la même paire — ne doit pas créer une seconde conversation.
       const { body: body2 } = await call(msgC.getOrCreate, { user: userA, body: { userId: userB._id.toString() } });
@@ -66,31 +68,33 @@ test('messages.controller — les 4 endpoints réellement utilisés (base réell
       // expediteur est peuplé (nom/prenom/avatar/role) par sendMessage avant réponse.
       assert.equal(body.message.expediteur._id.toString(), userA._id.toString());
 
-      const relu = await Conversation.findById(convId).lean();
-      assert.equal(relu.messages.length, 1, 'le message doit être réellement persisté en base');
-      assert.equal(relu.messages[0].contenu, `Bonjour ${stamp}`);
+      // AUDIT-ELEVE-5 — persistance vérifiée dans la collection Message
+      // dédiée (plus Conversation.messages, migré).
+      const relu = await Message.find({ conversation_id: convId }).lean();
+      assert.equal(relu.length, 1, 'le message doit être réellement persisté en base');
+      assert.equal(relu[0].contenu, `Bonjour ${stamp}`);
 
       // Autorisation : un tiers non membre ne doit pas pouvoir écrire dans la conversation.
       let statusTiers;
       const resTiers = { status: (c) => { statusTiers = c; return resTiers; }, json: () => {} };
       await msgC.sendMessage({ user: userTiers, params: { id: convId }, body: { contenu: 'Intrusion' } }, resTiers, (e) => { if (e) throw e; });
       assert.equal(statusTiers, 403, 'un utilisateur non membre de la conversation doit recevoir 403');
-      const apresIntrusion = await Conversation.findById(convId).lean();
-      assert.equal(apresIntrusion.messages.length, 1, 'le message du tiers non autorisé ne doit pas avoir été ajouté');
+      const apresIntrusionCount = await Message.countDocuments({ conversation_id: convId });
+      assert.equal(apresIntrusionCount, 1, 'le message du tiers non autorisé ne doit pas avoir été ajouté');
     });
 
     await t.test('getMessages — marque comme lu pour le lecteur, refuse un non-membre (403)', async () => {
-      const { status, body } = await call(msgC.getMessages, { user: userB, params: { id: convId } });
+      const { status, body } = await call(msgC.getMessages, { user: userB, params: { id: convId }, query: {} });
       assert.equal(status, 200);
       assert.equal(body.messages.length, 1);
 
-      const relu = await Conversation.findById(convId).lean();
-      const luPar = relu.messages[0].lu_par.map(id => id.toString());
+      const relu = await Message.findOne({ conversation_id: convId }).lean();
+      const luPar = relu.lu_par.map(id => id.toString());
       assert.ok(luPar.includes(userB._id.toString()), 'userB doit être ajouté à lu_par après avoir lu la conversation');
 
       let statusTiers;
       const resTiers = { status: (c) => { statusTiers = c; return resTiers; }, json: () => {} };
-      await msgC.getMessages({ user: userTiers, params: { id: convId } }, resTiers, (e) => { if (e) throw e; });
+      await msgC.getMessages({ user: userTiers, params: { id: convId }, query: {} }, resTiers, (e) => { if (e) throw e; });
       assert.equal(statusTiers, 403, 'un utilisateur non membre ne doit pas pouvoir lire la conversation');
     });
 

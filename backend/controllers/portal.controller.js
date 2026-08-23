@@ -6,9 +6,8 @@ const ImagingResult= require('../models/ImagingResult');
 const Invoice      = require('../models/Invoice');
 const Notification = require('../models/Notification');
 const Consultation = require('../models/Consultation');
-const Conversation = require('../models/Conversation');
 const User         = require('../models/User');
-const { logAction } = require('../utils/helpers');
+const { logAction, countUnreadConversations } = require('../utils/helpers');
 
 // R-07 — Trouve le dossier patient lié au User connecté. patient_id
 // d'abord : référence directe par ObjectId, stable même si Patient.email
@@ -181,11 +180,9 @@ exports.getDashboard = async (req, res, next) => {
       Consultation.countDocuments({ patient: patient._id }),
       // Même règle que receptionnisteStats (dashboard.controller.js) : un
       // membre de la conversation avec au moins un message qu'il n'a ni
-      // envoyé, ni encore lu.
-      Conversation.countDocuments({
-        membres: req.user._id,
-        messages: { $elemMatch: { lu_par: { $ne: req.user._id }, expediteur: { $ne: req.user._id } } },
-      }),
+      // envoyé, ni encore lu — AUDIT-ELEVE-5, requête factorisée après la
+      // migration de Conversation.messages vers la collection Message.
+      countUnreadConversations(req.user._id),
       Appointment.findOne({ patient: patient._id, date_heure: { $gte: now }, statut: { $in: RDV_ACTIFS } })
         .populate('medecin', 'nom')
         .sort('date_heure'),

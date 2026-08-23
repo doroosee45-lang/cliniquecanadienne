@@ -28,7 +28,6 @@ const Ordonnance     = require('../models/Prescription');
 const User           = require('../models/User');
 const Staff          = require('../models/Staff');
 const Room           = require('../models/Room');
-const Conversation   = require('../models/Conversation');
 // AUDIT-04 — Depense/Commande/AuditLog n'existaient pas (ou n'étaient pas
 // encore alimentés) quand les stubs ci-dessous ont été écrits ; ils le sont
 // désormais (finance.controller.js::createDepense, pharmacy.controller.js::
@@ -40,7 +39,7 @@ const AuditLog       = require('../models/AuditLog');
 const Urgence        = require('../models/Urgence');
 const Pregnancy      = require('../models/Pregnancy');
 const Delivery       = require('../models/Delivery');
-const { escapeRegex } = require('../utils/helpers');
+const { escapeRegex, countUnreadConversations } = require('../utils/helpers');
 
 // ─── Helpers ──────────────────────────────────────────────────
 const todayRange = () => {
@@ -788,12 +787,10 @@ exports.receptionnisteStats = async (req, res, next) => {
       Appointment.countDocuments({ date_heure:{ $gte:start,$lte:end }, statut:'absent' }),
       Patient.countDocuments({ createdAt:{ $gte:start,$lte:end }}),
       // Conversations où l'utilisateur est membre et a au moins un message
-      // non lu qu'il n'a pas lui-même envoyé (Conversation n'a pas de champ
-      // destinataire/lu au niveau racine — ce sont des sous-documents).
-      Conversation.countDocuments({
-        membres: req.user._id,
-        messages: { $elemMatch: { lu_par: { $ne: req.user._id }, expediteur: { $ne: req.user._id } } },
-      }),
+      // non lu qu'il n'a pas lui-même envoyé — AUDIT-ELEVE-5, requête
+      // factorisée (utils/helpers.js::countUnreadConversations) depuis la
+      // migration de Conversation.messages vers la collection Message.
+      countUnreadConversations(req.user._id),
       Appointment.find({ date_heure:{ $gte:new Date() }})
         .populate('patient','nom prenom')
         .populate('medecin','nom prenom')

@@ -426,6 +426,11 @@ export default function Messagerie() {
   const [selected, setSelected]     = useState(null);
   const [messages, setMessages]     = useState([]);
   const [messagesError, setMessagesError] = useState(false);
+  // AUDIT-ELEVE-5 — Conversation.messages migré vers une collection Message
+  // paginée par curseur (voir plan de migration validé) : GET /messages/:id
+  // ne renvoie plus l'historique complet mais une page + hasMore.
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(true);
   const [sending, setSending]       = useState(false);
@@ -596,9 +601,11 @@ export default function Messagerie() {
     setSelected(conv);
     setShowInfo(false);
     setMessagesError(false);
+    setHasMoreMessages(false);
     try {
       const { data } = await api.get(`/messages/${conv._id}`);
       setMessages(data.messages || []);
+      setHasMoreMessages(!!data.hasMore);
     } catch {
       // AUDIT-MESSAGES-PhaseC — un échec de chargement affichait buildDemoMessages
       // (des messages fabriqués, indiscernables d'une vraie conversation) : même
@@ -612,6 +619,25 @@ export default function Messagerie() {
   };
 
   const retryLoadMessages = () => { if (selected) openConv(selected); };
+
+  // AUDIT-ELEVE-5 — charge la page de messages plus anciens que le premier
+  // message actuellement affiché (curseur before=date_envoi), les préfixe
+  // à l'historique déjà chargé. N'affiche le bouton "Charger les messages
+  // plus anciens" que si hasMoreMessages est vrai (voir rendu plus bas).
+  const loadOlderMessages = async () => {
+    if (!selected || messages.length === 0 || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const before = messages[0].date_envoi;
+      const { data } = await api.get(`/messages/${selected._id}?before=${encodeURIComponent(before)}`);
+      setMessages(prev => [...(data.messages || []), ...prev]);
+      setHasMoreMessages(!!data.hasMore);
+    } catch {
+      toast.error("Échec du chargement des messages plus anciens.");
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   // ── Start new conv ────────────────────────────────────────
   const startConv = async (userId) => {
@@ -1499,6 +1525,13 @@ export default function Messagerie() {
                       {!messagesError && groupedMessages.length === 0 && (
                         <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", color:"var(--cm)", fontSize:13 }}>
                           Aucun message — Commencez la conversation !
+                        </div>
+                      )}
+                      {!messagesError && hasMoreMessages && groupedMessages.length > 0 && (
+                        <div style={{ display:"flex", justifyContent:"center", padding:"8px 0" }}>
+                          <button type="button" className="cbtn cbtn-ghost cbtn-sm" onClick={loadOlderMessages} disabled={loadingOlder}>
+                            {loadingOlder ? "Chargement..." : "Charger les messages plus anciens"}
+                          </button>
                         </div>
                       )}
                       {!messagesError && groupedMessages.map((item) => {

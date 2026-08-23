@@ -94,4 +94,24 @@ const checkAppointmentConflict = async ({ medecin, date_heure, duree_minutes = 3
   return Appointment.findOne(filter);
 };
 
-module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex, checkAppointmentConflict };
+// AUDIT-ELEVE-5 — factorisé depuis dashboard.controller.js/portal.controller.js,
+// qui dupliquaient la même requête Conversation.countDocuments({messages:
+// {$elemMatch:...}}) — devenue invalide après la migration de
+// Conversation.messages vers une collection Message séparée (voir plan de
+// migration validé). Même sémantique qu'avant : nombre de conversations
+// (pas de messages) où l'utilisateur est membre et a au moins un message non
+// lu qu'il n'a pas lui-même envoyé.
+const countUnreadConversations = async (userId) => {
+  const Conversation = require('../models/Conversation');
+  const Message = require('../models/Message');
+  const convIds = await Conversation.find({ membres: userId }).distinct('_id');
+  if (convIds.length === 0) return 0;
+  const unread = await Message.distinct('conversation_id', {
+    conversation_id: { $in: convIds },
+    lu_par: { $ne: userId },
+    expediteur: { $ne: userId },
+  });
+  return unread.length;
+};
+
+module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex, checkAppointmentConflict, countUnreadConversations };

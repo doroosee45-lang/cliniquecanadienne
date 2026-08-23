@@ -28,7 +28,7 @@ test('Archivage/Audit — Point A : tentatives bloquées désormais tracées (ba
   const appointmentsC = require('../controllers/appointments.controller');
 
   const stamp = Date.now();
-  const created = { patients: [], users: [], prescriptions: [], meds: [], conversations: [], appointments: [] };
+  const created = { patients: [], users: [], prescriptions: [], meds: [], conversations: [], appointments: [], messages: [] };
 
   const call = async (fn, req = {}) => {
     let status = 200, body = null;
@@ -99,9 +99,14 @@ test('Archivage/Audit — Point A : tentatives bloquées désormais tracées (ba
       const u2 = await User.create({ email: `t-archa4-2-${stamp}@test.local`, nom: 'U2', prenom: 'B', role: 'medecin', statut: 'actif' });
       const u3 = await User.create({ email: `t-archa4-3-${stamp}@test.local`, nom: 'U3', prenom: 'C', role: 'medecin', statut: 'actif' });
       created.users.push(u1, u2, u3);
-      const conv = await Conversation.create({ type: 'direct', membres: [u1._id, u2._id], messages: [{ expediteur: u1._id, contenu: `T-ARCHA4-${stamp}` }] });
+      // AUDIT-ELEVE-5 — message créé dans la collection Message dédiée
+      // (plus Conversation.messages, migré).
+      const conv = await Conversation.create({ type: 'direct', membres: [u1._id, u2._id] });
       created.conversations.push(conv);
-      const msgId = conv.messages[0]._id.toString();
+      const Message = require('../models/Message');
+      const msg = await Message.create({ conversation_id: conv._id, expediteur: u1._id, contenu: `T-ARCHA4-${stamp}` });
+      created.messages.push(msg);
+      const msgId = msg._id.toString();
 
       const { status: statusNonMembre } = await call(messagesC.deleteMessage, { params: { msgId }, user: u3, ip: '127.0.0.1' });
       assert.equal(statusNonMembre, 403);
@@ -164,6 +169,7 @@ test('Archivage/Audit — Point A : tentatives bloquées désormais tracées (ba
       assert.ok(log, 'le succès doit toujours être tracé normalement (statut:succes)');
     });
   } finally {
+    for (const m of created.messages) await m.deleteOne();
     for (const c of created.conversations) await Conversation.findByIdAndDelete(c._id);
     for (const a of created.appointments) await Appointment.findByIdAndDelete(a._id);
     for (const r of created.prescriptions) await Prescription.findByIdAndDelete(r._id);

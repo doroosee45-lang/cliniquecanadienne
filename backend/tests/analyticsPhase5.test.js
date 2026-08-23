@@ -26,6 +26,7 @@ test('Analytics Phase 5 — Bloc opératoire / Ambulances / Messages (base réel
   const DossierChirurgical = require('../models/DossierChirurgical');
   const Ambulance = require('../models/Ambulance');
   const Conversation = require('../models/Conversation');
+  const Message = require('../models/Message');
   const analyticsC = require('../controllers/analytics.controller');
   const blocC = require('../controllers/blocoperatoireController');
   const { computeAvgResponseTimeMin } = analyticsC;
@@ -102,14 +103,14 @@ test('Analytics Phase 5 — Bloc opératoire / Ambulances / Messages (base réel
       // un message daté dans le futur relatif au moment de la création
       // tomberait hors de la période (>fin) une fois "after" appelé.
       const now = new Date();
-      const conv = await Conversation.create({
-        type: 'direct', membres: [u1, u2],
-        messages: [
-          { expediteur: u1, contenu: 'T-ANLP5-1', date_envoi: new Date(now.getTime() - 10 * 60000) },
-          { expediteur: u2, contenu: 'T-ANLP5-2', date_envoi: new Date(now.getTime() - 5 * 60000) },
-        ],
-      });
+      const conv = await Conversation.create({ type: 'direct', membres: [u1, u2] });
       created.conversations.push(conv);
+      // AUDIT-ELEVE-5 — messages désormais dans la collection Message dédiée
+      // (plus Conversation.messages, migré).
+      await Message.create([
+        { conversation_id: conv._id, expediteur: u1, contenu: 'T-ANLP5-1', date_envoi: new Date(now.getTime() - 10 * 60000) },
+        { conversation_id: conv._id, expediteur: u2, contenu: 'T-ANLP5-2', date_envoi: new Date(now.getTime() - 5 * 60000) },
+      ]);
 
       const { body: after } = await call(analyticsC.getStats, { query: {} });
       assert.equal(after.kpi.messages_volume_periode, before.kpi.messages_volume_periode + 2, 'les 2 vrais messages envoyés maintenant doivent compter dans le volume de la période');
@@ -187,6 +188,7 @@ test('Analytics Phase 5 — Bloc opératoire / Ambulances / Messages (base réel
     for (const d of created.dossiers) await DossierChirurgical.findByIdAndDelete(d._id);
     for (const p of created.patients) await Patient.findByIdAndDelete(p._id);
     for (const a of created.ambulances) await Ambulance.findByIdAndDelete(a._id);
+    for (const c of created.conversations) await Message.deleteMany({ conversation_id: c._id });
     for (const c of created.conversations) await Conversation.findByIdAndDelete(c._id);
     await mongoose.disconnect();
   }
