@@ -246,8 +246,6 @@ const SPECIALITE_BO = {
 // ─── Demo data ────────────────────────────────────────────────
 const DEMO_INTERVENTIONS = [];
 
-const DEMO_SALLES = [];
-
 const CHECKLIST_ITEMS = [
   { id:"identite",       label:"Identité du patient vérifiée (bracelet, carte)" },
   { id:"site_op",        label:"Site opératoire confirmé et marqué" },
@@ -475,6 +473,9 @@ export default function BlocOperatoire() {
 
   // KPIs
   const [kpis, setKpis] = useState({ total:0, programmees:0, en_cours:0, terminees:0, annulees:0, reveil:0, taux_occ:0 });
+  // AUDIT-ANALYTICS-P5 — occupation réelle des 3 salles (GET /blocoperatoire/salles),
+  // remplace DEMO_SALLES=[] jamais alimenté jusqu'ici.
+  const [salles, setSalles] = useState([]);
   const [chartMois, setChartMois]   = useState(["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"]);
   const [chartData, setChartData]   = useState([3, 5, 4, 7, 8, 6, 5, 3, 4, 6, 5, 7]);
 
@@ -504,6 +505,7 @@ export default function BlocOperatoire() {
     try {
       const { data } = await api.get("/blocoperatoire/salles");
       if (data.stats) setKpis(prev => ({ ...prev, ...data.stats }));
+      if (data.salles) setSalles(data.salles);
     } catch (err) {
       console.error("Erreur chargement stats bloc:", err);
     }
@@ -557,6 +559,37 @@ export default function BlocOperatoire() {
       loadInterventions();
     } catch {
       toast.error("Erreur lors de la mise à jour");
+    } finally { setSaving(false); }
+  };
+
+  // AUDIT-ANALYTICS-P5 — capture réelle du début/fin d'occupation de la
+  // salle (salle_entree_at/salle_sortie_at), distincte de la mise à jour
+  // générique updateInterv : boutons dédiés, horodatage pris au moment
+  // réel du clic (jamais saisi/rétrodaté manuellement), même logique que
+  // l'acquittement labo (Analytics Phase 4) — une action, un sens.
+  const entreeSalle = async () => {
+    if (!currentInterv) return;
+    setSaving(true);
+    try {
+      const { data } = await api.put(`/blocoperatoire/${currentInterv._id}/entree-salle`);
+      toast.success("✅ Entrée en salle enregistrée");
+      if (data?.intervention) setCurrentInterv(normalizeInterv(data.intervention));
+      loadStats();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement de l'entrée en salle");
+    } finally { setSaving(false); }
+  };
+
+  const sortieSalle = async () => {
+    if (!currentInterv) return;
+    setSaving(true);
+    try {
+      const { data } = await api.put(`/blocoperatoire/${currentInterv._id}/sortie-salle`);
+      toast.success("✅ Sortie de salle enregistrée");
+      if (data?.intervention) setCurrentInterv(normalizeInterv(data.intervention));
+      loadStats();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement de la sortie de salle");
     } finally { setSaving(false); }
   };
 
@@ -924,51 +957,29 @@ export default function BlocOperatoire() {
                 Salles d'opération — Disponibilité en temps réel
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:16, marginBottom:24 }}>
-                {DEMO_SALLES.map(s => (
-                  <div key={s.id} className={`room-card ${s.statut} bofu`}>
+                {/* AUDIT-ANALYTICS-P5 — occupation réelle (salle_entree_at/
+                    salle_sortie_at), plus DEMO_SALLES=[] jamais alimenté.
+                    Seuls 2 états réels existent : disponible/occupée — pas
+                    de "maintenance" (aucun mécanisme de bascule réel
+                    n'existe pour cet état), pas de carte "réveil" (hors
+                    périmètre, dette technique suivie séparément). */}
+                {salles.map(s => (
+                  <div key={s.id} className={`room-card ${s.statut === "occupee" ? "occupied" : "available"} bofu`}>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
                       <div style={{ fontSize:15, fontWeight:700, color:"var(--bn)" }}>{s.nom}</div>
-                      <Badge cls={s.statut === "available" ? "green" : s.statut === "occupied" ? "red" : "orange"}>
-                        {s.statut === "available" ? "✅ Disponible" : s.statut === "occupied" ? "🔴 Occupée" : "🔧 Maintenance"}
+                      <Badge cls={s.statut === "occupee" ? "red" : "green"}>
+                        {s.statut === "occupee" ? "🔴 Occupée" : "✅ Disponible"}
                       </Badge>
                     </div>
-                    <div style={{ fontSize:12, color:"var(--cm)", marginBottom:8 }}>{s.specialite}</div>
-                    {s.statut === "occupied" && s.patient && (
+                    {s.statut === "occupee" && s.intervention_en_cours && (
                       <div style={{ background:"#FDEDEC", borderRadius:8, padding:"8px 10px", fontSize:12 }}>
                         <span style={{ color:"var(--br)", fontWeight:600 }}>Patient : </span>
-                        <span style={{ color:"var(--bn)" }}>{s.patient}</span>
-                        {s.heure && <span style={{ color:"var(--cm)" }}> · depuis {s.heure}</span>}
-                      </div>
-                    )}
-                    {s.statut === "maintenance" && (
-                      <div style={{ background:"#FEF9E7", borderRadius:8, padding:"8px 10px", fontSize:12, color:"var(--bo)" }}>
-                        {s.maintenance}
-                      </div>
-                    )}
-                    {s.statut === "available" && s.equipement && (
-                      <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>Équipement : {s.equipement}</div>
-                    )}
-                    {s.id === "reveil" && (
-                      <div style={{ background:"#E8F8F5", borderRadius:8, padding:"8px 10px", fontSize:12, marginTop:8 }}>
-                        <span style={{ color:"var(--bt)", fontWeight:600 }}>{s.lits_occupes}/{s.lits} lits occupés</span>
-                        <div style={{ marginTop:4 }}><Prog pct={Math.round(s.lits_occupes / s.lits * 100)} color="var(--bt)" /></div>
+                        <span style={{ color:"var(--bn)" }}>{s.intervention_en_cours}</span>
+                        {s.depuis && <span style={{ color:"var(--cm)" }}> · depuis {new Date(s.depuis).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}</span>}
                       </div>
                     )}
                   </div>
                 ))}
-              </div>
-
-              {/* Occupation rate */}
-              <div className="bo-card">
-                <div className="bo-card-hdr"><h3>📊 Taux d'occupation des salles — 7 derniers jours</h3></div>
-                <div style={{ padding:20 }}>
-                  <BarChart
-                    labels={["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"]}
-                    data={[75, 85, 60, 90, 70, 30, 10]}
-                    color="#17A589"
-                    height={160}
-                  />
-                </div>
               </div>
             </div>
           )}
@@ -1093,6 +1104,31 @@ export default function BlocOperatoire() {
                       <button className="bbtn bbtn-teal" disabled={saving} onClick={() => updateInterv({ statut:currentInterv.statut, date_heure_op:currentInterv.date_heure_op, salle:currentInterv.salle, service_demandeur:currentInterv.service_demandeur })}>
                         {I.save} {saving ? "Enregistrement..." : "Enregistrer"}
                       </button>
+
+                      {/* AUDIT-ANALYTICS-P5 — occupation réelle de salle :
+                          gaté sur une salle réellement suivie (BO-1/BO-2/BO-3,
+                          même config que Blocoperatoire.jsx/getSalles). Le
+                          sélecteur "Salle attribuée" ci-dessus propose encore
+                          "Bloc 1..4"/"Salle urgences" — une incohérence
+                          préexistante (dette technique suivie séparément) :
+                          une salle assignée via ce sélecteur ne peut donc pas
+                          être suivie ici tant qu'elle n'est pas l'un des 3 ID
+                          réels (assignée via le formulaire de création, qui
+                          utilise déjà BO-1/BO-2/BO-3). */}
+                      {['BO-1','BO-2','BO-3'].includes(currentInterv.salle) ? (
+                        <div style={{ display:"flex", gap:10, marginTop:4 }}>
+                          <button className="bbtn bbtn-teal" disabled={saving || !!currentInterv.salle_entree_at} onClick={entreeSalle}>
+                            🚪 {currentInterv.salle_entree_at ? `En salle depuis ${new Date(currentInterv.salle_entree_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}` : "Entrée en salle"}
+                          </button>
+                          <button className="bbtn bbtn-ghost" disabled={saving || !currentInterv.salle_entree_at || !!currentInterv.salle_sortie_at} onClick={sortieSalle}>
+                            🚪 {currentInterv.salle_sortie_at ? `Sortie à ${new Date(currentInterv.salle_sortie_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}` : "Sortie de salle"}
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>
+                          Suivi d'occupation indisponible : assignez une salle réelle (BO-1/BO-2/BO-3) via le formulaire de création pour activer "Entrée"/"Sortie de salle".
+                        </div>
+                      )}
                     </div>
                   </div>
 

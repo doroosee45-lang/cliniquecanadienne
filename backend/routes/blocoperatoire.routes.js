@@ -19,5 +19,8 @@ router.put('/:id',             protect, authorize(...BLOC_MANAGE), boC.updateInt
 // Sous-ressources
 router.post('/:id/cr',         protect, authorize(...BLOC_MANAGE), boC.saveCR);
 router.post('/:id/reveil',     protect, authorize(...BLOC_MANAGE), boC.saveReveil);
+// AUDIT-ANALYTICS-P5 — occupation réelle de salle
+router.put('/:id/entree-salle', protect, authorize(...BLOC_MANAGE), boC.entreeSalle);
+router.put('/:id/sortie-salle', protect, authorize(...BLOC_MANAGE), boC.sortieSalle);
 
 module.exports = router;

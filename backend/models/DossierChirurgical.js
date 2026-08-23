@@ -33,6 +33,14 @@ const dossierChirurgicalSchema = new mongoose.Schema({
   date_intervention_prev: Date,
   date_intervention_reelle: Date,
   salle_prevue: String,
+  // AUDIT-ANALYTICS-P5 — horodatages réels d'occupation physique de la
+  // salle, distincts de date_intervention_prev (planification) et
+  // date_intervention_reelle (marqueur de réalisation) : permettent de
+  // savoir si une salle est occupée EN CE MOMENT, pas seulement si une
+  // intervention y est programmée aujourd'hui. Capturés via les boutons
+  // "Entrée en salle"/"Sortie de salle" (Blocoperatoire.jsx).
+  salle_entree_at: Date,
+  salle_sortie_at: Date,
   duree_intervention_min: Number,
   cr_operatoire: String,
   evolution_immediate: String,

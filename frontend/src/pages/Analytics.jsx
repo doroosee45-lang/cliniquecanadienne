@@ -916,6 +916,65 @@ export default function Analytics() {
                     <div style={{ fontSize:11, color:"var(--am)", marginTop:4, textAlign:"right" }}>{Math.round(kpi.chirurgie_realisees/kpi.chirurgie_programmees*100)}% réalisées</div>
                   </div>
                 </div>
+
+                {/* AUDIT-ANALYTICS-P5 — Bloc opératoire : angle prospectif
+                    (interventions à venir), distinct de la carte "Chirurgie"
+                    ci-dessus qui couvre déjà programmées/réalisées/annulées
+                    sur la période. Taux d'occupation salle en instantané
+                    (salles occupées maintenant / 3), même convention que
+                    taux_occupation hospitalisation — via salle_entree_at/
+                    salle_sortie_at réels (conception validée). */}
+                <div className="anl-card fu d3">
+                  <div className="anl-card-hdr"><h3>🚪 Bloc opératoire</h3></div>
+                  <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
+                    <div className="mini-kpi" style={{ textAlign:"center" }}>
+                      <div className="mini-kpi-val" style={{ color:"var(--ab)", fontSize:22 }}>{kpi.bloc_interventions_a_venir}</div>
+                      <div className="mini-kpi-lbl">Interventions à venir</div>
+                    </div>
+                    <div className="mini-kpi" style={{ textAlign:"center" }}>
+                      <div className="mini-kpi-val" style={{ color: kpi.bloc_taux_occupation_salle > 85?"var(--ar)":kpi.bloc_taux_occupation_salle > 70?"var(--ao)":"var(--ag)", fontSize:22 }}>{kpi.bloc_taux_occupation_salle}%</div>
+                      <div className="mini-kpi-lbl">Occupation salle</div>
+                    </div>
+                  </div>
+                  <div style={{ padding:"0 16px 14px" }}>
+                    <Prog pct={kpi.bloc_taux_occupation_salle} color={kpi.bloc_taux_occupation_salle>85?"#DC2626":kpi.bloc_taux_occupation_salle>70?"#D97706":"#059669"} />
+                  </div>
+                </div>
+
+                {/* Ambulances */}
+                <div className="anl-card fu d3">
+                  <div className="anl-card-hdr"><h3>🚑 Ambulances</h3></div>
+                  <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
+                    <div className="mini-kpi" style={{ textAlign:"center" }}>
+                      <div className="mini-kpi-val" style={{ color:"var(--ab)", fontSize:22 }}>{kpi.ambulances_missions_periode}</div>
+                      <div className="mini-kpi-lbl">Missions (période)</div>
+                    </div>
+                    <div className="mini-kpi" style={{ textAlign:"center" }}>
+                      <div className="mini-kpi-val" style={{ color:"var(--ag)", fontSize:22 }}>{kpi.ambulances_disponibles}</div>
+                      <div className="mini-kpi-lbl">Disponibles</div>
+                    </div>
+                  </div>
+                  <div style={{ padding:"0 16px 14px", display:"flex", gap:12, fontSize:11, color:"var(--am)", justifyContent:"center" }}>
+                    <span>🟠 {kpi.ambulances_en_route} en route</span>
+                    <span>🔴 {kpi.ambulances_occupees} occupées</span>
+                    <span>🔧 {kpi.ambulances_maintenance} maintenance</span>
+                  </div>
+                </div>
+
+                {/* Messages */}
+                <div className="anl-card fu d3">
+                  <div className="anl-card-hdr"><h3>💬 Messages</h3></div>
+                  <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
+                    <div className="mini-kpi" style={{ textAlign:"center" }}>
+                      <div className="mini-kpi-val" style={{ color:"var(--ab)", fontSize:22 }}>{kpi.messages_volume_periode}</div>
+                      <div className="mini-kpi-lbl">Volume d'échanges</div>
+                    </div>
+                    <div className="mini-kpi" style={{ textAlign:"center" }}>
+                      <div className="mini-kpi-val" style={{ color:"var(--at)", fontSize:22 }}>{kpi.messages_temps_reponse_moyen_min != null ? `${kpi.messages_temps_reponse_moyen_min} min` : "—"}</div>
+                      <div className="mini-kpi-lbl">Temps de réponse moyen</div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* ── KPIs FINANCE RÉSUMÉ ── */}

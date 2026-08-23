@@ -252,36 +252,87 @@ exports.saveReveil = async (req, res, next) => {
 };
 
 // ── GET /salles ───────────────────────────────────────────────────────────────
+// AUDIT-ANALYTICS-P5 — occupation réelle (salle_entree_at renseigné,
+// salle_sortie_at vide), remplace l'ancienne heuristique "programmé
+// aujourd'hui" (statut+date_intervention_prev), qui ne reflétait pas si une
+// salle était RÉELLEMENT occupée au moment de l'appel. Conception validée :
+// une salle occupée maintenant = un dossier avec un épisode d'occupation
+// ouvert (entrée capturée, sortie pas encore capturée).
 exports.getSalles = async (req, res, next) => {
   try {
-    const aujourdhui = new Date();
-    aujourdhui.setHours(0, 0, 0, 0);
-    const demain = new Date(aujourdhui); demain.setDate(demain.getDate() + 1);
-
-    // Interventions en cours / prévues ce jour par salle
-    const interventionsAujourd = await DossierChirurgical.find({
-      date_intervention_prev: { $gte: aujourdhui, $lt: demain },
-      statut: { $in: ['preoperatoire', 'opere'] },
-    }).select('salle_prevue statut patient_nom type_intervention duree_intervention_min').lean();
+    const occupees = await DossierChirurgical.find({
+      salle_prevue: { $in: SALLES_BLOC.map(s => s.id) },
+      salle_entree_at: { $ne: null },
+      salle_sortie_at: null,
+    }).select('salle_prevue patient_nom type_intervention salle_entree_at').lean();
 
     const salles = SALLES_BLOC.map(s => {
-      const occupee = interventionsAujourd.find(i => i.salle_prevue === s.id);
+      const occ = occupees.find(o => o.salle_prevue === s.id);
       return {
         ...s,
-        statut:          occupee ? 'occupee' : 'disponible',
-        intervention_en_cours: occupee ? occupee.patient_nom : null,
-        type:            occupee ? occupee.type_intervention : null,
+        statut:                occ ? 'occupee' : 'disponible',
+        intervention_en_cours: occ ? occ.patient_nom : null,
+        type:                  occ ? occ.type_intervention : null,
+        depuis:                occ ? occ.salle_entree_at : null,
       };
     });
 
+    const salles_occupees = salles.filter(s => s.statut === 'occupee').length;
     res.json({
       success: true,
       salles,
       stats: {
-        salles_dispo:   salles.filter(s => s.statut === 'disponible').length,
-        salles_occupees: salles.filter(s => s.statut === 'occupee').length,
+        salles_dispo:    salles.length - salles_occupees,
+        salles_occupees,
+        taux_occ:        Math.round((salles_occupees / salles.length) * 100),
       },
     });
+  } catch (err) { next(err); }
+};
+
+// ── PUT /:id/entree-salle — capture réelle du début d'occupation ─────────────
+exports.entreeSalle = async (req, res, next) => {
+  try {
+    const dossier = await DossierChirurgical.findById(req.params.id);
+    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
+    if (!dossier.salle_prevue) return res.status(400).json({ success: false, message: 'Aucune salle assignée à cette intervention.' });
+    if (dossier.salle_entree_at) return res.status(400).json({ success: false, message: 'Cette intervention est déjà entrée en salle.' });
+
+    const avant = dossier.toObject();
+    dossier.salle_entree_at = new Date();
+    await dossier.save();
+
+    await logAction({
+      utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire',
+      entite_id: dossier._id, ip: req.ip,
+      message: `Entrée en salle ${dossier.salle_prevue} — ${dossier.patient_nom}`,
+      avant, apres: dossier,
+    });
+
+    res.json({ success: true, intervention: dossier });
+  } catch (err) { next(err); }
+};
+
+// ── PUT /:id/sortie-salle — capture réelle de la fin d'occupation ────────────
+exports.sortieSalle = async (req, res, next) => {
+  try {
+    const dossier = await DossierChirurgical.findById(req.params.id);
+    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
+    if (!dossier.salle_entree_at) return res.status(400).json({ success: false, message: "Cette intervention n'est pas encore entrée en salle." });
+    if (dossier.salle_sortie_at) return res.status(400).json({ success: false, message: 'Cette intervention est déjà sortie de salle.' });
+
+    const avant = dossier.toObject();
+    dossier.salle_sortie_at = new Date();
+    await dossier.save();
+
+    await logAction({
+      utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire',
+      entite_id: dossier._id, ip: req.ip,
+      message: `Sortie de salle ${dossier.salle_prevue} — ${dossier.patient_nom}`,
+      avant, apres: dossier,
+    });
+
+    res.json({ success: true, intervention: dossier });
   } catch (err) { next(err); }
 };
 

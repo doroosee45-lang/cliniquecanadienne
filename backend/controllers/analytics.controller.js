@@ -17,12 +17,18 @@ const PediatricConsultation = require('../models/PediatricConsultation');
 const Echographie    = require('../models/Echographie');
 const ArchiveEntry   = require('../models/ArchiveEntry');
 const Depense        = require('../models/Depense');
+const Ambulance      = require('../models/Ambulance');
+const Conversation   = require('../models/Conversation');
 const mail           = require('../utils/mail');
 const { logAction }  = require('../utils/helpers');
 const { logger }     = require('../utils/logger');
 
 const COLORS = ['#DC2626','#D97706','#0EA5A0','#1B4F9E','#7C3AED','#059669','#EC4899','#06B6D4','#84CC16','#F59E0B'];
 const MOIS_LABELS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+// AUDIT-ANALYTICS-P5 — 3 salles de bloc réelles (même config que
+// blocoperatoireController.js::SALLES_BLOC), utilisées comme dénominateur
+// fixe et réel du taux d'occupation salle, jamais un chiffre inventé.
+const NB_SALLES_BLOC = 3;
 
 function startOf(periodeKey) {
   const now = new Date();
@@ -90,6 +96,34 @@ function realTrend(current, previous) {
   if (!previous || previous <= 0) return null;
   const pct = Math.round(((current - previous) / previous) * 1000) / 10;
   return { pct, sens: pct > 0 ? 'up' : pct < 0 ? 'down' : 'neutral' };
+}
+
+// AUDIT-ANALYTICS-P5 — "Temps de réponse moyen" (Messages) : jamais une
+// valeur inventée. Pour chaque conversation, ne considère que les messages
+// réellement envoyés DANS la période demandée, triés chronologiquement ;
+// à chaque changement réel d'expéditeur entre deux messages consécutifs
+// (tous deux dans la période), le delta de temps est un échantillon réel
+// de "temps de réponse". Limite assumée et documentée (validée) : une
+// réponse à un message juste avant la borne de période n'est pas comptée
+// (les deux messages doivent être dans la période) — même logique de
+// disclosure que le reste du chantier plutôt qu'un contournement bricolé.
+// Retourne null (jamais 0) si aucun échantillon réel n'existe sur la
+// période, jamais une moyenne sur un tableau vide.
+function computeAvgResponseTimeMin(conversations, depuis, fin) {
+  const samples = [];
+  for (const conv of conversations) {
+    const msgs = (conv.messages || [])
+      .filter(m => m.date_envoi && new Date(m.date_envoi) >= depuis && new Date(m.date_envoi) <= fin)
+      .sort((a, b) => new Date(a.date_envoi) - new Date(b.date_envoi));
+    for (let i = 1; i < msgs.length; i++) {
+      const prev = msgs[i - 1], cur = msgs[i];
+      if (String(prev.expediteur) !== String(cur.expediteur)) {
+        samples.push((new Date(cur.date_envoi) - new Date(prev.date_envoi)) / 60000);
+      }
+    }
+  }
+  if (samples.length === 0) return null;
+  return Math.round((samples.reduce((a, b) => a + b, 0) / samples.length) * 10) / 10;
 }
 
 // AUDIT-ANALYTICS-P3 — remplace la section "Recommandations IA" de
@@ -199,6 +233,15 @@ exports.getStats = async (req, res, next) => {
       total_rooms,
       // Chirurgie
       chir_total, chir_realisees,
+      // Bloc opératoire (AUDIT-ANALYTICS-P5 — interventions à venir, angle
+      // prospectif distinct de la carte "Chirurgie" déjà existante ; taux
+      // d'occupation salle en instantané, réel, via salle_entree_at/
+      // salle_sortie_at — conception validée)
+      chir_a_venir, salles_occupees_now,
+      // Ambulances (AUDIT-ANALYTICS-P5)
+      ambu_missions_result, ambu_statuts,
+      // Messages (AUDIT-ANALYTICS-P5)
+      msg_volume_result, msg_conversations_periode,
       // Finance
       ca_result, factures_impayees_result, depenses_result,
       // Pharmacie
@@ -243,6 +286,26 @@ exports.getStats = async (req, res, next) => {
       // ── Chirurgie
       safeCount(DossierChirurgical, { createdAt: { $gte: depuis, $lte: fin } }),
       safeCount(DossierChirurgical, { statut: 'opere', date_intervention_reelle: { $gte: depuis, $lte: fin } }),
+      // ── Bloc opératoire
+      safeCount(DossierChirurgical, { statut: 'preoperatoire', date_intervention_prev: { $gte: new Date() } }),
+      safeCount(DossierChirurgical, { salle_entree_at: { $ne: null }, salle_sortie_at: null }),
+      // ── Ambulances
+      safeAggregate(Ambulance, [
+        { $unwind: '$missions' },
+        { $match: { 'missions.date': { $gte: depuis, $lte: fin } } },
+        { $count: 'count' },
+      ]),
+      safeAggregate(Ambulance, [
+        { $group: { _id: '$statut', count: { $sum: 1 } } },
+      ]),
+      // ── Messages
+      safeAggregate(Conversation, [
+        { $unwind: '$messages' },
+        { $match: { 'messages.date_envoi': { $gte: depuis, $lte: fin } } },
+        { $count: 'count' },
+      ]),
+      Conversation.find({ messages: { $elemMatch: { date_envoi: { $gte: depuis, $lte: fin } } } })
+        .select('messages').lean().catch(() => []),
       // ── Finance
       Invoice.aggregate([
         { $match: { statut: { $nin: ['annulee','brouillon'] }, createdAt: { $gte: depuis, $lte: fin } } },
@@ -305,6 +368,14 @@ exports.getStats = async (req, res, next) => {
     const taux_occupation   = total_rooms > 0 ? Math.round((hospit_en_cours / total_rooms) * 100) : 0;
     const valeur_stock_pharma = med_stock_val[0]?.val || 0;
 
+    const bloc_taux_occupation_salle = Math.round((salles_occupees_now / NB_SALLES_BLOC) * 100);
+
+    const ambu_missions_periode = ambu_missions_result[0]?.count || 0;
+    const ambuStatutMap = {}; ambu_statuts.forEach(({ _id, count }) => { if (_id) ambuStatutMap[_id] = count; });
+
+    const msg_volume_periode = msg_volume_result[0]?.count || 0;
+    const msg_temps_reponse_moyen_min = computeAvgResponseTimeMin(msg_conversations_periode, depuis, fin);
+
     // AUDIT-ANALYTICS-P2 — trends réels "vs période précédente" : jamais une
     // évolution inventée (même principe que realTrend/resolveGlobalPeriod,
     // déjà établis pour /analytics/global, réutilisés ici tels quels).
@@ -366,6 +437,18 @@ exports.getStats = async (req, res, next) => {
       chirurgie_programmees: chir_total,
       chirurgie_realisees:   chir_realisees,
       chirurgie_annulees:    Math.max(0, chir_total - chir_realisees - Math.round(chir_total * 0.15)),
+      // Bloc opératoire
+      bloc_interventions_a_venir: chir_a_venir,
+      bloc_taux_occupation_salle: bloc_taux_occupation_salle,
+      // Ambulances
+      ambulances_missions_periode: ambu_missions_periode,
+      ambulances_disponibles: ambuStatutMap.disponible || 0,
+      ambulances_en_route:    ambuStatutMap.en_route    || 0,
+      ambulances_occupees:    ambuStatutMap.occupe      || 0,
+      ambulances_maintenance: ambuStatutMap.maintenance || 0,
+      // Messages
+      messages_volume_periode: msg_volume_periode,
+      messages_temps_reponse_moyen_min: msg_temps_reponse_moyen_min,
       // Finance
       ca_total, depenses, benefice, factures_impayees, montant_paye,
       // Pharmacie
@@ -1059,3 +1142,4 @@ exports.getGlobalStats  = cacheStats('analyticsGlobalStats', (req) => req.query.
 // fonction que celle réellement appelée par getStats() ci-dessus, jamais
 // une réimplémentation séparée pour les tests.
 exports.computeRecommandations = computeRecommandations;
+exports.computeAvgResponseTimeMin = computeAvgResponseTimeMin;
