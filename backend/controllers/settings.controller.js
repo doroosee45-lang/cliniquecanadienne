@@ -61,8 +61,26 @@ exports.getUsers = async (req, res, next) => {
 // un relâchement de la liste blanche.
 const USER_WRITABLE_FIELDS = ['prenom', 'nom', 'email', 'telephone', 'role', 'service', 'statut', 'must_change_password'];
 
+// AUDIT-ADMIN-P2 — role est dans USER_WRITABLE_FIELDS (nécessaire pour que
+// createUser/updateUser fassent leur travail normal sur les 10 rôles
+// professionnels), mais rien n'empêchait jusqu'ici d'y passer 'patient' :
+// un compte créé/modifié par ce chemin générique n'a aucun dossier Patient
+// lié (patient_id), contrairement aux 3 vrais chemins de création patient
+// (patients.controller.js::create, ::activateAdmin, googleAuth.controller.js)
+// qui garantissent tous ce lien. Le seul moyen de créer/faire évoluer un
+// compte patient doit rester ces 3 chemins — jamais ce formulaire staff
+// générique.
+function refuseRolePatient(req, res) {
+  if (req.body.role === 'patient') {
+    res.status(400).json({ success: false, message: "Les comptes patients ne peuvent pas être créés ou modifiés depuis ce formulaire — utilisez le module Patients (création de dossier) ou l'auto-inscription Google." });
+    return true;
+  }
+  return false;
+}
+
 exports.createUser = async (req, res, next) => {
   try {
+    if (refuseRolePatient(req, res)) return;
     // Suite du balayage T5.2 — Administration.jsx envoie le mot de passe
     // saisi sous `mot_de_passe`, le schéma déclare `password` : User.create
     // (req.body) ignorait silencieusement ce champ, créant un compte sans
@@ -81,6 +99,7 @@ exports.createUser = async (req, res, next) => {
 
 exports.updateUser = async (req, res, next) => {
   try {
+    if (refuseRolePatient(req, res)) return;
     // Même correctif que createUser — le formulaire d'édition réutilise le
     // même champ `mot_de_passe` (vide = ne pas changer, non vide = réinitialiser).
     const { mot_de_passe } = req.body;
