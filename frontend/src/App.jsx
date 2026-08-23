@@ -3,13 +3,13 @@
 
 
 
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
 import Layout from './components/Layout/Layout';
 import Spinner from './components/UI/Spinner';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 
 // AUDIT-F3 — aucun découpage de code : toutes les pages étaient importées
 // statiquement, donc chargées d'un bloc dans le bundle principal quel que
@@ -78,6 +78,16 @@ const Portal             = lazy(() => import('./pages/Portal'));
 // ─────────────────────────────────────────────────────────────────────────────
 const ProtectedRoute = ({ children, roles }) => {
   const { user, loading } = useAuth();
+  // AUDIT-ELEVE-1 — la redirection sur rôle non autorisé était totalement
+  // silencieuse : un lien vers une page inaccessible (ex. raccourci de
+  // tableau de bord mal configuré) ramenait à l'accueil sans aucune
+  // indication, indiscernable d'un clic qui n'aurait rien fait. useEffect
+  // (pas un appel direct dans le rendu) pour ne déclencher le toast qu'une
+  // fois par tentative de navigation bloquée, jamais pendant le rendu lui-même.
+  const denied = !loading && !!user && roles && !roles.includes(user.role);
+  useEffect(() => {
+    if (denied) toast.error('Accès non autorisé — vous n\'avez pas les droits pour cette page.');
+  }, [denied]);
 
   if (loading) return <FullPageSpinner />;
   if (!user)   return <Navigate to="/home" replace />;
@@ -98,10 +108,20 @@ const FullPageSpinner = () => (
 // Raccourcis pour les rôles fréquents
 const ROLES = {
   superadmin      : ['superadmin'],
+  // AUDIT-ELEVE-1 — distinct de ROLES.superadmin (partagé avec
+  // analytics-global, volontairement réservé au superadmin seul, voir plus
+  // bas) : le backend (audit.routes.js) autorise déjà adminclinique sur
+  // /audit depuis le chantier Archivage/Audit — cette garde frontend n'avait
+  // jamais été mise en miroir, bloquant l'accès à la page malgré une API
+  // désormais accessible.
+  audit           : ['superadmin', 'adminclinique'],
   admin           : ['superadmin', 'adminclinique'],
   medical         : ['superadmin', 'medecin', 'infirmier'],
   medecin         : ['superadmin', 'medecin'],
-  pharmacie       : ['superadmin', 'adminclinique', 'pharmacien', 'medecin'],
+  // AUDIT-ELEVE-1 — infirmier a déjà un accès backend réel en lecture à ce
+  // module (pharmacy.routes.js::CAN_READ) sans jamais avoir pu atteindre la
+  // page elle-même.
+  pharmacie       : ['superadmin', 'adminclinique', 'pharmacien', 'medecin', 'infirmier'],
   consultation    : ['superadmin', 'medecin', 'infirmier'],
   finance         : ['superadmin', 'adminclinique', 'comptable'],
   hospitalisation : ['superadmin', 'adminclinique', 'medecin', 'infirmier'],
@@ -191,7 +211,7 @@ const AppRoutes = () => {
         <Route path="messages"  element={<Messages />} />
         <Route path="ai"        element={<Guard roles={ROLES.medecin}><AI /></Guard>} />
         <Route path="archive"   element={<Guard roles={ROLES.admin}><Archive /></Guard>} />
-        <Route path="audit"     element={<Guard roles={ROLES.superadmin}><Audit /></Guard>} />
+        <Route path="audit"     element={<Guard roles={ROLES.audit}><Audit /></Guard>} />
         <Route path="analytics" element={<Guard roles={ROLES.admin}><Analytics /></Guard>} />
         {/* Dashboard Global & Analytics — réservé au SuperAdmin uniquement (pas adminclinique) */}
         <Route path="analytics-global" element={<Guard roles={ROLES.superadmin}><AnalyticsGlobal /></Guard>} />
