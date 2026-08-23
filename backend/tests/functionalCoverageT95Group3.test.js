@@ -68,7 +68,7 @@ test('couverture fonctionnelle — pharmacie, hospitalisation (base réelle)', {
       const med = await Medication.create({ nom_commercial: `T95G3-Photo-${stamp}`, forme: 'comprime' });
       cleanup.push(() => Medication.findByIdAndDelete(med._id));
 
-      const { status, body } = await call(pharmaC.uploadPhoto, { params: { id: med._id }, file: { filename: `t95g3-${stamp}.jpg` } });
+      const { status, body } = await call(pharmaC.uploadPhoto, { params: { id: med._id }, file: { filename: `t95g3-${stamp}.jpg` }, user });
       assert.equal(status, 200);
       assert.equal(body.photo, `/uploads/medications/t95g3-${stamp}.jpg`);
       const freshMed = await Medication.findById(med._id);

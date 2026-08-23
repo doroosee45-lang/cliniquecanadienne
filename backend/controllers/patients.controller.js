@@ -480,6 +480,7 @@ exports.uploadPhoto = async (req, res, next) => {
 
     const patient = await Patient.findById(req.params.id);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+    const ancienPhoto = patient.photo;
 
     // Supprimer l'ancienne photo du disque si elle est hébergée sur le serveur
     if (patient.photo?.startsWith('/uploads/')) {
@@ -489,6 +490,7 @@ exports.uploadPhoto = async (req, res, next) => {
 
     patient.photo = `/uploads/patients/${req.file.filename}`;
     await patient.save();
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'patients', entite_id: patient._id, ip: req.ip, avant: { photo: ancienPhoto }, apres: { photo: patient.photo }, message: 'Photo mise à jour' });
 
     res.json({ success: true, photo: patient.photo, patient });
   } catch (err) { next(err); }

@@ -277,8 +277,10 @@ exports.uploadPhoto = async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'Aucun fichier fourni.' });
     const url = `/uploads/medications/${req.file.filename}`;
+    const avant = await Medication.findById(req.params.id).select('photo').lean();
+    if (!avant) return res.status(404).json({ message: 'Médicament introuvable.' });
     const med = await Medication.findByIdAndUpdate(req.params.id, { photo: url }, { new: true });
-    if (!med) return res.status(404).json({ message: 'Médicament introuvable.' });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: med._id, ip: req.ip, avant: { photo: avant.photo }, apres: { photo: url }, message: 'Photo mise à jour' });
     res.json({ success: true, photo: url, medication: med });
   } catch (err) { next(err); }
 };

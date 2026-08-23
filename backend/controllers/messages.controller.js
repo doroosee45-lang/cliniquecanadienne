@@ -151,7 +151,13 @@ exports.toggleArchive = async (req, res, next) => {
 exports.sendAttachment = async (req, res, next) => {
   try {
     const conv = await Conversation.findOne({ _id: req.params.id, membres: req.user._id });
-    if (!conv) return res.status(403).json({ success: false, message: 'Accès refusé.' });
+    if (!conv) {
+      // AUDIT-ARCHIVAGE-E — même garde que deleteMessage (Point A), même
+      // traitement du refus : trouvée en marge en ajoutant le logAction
+      // du succès demandé ci-dessous, corrigée dans le même commit.
+      await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'messages', ip: req.ip, statut: 'echec', message: 'Tentative d\'envoi de pièce jointe refusée — utilisateur non membre de la conversation' });
+      return res.status(403).json({ success: false, message: 'Accès refusé.' });
+    }
     if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier reçu.' });
 
     const { type, duration } = req.body;
@@ -168,6 +174,7 @@ exports.sendAttachment = async (req, res, next) => {
     conv.dernier_message = new Date();
     conv.dernier_message_apercu = apercu;
     await conv.save();
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'messages', entite_id: conv._id, ip: req.ip, message: `Pièce jointe envoyée (${pieceJointe.type})` });
 
     await conv.populate('messages.expediteur', 'nom prenom avatar role');
     const lastMsg = conv.messages[conv.messages.length - 1];

@@ -63,15 +63,15 @@ const MODULES = [
   { module: 'Tableau de bord',              path: '/dashboard',      allow: ALL_ROLES.filter(r => r !== 'patient') },
   { module: 'Intelligence Artificielle',    path: '/ai/stats',       allow: ['superadmin','adminclinique','medecin'] },
   { module: 'Analytics',                    path: '/analytics/stats',allow: ['superadmin','adminclinique'] },
-  // ÉCART DÉTECTÉ vs docs/decisions/baseline-checklist-10x23.md : le
-  // document affirme "OK" pour adminclinique sur le Journal d'audit, mais
-  // audit.routes.js ne restreint qu'à ['superadmin'] sur les 5 routes
-  // (aucune n'inclut adminclinique) — vérifié fraîchement dans le code
-  // actuel avant d'écrire cette table. Ce test reflète le code réel, pas le
-  // document — l'écart lui-même est à trancher avec l'utilisateur (régression
-  // à corriger, ou resserrement délibéré jamais reporté dans le document ?),
-  // pas absorbé silencieusement ici dans un sens ou dans l'autre.
-  { module: 'Journal d\'audit',             path: '/audit',          allow: ['superadmin'] },
+  // AUDIT-ARCHIVAGE-D — écart tranché : le document
+  // docs/decisions/baseline-checklist-10x23.md affirmait "OK" pour
+  // adminclinique sur le Journal d'audit, mais audit.routes.js ne
+  // restreignait qu'à ['superadmin'] sur les 5 routes. Décision explicite
+  // de l'utilisateur (chantier Archivage/Audit) : élargi à
+  // ['superadmin','adminclinique'], conforme au document de référence —
+  // ni une régression à corriger dans l'autre sens, ni un resserrement
+  // délibéré. Ce test reflète désormais le code réel, aligné sur le document.
+  { module: 'Journal d\'audit',             path: '/audit',          allow: ['superadmin', 'adminclinique'] },
   { module: 'Archivage',                    path: '/archives',       allow: ['superadmin','adminclinique'] },
   { module: 'Administration & Paramètres',  path: '/settings',       allow: ['superadmin','adminclinique'] },
 ];
