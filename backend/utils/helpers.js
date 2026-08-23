@@ -110,6 +110,54 @@ const checkAppointmentConflict = async ({ medecin, date_heure, duree_minutes = 3
   return Appointment.findOne(filter);
 };
 
+// AUDIT-M-B4 (Groupe B, Point 4) — checkAppointmentConflict() ci-dessus reste
+// une lecture avant écriture séparée (utile comme garde-fou UX rapide, mais
+// pas atomique) : deux réservations sur des date_heure DIFFÉRENTS mais qui se
+// chevauchent partiellement pouvaient toutes deux la franchir avant que
+// l'une n'ait écrit — l'index unique partiel du modèle (medecin+date_heure)
+// ne protège que le créneau EXACT, jamais un chevauchement partiel. Aucune
+// contrainte d'unicité classique ni de findOneAndUpdate à filtre-garde ne
+// peut exprimer "ce document ne doit chevaucher aucun autre document
+// existant" (c'est une relation entre documents, pas l'état d'un seul).
+// Corrigé par écriture optimiste + relecture + élimination déterministe :
+// après avoir écrit (create ou update), on relit TOUS les rendez-vous actifs
+// en chevauchement pour ce médecin, moi inclus ; s'il y en a plus d'un, seul
+// celui au plus petit _id (ObjectId, donc le premier réellement validé)
+// survit — l'appelant doit annuler sa propre écriture s'il n'est pas ce
+// survivant, AVANT tout effet de bord (email, Socket.IO, log de succès).
+//
+// Correction sous concurrence réelle : une relecture qui s'exécute après
+// qu'une autre écriture a été validée voit TOUJOURS cette écriture — c'est
+// une garantie de cohérence lecture-après-écriture sur le nœud primaire
+// MongoDB, valable quel que soit le nombre de processus Node qui
+// interrogent ce même primaire (PAS une hypothèse "process unique" : rien
+// ici ne repose sur un état en mémoire partagé entre requêtes, contrairement
+// par exemple à utils/dashboardCache.js). La seule vraie dépendance : la
+// comparaison par _id (ObjectId, horodaté côté client au moment de la
+// création) suppose des horloges à peu près synchronisées entre les
+// instances qui génèrent des documents concurrents — vrai en pratique (NTP)
+// y compris en cluster PM2/multi-serveur ; en cas de dérive d'horloge
+// significative, le résultat resterait déterministe et sans double-booking,
+// mais le "gagnant" ne serait plus garanti être le tout premier au sens
+// strict de l'horloge murale — un désagrément d'équité, jamais une
+// corruption de données.
+const isAppointmentRaceWinner = async (apptId) => {
+  const Appointment = require('../models/Appointment');
+  const appt = await Appointment.findById(apptId).select('medecin date_heure duree_minutes statut').lean();
+  if (!appt || ['annule', 'absent'].includes(appt.statut)) return true;
+  const start = new Date(appt.date_heure);
+  const end = new Date(start.getTime() + appt.duree_minutes * 60000);
+  const overlapping = await Appointment.find({
+    medecin: appt.medecin,
+    statut: { $nin: ['annule', 'absent'] },
+    date_heure: { $lt: end },
+    $expr: { $gt: [{ $add: ['$date_heure', { $multiply: ['$duree_minutes', 60000] }] }, start] },
+  }).select('_id').lean();
+  if (overlapping.length <= 1) return true;
+  const survivorId = overlapping.reduce((min, o) => (o._id.toString() < min ? o._id.toString() : min), overlapping[0]._id.toString());
+  return survivorId === apptId.toString();
+};
+
 // AUDIT-ELEVE-5 — factorisé depuis dashboard.controller.js/portal.controller.js,
 // qui dupliquaient la même requête Conversation.countDocuments({messages:
 // {$elemMatch:...}}) — devenue invalide après la migration de
@@ -130,4 +178,4 @@ const countUnreadConversations = async (userId) => {
   return unread.length;
 };
 
-module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex, escapeHtml, checkAppointmentConflict, countUnreadConversations };
+module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex, escapeHtml, checkAppointmentConflict, isAppointmentRaceWinner, countUnreadConversations };

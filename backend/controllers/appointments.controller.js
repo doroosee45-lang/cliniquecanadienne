@@ -2,7 +2,7 @@ const Appointment = require('../models/Appointment');
 const Patient     = require('../models/Patient');
 const User        = require('../models/User');
 const Service     = require('../models/Service');
-const { logAction, paginate, checkAppointmentConflict } = require('../utils/helpers');
+const { logAction, paginate, checkAppointmentConflict, isAppointmentRaceWinner } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail } = require('../utils/mail');
 const { logger } = require('../utils/logger');
@@ -91,6 +91,19 @@ exports.create = async (req, res, next) => {
       }
       throw err;
     }
+
+    // AUDIT-M-B4 — l'index unique ci-dessus ne ferme la course que sur le
+    // créneau EXACT ; un chevauchement PARTIEL (date_heure différents) entre
+    // deux créations concurrentes reste possible à ce stade. Relecture +
+    // élimination déterministe (utils/helpers.js::isAppointmentRaceWinner) —
+    // AVANT tout effet de bord (log de succès, email, Socket.IO), pour
+    // qu'un RDV finalement annulé n'ait jamais notifié le patient.
+    if (!(await isAppointmentRaceWinner(appt._id))) {
+      await Appointment.findByIdAndDelete(appt._id);
+      await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'appointments', ip: req.ip, statut: 'echec', message: `Création annulée après coup — chevauchement partiel détecté en concurrence (médecin ${medecin})` });
+      return res.status(409).json({ success: false, message: 'Conflit: ce créneau chevauche un rendez-vous qui vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+    }
+
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'appointments', entite_id: appt._id, ip: req.ip, message: `Nouveau RDV: ${appt.type}` });
     emitActivity({ module: 'appointments', action: 'Nouveau rendez-vous', detail: appt.type, icon: '📅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
@@ -166,6 +179,22 @@ exports.update = async (req, res, next) => {
       }
       throw err;
     }
+
+    // AUDIT-M-B4 — même trou que create() : chevauchement PARTIEL possible
+    // entre deux mises à jour de créneau concurrentes, non couvert par
+    // l'index unique (créneau exact seulement). Uniquement quand le créneau
+    // a réellement changé (creneauChange), même garde que la pré-vérification
+    // ci-dessus. Élimination : restaure exactement les champs que CETTE
+    // requête avait modifiés à leur valeur d'avant — jamais le reste du
+    // document — AVANT tout effet de bord (log de succès, email, Socket.IO).
+    if (creneauChange && medecinCible && !(await isAppointmentRaceWinner(appt._id))) {
+      const revert = {};
+      for (const k of Object.keys(data)) revert[k] = avant[k];
+      appt = await Appointment.findByIdAndUpdate(req.params.id, revert, { new: true, runValidators: true });
+      await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: avant._id, ip: req.ip, statut: 'echec', message: `Modification annulée après coup — chevauchement partiel détecté en concurrence (médecin ${medecinCible})` });
+      return res.status(409).json({ success: false, message: 'Conflit: ce créneau chevauche un rendez-vous qui vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+    }
+
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: appt._id, ip: req.ip, avant, apres: appt });
 
     // Rendez-vous reporté (date/heure modifiée) ou nouvellement confirmé :

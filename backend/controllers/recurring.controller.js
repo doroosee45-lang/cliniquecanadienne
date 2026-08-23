@@ -1,6 +1,6 @@
 const RecurringProtocol = require('../models/RecurringProtocol');
 const Appointment        = require('../models/Appointment');
-const { logAction, checkAppointmentConflict } = require('../utils/helpers');
+const { logAction, checkAppointmentConflict, isAppointmentRaceWinner } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
 // ── GET ALL ──────────────────────────────────────────────────────────────────
@@ -98,6 +98,18 @@ exports.planifier = async (req, res, next) => {
     } catch (err) {
       if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit: ce créneau vient d\'être réservé par une autre requête. Veuillez réessayer.' });
       throw err;
+    }
+
+    // AUDIT-M-B4 — même trou que appointments.controller.js::create :
+    // chevauchement PARTIEL possible entre deux planifications concurrentes,
+    // non couvert par l'index unique (créneau exact seulement). Élimination
+    // AVANT de faire avancer prochaine_date du protocole ou tout effet de
+    // bord — si ce RDV est annulé après coup, aucune occurrence n'a
+    // réellement été planifiée, prochaine_date ne doit pas bouger.
+    if (!(await isAppointmentRaceWinner(appt._id))) {
+      await Appointment.findByIdAndDelete(appt._id);
+      await logAction({ utilisateur: req.user._id, action: 'PLANIFIER', module: 'recurring', entite_id: protocol._id, ip: req.ip, statut: 'echec', message: `Planification annulée après coup — chevauchement partiel détecté en concurrence (médecin ${protocol.medecin})` });
+      return res.status(409).json({ success: false, message: 'Conflit: ce créneau chevauche un rendez-vous qui vient d\'être réservé par une autre requête. Veuillez réessayer.' });
     }
 
     // Calcule la prochaine occurrence
