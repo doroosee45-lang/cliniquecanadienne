@@ -2,13 +2,11 @@
 const router  = require('express').Router();
 const hrC     = require('../controllers/hr.controller');
 const { protect, authorize } = require('../middleware/auth');
+const { ADMIN, STAFF } = require('../utils/roles');
 
-const ADMIN = ['superadmin','adminclinique'];
 // Toute personne salariée peut soumettre sa propre demande de congé — la
 // vérification de propriété (staff.utilisateur === req.user._id) ou du rôle
 // admin se fait dans le contrôleur (hr.controller.js::leave).
-const STAFF = ['superadmin','adminclinique','medecin','infirmier','sage_femme',
-               'laborantin','radiologue','pharmacien','comptable','receptionniste'];
 
 // Alias attendus par le frontend
 router.get('/staff',     protect, authorize(...ADMIN), hrC.getAll);

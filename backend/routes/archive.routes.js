@@ -1,8 +1,7 @@
 const router   = require('express').Router();
 const archiveC = require('../controllers/archive.controller');
 const { protect, authorize } = require('../middleware/auth');
-
-const ADMIN = ['superadmin', 'adminclinique'];
+const { ADMIN } = require('../utils/roles');
 
 // ── Routes fixes (avant /:id) ─────────────────────────────────
 router.get('/stats',         protect, authorize(...ADMIN), archiveC.getStats);

@@ -2,8 +2,7 @@
 const router  = require('express').Router();
 const auditC  = require('../controllers/audit.controller');
 const { protect, authorize } = require('../middleware/auth');
-
-const ADMIN = ['superadmin', 'adminclinique'];
+const { ADMIN } = require('../utils/roles');
 
 router.get('/',            protect, authorize(...ADMIN), auditC.getAll);
 router.get('/connexions',  protect, authorize(...ADMIN), auditC.getConnexions);

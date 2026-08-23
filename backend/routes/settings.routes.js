@@ -4,12 +4,7 @@ const settingsC  = require('../controllers/settings.controller');
 const tasksC     = require('../controllers/tasks.controller');
 const suppliersC = require('../controllers/suppliers.controller');
 const { protect, authorize } = require('../middleware/auth');
-
-const ADMIN = ['superadmin','adminclinique'];
-// Données de référence (services, salles, assurances) consultées par de
-// nombreux formulaires métier — ouvert à tout le personnel, jamais aux patients.
-const STAFF = ['superadmin','adminclinique','medecin','infirmier','sage_femme',
-               'laborantin','radiologue','pharmacien','comptable','receptionniste'];
+const { ADMIN, STAFF } = require('../utils/roles');
 
 // ── Paramètres clinique ───────────────────────────────────────
 router.get('/',         protect, authorize(...ADMIN), settingsC.getAll);

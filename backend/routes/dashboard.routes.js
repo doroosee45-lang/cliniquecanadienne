@@ -2,12 +2,11 @@
 const router  = require('express').Router();
 const dashC   = require('../controllers/dashboard.controller');
 const { protect, authorize } = require('../middleware/auth');
+const { STAFF } = require('../utils/roles');
 
 // Route générique — dispatche automatiquement selon req.user.role.
 // Un rôle non mappé (dont 'patient') retombe sur un agrégat clinique global :
 // on exclut donc explicitement les comptes patient de ce endpoint.
-const STAFF = ['superadmin','adminclinique','medecin','infirmier','sage_femme',
-               'laborantin','radiologue','pharmacien','comptable','receptionniste'];
 router.get('/',               protect, authorize(...STAFF), dashC.getStats);
 
 // Routes spécifiques par rôle
