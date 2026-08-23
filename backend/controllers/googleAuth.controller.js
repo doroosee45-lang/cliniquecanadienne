@@ -1,7 +1,7 @@
 // controllers/googleAuth.controller.js
 const User = require('../models/User');
 const Patient = require('../models/Patient');
-const { sendTokenCookie } = require('../utils/helpers');
+const { sendTokenCookie, logAction } = require('../utils/helpers');
 const { OAuth2Client } = require('google-auth-library');
 const { logger, captureException } = require('../utils/logger');
 const env = require('../config/env');
@@ -54,9 +54,17 @@ const googleLogin = async (req, res) => {
     try {
       tokenInfo = await oauthClient.getTokenInfo(access_token);
     } catch (err) {
+      await logAction({ action: 'LOGIN_ECHEC', module: 'auth', ip: req.ip, statut: 'echec', message: 'Google — jeton invalide ou expiré' });
       return res.status(401).json({ success: false, message: 'Token Google invalide ou expiré.' });
     }
     if (env.GOOGLE_CLIENT_ID && tokenInfo.aud !== env.GOOGLE_CLIENT_ID) {
+      // AUDIT-ARCHIVAGE-C — signal confused deputy réel : un jeton Google
+      // valide mais émis pour une autre application. tokenInfo est déjà
+      // vérifié à ce stade (signature/émetteur/expiration), donc son email
+      // est fiable même si l'audience est incorrecte — inclus dans le
+      // message car c'est le seul signal exploitable ici (aucun User
+      // résolu, ce n'est pas un compte de ce projet).
+      await logAction({ action: 'LOGIN_ECHEC', module: 'auth', ip: req.ip, statut: 'echec', message: `Google — audience incorrecte (jeton émis pour une autre application), email : ${tokenInfo.email || '—'}` });
       return res.status(401).json({ success: false, message: 'Token Google invalide (audience incorrecte).' });
     }
 
@@ -67,12 +75,14 @@ const googleLogin = async (req, res) => {
     );
 
     if (!googleRes.ok) {
+      await logAction({ action: 'LOGIN_ECHEC', module: 'auth', ip: req.ip, statut: 'echec', message: 'Google — jeton invalide ou expiré (échec récupération profil)' });
       return res.status(401).json({ success: false, message: 'Token Google invalide ou expiré.' });
     }
 
     const profile = await googleRes.json();
 
     if (!profile.email) {
+      await logAction({ action: 'LOGIN_ECHEC', module: 'auth', ip: req.ip, statut: 'echec', message: 'Google — profil sans email exploitable' });
       return res.status(400).json({ success: false, message: 'Email Google non disponible.' });
     }
 
@@ -91,6 +101,12 @@ const googleLogin = async (req, res) => {
         statut:   'actif',
         // password non fourni → champ optionnel, pas de hash
       });
+      // AUDIT-ARCHIVAGE-C — évènement distinct de la connexion qui suit :
+      // un nouveau compte vient d'être créé silencieusement, jamais tracé
+      // jusqu'ici. Même action/module que settings.controller.js::createUser
+      // pour rester dans la même catégorie d'audit qu'une création de
+      // compte classique.
+      await logAction({ utilisateur: user._id, action: 'CREATE_USER', module: 'admin', ip: req.ip, message: `Auto-inscription via Google : ${user.email}` });
     } else {
       // Compte existant → lier Google si pas encore fait
       if (!user.googleId) {
@@ -108,7 +124,12 @@ const googleLogin = async (req, res) => {
     user.derniere_connexion = new Date();
     await user.save();
 
-    // ── 6. Cookie httpOnly + réponse — même helper que le login classique,
+    // ── 6. Traçabilité — même action que le login classique
+    //      (auth.controller.js::login), pour que ces connexions atterrissent
+    //      dans la même catégorie d'audit qu'une connexion par mot de passe.
+    await logAction({ utilisateur: user._id, action: 'LOGIN', module: 'auth', ip: req.ip, message: `Connexion via Google : ${user.email}` });
+
+    // ── 7. Cookie httpOnly + réponse — même helper que le login classique,
     //      pour un comportement (sameSite/secure/forme du payload) identique
     //      quel que soit le mode de connexion. Le JWT n'est jamais renvoyé
     //      dans le corps de la réponse (cf. correction Socket.IO).
