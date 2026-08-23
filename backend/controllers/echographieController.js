@@ -117,12 +117,31 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-ELEVE-2 — miroir de radiology.controller.js::IMAGING_BLOCKED_FIELDS /
+// prescriptions.controller.js::RX_BLOCKED_FIELDS : update() n'avait jusqu'ici
+// aucune liste noire, contrairement à tous les autres contrôleurs cliniques —
+// n'importe lequel des rôles autorisés sur cette route générique (dont
+// infirmier/sage_femme) pouvait positionner statut:'validee', rapport_statut,
+// rapport_radiologue ou conclusion directement, sans jamais passer par le
+// circuit de validation dédié. Ces champs doivent exclusivement transiter par
+// saveRapport(), désormais restreint à radiologue/superadmin au niveau de la
+// route (echographie.routes.js) — même schéma que radiology.controller.js
+// (update générique bloque statut/date_validation/signature, /cr /rapport
+// /validation réservés au rôle radiologue).
+const ECHO_BLOCKED_FIELDS = [
+  'numero', 'patient', 'patient_ref',
+  'statut', 'rapport_statut', 'rapport_radiologue',
+  'rapport_texte', 'conclusion', 'recommandations',
+];
+
 // ── PUT /echographie/:id
 exports.update = async (req, res, next) => {
   try {
     const avant = await Echographie.findById(req.params.id).lean();
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!ECHO_BLOCKED_FIELDS.includes(k)) data[k] = v; }
     const demande = await Echographie.findByIdAndUpdate(
-      req.params.id, req.body, { new: true, runValidators: true }
+      req.params.id, data, { new: true, runValidators: true }
     );
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
     await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Demande d'échographie ${demande.numero} modifiée`, avant, apres: demande });
