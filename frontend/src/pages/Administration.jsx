@@ -241,6 +241,10 @@ const TASK_STATUT = {
   annule:     { cls: "gray",   label: "Annulée" },
 };
 
+// AUDIT-11-8 — t.assignee est désormais une référence User populée
+// ({_id,nom,prenom}) côté backend, plus une chaîne de nom affiché.
+const taskAssigneeLabel = (t) => t.assignee ? `${t.assignee.prenom} ${t.assignee.nom}` : "—";
+
 const AVATAR_COLORS = ["#1B4F9E","#0EA5A0","#7C3AED","#DC2626","#D97706","#059669","#4F46E5","#0B1E3B"];
 
 // ─── DEMO DATA ───────────────────────────────────────────────
@@ -521,32 +525,40 @@ export default function Administration() {
   };
 
   // ── Create task ───────────────────────────────────────────
+  // AUDIT-11-8 — POST /admin/tasks est désormais un endpoint réel (plan
+  // validé) : un échec doit rester un échec visible, jamais un faux succès
+  // local fabriqué (même correctif que Point 4 pour Pharmacy/Laboratory/
+  // Messages).
   const saveTask = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post("/admin/tasks", formTask);
+      const { data } = await api.post("/admin/tasks", formTask);
+      setTasks(prev => [data.task, ...prev]);
       toast.success("✅ Tâche créée");
-    } catch {
-      setTasks(prev => [{ ...formTask, _id: Date.now().toString() }, ...prev]);
-      toast.success("✅ Tâche créée (local)");
+      setModalTask(false); setFormTask(EMPTY_TASK);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la création de la tâche.");
     } finally {
-      setSaving(false); setModalTask(false); setFormTask(EMPTY_TASK);
+      setSaving(false);
     }
   };
 
   // ── Create supplier ───────────────────────────────────────
+  // AUDIT-11-8 — POST /admin/suppliers est désormais un endpoint réel (plan
+  // validé) : même principe que saveTask ci-dessus.
   const saveSupplier = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post("/admin/suppliers", formSupplier);
+      const { data } = await api.post("/admin/suppliers", formSupplier);
+      setSuppliers(prev => [...prev, data.supplier]);
       toast.success("✅ Fournisseur ajouté");
-    } catch {
-      setSuppliers(prev => [...prev, { ...formSupplier, _id: Date.now().toString(), montant_total: 0 }]);
-      toast.success("✅ Fournisseur ajouté (local)");
+      setModalSupplier(false); setFormSupplier(EMPTY_SUPPLIER);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'ajout du fournisseur.");
     } finally {
-      setSaving(false); setModalSupplier(false); setFormSupplier(EMPTY_SUPPLIER);
+      setSaving(false);
     }
   };
 
@@ -830,7 +842,7 @@ export default function Administration() {
                           </div>
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontWeight:600, color:"var(--cn)", fontSize:12, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.titre}</div>
-                            <div style={{ fontSize:11, color:"var(--cm)" }}>{t.assignee} · {fmtDate(t.echeance)}</div>
+                            <div style={{ fontSize:11, color:"var(--cm)" }}>{taskAssigneeLabel(t)} · {fmtDate(t.echeance)}</div>
                           </div>
                           <Badge cls={sc.cls}>{sc.label}</Badge>
                         </div>
@@ -1092,7 +1104,7 @@ export default function Administration() {
                                   <div style={{ fontWeight:600, color:"var(--cn)", fontSize:13 }}>{t.titre}</div>
                                   {t.description && <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{t.description}</div>}
                                 </td>
-                                <td style={{ fontSize:12, color:"var(--cm)" }}>{t.assignee}</td>
+                                <td style={{ fontSize:12, color:"var(--cm)" }}>{taskAssigneeLabel(t)}</td>
                                 <td><Badge cls="gray">{catIcons[t.categorie] || "📋"} {t.categorie}</Badge></td>
                                 <td>
                                   <Badge cls={t.priorite === "haute" ? "red" : t.priorite === "normale" ? "blue" : "gray"}>
@@ -1104,11 +1116,18 @@ export default function Administration() {
                                 </td>
                                 <td><Badge cls={sc.cls}>{sc.label}</Badge></td>
                                 <td>
+                                  {/* AUDIT-11-8 — PUT /admin/tasks/:id est désormais un endpoint réel :
+                                      un échec doit rester un échec visible, jamais un état local mis à
+                                      jour malgré une requête avalée en silence. */}
                                   <button className="cbtn cbtn-ghost cbtn-sm" onClick={async () => {
                                     const next = { en_attente:"en_cours", en_cours:"termine", termine:"en_attente" }[t.statut] || "en_attente";
-                                    try { await api.put(`/admin/tasks/${t._id}`, { statut: next }); } catch {}
-                                    setTasks(prev => prev.map(tk => tk._id === t._id ? { ...tk, statut: next } : tk));
-                                    toast.success("✅ Statut mis à jour");
+                                    try {
+                                      await api.put(`/admin/tasks/${t._id}`, { statut: next });
+                                      setTasks(prev => prev.map(tk => tk._id === t._id ? { ...tk, statut: next } : tk));
+                                      toast.success("✅ Statut mis à jour");
+                                    } catch (err) {
+                                      toast.error(err?.response?.data?.message || "❌ Échec de la mise à jour du statut.");
+                                    }
                                   }}>→ Avancer</button>
                                 </td>
                               </tr>
@@ -1569,9 +1588,12 @@ export default function Administration() {
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                 <div>
                   <label className="clbl">Assigné à</label>
+                  {/* AUDIT-11-8 — envoie désormais u._id (vraie référence
+                      ObjectId côté backend, populée à la lecture), plus une
+                      chaîne de nom affiché. */}
                   <select className="cinp" value={formTask.assignee} onChange={e => setFormTask(f=>({...f,assignee:e.target.value}))}>
                     <option value="">— Sélectionner —</option>
-                    {users.map(u => <option key={u._id} value={`${u.prenom} ${u.nom}`}>{u.prenom} {u.nom}</option>)}
+                    {users.map(u => <option key={u._id} value={u._id}>{u.prenom} {u.nom}</option>)}
                   </select>
                 </div>
                 <div>
