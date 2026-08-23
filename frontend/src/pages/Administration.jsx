@@ -263,6 +263,7 @@ const EMPTY_USER = { prenom:"", nom:"", email:"", telephone:"", role:"medecin", 
 const EMPTY_TASK = { titre:"", assignee:"", priorite:"normale", statut:"en_attente", echeance:"", categorie:"administratif", description:"" };
 const EMPTY_SUPPLIER = { nom:"", contact:"", telephone:"", email:"", adresse:"", produits:"" };
 const EMPTY_SERVICE = { nom:"", code:"", description:"", etage:"", couleur:"#2563eb" };
+const EMPTY_PATIENT_QUICK = { nom:"", prenom:"", date_naissance:"", sexe:"", telephone:"", email:"" };
 
 // ─── Modal wrapper ───────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth = 620 }) {
@@ -393,12 +394,14 @@ export default function Administration() {
   const [modalTask, setModalTask]         = useState(false);
   const [modalSupplier, setModalSupplier] = useState(false);
   const [modalService, setModalService]   = useState(false);
+  const [modalPatientQuick, setModalPatientQuick] = useState(false);
   const [editUser, setEditUser]           = useState(null);
 
   // Forms
   const [formUser, setFormUser]           = useState(EMPTY_USER);
   const [formTask, setFormTask]           = useState(EMPTY_TASK);
   const [formService, setFormService]     = useState(EMPTY_SERVICE);
+  const [formPatientQuick, setFormPatientQuick] = useState(EMPTY_PATIENT_QUICK);
   const [formSupplier, setFormSupplier]   = useState(EMPTY_SUPPLIER);
 
   // Settings state
@@ -574,6 +577,44 @@ export default function Administration() {
     }
   };
 
+  // ── Créer un dossier patient (Point 2 — chemin dédié) ──────
+  // AUDIT-ADMIN-P2 — un compte role:'patient' ne peut plus être créé via le
+  // formulaire "Nouvel utilisateur" (refuseRolePatient, settings.controller.js).
+  // Ce module reste le seul endroit "admin" où un patient doit pouvoir être
+  // créé sans repasser par le module Patients dédié : appelle donc le même
+  // POST /patients réel (patients.controller.js::create) que Patients.jsx —
+  // dossier Patient + compte User (role:'patient') lié si un email est fourni,
+  // email d'activation envoyé automatiquement, aucune logique dupliquée.
+  const savePatientQuick = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const { data } = await api.post("/patients", {
+        nom: formPatientQuick.nom,
+        prenom: formPatientQuick.prenom,
+        date_naissance: formPatientQuick.date_naissance,
+        sexe: formPatientQuick.sexe,
+        telephone: formPatientQuick.telephone || undefined,
+        email: formPatientQuick.email || undefined,
+      });
+      toast.success(`✅ Dossier patient créé — ${data.patient.prenom} ${data.patient.nom} (${data.patient.numero_dossier})`);
+      if (formPatientQuick.email) {
+        toast.success(data.email_envoye
+          ? `📧 Email d'activation envoyé à ${formPatientQuick.email}`
+          : `⚠️ Dossier créé, mais l'email d'activation n'a pas pu être envoyé — vérifiez la configuration SMTP.`);
+      }
+      setModalPatientQuick(false); setFormPatientQuick(EMPTY_PATIENT_QUICK);
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        toast.error(`❌ Un dossier existe déjà pour cette personne (${err.response.data.patient_id}) — utilisez le module Patients pour le modifier.`);
+      } else {
+        toast.error(err?.response?.data?.message || "❌ Échec de la création du dossier patient.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ── Save settings ─────────────────────────────────────────
   const saveSettings = async () => {
     setSaving(true);
@@ -612,7 +653,10 @@ export default function Administration() {
                 </div>
               )}
               {tab === "gestion" && section === "utilisateurs" && (
-                <Button icon={Plus} onClick={() => { setFormUser(EMPTY_USER); setEditUser(null); setModalUser(true); }}>Nouvel utilisateur</Button>
+                <>
+                  <Button icon={Plus} onClick={() => { setFormUser(EMPTY_USER); setEditUser(null); setModalUser(true); }}>Nouvel utilisateur</Button>
+                  <Button icon={Plus} onClick={() => { setFormPatientQuick(EMPTY_PATIENT_QUICK); setModalPatientQuick(true); }}>Nouveau patient</Button>
+                </>
               )}
               {tab === "gestion" && section === "taches" && (
                 <Button icon={Plus} onClick={() => { setFormTask(EMPTY_TASK); setModalTask(true); }}>Nouvelle tâche</Button>
@@ -1639,6 +1683,51 @@ export default function Administration() {
                 <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalService(false)}>Annuler</button>
                 <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
                   {I.save} {saving ? "..." : "Créer le service"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal open={modalPatientQuick} onClose={() => setModalPatientQuick(false)} title={`${I.plus} Nouveau patient`} maxWidth={480}>
+          <form onSubmit={savePatientQuick}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div>
+                  <label className="clbl">Prénom *</label>
+                  <input className="cinp" required value={formPatientQuick.prenom} onChange={e => setFormPatientQuick(f=>({...f,prenom:e.target.value}))} />
+                </div>
+                <div>
+                  <label className="clbl">Nom *</label>
+                  <input className="cinp" required value={formPatientQuick.nom} onChange={e => setFormPatientQuick(f=>({...f,nom:e.target.value}))} />
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div>
+                  <label className="clbl">Date de naissance *</label>
+                  <input type="date" className="cinp" required value={formPatientQuick.date_naissance} onChange={e => setFormPatientQuick(f=>({...f,date_naissance:e.target.value}))} />
+                </div>
+                <div>
+                  <label className="clbl">Sexe *</label>
+                  <select className="cinp" required value={formPatientQuick.sexe} onChange={e => setFormPatientQuick(f=>({...f,sexe:e.target.value}))}>
+                    <option value="">—</option>
+                    <option value="M">Masculin</option>
+                    <option value="F">Féminin</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="clbl">Téléphone</label>
+                <input className="cinp" value={formPatientQuick.telephone} onChange={e => setFormPatientQuick(f=>({...f,telephone:e.target.value}))} placeholder="+242 06 000 0000" />
+              </div>
+              <div>
+                <label className="clbl">Email</label>
+                <input type="email" className="cinp" value={formPatientQuick.email} onChange={e => setFormPatientQuick(f=>({...f,email:e.target.value}))} placeholder="Si fourni : compte portail patient + email d'activation" />
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalPatientQuick(false)}>Annuler</button>
+                <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
+                  {I.save} {saving ? "..." : "Créer le dossier"}
                 </button>
               </div>
             </div>
