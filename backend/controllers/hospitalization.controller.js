@@ -282,15 +282,40 @@ exports.addVisite              = visiteRes.add;
 exports.getPrescriptionsSejour = prescriptionRes.get;
 exports.addPrescriptionSejour  = prescriptionRes.add;
 
+// AUDIT-11-9 — discharge() fusionnait req.body sans liste blanche (un client
+// pouvait réassigner le séjour à un autre patient, contrairement à update()
+// qui bloque déjà ce cas) et ne vérifiait jamais le statut courant avant la
+// transition : un second appel sur un dossier déjà sorti/transféré/décédé
+// écrasait silencieusement date_sortie (avec l'heure de CE second appel),
+// corrompant la seule vraie source de vérité de la date de sortie. Corrigé
+// avec le même principe déjà établi ailleurs dans ce fichier (admission,
+// libération de lit) et dans finance.controller.js::addPayment : la garde
+// (statut encore 'en_cours') fait partie du filtre du findOneAndUpdate
+// atomique lui-même, jamais une vérification séparée avant l'écriture — deux
+// appels concurrents (double-clic, ou deux membres du personnel) ne peuvent
+// plus tous deux passer.
+const DISCHARGE_STATUT_MESSAGES = {
+  sorti: 'Ce séjour a déjà été clôturé — une sortie a déjà été enregistrée.',
+  transfere: 'Ce séjour est déjà marqué comme transféré.',
+  decede: 'Ce séjour est déjà marqué comme décédé.',
+};
+
 exports.discharge = async (req, res, next) => {
   try {
     const avant = await Hospitalization.findById(req.params.id);
-    const hosp = await Hospitalization.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, statut: 'sorti', date_sortie: new Date() },
-      { new: true }
+    if (!avant) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
+
+    const data = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!HOSP_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+
+    const hosp = await Hospitalization.findOneAndUpdate(
+      { _id: req.params.id, statut: 'en_cours' },
+      { ...data, statut: 'sorti', date_sortie: new Date() },
+      { new: true, runValidators: true }
     ).populate('chambre');
-    if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
+    if (!hosp) {
+      return res.status(409).json({ success: false, message: DISCHARGE_STATUT_MESSAGES[avant.statut] || `Ce séjour n'est plus en cours (statut actuel : ${avant.statut}).` });
+    }
 
     // Free the bed — uniquement si le séjour référence une chambre structurée
     // (un séjour peut avoir été admis avec une simple chambre_num en texte libre,
