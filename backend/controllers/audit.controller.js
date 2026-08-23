@@ -1,5 +1,5 @@
 const AuditLog = require('../models/AuditLog');
-const { paginate } = require('../utils/helpers');
+const { paginate, escapeRegex } = require('../utils/helpers');
 
 // ── Risk mapping ────────────────────────────────────────────────
 const RISK_MAP = {
@@ -64,10 +64,17 @@ exports.getAll = async (req, res, next) => {
   try {
     const { page = 1, limit = 30, module, action, utilisateur, risque, q, date_deb, date_fin, ip } = req.query;
     const filter = {};
-    if (module) filter.module = new RegExp(module, 'i');
-    if (action) filter.action = new RegExp(action, 'i');
-    if (q) filter.$or = [{ message: new RegExp(q, 'i') }, { module: new RegExp(q, 'i') }];
-    if (ip) filter.ip_address = new RegExp(ip, 'i');
+    // AUDIT-ELEVE-3 — construits jusqu'ici depuis req.query sans échapper les
+    // métacaractères regex (escapeRegex, utils/helpers.js, déjà importé et
+    // utilisé pour cette même raison ailleurs — ex. archive.controller.js,
+    // blocoperatoireController.js) : une entrée pathologique (ex. répétition
+    // de quantificateurs imbriqués) sur une collection qui ne fait que
+    // croître pouvait provoquer un scan catastrophique. `action` avait le
+    // même défaut que module/q/ip, corrigé au passage pour la même raison.
+    if (module) filter.module = new RegExp(escapeRegex(module), 'i');
+    if (action) filter.action = new RegExp(escapeRegex(action), 'i');
+    if (q) filter.$or = [{ message: new RegExp(escapeRegex(q), 'i') }, { module: new RegExp(escapeRegex(q), 'i') }];
+    if (ip) filter.ip_address = new RegExp(escapeRegex(ip), 'i');
     if (date_deb || date_fin) {
       filter.createdAt = {};
       if (date_deb) filter.createdAt.$gte = new Date(date_deb);
