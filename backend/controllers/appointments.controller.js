@@ -72,7 +72,10 @@ exports.create = async (req, res, next) => {
     // Conflict detection
     const { medecin, date_heure, duree_minutes = 30 } = req.body;
     const conflict = await checkAppointmentConflict({ medecin, date_heure, duree_minutes });
-    if (conflict) return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
+    if (conflict) {
+      await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'appointments', ip: req.ip, statut: 'echec', message: `Création refusée — conflit de créneau (médecin ${medecin})` });
+      return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
+    }
 
     // AUDIT-2.1 — la vérification ci-dessus n'est pas atomique avec l'écriture
     // qui suit : l'index unique partiel du modèle (medecin+date_heure) ferme
@@ -82,7 +85,10 @@ exports.create = async (req, res, next) => {
     try {
       appt = await Appointment.create({ ...req.body, created_by: req.user._id });
     } catch (err) {
-      if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit: ce créneau vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+      if (err.code === 11000) {
+        await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'appointments', ip: req.ip, statut: 'echec', message: `Création refusée — conflit de créneau détecté à l'écriture (médecin ${medecin})` });
+        return res.status(409).json({ success: false, message: 'Conflit: ce créneau vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+      }
       throw err;
     }
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'appointments', entite_id: appt._id, ip: req.ip, message: `Nouveau RDV: ${appt.type}` });
@@ -141,7 +147,10 @@ exports.update = async (req, res, next) => {
     const creneauChange  = data.medecin !== undefined || data.date_heure !== undefined || data.duree_minutes !== undefined;
     if (creneauChange && medecinCible) {
       const conflict = await checkAppointmentConflict({ medecin: medecinCible, date_heure: dateCible, duree_minutes: dureeCible, excludeId: avant._id });
-      if (conflict) return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
+      if (conflict) {
+        await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: avant._id, ip: req.ip, statut: 'echec', message: `Modification refusée — conflit de créneau (médecin ${medecinCible})` });
+        return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
+      }
     }
 
     // AUDIT-2.1 — même filet de sécurité que create() : la vérification
@@ -151,7 +160,10 @@ exports.update = async (req, res, next) => {
     try {
       appt = await Appointment.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     } catch (err) {
-      if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit: ce créneau vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+      if (err.code === 11000) {
+        await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: avant._id, ip: req.ip, statut: 'echec', message: `Modification refusée — conflit de créneau détecté à l'écriture (médecin ${medecinCible})` });
+        return res.status(409).json({ success: false, message: 'Conflit: ce créneau vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+      }
       throw err;
     }
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'appointments', entite_id: appt._id, ip: req.ip, avant, apres: appt });

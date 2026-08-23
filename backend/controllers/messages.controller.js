@@ -273,9 +273,13 @@ exports.deleteMessage = async (req, res, next) => {
     if (!msg) return res.status(404).json({ success: false, message: 'Message introuvable.' });
 
     const estMembre = conv.membres.some(m => m.toString() === req.user._id.toString());
-    if (!estMembre) return res.status(403).json({ success: false, message: 'Accès refusé.' });
+    if (!estMembre) {
+      await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: conv._id, ip: req.ip, statut: 'echec', message: 'Tentative de suppression refusée — utilisateur non membre de la conversation' });
+      return res.status(403).json({ success: false, message: 'Accès refusé.' });
+    }
 
     if (msg.expediteur.toString() !== req.user._id.toString()) {
+      await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'messages', entite_id: conv._id, ip: req.ip, statut: 'echec', message: "Tentative de suppression refusée — utilisateur non auteur du message" });
       return res.status(403).json({ success: false, message: "Seul l'auteur peut supprimer ce message." });
     }
 

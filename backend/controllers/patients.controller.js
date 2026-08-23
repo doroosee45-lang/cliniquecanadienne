@@ -423,7 +423,17 @@ exports.remove = async (req, res, next) => {
     // soit que patient_id n'était pas peuplé — dans les deux cas le repli
     // email reste la seule option, d'où la résolution avant l'appel.
     const deleteFilter = await resolveLinkedUserFilter(patient);
-    await Patient.findByIdAndDelete(patient._id);
+    // AUDIT-ARCHIVAGE-A1 — Patient.pre('findOneAndDelete') (models/Patient.js)
+    // peut refuser cette suppression (409, compte portail actif référençant
+    // encore ce patient) : le hook n'a pas accès à req.user/req.ip pour
+    // tracer lui-même le refus, donc il est capturé ici, seul endroit du
+    // chemin HTTP à disposer du contexte complet.
+    try {
+      await Patient.findByIdAndDelete(patient._id);
+    } catch (err) {
+      await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'patients', entite_id: req.params.id, ip: req.ip, statut: 'echec', message: `Suppression refusée : ${patient.nom} ${patient.prenom} — ${err.message}` });
+      throw err;
+    }
     if (deleteFilter) {
       await User.deleteOne(deleteFilter);
     }

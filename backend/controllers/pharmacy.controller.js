@@ -343,8 +343,10 @@ exports.dispenser = async (req, res, next) => {
     // par 'active'. N'accepter que 'active' rendait donc toute dispensation
     // impossible en pratique — 'active' reste accepté pour compatibilité avec
     // d'éventuelles ordonnances créées directement dans cet état (legacy/tests).
-    if (!['active', 'publiee'].includes(prescription.statut))
+    if (!['active', 'publiee'].includes(prescription.statut)) {
+      await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: prescription._id, ip: req.ip, statut: 'echec', message: `Dispensation refusée — statut actuel : ${prescription.statut}` });
       return res.status(400).json({ success: false, message: 'Ordonnance non dispensable dans son état actuel.' });
+    }
     const avant = prescription.toObject();
 
     // Seules les lignes reliées à une fiche Medication (catalogue) impactent le
@@ -400,6 +402,7 @@ exports.dispenser = async (req, res, next) => {
           await Medication.findByIdAndUpdate(d.id, { $set: { statut: 'disponible' } });
         }
       }
+      await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: prescription._id, ip: req.ip, statut: 'echec', message: `Dispensation refusée — stock insuffisant : ${echec}` });
       return res.status(400).json({
         success: false,
         message: `Stock insuffisant pour dispenser cette ordonnance : ${echec}.`,
