@@ -33,6 +33,12 @@ const dossierChirurgicalSchema = new mongoose.Schema({
   date_intervention_prev: Date,
   date_intervention_reelle: Date,
   salle_prevue: String,
+  // AUDIT-CRIT-2 — saisi depuis longtemps dans les formulaires de création
+  // et de replanification (Blocoperatoire.jsx) et affiché en retour sur la
+  // fiche détail, mais jamais déclaré ici : silencieusement supprimé par
+  // Mongoose à chaque sauvegarde (la fiche affichait "—" quoi que le
+  // personnel ait saisi). Service à l'origine de la demande d'intervention.
+  service_demandeur: String,
   // AUDIT-ANALYTICS-P5 — horodatages réels d'occupation physique de la
   // salle, distincts de date_intervention_prev (planification) et
   // date_intervention_reelle (marqueur de réalisation) : permettent de

@@ -116,7 +116,7 @@ exports.createIntervention = async (req, res, next) => {
     const { patient: patient_id, dossier_id, salle, date_heure_op, type_intervention,
             niveau_urgence, chirurgien, chirurgien_id, diagnostic_preop,
             duree_estimee, statut = 'preoperatoire', assistant, anesthesiste,
-            infirmier_instru, infirmier_circu, notes } = req.body;
+            infirmier_instru, infirmier_circu, notes, service_demandeur } = req.body;
 
     let dossier;
 
@@ -164,6 +164,7 @@ exports.createIntervention = async (req, res, next) => {
     if (anesthesiste)      dossier.anesthesiste             = anesthesiste;
     if (infirmier_instru)  dossier.infirmier_instru         = infirmier_instru;
     if (infirmier_circu)   dossier.infirmier_circu          = infirmier_circu;
+    if (service_demandeur) dossier.service_demandeur        = service_demandeur;
 
     const niveauMap = { programmee:'electif', electif:'electif', urgent:'urgent', urgence_absolue:'urgence_absolue' };
     dossier.niveau_urgence = niveauMap[niveau_urgence] || 'electif';
@@ -403,16 +404,56 @@ exports.updateIntervention = async (req, res, next) => {
       'salle_prevue', 'date_intervention_prev', 'date_intervention_reelle',
       'statut', 'type_intervention', 'duree_intervention_min',
       'cr_operatoire', 'evolution_immediate', 'chirurgien_id', 'niveau_urgence',
+      'service_demandeur',
     ];
     const update = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
 
+    // AUDIT-CRIT-2 — Blocoperatoire.jsx envoie salle/date_heure_op (même
+    // convention que createIntervention), jamais salle_prevue/
+    // date_intervention_prev : sans cet alias, la liste blanche ci-dessus
+    // ignorait silencieusement tout changement de salle/heure à la
+    // replanification — seul statut persistait réellement, alors que
+    // l'interface affichait un succès optimiste. Traduit ici plutôt que de
+    // changer le frontend, pour rester cohérent avec createIntervention qui
+    // utilise déjà ces mêmes noms.
+    if (req.body.salle !== undefined) update.salle_prevue = req.body.salle || undefined;
+    if (req.body.date_heure_op !== undefined) update.date_intervention_prev = req.body.date_heure_op ? new Date(req.body.date_heure_op) : undefined;
+
     const avant = await DossierChirurgical.findById(req.params.id).lean();
-    const dossier = await DossierChirurgical.findByIdAndUpdate(
-      req.params.id, update, { new: true, runValidators: true }
-    )
-      .populate('patient', 'nom prenom')
-      .populate('chirurgien_id', 'nom prenom specialite');
+    if (!avant) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
+
+    // AUDIT-CRIT-2 — même détection de conflit que createIntervention/
+    // scheduleIntervention (checkBlocConflict, en tête de fichier), absente
+    // ici jusqu'à présent : replanifier une intervention vers une salle/un
+    // créneau déjà occupé par une autre n'était jamais vérifié.
+    const salleFinale = update.salle_prevue !== undefined ? update.salle_prevue : avant.salle_prevue;
+    const dateFinale  = update.date_intervention_prev !== undefined ? update.date_intervention_prev : avant.date_intervention_prev;
+    const dureeFinale = update.duree_intervention_min !== undefined ? update.duree_intervention_min : avant.duree_intervention_min;
+    const statutFinal = update.statut !== undefined ? update.statut : avant.statut;
+    if (salleFinale && dateFinale && ['preoperatoire', 'opere'].includes(statutFinal)) {
+      const conflict = await checkBlocConflict({
+        salle: salleFinale,
+        date_intervention_prev: dateFinale,
+        duree_intervention_min: dureeFinale,
+        excludeId: req.params.id,
+      });
+      if (conflict) return res.status(400).json({ success: false, message: `Conflit : la salle ${salleFinale} est déjà occupée par une autre intervention à ce créneau.` });
+    }
+
+    let dossier;
+    try {
+      dossier = await DossierChirurgical.findByIdAndUpdate(
+        req.params.id, update, { new: true, runValidators: true }
+      )
+        .populate('patient', 'nom prenom')
+        .populate('chirurgien_id', 'nom prenom specialite');
+    } catch (err) {
+      // AUDIT-CRIT-2 — même filet de sécurité atomique (index unique partiel
+      // du modèle) que createIntervention/scheduleIntervention.
+      if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit : cette salle vient d\'être réservée par une autre requête à ce créneau. Veuillez réessayer.' });
+      throw err;
+    }
 
     if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
 
