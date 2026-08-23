@@ -378,13 +378,17 @@ export default function Analytics() {
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
   // ── Chargement de toutes les données selon la période ──────
+  // AUDIT-ANALYTICS-P7 — filterService/filterMedecin transmis à fetchKpis
+  // (seule route à les interpréter réellement, même limitation déjà
+  // disclosed en Phase 1 pour periode : getReport/getFinancial/
+  // getPatientStats restent hors périmètre de ce filtre).
   const loadAll = useCallback(() => {
-    dispatch(fetchKpis({ periode, dateDebut, dateFin }));
+    dispatch(fetchKpis({ periode, dateDebut, dateFin, service: filterService, medecin: filterMedecin }));
     dispatch(fetchAnalyticsReport({ type: 'global', periode }));
     dispatch(fetchFinancialReport({ periode }));
     dispatch(fetchPatientStats({ periode }));
     setLastUpdate(new Date());
-  }, [dispatch, periode, dateDebut, dateFin]);
+  }, [dispatch, periode, dateDebut, dateFin, filterService, filterMedecin]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
   useRealtimeRefresh(loadAll);
@@ -397,6 +401,56 @@ export default function Analytics() {
   // jamais un pourcentage inventé pour remplir une carte.
   const trends = reduxTrends || {};
   const trendProps = (key) => trends[key] ? { trend: trends[key].pct, trendUp: trends[key].sens === 'up' } : {};
+
+  // AUDIT-ANALYTICS-P7 — quel KPI est réellement affecté par le filtre
+  // Service/Médecin sélectionné, d'après l'audit de champs réels côté
+  // backend (analytics.controller.js::getStats) — jamais deviné ici, reflète
+  // exactement les fragments de filtre appliqués (ou non) par requête.
+  const KPI_FILTER_SUPPORT = {
+    patients_actifs: { medecin:true, service:true }, patients_total:{}, patients_nouveaux:{}, patients_hospitalises:{},
+    consultations_total:{medecin:true,service:true}, consultations_terminees:{medecin:true,service:true}, consultations_annulees:{medecin:true,service:true},
+    labo_demandes:{medecin:true,service:true}, labo_realises:{medecin:true,service:true}, labo_attente:{medecin:true,service:true},
+    imagerie_demandes:{medecin:true,service:true}, imagerie_realises:{medecin:true,service:true}, imagerie_attente:{medecin:true,service:true},
+    hospit_admissions:{medecin:true,service:true}, hospit_sorties:{medecin:true,service:true}, taux_occupation:{},
+    chirurgie_programmees:{medecin:true,service:true}, chirurgie_realisees:{medecin:true,service:true}, chirurgie_annulees:{medecin:true,service:true},
+    bloc_interventions_a_venir:{medecin:true,service:true}, bloc_taux_occupation_salle:{},
+    ca_total:{service:true}, depenses:{}, benefice:{}, factures_impayees:{service:true},
+    pharma_total:{}, pharma_ruptures:{}, pharma_critiques:{}, pharma_valeur_stock:{},
+    prescriptions_total:{}, prescriptions_periode:{medecin:true},
+    urgences_total:{}, urgences_periode:{medecin:true,service:true}, urgences_critiques:{medecin:true,service:true},
+    maternite_grossesses:{medecin:true}, maternite_accouchements:{},
+    pediatrie_total:{}, pediatrie_periode:{medecin:true},
+    echographie_total:{}, echographie_periode:{medecin:true},
+    rh_medecins:{}, rh_infirmiers:{}, rh_personnel:{}, archives_total:{},
+    ambulances_missions_periode:{}, ambulances_disponibles:{}, ambulances_en_route:{}, ambulances_occupees:{}, ambulances_maintenance:{},
+    messages_volume_periode:{}, messages_temps_reponse_moyen_min:{},
+  };
+  const filtersActive = !!(filterService || filterMedecin);
+  const notFiltrable = (key) => {
+    if (!filtersActive) return false;
+    const s = KPI_FILTER_SUPPORT[key] || {};
+    if (filterService && !s.service) return true;
+    if (filterMedecin && !s.medecin) return true;
+    return false;
+  };
+  // Fonction simple (pas un composant) — évite de recréer un composant à
+  // chaque rendu (react-hooks/static-components) pour un simple badge inline.
+  const filterNote = (k) => notFiltrable(k) ? (
+    <span key={`fn-${k}`} title="Ce KPI n'a pas de notion Service/Médecin exploitable — valeur globale, non affectée par le filtre sélectionné." style={{ fontSize:9, fontWeight:700, color:"var(--am)", background:"var(--al)", borderRadius:4, padding:"1px 5px", marginLeft:6, whiteSpace:"nowrap" }}>🔒 non filtré</span>
+  ) : null;
+
+  // AUDIT-ANALYTICS-P7 — services/médecins réels (remplace les listes codées
+  // en dur "Chirurgie/Médecine générale/..." et DEMO_MEDECINS, jamais
+  // alimenté). Réutilise les routes déjà réelles /settings/services et
+  // /settings/users (mêmes rôles autorisés que /analytics : superadmin,
+  // adminclinique), filtrage du rôle medecin fait côté client (la route ne
+  // supporte pas ?role=).
+  const [servicesReels, setServicesReels] = useState([]);
+  const [medecinsReels, setMedecinsReels] = useState([]);
+  useEffect(() => {
+    api.get('/settings/services').then(({ data }) => setServicesReels(data.services || [])).catch(() => {});
+    api.get('/settings/users').then(({ data }) => setMedecinsReels((data.users || []).filter(u => u.role === 'medecin' && u.statut === 'actif'))).catch(() => {});
+  }, []);
 
   // ── Données graphiques depuis Redux ───────────────────────
   const charts = reduxChartData || {};
@@ -787,12 +841,17 @@ export default function Analytics() {
             <span style={{ fontSize:12, fontWeight:700, color:"var(--am)", marginLeft:8 }}>{I.filter} Filtres :</span>
             <select className="filter-select" value={filterService} onChange={e=>setFilterSvc(e.target.value)}>
               <option value="">Tous les services</option>
-              {["Chirurgie","Médecine générale","Gynécologie","Urgences","Pédiatrie","Laboratoire","Radiologie","Pharmacie"].map(s=><option key={s} value={s}>{s}</option>)}
+              {servicesReels.map(s=><option key={s._id} value={s._id}>{s.nom}</option>)}
             </select>
             <select className="filter-select" value={filterMedecin} onChange={e=>setFilterMed(e.target.value)}>
               <option value="">Tous les médecins</option>
-              {DEMO_MEDECINS.map(m=><option key={m.nom} value={m.nom}>{m.nom}</option>)}
+              {medecinsReels.map(m=><option key={m._id} value={m._id}>Dr {m.prenom} {m.nom}</option>)}
             </select>
+            {filtersActive && (
+              <span style={{ fontSize:10.5, color:"var(--am)" }} title="Certains KPI n'ont pas de notion Service/Médecin exploitable et restent globaux — repérables par le badge 🔒 non filtré sur leur carte.">
+                ℹ️ Filtre best-effort — certains KPI restent globaux (🔒)
+              </span>
+            )}
             {(loading || reduxLoading) && <span style={{ fontSize:11, color:"var(--at)", fontWeight:600 }}>⏳ Mise à jour...</span>}
           </div>
 
@@ -817,10 +876,10 @@ export default function Analytics() {
                           backend, hospit_sorties est la donnée réelle la plus proche
                           de ce que cette grille représente (Nouveaux/Actifs/
                           Hospitalisés/Sortis suit le parcours patient). */}
-                      {[["Nouveaux",kpi.patients_nouveaux,"var(--ab)"],["Actifs",kpi.patients_actifs,"var(--ag)"],["Hospitalisés",kpi.patients_hospitalises,"var(--ao)"],["Sortis",kpi.hospit_sorties,"var(--at)"]].map(([lbl,val,col])=>(
+                      {[["Nouveaux",kpi.patients_nouveaux,"var(--ab)",'patients_nouveaux'],["Actifs",kpi.patients_actifs,"var(--ag)",'patients_actifs'],["Hospitalisés",kpi.patients_hospitalises,"var(--ao)",'patients_hospitalises'],["Sortis",kpi.hospit_sorties,"var(--at)",'hospit_sorties']].map(([lbl,val,col,k])=>(
                         <div key={lbl} className="mini-kpi">
                           <div className="mini-kpi-val" style={{ color:col }}>{val}</div>
-                          <div className="mini-kpi-lbl">{lbl}</div>
+                          <div className="mini-kpi-lbl">{lbl}{filterNote(k)}</div>
                         </div>
                       ))}
                     </div>
@@ -835,9 +894,9 @@ export default function Analytics() {
                   Consultations
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:24 }}>
-                  <KpiCard color="teal" icon={I.consult} value={kpi.consultations_total} label="Total consultations" {...trendProps('consultations_total')} />
-                  <KpiCard color="green" icon={I.consult} value={kpi.consultations_terminees} label="Terminées" sub={`${Math.round(kpi.consultations_terminees/kpi.consultations_total*100)}% de taux de complétion`} {...trendProps('consultations_terminees')} />
-                  <KpiCard color="orange" icon={I.consult} value={kpi.consultations_annulees} label="Annulées" {...trendProps('consultations_annulees')} urgent />
+                  <KpiCard color="teal" icon={I.consult} value={kpi.consultations_total} label={<>Total consultations{filterNote('consultations_total')}</>} {...trendProps('consultations_total')} />
+                  <KpiCard color="green" icon={I.consult} value={kpi.consultations_terminees} label={<>Terminées{filterNote('consultations_terminees')}</>} sub={`${Math.round(kpi.consultations_terminees/kpi.consultations_total*100)}% de taux de complétion`} {...trendProps('consultations_terminees')} />
+                  <KpiCard color="orange" icon={I.consult} value={kpi.consultations_annulees} label={<>Annulées{filterNote('consultations_annulees')}</>} {...trendProps('consultations_annulees')} urgent />
                   <KpiCard color="blue" icon={I.consult} value={`${kpi.temps_moyen_consult}min`} label="Durée moyenne" sub="Par consultation" />
                 </div>
               </div>
@@ -891,7 +950,7 @@ export default function Analytics() {
                       ))}
                     </div>
                     <div style={{ textAlign:"center" }}>
-                      <div style={{ fontSize:11, fontWeight:600, color:"var(--am)", marginBottom:6 }}>Taux d'occupation</div>
+                      <div style={{ fontSize:11, fontWeight:600, color:"var(--am)", marginBottom:6 }}>Taux d'occupation{filterNote('taux_occupation')}</div>
                       <div style={{ display:"inline-flex", alignItems:"center", gap:8 }}>
                         <div style={{ fontSize:28, fontWeight:800, color: kpi.taux_occupation > 85?"var(--ar)":kpi.taux_occupation > 70?"var(--ao)":"var(--ag)" }}>{kpi.taux_occupation}%</div>
                       </div>
@@ -929,11 +988,11 @@ export default function Analytics() {
                   <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                     <div className="mini-kpi" style={{ textAlign:"center" }}>
                       <div className="mini-kpi-val" style={{ color:"var(--ab)", fontSize:22 }}>{kpi.bloc_interventions_a_venir}</div>
-                      <div className="mini-kpi-lbl">Interventions à venir</div>
+                      <div className="mini-kpi-lbl">Interventions à venir{filterNote('bloc_interventions_a_venir')}</div>
                     </div>
                     <div className="mini-kpi" style={{ textAlign:"center" }}>
                       <div className="mini-kpi-val" style={{ color: kpi.bloc_taux_occupation_salle > 85?"var(--ar)":kpi.bloc_taux_occupation_salle > 70?"var(--ao)":"var(--ag)", fontSize:22 }}>{kpi.bloc_taux_occupation_salle}%</div>
-                      <div className="mini-kpi-lbl">Occupation salle</div>
+                      <div className="mini-kpi-lbl">Occupation salle{filterNote('bloc_taux_occupation_salle')}</div>
                     </div>
                   </div>
                   <div style={{ padding:"0 16px 14px" }}>
@@ -941,9 +1000,9 @@ export default function Analytics() {
                   </div>
                 </div>
 
-                {/* Ambulances */}
+                {/* Ambulances — aucune notion service/médecin sur ce modèle, badge sur le titre plutôt que répété sur chaque métrique */}
                 <div className="anl-card fu d3">
-                  <div className="anl-card-hdr"><h3>🚑 Ambulances</h3></div>
+                  <div className="anl-card-hdr"><h3>🚑 Ambulances{filterNote('ambulances_missions_periode')}</h3></div>
                   <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                     <div className="mini-kpi" style={{ textAlign:"center" }}>
                       <div className="mini-kpi-val" style={{ color:"var(--ab)", fontSize:22 }}>{kpi.ambulances_missions_periode}</div>
@@ -961,9 +1020,9 @@ export default function Analytics() {
                   </div>
                 </div>
 
-                {/* Messages */}
+                {/* Messages — aucune notion service/médecin sur ce modèle */}
                 <div className="anl-card fu d3">
-                  <div className="anl-card-hdr"><h3>💬 Messages</h3></div>
+                  <div className="anl-card-hdr"><h3>💬 Messages{filterNote('messages_volume_periode')}</h3></div>
                   <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:10 }}>
                     <div className="mini-kpi" style={{ textAlign:"center" }}>
                       <div className="mini-kpi-val" style={{ color:"var(--ab)", fontSize:22 }}>{kpi.messages_volume_periode}</div>
@@ -980,10 +1039,10 @@ export default function Analytics() {
               {/* ── KPIs FINANCE RÉSUMÉ ── */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:14, marginBottom:28 }}>
                 {[
-                  { color:"green",  icon:I.money, label:"Chiffre d'affaires",  val:fmtNum(kpi.ca_total)+" CFA",    sub:`${periode==="mois"?"Ce mois":"Cette période"}`, key:'ca_total' },
-                  { color:"blue",   icon:I.money, label:"Dépenses totales",     val:fmtNum(kpi.depenses)+" CFA",    sub:"Charges opérationnelles",      key:'depenses' },
-                  { color:"teal",   icon:I.money, label:"Bénéfice net",         val:fmtNum(kpi.benefice)+" CFA",    sub:`Marge ${beneficePct}%`,        key:'benefice' },
-                  { color:"red",    icon:I.money, label:"Factures impayées", val:fmtNum(kpi.factures_impayees)+" CFA", sub:`${kpi.factures_impayees>0?kpi.factures_impayees+" facture(s)":"Aucune"}`, urgent:kpi.factures_impayees>0 },
+                  { color:"green",  icon:I.money, label:<>Chiffre d'affaires{filterNote('ca_total')}</>,  val:fmtNum(kpi.ca_total)+" CFA",    sub:`${periode==="mois"?"Ce mois":"Cette période"}`, key:'ca_total' },
+                  { color:"blue",   icon:I.money, label:<>Dépenses totales{filterNote('depenses')}</>,     val:fmtNum(kpi.depenses)+" CFA",    sub:"Charges opérationnelles",      key:'depenses' },
+                  { color:"teal",   icon:I.money, label:<>Bénéfice net{filterNote('benefice')}</>,         val:fmtNum(kpi.benefice)+" CFA",    sub:`Marge ${beneficePct}%`,        key:'benefice' },
+                  { color:"red",    icon:I.money, label:<>Factures impayées{filterNote('factures_impayees')}</>, val:fmtNum(kpi.factures_impayees)+" CFA", sub:`${kpi.factures_impayees>0?kpi.factures_impayees+" facture(s)":"Aucune"}`, urgent:kpi.factures_impayees>0 },
                   /* AUDIT-ANALYTICS-P2 — pas de trend pour "Factures impayées" :
                      c'est un solde instantané (créances en cours), pas une
                      valeur de flux sur la période — un "vs période
@@ -997,37 +1056,37 @@ export default function Analytics() {
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:14, marginBottom:24 }}>
                 {[
                   { titre:"🚨 Urgences",      color:"#DC2626", bg:"#FEF2F2", items:[
-                    ["Période",   kpi.urgences_periode??0], ["Critiques", kpi.urgences_critiques??0], ["Total",  kpi.urgences_total??0],
+                    ["Période",   kpi.urgences_periode??0, 'urgences_periode'], ["Critiques", kpi.urgences_critiques??0, 'urgences_critiques'], ["Total",  kpi.urgences_total??0, 'urgences_total'],
                   ]},
                   { titre:"🤰 Maternité",     color:"#EC4899", bg:"#FDF2F8", items:[
-                    ["Grossesses",kpi.maternite_grossesses??0], ["Accouchements", kpi.maternite_accouchements??0],
+                    ["Grossesses",kpi.maternite_grossesses??0, 'maternite_grossesses'], ["Accouchements", kpi.maternite_accouchements??0, 'maternite_accouchements'],
                   ]},
                   { titre:"👶 Pédiatrie",     color:"#0EA5A0", bg:"#F0FDFC", items:[
-                    ["Période",   kpi.pediatrie_periode??0], ["Total",  kpi.pediatrie_total??0],
+                    ["Période",   kpi.pediatrie_periode??0, 'pediatrie_periode'], ["Total",  kpi.pediatrie_total??0, 'pediatrie_total'],
                   ]},
                   { titre:"🔬 Échographie",   color:"#7C3AED", bg:"#F5F3FF", items:[
-                    ["Période",   kpi.echographie_periode??0], ["Total", kpi.echographie_total??0],
+                    ["Période",   kpi.echographie_periode??0, 'echographie_periode'], ["Total", kpi.echographie_total??0, 'echographie_total'],
                   ]},
                   { titre:"💊 Pharmacie",     color:"#059669", bg:"#ECFDF5", items:[
-                    ["Médicaments",kpi.pharma_total??0], ["Ruptures", kpi.pharma_ruptures??0], ["Critique", kpi.pharma_critiques??0],
+                    ["Médicaments",kpi.pharma_total??0, 'pharma_total'], ["Ruptures", kpi.pharma_ruptures??0, 'pharma_ruptures'], ["Critique", kpi.pharma_critiques??0, 'pharma_critiques'],
                   ]},
                   { titre:"📋 Prescriptions", color:"#1B4F9E", bg:"#EFF6FF", items:[
-                    ["Période",   kpi.prescriptions_periode??0], ["Total", kpi.prescriptions_total??0],
+                    ["Période",   kpi.prescriptions_periode??0, 'prescriptions_periode'], ["Total", kpi.prescriptions_total??0, 'prescriptions_total'],
                   ]},
                   { titre:"👔 RH",            color:"#D97706", bg:"#FFFBEB", items:[
-                    ["Médecins",  kpi.rh_medecins??0], ["Infirmiers", kpi.rh_infirmiers??0], ["Total", kpi.rh_personnel??0],
+                    ["Médecins",  kpi.rh_medecins??0, 'rh_medecins'], ["Infirmiers", kpi.rh_infirmiers??0, 'rh_infirmiers'], ["Total", kpi.rh_personnel??0, 'rh_personnel'],
                   ]},
                   { titre:"🗄️ Archives",      color:"#6B7A99", bg:"#F8FAFF", items:[
-                    ["Archivés",  kpi.archives_total??0],
+                    ["Archivés",  kpi.archives_total??0, 'archives_total'],
                   ]},
                 ].map(({ titre, color, bg, items }) => (
                   <div key={titre} style={{ background:bg, border:`1.5px solid ${color}22`, borderRadius:16, padding:"14px 18px" }}>
                     <div style={{ fontSize:13, fontWeight:700, color, marginBottom:10 }}>{titre}</div>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:14 }}>
-                      {items.map(([lbl, val]) => (
+                      {items.map(([lbl, val, k]) => (
                         <div key={lbl} style={{ minWidth:80 }}>
                           <div style={{ fontSize:22, fontWeight:800, color, letterSpacing:-1 }}>{fmtNum(val)}</div>
-                          <div style={{ fontSize:10.5, color:"var(--am)", fontWeight:600 }}>{lbl}</div>
+                          <div style={{ fontSize:10.5, color:"var(--am)", fontWeight:600 }}>{lbl}{filterNote(k)}</div>
                         </div>
                       ))}
                     </div>

@@ -19,8 +19,9 @@ const ArchiveEntry   = require('../models/ArchiveEntry');
 const Depense        = require('../models/Depense');
 const Ambulance      = require('../models/Ambulance');
 const Conversation   = require('../models/Conversation');
+const Service        = require('../models/Service');
 const mail           = require('../utils/mail');
-const { logAction }  = require('../utils/helpers');
+const { logAction, escapeRegex } = require('../utils/helpers');
 const { logger }     = require('../utils/logger');
 
 const COLORS = ['#DC2626','#D97706','#0EA5A0','#1B4F9E','#7C3AED','#059669','#EC4899','#06B6D4','#84CC16','#F59E0B'];
@@ -61,6 +62,34 @@ function resolvePeriodRange(query) {
     return { debut, fin };
   }
   return { debut: startOf(periode || 'mois'), fin: new Date() };
+}
+
+// AUDIT-ANALYTICS-P7 — filtres Service/Médecin, best-effort partout où une
+// notion équivalente existe réellement (décision validée : jamais un champ
+// inventé). Deux formes selon la collection cible :
+//  - referenceId : le champ réel est un ObjectId (ref User/Service) —
+//    correspondance exacte, la plus fiable.
+//  - regex : le champ réel est une String libre (pas de lien fiable vers un
+//    User/Service) — correspondance approximative sur le nom réel résolu
+//    une seule fois ici, jamais un texte fabriqué. Disclosed comme
+//    "best-effort" dans le rapport, jamais présenté comme une correspondance
+//    garantie.
+// Résolu une seule fois par requête getStats(), jamais par sous-requête.
+async function resolveServiceMedecinFilters(query) {
+  const { service, medecin } = query;
+  const out = { serviceId: null, serviceNomRegex: null, medecinId: null, medecinRegex: null };
+
+  if (service) {
+    out.serviceId = service;
+    const svc = await Service.findById(service).select('nom').lean().catch(() => null);
+    if (svc?.nom) out.serviceNomRegex = new RegExp(escapeRegex(svc.nom), 'i');
+  }
+  if (medecin) {
+    out.medecinId = medecin;
+    const med = await User.findById(medecin).select('nom prenom').lean().catch(() => null);
+    if (med?.nom) out.medecinRegex = new RegExp(`${escapeRegex(med.prenom || '')}.*${escapeRegex(med.nom)}|${escapeRegex(med.nom)}`, 'i');
+  }
+  return out;
 }
 
 // safe count helper — returns 0 if model query fails
@@ -216,6 +245,26 @@ async function countPerDay(model, dateField, days, extraMatch = {}) {
 exports.getStats = async (req, res, next) => {
   try {
     const { debut: depuis, fin } = resolvePeriodRange(req.query);
+    const { serviceId, serviceNomRegex, medecinId, medecinRegex } = await resolveServiceMedecinFilters(req.query);
+
+    // AUDIT-ANALYTICS-P7 — un fragment de filtre par collection réellement
+    // porteuse d'un champ médecin/service (voir audit reporté à
+    // l'utilisateur) ; {} pour les collections sans notion équivalente,
+    // jamais un filtre inventé pour elles. ObjectId direct (fiable) quand
+    // le champ réel est une référence User/Service ; regex approximative
+    // (best-effort, disclosed) quand c'est une String libre.
+    const fConsult   = { ...(medecinId ? { medecin: medecinId } : {}), ...(serviceNomRegex ? { service: serviceNomRegex } : {}) };
+    const fAppt      = { ...(medecinId ? { medecin: medecinId } : {}), ...(serviceId ? { service: serviceId } : {}) };
+    const fLabo      = { ...(medecinId ? { medecin_prescripteur: medecinId } : {}), ...(serviceNomRegex ? { service_demandeur: serviceNomRegex } : {}) };
+    const fImagerie  = { ...(medecinId ? { medecin_prescripteur: medecinId } : {}), ...(serviceNomRegex ? { service_demandeur: serviceNomRegex } : {}) };
+    const fHospit    = { ...(medecinId ? { medecin_responsable: medecinId } : {}), ...(serviceId ? { service: serviceId } : {}) };
+    const fChir      = { ...(medecinId ? { chirurgien_id: medecinId } : {}), ...(serviceNomRegex ? { service_demandeur: serviceNomRegex } : {}) };
+    const fPresc     = { ...(medecinId ? { medecin: medecinId } : {}) };
+    const fUrg       = { ...(medecinId ? { medecin_responsable: medecinId } : {}), ...(serviceNomRegex ? { service: serviceNomRegex } : {}) };
+    const fPregnancy = { ...(medecinRegex ? { medecin_responsable: medecinRegex } : {}) };
+    const fPediatrie = { ...(medecinRegex ? { medecin: medecinRegex } : {}) };
+    const fEcho      = { ...(medecinRegex ? { medecin_presc: medecinRegex } : {}) };
+    const fInvoice   = { ...(serviceNomRegex ? { service_label: serviceNomRegex } : {}) };
 
     const [
       // Patients
@@ -265,29 +314,39 @@ exports.getStats = async (req, res, next) => {
       safeCount(Patient, { statut: { $ne: 'decede' } }),
       safeCount(Patient, { createdAt: { $gte: depuis, $lte: fin } }),
       safeCount(Hospitalization, { statut: 'en_cours' }),
-      Appointment.distinct('patient', { date_heure: { $gte: depuis, $lte: fin } }).catch(()=>[]),
+      // AUDIT-ANALYTICS-P7 — patients_actifs dérive d'Appointment (même
+      // collection que consultations_annulees), donc hérite naturellement
+      // des mêmes filtres réels ; patients_nouveaux/patients_total restent
+      // globaux (Patient n'a pas de notion service/médecin propre à cette
+      // activité — medecin_referent est une notion différente, le médecin
+      // référent à l'enregistrement, pas l'activité de la période).
+      Appointment.distinct('patient', { date_heure: { $gte: depuis, $lte: fin }, ...fAppt }).catch(()=>[]),
       // ── Consultations
-      safeCount(Consultation, { createdAt: { $gte: depuis, $lte: fin } }),
-      safeCount(Consultation, { statut: 'terminee', createdAt: { $gte: depuis, $lte: fin } }),
-      safeCount(Appointment, { statut: 'annule', date_heure: { $gte: depuis, $lte: fin } }),
+      safeCount(Consultation, { createdAt: { $gte: depuis, $lte: fin }, ...fConsult }),
+      safeCount(Consultation, { statut: 'terminee', createdAt: { $gte: depuis, $lte: fin }, ...fConsult }),
+      safeCount(Appointment, { statut: 'annule', date_heure: { $gte: depuis, $lte: fin }, ...fAppt }),
       // ── Labo
-      safeCount(LabResult, { createdAt: { $gte: depuis, $lte: fin } }),
-      safeCount(LabResult, { statut: { $in: ['termine','valide'] }, createdAt: { $gte: depuis, $lte: fin } }),
-      safeCount(LabResult, { statut: { $in: ['prescrit','en_attente','en_cours'] } }),
+      safeCount(LabResult, { createdAt: { $gte: depuis, $lte: fin }, ...fLabo }),
+      safeCount(LabResult, { statut: { $in: ['termine','valide'] }, createdAt: { $gte: depuis, $lte: fin }, ...fLabo }),
+      safeCount(LabResult, { statut: { $in: ['prescrit','en_attente','en_cours'] }, ...fLabo }),
       // ── Imagerie
-      safeCount(ImagingResult, { createdAt: { $gte: depuis, $lte: fin } }),
-      safeCount(ImagingResult, { statut: { $in: ['realise','rapporte','valide'] }, createdAt: { $gte: depuis, $lte: fin } }),
-      safeCount(ImagingResult, { statut: { $in: ['programme','en_attente'] } }),
+      safeCount(ImagingResult, { createdAt: { $gte: depuis, $lte: fin }, ...fImagerie }),
+      safeCount(ImagingResult, { statut: { $in: ['realise','rapporte','valide'] }, createdAt: { $gte: depuis, $lte: fin }, ...fImagerie }),
+      safeCount(ImagingResult, { statut: { $in: ['programme','en_attente'] }, ...fImagerie }),
       // ── Hospitalisations
-      safeCount(Hospitalization, { createdAt: { $gte: depuis, $lte: fin } }),
-      safeCount(Hospitalization, { statut: 'sorti', updatedAt: { $gte: depuis, $lte: fin } }),
+      safeCount(Hospitalization, { createdAt: { $gte: depuis, $lte: fin }, ...fHospit }),
+      safeCount(Hospitalization, { statut: 'sorti', updatedAt: { $gte: depuis, $lte: fin }, ...fHospit }),
+      // AUDIT-ANALYTICS-P7 — taux_occupation reste un instantané global,
+      // jamais filtré (même choix que bloc_taux_occupation_salle) : un ratio
+      // "lits occupés par Dr X / total des lits" mélangerait une notion
+      // filtrée à un dénominateur qui ne l'est pas, résultat trompeur.
       safeCount(Hospitalization, { statut: 'en_cours' }),
       safeCount(Room, { statut: { $ne: 'ferme' } }),
       // ── Chirurgie
-      safeCount(DossierChirurgical, { createdAt: { $gte: depuis, $lte: fin } }),
-      safeCount(DossierChirurgical, { statut: 'opere', date_intervention_reelle: { $gte: depuis, $lte: fin } }),
+      safeCount(DossierChirurgical, { createdAt: { $gte: depuis, $lte: fin }, ...fChir }),
+      safeCount(DossierChirurgical, { statut: 'opere', date_intervention_reelle: { $gte: depuis, $lte: fin }, ...fChir }),
       // ── Bloc opératoire
-      safeCount(DossierChirurgical, { statut: 'preoperatoire', date_intervention_prev: { $gte: new Date() } }),
+      safeCount(DossierChirurgical, { statut: 'preoperatoire', date_intervention_prev: { $gte: new Date() }, ...fChir }),
       safeCount(DossierChirurgical, { salle_entree_at: { $ne: null }, salle_sortie_at: null }),
       // ── Ambulances
       safeAggregate(Ambulance, [
@@ -306,45 +365,49 @@ exports.getStats = async (req, res, next) => {
       ]),
       Conversation.find({ messages: { $elemMatch: { date_envoi: { $gte: depuis, $lte: fin } } } })
         .select('messages').lean().catch(() => []),
-      // ── Finance
+      // ── Finance (AUDIT-ANALYTICS-P7 — service_label, best-effort ; pas de
+      // champ médecin sur Invoice/Depense — jamais filtré par médecin,
+      // disclosed. Depense n'a aucun des deux champs — reste global.)
       Invoice.aggregate([
-        { $match: { statut: { $nin: ['annulee','brouillon'] }, createdAt: { $gte: depuis, $lte: fin } } },
+        { $match: { statut: { $nin: ['annulee','brouillon'] }, createdAt: { $gte: depuis, $lte: fin }, ...fInvoice } },
         { $group: { _id: null, total: { $sum: '$montant_ttc' }, paye: { $sum: '$montant_paye' } } },
       ]).catch(()=>[]),
       Invoice.aggregate([
-        { $match: { statut: { $in: ['emise','partiellement_payee','contentieux'] } } },
+        { $match: { statut: { $in: ['emise','partiellement_payee','contentieux'] }, ...fInvoice } },
         { $group: { _id: null, total: { $sum: '$montant_restant' } } },
       ]).catch(()=>[]),
       Depense.aggregate([
         { $match: { date: { $gte: depuis, $lte: fin } } },
         { $group: { _id: null, total: { $sum: '$montant' } } },
       ]).catch(()=>[]),
-      // ── Pharmacie
+      // ── Pharmacie (aucun champ médecin/service réel — reste global, disclosed)
       safeCount(Medication),
       safeCount(Medication, { statut: 'rupture' }),
       safeCount(Medication, { stock_actuel: { $gt: 0 }, $expr: { $lte: ['$stock_actuel', { $multiply: ['$stock_minimum', 0.3] }] } }),
       Medication.aggregate([
         { $group: { _id: null, val: { $sum: { $multiply: ['$stock_actuel', '$prix_vente'] } } } },
       ]).catch(()=>[]),
-      // ── Prescriptions
+      // ── Prescriptions (médecin réel ; pas de champ service sur ce modèle)
       safeCount(Prescription),
-      safeCount(Prescription, { createdAt: { $gte: depuis, $lte: fin } }),
+      safeCount(Prescription, { createdAt: { $gte: depuis, $lte: fin }, ...fPresc }),
       // ── Urgences
       safeCount(Urgence),
-      safeCount(Urgence, { createdAt: { $gte: depuis, $lte: fin } }),
+      safeCount(Urgence, { createdAt: { $gte: depuis, $lte: fin }, ...fUrg }),
       // Urgence.niveau_urgence n'existe pas — le champ réel est niveau_triage
       // (enum rouge/orange/jaune/vert/bleu) ; 'rouge' = niveau critique.
-      safeCount(Urgence, { niveau_triage: 'rouge' }),
-      // ── Maternité
+      safeCount(Urgence, { niveau_triage: 'rouge', ...fUrg }),
+      // ── Maternité (medecin_responsable réel sur Pregnancy, best-effort
+      // texte libre ; Delivery n'a qu'un champ sage_femme, pas de médecin —
+      // accouchements_periode reste non filtré par médecin, disclosed)
       // Enum réel Pregnancy.statut : active/accouchee/suivi_postnatal/cloturee/a_risque
-      safeCount(Pregnancy, { statut: { $in: ['active','a_risque'] } }),
+      safeCount(Pregnancy, { statut: { $in: ['active','a_risque'] }, ...fPregnancy }),
       safeCount(Delivery, { createdAt: { $gte: depuis, $lte: fin } }),
-      // ── Pédiatrie
+      // ── Pédiatrie (medecin réel, best-effort texte libre ; pas de champ service)
       safeCount(PediatricConsultation),
-      safeCount(PediatricConsultation, { createdAt: { $gte: depuis, $lte: fin } }),
-      // ── Échographie
+      safeCount(PediatricConsultation, { createdAt: { $gte: depuis, $lte: fin }, ...fPediatrie }),
+      // ── Échographie (medecin_presc réel, best-effort texte libre ; pas de champ service)
       safeCount(Echographie),
-      safeCount(Echographie, { createdAt: { $gte: depuis, $lte: fin } }),
+      safeCount(Echographie, { createdAt: { $gte: depuis, $lte: fin }, ...fEcho }),
       // ── RH
       safeCount(User, { role: 'medecin', statut: 'actif' }),
       safeCount(User, { role: 'infirmier', statut: 'actif' }),
@@ -391,11 +454,11 @@ exports.getStats = async (req, res, next) => {
       ca_prev_result, depenses_prev_result,
     ] = await Promise.all([
       safeCount(Patient, { createdAt: { $gte: prevDebut, $lte: prevFin } }),
-      safeCount(Consultation, { createdAt: { $gte: prevDebut, $lte: prevFin } }),
-      safeCount(Consultation, { statut: 'terminee', createdAt: { $gte: prevDebut, $lte: prevFin } }),
-      safeCount(Appointment, { statut: 'annule', date_heure: { $gte: prevDebut, $lte: prevFin } }),
+      safeCount(Consultation, { createdAt: { $gte: prevDebut, $lte: prevFin }, ...fConsult }),
+      safeCount(Consultation, { statut: 'terminee', createdAt: { $gte: prevDebut, $lte: prevFin }, ...fConsult }),
+      safeCount(Appointment, { statut: 'annule', date_heure: { $gte: prevDebut, $lte: prevFin }, ...fAppt }),
       Invoice.aggregate([
-        { $match: { statut: { $nin: ['annulee', 'brouillon'] }, createdAt: { $gte: prevDebut, $lte: prevFin } } },
+        { $match: { statut: { $nin: ['annulee', 'brouillon'] }, createdAt: { $gte: prevDebut, $lte: prevFin }, ...fInvoice } },
         { $group: { _id: null, total: { $sum: '$montant_ttc' } } },
       ]).catch(() => []),
       Depense.aggregate([

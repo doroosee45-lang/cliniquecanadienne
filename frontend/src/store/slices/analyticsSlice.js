@@ -43,15 +43,21 @@ export const fetchPatientStats = createAsyncThunk(
 // periode==='custom' : c'est la seule route (getStats) à les interpréter
 // réellement aujourd'hui (getReport/getFinancial/getPatientStats restent
 // figées sur l'année civile en cours, limitation préexistante hors périmètre).
+// AUDIT-ANALYTICS-P7 — service/medecin transmis seulement quand sélectionnés
+// (jamais un paramètre vide) ; getStats() les interprète en best-effort sur
+// les collections qui portent réellement un champ équivalent (voir audit),
+// laisse les autres KPI globaux et disclosed comme tels côté UI.
 export const fetchKpis = createAsyncThunk(
   'analytics/fetchKpis',
-  async ({ periode = 'mois', dateDebut = '', dateFin = '' } = {}, { rejectWithValue }) => {
+  async ({ periode = 'mois', dateDebut = '', dateFin = '', service = '', medecin = '' } = {}, { rejectWithValue }) => {
     try {
       const params = new URLSearchParams({ periode });
       if (periode === 'custom') {
         if (dateDebut) params.set('date_debut', dateDebut);
         if (dateFin) params.set('date_fin', dateFin);
       }
+      if (service) params.set('service', service);
+      if (medecin) params.set('medecin', medecin);
       const { data } = await api.get(`/analytics/stats?${params}`);
       // AUDIT-ANALYTICS-P2 — trends réels "vs période précédente" (getStats)
       // remontés à côté de kpi, jamais fabriqués côté frontend.
