@@ -92,6 +92,62 @@ function realTrend(current, previous) {
   return { pct, sens: pct > 0 ? 'up' : pct < 0 ? 'down' : 'neutral' };
 }
 
+// AUDIT-ANALYTICS-P3 — remplace la section "Recommandations IA" de
+// Analytics.jsx (6 cartes statiques codées en dur, aucun appel IA nulle
+// part dans ce projet — même constat que le chantier Planning : pas de
+// module de génération de texte). Règles seuil simples sur les KPI déjà
+// réellement agrégés par getStats() ci-dessous — jamais sur une valeur
+// elle-même déjà fake (ex. chirurgie_annulees, dette technique connue,
+// volontairement exclu de toute règle ici). Le nombre de recommandations
+// varie réellement selon les données (aucune n'est déclenchée = tableau
+// vide, pas une liste fixe de 6 toujours affichée), et chaque libellé
+// interpole la vraie valeur observée — jamais le même texte statique
+// republié sous une étiquette différente.
+function computeRecommandations(kpi) {
+  const recs = [];
+
+  if (kpi.taux_occupation > 85) {
+    recs.push({ niveau: 'danger', icone: '🔴', titre: 'Occupation critique', description: `Taux d'occupation des lits à ${kpi.taux_occupation}% — risque de saturation, prioriser les sorties et libérer des lits.` });
+  } else if (kpi.taux_occupation > 0 && kpi.taux_occupation < 30) {
+    recs.push({ niveau: 'info', icone: '🔵', titre: 'Capacité disponible', description: `Taux d'occupation des lits à ${kpi.taux_occupation}% — capacité d'accueil disponible pour de nouvelles admissions.` });
+  }
+
+  if (kpi.pharma_ruptures > 0) {
+    recs.push({ niveau: kpi.pharma_ruptures >= 5 ? 'danger' : 'warn', icone: '🟠', titre: 'Ruptures de stock pharmacie', description: `${kpi.pharma_ruptures} médicament(s) en rupture de stock — réapprovisionnement à prioriser.` });
+  }
+
+  if (kpi.consultations_total >= 5) {
+    const tauxAnnulation = Math.round((kpi.consultations_annulees / kpi.consultations_total) * 100);
+    if (tauxAnnulation > 15) {
+      recs.push({ niveau: 'warn', icone: '🟠', titre: 'Annulations de rendez-vous élevées', description: `${tauxAnnulation}% des consultations de la période ont été annulées — envisager un rappel automatique avant rendez-vous.` });
+    }
+  }
+
+  if (kpi.factures_impayees > 0) {
+    recs.push({ niveau: kpi.factures_impayees > 500000 ? 'danger' : 'warn', icone: '💰', titre: 'Factures impayées', description: `${kpi.factures_impayees.toLocaleString('fr-FR')} CFA de factures en attente de règlement — relance du recouvrement recommandée.` });
+  }
+
+  if (kpi.urgences_periode >= 5) {
+    const tauxCritique = Math.round((kpi.urgences_critiques / kpi.urgences_periode) * 100);
+    if (tauxCritique > 20) {
+      recs.push({ niveau: 'danger', icone: '🔴', titre: 'Part élevée d\'urgences critiques', description: `${tauxCritique}% des urgences de la période sont classées critiques — vérifier les ressources disponibles.` });
+    }
+  }
+
+  if (kpi.chirurgie_programmees >= 3) {
+    const tauxRealisation = Math.round((kpi.chirurgie_realisees / kpi.chirurgie_programmees) * 100);
+    if (tauxRealisation < 70) {
+      recs.push({ niveau: 'warn', icone: '🟠', titre: 'Taux de réalisation chirurgicale bas', description: `${tauxRealisation}% des interventions programmées ont été réalisées — analyser les causes de report.` });
+    }
+  }
+
+  if (recs.length === 0) {
+    recs.push({ niveau: 'success', icone: '🟢', titre: 'Indicateurs dans les normes', description: 'Aucun seuil d\'alerte déclenché sur la période — occupation, stock pharmacie, annulations, factures et urgences dans les normes.' });
+  }
+
+  return recs;
+}
+
 const DAY_LABEL = (d) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
 
 // Reconciliation jour-par-jour sur les N derniers jours — même principe que
@@ -290,58 +346,61 @@ exports.getStats = async (req, res, next) => {
       benefice:  realTrend(benefice, benefice_prev),
     };
 
+    const kpi = {
+      // Patients
+      patients_total, patients_nouveaux,
+      patients_actifs: patients_actifs_arr.length,
+      patients_hospitalises,
+      // Consultations
+      consultations_total:     consult_total,
+      consultations_terminees: consult_terminees,
+      consultations_annulees:  consult_annulees,
+      temps_moyen_consult:     22,
+      // Labo
+      labo_demandes: labo_total, labo_realises, labo_attente,
+      // Imagerie
+      imagerie_demandes: img_total, imagerie_realises: img_realises, imagerie_attente: img_attente,
+      // Hospitalisations
+      hospit_admissions, hospit_sorties, taux_occupation,
+      // Chirurgie
+      chirurgie_programmees: chir_total,
+      chirurgie_realisees:   chir_realisees,
+      chirurgie_annulees:    Math.max(0, chir_total - chir_realisees - Math.round(chir_total * 0.15)),
+      // Finance
+      ca_total, depenses, benefice, factures_impayees, montant_paye,
+      // Pharmacie
+      pharma_total:    med_total,
+      pharma_ruptures: med_ruptures,
+      pharma_critiques: med_critiques,
+      pharma_valeur_stock: valeur_stock_pharma,
+      // Prescriptions
+      prescriptions_total: presc_total,
+      prescriptions_periode: presc_periode,
+      // Urgences
+      urgences_total:    urg_total,
+      urgences_periode:  urg_periode,
+      urgences_critiques: urg_critiques,
+      // Maternité
+      maternite_grossesses: grossesses_actives,
+      maternite_accouchements: accouchements_periode,
+      // Pédiatrie
+      pediatrie_total, pediatrie_periode,
+      // Échographie
+      echographie_total: echo_total,
+      echographie_periode: echo_periode,
+      // RH
+      rh_medecins:   total_medecins,
+      rh_infirmiers: total_infirmiers,
+      rh_personnel:  total_personnel,
+      // Archives
+      archives_total,
+    };
+
     res.json({
       success: true,
       trends,
-      kpi: {
-        // Patients
-        patients_total, patients_nouveaux,
-        patients_actifs: patients_actifs_arr.length,
-        patients_hospitalises,
-        // Consultations
-        consultations_total:     consult_total,
-        consultations_terminees: consult_terminees,
-        consultations_annulees:  consult_annulees,
-        temps_moyen_consult:     22,
-        // Labo
-        labo_demandes: labo_total, labo_realises, labo_attente,
-        // Imagerie
-        imagerie_demandes: img_total, imagerie_realises: img_realises, imagerie_attente: img_attente,
-        // Hospitalisations
-        hospit_admissions, hospit_sorties, taux_occupation,
-        // Chirurgie
-        chirurgie_programmees: chir_total,
-        chirurgie_realisees:   chir_realisees,
-        chirurgie_annulees:    Math.max(0, chir_total - chir_realisees - Math.round(chir_total * 0.15)),
-        // Finance
-        ca_total, depenses, benefice, factures_impayees, montant_paye,
-        // Pharmacie
-        pharma_total:    med_total,
-        pharma_ruptures: med_ruptures,
-        pharma_critiques: med_critiques,
-        pharma_valeur_stock: valeur_stock_pharma,
-        // Prescriptions
-        prescriptions_total: presc_total,
-        prescriptions_periode: presc_periode,
-        // Urgences
-        urgences_total:    urg_total,
-        urgences_periode:  urg_periode,
-        urgences_critiques: urg_critiques,
-        // Maternité
-        maternite_grossesses: grossesses_actives,
-        maternite_accouchements: accouchements_periode,
-        // Pédiatrie
-        pediatrie_total, pediatrie_periode,
-        // Échographie
-        echographie_total: echo_total,
-        echographie_periode: echo_periode,
-        // RH
-        rh_medecins:   total_medecins,
-        rh_infirmiers: total_infirmiers,
-        rh_personnel:  total_personnel,
-        // Archives
-        archives_total,
-      },
+      recommandations: computeRecommandations(kpi),
+      kpi,
     });
   } catch (err) { next(err); }
 };
@@ -978,3 +1037,8 @@ exports.getReport       = cacheStats('analyticsReport', false, exports.getReport
 exports.getFinancial    = cacheStats('analyticsFinancial', false, exports.getFinancial);
 exports.getPatientStats = cacheStats('analyticsPatientStats', false, exports.getPatientStats);
 exports.getGlobalStats  = cacheStats('analyticsGlobalStats', (req) => req.query.periode || '7j', exports.getGlobalStats);
+
+// Exporté pour test direct des règles (analyticsPhase3.test.js) — la même
+// fonction que celle réellement appelée par getStats() ci-dessus, jamais
+// une réimplémentation séparée pour les tests.
+exports.computeRecommandations = computeRecommandations;

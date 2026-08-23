@@ -55,7 +55,10 @@ export const fetchKpis = createAsyncThunk(
       const { data } = await api.get(`/analytics/stats?${params}`);
       // AUDIT-ANALYTICS-P2 — trends réels "vs période précédente" (getStats)
       // remontés à côté de kpi, jamais fabriqués côté frontend.
-      return { kpi: data.kpi || {}, trends: data.trends || {} };
+      // AUDIT-ANALYTICS-P3 — recommandations (règles seuil réelles côté
+      // backend) fusionnées dans kpi pour un accès direct kpi.recommandations
+      // côté composant, sans sélecteur Redux supplémentaire.
+      return { kpi: { ...(data.kpi || {}), recommandations: data.recommandations || [] }, trends: data.trends || {} };
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Erreur KPIs');
     }

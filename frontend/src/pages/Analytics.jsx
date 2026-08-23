@@ -1363,26 +1363,27 @@ export default function Analytics() {
                 </div>
               </div>
 
-              {/* IA Recommandations performance */}
+              {/* AUDIT-ANALYTICS-P3 — "Recommandations IA" (6 cartes
+                  statiques, aucun appel IA nulle part dans ce projet — même
+                  constat que Planning) remplacé par de vraies règles seuil
+                  sur les KPI déjà agrégés (computeRecommandations, backend).
+                  Nombre variable réel (0 déclenchement possible → un seul
+                  message "dans les normes", jamais une liste fixe de 6). */}
               <div className="anl-card fu">
-                <div className="anl-card-hdr"><h3>{I.ia} Recommandations IA — Amélioration de la performance</h3></div>
+                <div className="anl-card-hdr"><h3>💡 Recommandations — Amélioration de la performance</h3></div>
                 <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
-                  {[
-                    { col:"#DC2626", ico:"🔴", titre:"Priorité haute", desc:"Réduire le temps d'attente urgences > 30 min — Impact : 23% des patients insatisfaits" },
-                    { col:"#D97706", ico:"🟠", titre:"Suivi recommandé", desc:"Taux de retour patients 68% — Mettre en place système de rappel automatique" },
-                    { col:"#059669", ico:"🟢", titre:"Bonne pratique",   desc:"Taux de satisfaction soins 89% — Maintenir les protocoles actuels" },
-                    { col:"#1B4F9E", ico:"🔵", titre:"Optimisation",     desc:"Rotation des lits optimisable : 72% d'occupation — Planifier sortie H+4" },
-                    { col:"#7C3AED", ico:"🟣", titre:"Analyse IA",       desc:"Pic de consultations mardi-vendredi — Renforcer le personnel ces jours" },
-                    { col:"#0EA5A0", ico:"💡", titre:"Innovation",        desc:"Téléconsultation : réduire délais de 40% pour consultations de suivi chronique" },
-                  ].map((r,i)=>(
-                    <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:12, background:"#F8FAFD", borderRadius:12, padding:"12px 14px", borderLeft:`3px solid ${r.col}` }}>
-                      <span style={{ fontSize:18, flexShrink:0 }}>{r.ico}</span>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:12.5, color:"var(--an)" }}>{r.titre}</div>
-                        <div style={{ fontSize:11.5, color:"var(--am)", marginTop:2, lineHeight:1.5 }}>{r.desc}</div>
+                  {(kpi.recommandations || []).map((r,i)=>{
+                    const col = { danger:"#DC2626", warn:"#D97706", success:"#059669", info:"#1B4F9E" }[r.niveau] || "#6B7A99";
+                    return (
+                      <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:12, background:"#F8FAFD", borderRadius:12, padding:"12px 14px", borderLeft:`3px solid ${col}` }}>
+                        <span style={{ fontSize:18, flexShrink:0 }}>{r.icone}</span>
+                        <div>
+                          <div style={{ fontWeight:700, fontSize:12.5, color:"var(--an)" }}>{r.titre}</div>
+                          <div style={{ fontSize:11.5, color:"var(--am)", marginTop:2, lineHeight:1.5 }}>{r.description}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
