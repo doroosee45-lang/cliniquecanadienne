@@ -14,6 +14,7 @@ router.get('/',               protect, authorize(...STAFF), dashC.getStats);
 router.get('/superadmin',     protect, authorize('superadmin'),                                      dashC.superAdminStats);
 router.get('/adminclinique',  protect, authorize('superadmin','adminclinique'),                      dashC.adminCliniqueStats);
 router.get('/medecin',        protect, authorize('superadmin','adminclinique','medecin'),             dashC.medecinStats);
+router.get('/sage_femme',     protect, authorize('superadmin','adminclinique','sage_femme'),           dashC.sageFemmeStats);
 router.get('/infirmier',      protect, authorize('superadmin','adminclinique','infirmier'),           dashC.infirmierStats);
 router.get('/laborantin',     protect, authorize('superadmin','adminclinique','laborantin'),          dashC.laborantinStats);
 router.get('/pharmacien',     protect, authorize('superadmin','adminclinique','pharmacien'),          dashC.pharmacienStats);

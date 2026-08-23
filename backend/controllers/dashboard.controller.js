@@ -38,6 +38,9 @@ const Depense        = require('../models/Depense');
 const Commande       = require('../models/Commande');
 const AuditLog       = require('../models/AuditLog');
 const Urgence        = require('../models/Urgence');
+const Pregnancy      = require('../models/Pregnancy');
+const Delivery       = require('../models/Delivery');
+const { escapeRegex } = require('../utils/helpers');
 
 // ─── Helpers ──────────────────────────────────────────────────
 const todayRange = () => {
@@ -537,6 +540,77 @@ exports.medecinStats = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ─── 3bis. SAGE-FEMME ──────────────────────────────────────────
+// AUDIT-ADMIN-P1 — sage_femme n'avait aucun dashboard dédié (retombait sur
+// le fallback générique de exports.getStats ci-dessous, déjà annoté "ex:
+// sage_femme, sans dashboard dédié"). Même structure que medecinStats
+// ci-dessus, mais Pregnancy.sage_femme/Delivery.sage_femme sont des String
+// libres (jamais un ObjectId ref vers User, contrairement à
+// Consultation.medecin) — scope "mes patientes" fait donc par
+// correspondance approximative sur le nom réel de l'utilisatrice connectée,
+// même principe déjà validé en Analytics Phase 7 pour les champs médecin
+// en texte libre (jamais un nom inventé, juste une limite de fiabilité
+// disclosed).
+exports.sageFemmeStats = async (req, res, next) => {
+  try {
+    const { start, end } = todayRange();
+    const now = new Date();
+    const dans7j = new Date(now.getTime() + 7 * 86400000);
+    const debutMois = new Date(now.getFullYear(), now.getMonth(), 1);
+    const nomRegex = new RegExp(`${escapeRegex(req.user.prenom || '')}.*${escapeRegex(req.user.nom || '')}|${escapeRegex(req.user.nom || '')}`, 'i');
+    const filtreSF = { sage_femme: nomRegex };
+
+    const [
+      mes_grossesses_suivies,
+      mes_accouchements_mois,
+      patientes_risque_eleve,
+      accouchements_prevus_7j,
+      suivis_postnatal_actifs,
+      cpn_auj_result,
+      grossesses_risque,
+    ] = await Promise.all([
+      Pregnancy.countDocuments({ ...filtreSF, statut: { $in: ['active', 'a_risque'] } }),
+      Delivery.countDocuments({ sage_femme: nomRegex, date_heure: { $gte: debutMois } }),
+      Pregnancy.countDocuments({ ...filtreSF, statut: { $ne: 'cloturee' }, niveau_risque: 'eleve' }),
+      Pregnancy.countDocuments({ ...filtreSF, statut: 'active', dpa: { $gte: now, $lte: dans7j } }),
+      Pregnancy.countDocuments({ ...filtreSF, statut: 'suivi_postnatal' }),
+      Pregnancy.aggregate([
+        { $match: filtreSF },
+        { $unwind: '$cpns' },
+        { $match: { 'cpns.date': { $gte: start, $lte: end } } },
+        { $project: { patient_nom: 1, patient_prenom: 1, 'cpns.date': 1, 'cpns.terme': 1 } },
+      ]).catch(() => []),
+      Pregnancy.find({ ...filtreSF, statut: { $ne: 'cloturee' }, niveau_risque: 'eleve' })
+        .select('patient_nom patient_prenom terme dpa niveau_risque').limit(5).lean(),
+    ]);
+
+    const cpn_auj = cpn_auj_result.map(p => ({
+      heure: new Date(p.cpns.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      patiente: `${p.patient_prenom || ''} ${p.patient_nom || ''}`.trim() || 'Inconnue',
+      terme: p.cpns.terme ? `${p.cpns.terme} SA` : '—',
+    }));
+
+    const grossesses_a_risque = grossesses_risque.map(g => ({
+      patiente: `${g.patient_prenom || ''} ${g.patient_nom || ''}`.trim() || 'Inconnue',
+      dpa: g.dpa ? new Date(g.dpa).toLocaleDateString('fr-FR') : '—',
+      niveau_risque: g.niveau_risque,
+    }));
+
+    const alertes = grossesses_a_risque.map(g => ({
+      type: 'error',
+      msg: `${g.patiente} — Grossesse à risque élevé (DPA ${g.dpa})`,
+      heure: '',
+    }));
+
+    res.json({ success: true, stats: {
+      kpis: { mes_grossesses_suivies, mes_accouchements_mois, patientes_risque_eleve, accouchements_prevus_7j, suivis_postnatal_actifs, cpn_aujourdhui: cpn_auj.length },
+      cpn_auj,
+      grossesses_a_risque,
+      alertes,
+    }});
+  } catch (err) { next(err); }
+};
+
 // ─── 4. INFIRMIER ──────────────────────────────────────────────
 // ⚠️ Il n'existe aujourd'hui aucun schéma de "plan de soins" (soins,
 // constantes à prendre, médicaments à distribuer par horaire) — seul
@@ -844,6 +918,7 @@ exports.getStats = async (req, res, next) => {
     superadmin:     exports.superAdminStats,
     adminclinique:  exports.adminCliniqueStats,
     medecin:        exports.medecinStats,
+    sage_femme:     exports.sageFemmeStats,
     infirmier:      exports.infirmierStats,
     laborantin:     exports.laborantinStats,
     pharmacien:     exports.pharmacienStats,
@@ -853,7 +928,8 @@ exports.getStats = async (req, res, next) => {
   };
   const handler = handlers[role];
   if (handler) return handler(req, res, next);
-  // Fallback générique si rôle inconnu (ex: sage_femme, sans dashboard dédié)
+  // Fallback générique si rôle inconnu — tous les rôles STAFF réels ont
+  // désormais un dashboard dédié (sage_femme ajouté ci-dessus, AUDIT-ADMIN-P1).
   const { start, end } = todayRange();
   try {
     const [patients, rdv, consultations] = await Promise.all([
@@ -877,6 +953,7 @@ const { cacheStats } = require('../utils/dashboardCache');
 exports.superAdminStats     = cacheStats('superAdminStats',     false, exports.superAdminStats);
 exports.adminCliniqueStats  = cacheStats('adminCliniqueStats',  false, exports.adminCliniqueStats);
 exports.medecinStats        = cacheStats('medecinStats',        true,  exports.medecinStats);
+exports.sageFemmeStats      = cacheStats('sageFemmeStats',      true,  exports.sageFemmeStats);
 exports.infirmierStats      = cacheStats('infirmierStats',      false, exports.infirmierStats);
 exports.laborantinStats     = cacheStats('laborantinStats',     false, exports.laborantinStats);
 exports.pharmacienStats     = cacheStats('pharmacienStats',     false, exports.pharmacienStats);

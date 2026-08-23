@@ -126,6 +126,7 @@ const ROLE_CFG = {
   superadmin:     { icon:"👑", label:"Super Administrateur",  color:"#F59E0B", bg:"#FEF3C7" },
   adminclinique:  { icon:"🏥", label:"Admin Clinique",         color:"#7C3AED", bg:"#F5F3FF" },
   medecin:        { icon:"👨‍⚕️", label:"Médecin",               color:"#1B4F9E", bg:"#EFF6FF" },
+  sage_femme:     { icon:"🤰", label:"Sage-femme",             color:"#EC4899", bg:"#FDF2F8" },
   infirmier:      { icon:"💉", label:"Infirmier(e)",            color:"#06B6D4", bg:"#ECFEFF" },
   laborantin:     { icon:"🔬", label:"Laborantin(e)",           color:"#059669", bg:"#ECFDF5" },
   radiologue:     { icon:"🩻", label:"Radiologue",              color:"#6366F1", bg:"#EEF2FF" },
@@ -201,6 +202,7 @@ const QUICK_ACTIONS = {
   superadmin:     [{ icon:"➕", label:"Nouveau patient", color:"#EFF6FF", to:"/patients" },{ icon:"📅", label:"Rendez-vous", color:"#F0FDFC", to:"/appointments" },{ icon:"🩺", label:"Consultations", color:"#ECFDF5", to:"/consultations" },{ icon:"👥", label:"Utilisateurs", color:"#F5F3FF", to:"/administration" },{ icon:"🏥", label:"Hospitalisations", color:"#FEF2F2", to:"/hospitalization" },{ icon:"🧪", label:"Laboratoire", color:"#ECFDF5", to:"/laboratory" },{ icon:"💊", label:"Pharmacie", color:"#FFF7ED", to:"/pharmacy" },{ icon:"💰", label:"Finance", color:"#FEFCE8", to:"/finance" },{ icon:"📊", label:"Rapports", color:"#EEF2FF", to:"/analytics" }],
   adminclinique:  [{ icon:"➕", label:"Nouveau patient", color:"#EFF6FF", to:"/patients" },{ icon:"📅", label:"Nouveau RDV", color:"#F0FDFC", to:"/appointments" },{ icon:"🩺", label:"Consultation", color:"#ECFDF5", to:"/consultations" },{ icon:"💊", label:"Ordonnance", color:"#FFF7ED", to:"/ordonnances" },{ icon:"🏥", label:"Hospitalisation", color:"#FEF2F2", to:"/hospitalization" },{ icon:"💰", label:"Finance", color:"#FEFCE8", to:"/finance" },{ icon:"🧪", label:"Laboratoire", color:"#F5F3FF", to:"/laboratory" },{ icon:"🩻", label:"Imagerie", color:"#EEF2FF", to:"/radiology" },{ icon:"📊", label:"Analytics", color:"#FDF2F8", to:"/analytics" },{ icon:"⚙️", label:"Paramètres", color:"#FFF7ED", to:"/settings" }],
   medecin:        [{ icon:"🩺", label:"Consultation", color:"#EFF6FF", to:"/consultations" },{ icon:"💊", label:"Ordonnance", color:"#F0FDFC", to:"/ordonnances" },{ icon:"📅", label:"Mes RDV", color:"#ECFDF5", to:"/appointments" },{ icon:"👥", label:"Mes patients", color:"#FFF7ED", to:"/patients" },{ icon:"🏥", label:"Hospitalisation", color:"#FEF2F2", to:"/hospitalization" },{ icon:"🔬", label:"Labo", color:"#ECFDF5", to:"/laboratory" },{ icon:"🩻", label:"Imagerie", color:"#EEF2FF", to:"/radiology" },{ icon:"🤖", label:"IA", color:"#F5F3FF", to:"/ai" }],
+  sage_femme:     [{ icon:"🤰", label:"Grossesses", color:"#FDF2F8", to:"/maternite" },{ icon:"👶", label:"Accouchements", color:"#F0FDFC", to:"/maternite" },{ icon:"📋", label:"CPN", color:"#EFF6FF", to:"/maternite" },{ icon:"🔬", label:"Échographies", color:"#F5F3FF", to:"/maternite" },{ icon:"👥", label:"Nouveau-nés", color:"#FFF7ED", to:"/pediatrie" },{ icon:"💬", label:"Messagerie", color:"#ECFDF5", to:"/messages" }],
   infirmier:      [{ icon:"👥", label:"Patients", color:"#EFF6FF", to:"/patients" },{ icon:"🌡️", label:"Constantes", color:"#F0FDFC", to:"/hospitalization" },{ icon:"💉", label:"Soins", color:"#ECFDF5", to:"/hospitalization" },{ icon:"💊", label:"Médicaments", color:"#FFF7ED", to:"/pharmacy" },{ icon:"📋", label:"Fiche suivi", color:"#F5F3FF", to:"/hospitalization" },{ icon:"💬", label:"Messagerie", color:"#FDF2F8", to:"/messages" }],
   laborantin:     [{ icon:"🔬", label:"Analyses", color:"#ECFDF5", to:"/laboratory" },{ icon:"📋", label:"Résultats", color:"#EFF6FF", to:"/laboratory" },{ icon:"🚨", label:"Critiques", color:"#FEF2F2", to:"/laboratory" },{ icon:"✅", label:"Valider", color:"#ECFDF5", to:"/laboratory" },{ icon:"📊", label:"Rapports", color:"#F5F3FF", to:"/analytics" },{ icon:"💬", label:"Messagerie", color:"#FDF2F8", to:"/messages" }],
   radiologue:     [{ icon:"🩻", label:"Examens", color:"#EEF2FF", to:"/radiology" },{ icon:"📝", label:"Compte rendu", color:"#EFF6FF", to:"/radiology" },{ icon:"🚨", label:"Anomalies IA", color:"#FEF2F2", to:"/radiology" },{ icon:"📅", label:"Planning", color:"#F0FDFC", to:"/radiology" },{ icon:"✅", label:"Valider", color:"#ECFDF5", to:"/radiology" },{ icon:"🤖", label:"IA", color:"#F5F3FF", to:"/ai" }],
@@ -935,6 +937,74 @@ function MedecinDashboard({ data, user, isMobile }) {
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// ─── SAGE-FEMME DASHBOARD ───────────────────────────────────────
+// ════════════════════════════════════════════════════════════════
+// AUDIT-ADMIN-P1 — sage_femme retombait silencieusement sur la config et
+// les raccourcis du rôle "patient" (fallback ROLE_CFG[role]||ROLE_CFG.patient
+// à la ligne où rc est calculé) faute d'entrée dédiée, et n'affichait aucune
+// carte KPI (aucune des branches du switch de rendu ne correspondait à ce
+// rôle). Même structure que MedecinDashboard, alimentée par
+// dashboard.controller.js::sageFemmeStats.
+function SageFemmeDashboard({ data, isMobile }) {
+  const kpis = data?.kpis || {};
+  const cpnAuj = data?.cpn_auj || [];
+  const risque = data?.grossesses_a_risque || [];
+  const alertes = data?.alertes || [];
+  return (
+    <div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:24 }}>
+        <KpiCard color="purple" icon="🤰" value={kpis.mes_grossesses_suivies}  label="Grossesses suivies" sub="actives" />
+        <KpiCard color="teal"   icon="👶" value={kpis.mes_accouchements_mois}  label="Accouchements"      sub="ce mois" />
+        <KpiCard color="orange" icon="📋" value={kpis.cpn_aujourdhui}          label="CPN aujourd'hui"    sub="réalisées" />
+        <KpiCard color="red"    icon="⚠️" value={kpis.patientes_risque_eleve}  label="Risque élevé"       sub="à surveiller" urgent={kpis.patientes_risque_eleve > 0} />
+        <KpiCard color="blue"   icon="📅" value={kpis.accouchements_prevus_7j} label="Accouchements prévus" sub="sous 7 jours" />
+        <KpiCard color="green"  icon="🍼" value={kpis.suivis_postnatal_actifs} label="Suivis postnatal"   sub="en cours" />
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+        <div className="db-card">
+          <div className="db-card-hdr"><div><h3>📋 CPN réalisées aujourd'hui</h3><p>{cpnAuj.length} consultation(s)</p></div></div>
+          <div style={{ padding:"8px 0" }}>
+            {cpnAuj.length === 0 ? <div style={{ padding:"12px 20px" }}><Empty icon="📋" msg="Aucune CPN réalisée aujourd'hui" /></div> : cpnAuj.map((c,i)=>(
+              <div key={i} className="rdv-item" style={{ padding:"10px 20px" }}>
+                <div className="rdv-time">{c.heure}</div>
+                <div style={{ flex:1, minWidth:0 }}><div style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>{c.patiente}</div><div style={{ fontSize:11, color:"var(--dm)" }}>Terme : {c.terme}</div></div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          {alertes.length > 0 && (
+            <div className="db-card" style={{ marginBottom:16 }}>
+              <div className="db-card-hdr"><h3>🔔 Alertes — Grossesses à risque</h3></div>
+              <div style={{ padding:14 }}>
+                {alertes.map((al,i)=>(
+                  <div key={i} className="al-danger" style={{ marginBottom:10, display:"flex", gap:10 }}>
+                    <span>🚨</span>
+                    <div style={{ fontSize:12, fontWeight:700, color:"var(--dn)" }}>{al.msg}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="db-card">
+            <div className="db-card-hdr"><h3>⚠️ Grossesses à risque élevé</h3></div>
+            <div style={{ padding:16 }}>
+              {risque.length === 0 ? <Empty icon="✅" msg="Aucune grossesse à risque élevé sous votre suivi" /> : risque.map((g,i)=>(
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:i<risque.length-1?"1px solid var(--dbr)":"" }}>
+                  <div style={{ width:36, height:36, borderRadius:"50%", background:"#FDF2F8", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🤰</div>
+                  <div style={{ flex:1 }}><div style={{ fontSize:13, fontWeight:600, color:"var(--dn)" }}>{g.patiente}</div><div style={{ fontSize:11, color:"var(--dm)" }}>DPA : {g.dpa}</div></div>
+                  <Badge cls="red">Risque {g.niveau_risque}</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InfirmierDashboard({ data, isMobile }) {
   const kpis = data?.kpis || {}; const alertes = data?.alertes || []; const planning = data?.planning || [];
   return (
@@ -1239,11 +1309,13 @@ export default function Dashboard() {
             récente s'affichaient AVANT le contenu principal du rôle, ce qui
             reléguait les KPI (l'information la plus importante) après deux
             blocs génériques. Réordonnancement pur (mêmes composants, mêmes
-            props, mêmes données) — s'applique uniformément aux 10 rôles. */}
+            props, mêmes données) — s'applique uniformément aux 11 rôles
+            (sage_femme ajouté, AUDIT-ADMIN-P1). */}
         <div className="fu d2">
           {role === "superadmin"     && <SuperAdminDashboard data={stats} isMobile={isMobile} />}
           {role === "adminclinique"  && <AdminDashboard data={stats} user={user} isMobile={isMobile} />}
           {role === "medecin"        && <MedecinDashboard data={stats} user={user} isMobile={isMobile} />}
+          {role === "sage_femme"     && <SageFemmeDashboard data={stats} isMobile={isMobile} />}
           {role === "infirmier"      && <InfirmierDashboard data={stats} isMobile={isMobile} />}
           {role === "laborantin"     && <LaborantinDashboard data={stats} isMobile={isMobile} />}
           {role === "pharmacien"     && <PharmacienDashboard data={stats} isMobile={isMobile} />}
