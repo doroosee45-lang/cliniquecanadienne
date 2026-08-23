@@ -2,7 +2,6 @@
 const router     = require('express').Router();
 const settingsC  = require('../controllers/settings.controller');
 const { protect, authorize } = require('../middleware/auth');
-const User = require('../models/User');
 
 const ADMIN = ['superadmin','adminclinique'];
 // Données de référence (services, salles, assurances) consultées par de
@@ -18,12 +17,7 @@ router.post('/',        protect, authorize(...ADMIN), settingsC.upsert);
 router.get('/users',          protect, authorize(...ADMIN),   settingsC.getUsers);
 router.post('/users',         protect, authorize('superadmin'), settingsC.createUser);
 router.put('/users/:id',      protect, authorize('superadmin'), settingsC.updateUser);
-router.delete('/users/:id',   protect, authorize('superadmin'), async (req, res, next) => {
-  try {
-    await User.findByIdAndUpdate(req.params.id, { statut:'inactif' });
-    res.json({ success:true, message:'Utilisateur désactivé.' });
-  } catch (err) { next(err); }
-});
+router.delete('/users/:id',   protect, authorize('superadmin'), settingsC.deactivateUser);
 
 // ── Services médicaux ─────────────────────────────────────────
 router.get('/services',       protect, authorize(...STAFF),   settingsC.getServices);

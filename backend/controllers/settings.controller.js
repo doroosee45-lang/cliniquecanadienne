@@ -128,6 +128,43 @@ exports.updateUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-ARCHIVAGE-B1 — remplace le handler inline de settings.routes.js
+// (DELETE /users/:id), qui contournait entièrement ce contrôleur : aucun
+// logAction, et un bug latent (findByIdAndUpdate sur un id inexistant
+// renvoyait success:true silencieusement, sans jamais vérifier que
+// l'utilisateur existait — corrigé ici, distinct du reste). Même
+// traçabilité + notification + email que updateUser() ci-dessus pour un
+// changement de statut suspendu (cohérence explicitement demandée), plutôt
+// qu'un comportement différent selon PUT vs DELETE pour le même effet.
+exports.deactivateUser = async (req, res, next) => {
+  try {
+    const avant = await User.findById(req.params.id).select('role statut email prenom nom').lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
+
+    const user = await User.findByIdAndUpdate(req.params.id, { statut: 'inactif' }, { new: true });
+    await logAction({
+      utilisateur: req.user._id, action: 'DEACTIVATE_USER', module: 'admin', entite_id: user._id, ip: req.ip,
+      avant: { statut: avant.statut }, apres: { statut: user.statut },
+      message: `Utilisateur désactivé : ${user.email}`,
+    });
+
+    if (avant.statut !== 'inactif') {
+      await createNotification({
+        destinataire: user._id,
+        type: 'warning',
+        titre: 'Votre compte a été désactivé',
+        message: 'Un administrateur a désactivé votre compte.',
+        priorite: 'haute',
+      });
+      if (user.email) {
+        await mail.sendAccountSuspendedEmail({ email: user.email, prenom: user.prenom, nom: user.nom });
+      }
+    }
+
+    res.json({ success: true, message: 'Utilisateur désactivé.' });
+  } catch (err) { next(err); }
+};
+
 exports.getServices = async (req, res, next) => {
   try {
     const services = await Service.find().populate('chef_service', 'nom prenom').sort('nom');

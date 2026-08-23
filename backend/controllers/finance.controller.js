@@ -124,6 +124,55 @@ exports.create = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-ARCHIVAGE-B2 — remplace le handler inline de finance.routes.js
+// (POST /revenus), qui contournait entièrement ce contrôleur : une vraie
+// transaction financière (Invoice payée) créée sans jamais passer par
+// logAction, contrairement à create() juste au-dessus. Logique métier
+// inchangée, simplement relocalisée + tracée, même forme que create().
+exports.createRevenu = async (req, res, next) => {
+  try {
+    const { date, service, patient, reference, montant, mode, statut, notes } = req.body;
+    const montantNum = Number(montant);
+    if (!montantNum || montantNum <= 0) return res.status(400).json({ success: false, message: 'Montant invalide.' });
+
+    const mongoose = require('mongoose');
+    const body = {
+      created_by:    req.user._id,
+      date_facture:  date ? new Date(date) : new Date(),
+      service_label: service || 'Consultation',
+      statut:        'payee',
+      montant_direct: montantNum,
+      montant_ttc:   montantNum,
+      montant_paye:  montantNum,
+      montant_restant: 0,
+      notes:         notes || '',
+      lignes: [{ libelle: service || 'Prestation médicale', categorie: (['consultation','hospitalisation','laboratoire','imagerie','pharmacie'].includes((service||'').toLowerCase()) ? (service||'').toLowerCase() : 'autre'), prix_unitaire: montantNum, quantite: 1, montant: montantNum }],
+      paiements: [{ montant: montantNum, mode: mode || 'especes', reference: reference || undefined, date: date ? new Date(date) : new Date(), enregistre_par: req.user._id }],
+    };
+
+    // Patient : ObjectId valide ou nom libre
+    if (patient && mongoose.Types.ObjectId.isValid(String(patient))) {
+      body.patient = patient;
+    } else if (patient) {
+      body.patient_nom = String(patient);
+    }
+
+    const invoice = await Invoice.create(body);
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Revenu direct enregistré : ${service || 'Prestation médicale'} — ${montantNum} CFA` });
+    const revenu = {
+      _id:       invoice._id,
+      reference: reference || invoice.numero_facture || `FAC-${invoice._id.toString().slice(-6)}`,
+      date:      invoice.date_facture,
+      patient:   invoice.patient_nom || patient || '—',
+      service:   service || '—',
+      montant:   montantNum,
+      mode:      mode || 'especes',
+      statut:    'paye',
+    };
+    res.status(201).json({ success: true, revenu });
+  } catch (err) { next(err); }
+};
+
 exports.addPayment = async (req, res, next) => {
   try {
     const { montant, mode, reference } = req.body;
