@@ -373,6 +373,26 @@ exports.remove = async (req, res, next) => {
     const patient = await Patient.findById(req.params.id);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
 
+    // AUDIT-CRIT-3 — un patient occupant ACTUELLEMENT un lit (Room.lits.
+    // patient_actuel) n'est pas un cas d'« historique » comme les autres
+    // ci-dessous : c'est un état live. hospitalization.controller.js::
+    // discharge() libère déjà correctement le lit ($unset patient_actuel) —
+    // arriver ici avec un lit encore occupé signifie qu'aucune sortie
+    // d'hospitalisation n'a été faite. On refuse donc toute action (ni
+    // suppression, ni désactivation silencieuse) tant que ce n'est pas
+    // résolu par le workflow clinique normal, plutôt que de risquer de
+    // désactiver un compte pendant qu'un patient est physiquement
+    // hospitalisé. Vérifié séparément et en premier, avant le bucket
+    // générique ci-dessous (Room figure bien dans CASCADE_TARGETS pour
+    // l'anonymisation, mais ce cas précis a besoin d'un refus dédié, pas
+    // d'une simple désactivation silencieuse).
+    const Room = require('../models/Room');
+    const occupieUnLit = await Room.countDocuments({ 'lits.patient_actuel': patient._id });
+    if (occupieUnLit > 0) {
+      await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'patients', entite_id: patient._id, ip: req.ip, statut: 'echec', message: `Suppression/désactivation refusée : ${patient.nom} ${patient.prenom} occupe actuellement un lit.` });
+      return res.status(409).json({ success: false, message: 'Ce patient occupe actuellement un lit — une sortie d\'hospitalisation est requise avant toute suppression ou désactivation du dossier.' });
+    }
+
     // Un dossier patient possédant le moindre historique clinique/financier
     // ne doit jamais être supprimé physiquement : obligation de conservation
     // du dossier médical, et ça laisserait des références orphelines. On
@@ -385,11 +405,23 @@ exports.remove = async (req, res, next) => {
     // CASCADE_TARGETS (utils/patientAnonymization.js) — inventaire déjà le
     // plus complet du projet pour ce besoin — complétée des 4 modèles qui n'y
     // figurent pas (Invoice y figure déjà, non dupliqué ici).
+    // AUDIT-CRIT-3 — 5 modèles référençant réellement Patient manquaient
+    // encore ici (AIPrediction, Child, Document, Echographie via patient_ref,
+    // Newborn) : un patient dont la seule trace clinique était l'un de
+    // ceux-ci pouvait être supprimé physiquement, laissant une référence
+    // orpheline (ex. un lien de dossier pédiatrique qui disparaît en cours
+    // de suivi). Room est délibérément absent d'ici — voir le refus dédié
+    // ci-dessus, plus strict qu'une simple désactivation.
     const HISTORY_CHECKS = [
       { model: require('../models/Appointment'),     refField: 'patient' },
       { model: require('../models/Consultation'),    refField: 'patient' },
       { model: require('../models/Hospitalization'), refField: 'patient' },
       { model: require('../models/Prescription'),    refField: 'patient' },
+      { model: require('../models/AIPrediction'),    refField: 'patient' },
+      { model: require('../models/Child'),           refField: 'patient_id' },
+      { model: require('../models/Document'),        refField: 'patient' },
+      { model: require('../models/Echographie'),     refField: 'patient_ref' },
+      { model: require('../models/Newborn'),         refField: 'patient_id' },
       ...CASCADE_TARGETS,
     ];
     const counts = await Promise.all(
@@ -445,7 +477,7 @@ exports.remove = async (req, res, next) => {
 // T9.13 — anonymisation, alternative à la suppression physique. Contrairement
 // à la désactivation ci-dessus (remove(), qui ne touche que le Patient et le
 // compte User), anonymize() scrube aussi les copies d'identité dupliquées
-// dans les 8 collections liées (voir utils/patientAnonymization.js pour le
+// dans les 14 collections liées (voir utils/patientAnonymization.js pour le
 // détail complet de la procédure et son raisonnement).
 exports.anonymize = async (req, res, next) => {
   try {

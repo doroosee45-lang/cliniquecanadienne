@@ -23,11 +23,15 @@
 //     conservation légale/statistique — et la référence ObjectId vers le
 //     Patient n'est PAS retirée : une fois le Patient lui-même anonymisé,
 //     cette référence seule n'est plus personnellement identifiable.
-//   - Les autres modèles référençant Patient (AIPrediction, Appointment,
-//     Child, Consultation, Echographie, Hospitalization, Newborn,
-//     Prescription, Room) ne dupliquent aucun champ d'identité — vérifié
-//     par grep sur chaque schéma avant d'écrire ce module — donc rien à
-//     scruber dessus ; la référence ObjectId seule n'exige aucune action.
+//   - AIPrediction/Appointment/Consultation/Document/Hospitalization/
+//     Prescription/Room ne dupliquent réellement aucun champ d'identité —
+//     seule la référence ObjectId existe, jamais retirée. Child/Echographie/
+//     Newborn, en revanche, dupliquent bien une identité (Child.nom/prenom,
+//     Echographie.patient — String malgré son nom trompeur, voir
+//     patient_ref pour la vraie référence —, Newborn.mere_nom) : un premier
+//     passage (grep ciblé sur "patient_nom"/"telephone") les avait manqués
+//     précisément parce qu'aucun ne suit cette convention de nommage — voir
+//     CASCADE_TARGETS ci-dessous pour le détail par modèle (AUDIT-CRIT-3).
 const Patient = require('../models/Patient');
 const User = require('../models/User');
 const { logAction } = require('./helpers');
@@ -44,6 +48,24 @@ const ANONYMOUS_LABEL = 'Patient anonymisé';
 // d'écrire le test). patient_sexe (Urgence) et sexe/date_naissance (Patient
 // lui-même) restent volontairement conservés : donnée démographique/clinique,
 // pas identifiante à elle seule — même principe que groupe_sanguin/allergies.
+// AUDIT-CRIT-3 — le commentaire ci-dessus (ligne 26-30) affirmait qu'AIPrediction/
+// Child/Document/Echographie/Newborn/Room ne dupliquaient aucun champ
+// d'identité, sur la seule base d'un grep ciblé sur "patient_nom"/"telephone" —
+// exactement le type d'angle mort que ce grep pouvait manquer. Relecture
+// complète de chaque schéma : Echographie.patient (String, malgré son nom
+// c'est un doublon d'affichage du nom, jamais peuplé/lié — voir patient_ref
+// pour la vraie référence) et Newborn.mere_nom (copie du nom de la mère,
+// confirmée dans maternityController.js::createNewborn) sont bien des
+// doublons d'identité qui avaient échappé à l'audit initial. Child.nom/
+// prenom dupliquent également l'identité du patient référencé par
+// patient_id (même principe que les 8 modèles déjà listés) — sexe/
+// date_naissance sont en revanche conservés sur Child, comme sur Patient
+// lui-même : utilisés pour de vrais calculs cliniques propres à ce document
+// (courbes de croissance, z-scores), pas de simples copies d'affichage.
+// AIPrediction/Document/Room n'ont réellement aucun champ d'identité
+// dupliqué (piiFields vide) — gardés dans cette liste pour que
+// anonymizePatient() les couvre explicitement (traçabilité), la boucle
+// ci-dessous saute simplement l'écriture quand piiFields est vide.
 const CASCADE_TARGETS = [
   { model: require('../models/ArchiveEntry'),        refField: 'patient',    piiFields: ['patient_nom'] },
   { model: require('../models/Delivery'),             refField: 'patient_id', piiFields: ['patient_nom'] },
@@ -53,6 +75,12 @@ const CASCADE_TARGETS = [
   { model: require('../models/LabResult'),             refField: 'patient',    piiFields: ['patient_nom', 'patient_dossier', 'telephone', 'date_naissance'] },
   { model: require('../models/Pregnancy'),             refField: 'patient_id', piiFields: ['patient_nom', 'patient_prenom', 'telephone', 'date_naissance'] },
   { model: require('../models/Urgence'),               refField: 'patient',    piiFields: ['patient_nom', 'patient_dob', 'patient_tel', 'contact_urgence', 'tel_urgence'] },
+  { model: require('../models/AIPrediction'),          refField: 'patient',              piiFields: [] },
+  { model: require('../models/Child'),                 refField: 'patient_id',           piiFields: ['nom', 'prenom', 'parent_nom', 'parent_tel'] },
+  { model: require('../models/Document'),              refField: 'patient',              piiFields: [] },
+  { model: require('../models/Echographie'),           refField: 'patient_ref',           piiFields: ['patient'] },
+  { model: require('../models/Newborn'),               refField: 'patient_id',           piiFields: ['mere_nom'] },
+  { model: require('../models/Room'),                  refField: 'lits.patient_actuel',   piiFields: [] },
 ];
 
 async function anonymizePatient(patientId, { utilisateur, ip } = {}) {
@@ -106,6 +134,10 @@ async function anonymizePatient(patientId, { utilisateur, ip } = {}) {
   // ── 3. Cascade — scrub des copies d'identité, contenu clinique conservé ──
   const cascade = {};
   for (const { model, refField, piiFields } of CASCADE_TARGETS) {
+    // Modèles sans aucun champ d'identité dupliqué (AIPrediction/Document/
+    // Room) : rien à écrire — un $unset vide serait de toute façon rejeté
+    // par MongoDB ("$unset with no fields specified").
+    if (piiFields.length === 0) { cascade[model.modelName] = 0; continue; }
     const unset = Object.fromEntries(piiFields.map(f => [f, 1]));
     const result = await model.updateMany({ [refField]: patient._id }, { $unset: unset });
     cascade[model.modelName] = result.modifiedCount;
