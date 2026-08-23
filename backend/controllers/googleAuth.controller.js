@@ -22,8 +22,43 @@ const oauthClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 // de valeur clinique inventée), et le lie via patient_id (T2.2).
 // numero_dossier est généré automatiquement par le hook pre('save') du
 // modèle (compteur atomique) — ne pas le fixer ici.
-async function ensurePatientDossier(user) {
+//
+// AUDIT-M-C6 — ne vérifiait que user.patient_id (le lien du COMPTE), jamais
+// si un dossier Patient existait déjà pour cette adresse email — un patient
+// enregistré au guichet par le personnel (patients.controller.js::create,
+// qui crée un Patient sans compte User associé) et se connectant ensuite
+// pour la première fois via Google se voyait donc créer un SECOND dossier
+// (celui-ci lié à son compte, l'original abandonné orphelin) plutôt que
+// d'être lié à son dossier réel — sans jamais aucune trace d'audit. Réutilise
+// la même vérification par email que patients.controller.js::create (pas
+// une nouvelle convention isolée) : lie le dossier existant s'il y en a un,
+// n'en crée un nouveau que si vraiment aucun n'existe. Trace d'audit
+// systématique dans les deux branches (absente jusqu'ici).
+// Limite connue et acceptée, pas un oubli (même pratique que l'hypothèse
+// d'horloge du chantier élevé Point 4) : le Patient.findOne ci-dessous et le
+// Patient.create plus bas ne forment pas une opération atomique unique. Deux
+// connexions Google strictement simultanées pour une adresse email
+// ENTIÈREMENT NOUVELLE (jamais vue ni côté User ni côté Patient) pourraient
+// en théorie encore créer deux dossiers, chacune ne voyant l'autre ni au
+// moment de son User.findOne ni de son Patient.findOne. Délibérément non
+// rendu atomique ici : ce cas exige qu'une même personne déclenche deux
+// tentatives de toute première inscription à la milliseconde près — sans
+// commune mesure avec le scénario réel et déterministe corrigé ci-dessous
+// (une simple première connexion sur un dossier déjà enregistré au guichet,
+// qui se produit à chaque patient pré-inscrit, sans aucune concurrence
+// requise). À rendre atomique séparément si ce cas résiduel devait un jour
+// se matérialiser en pratique.
+async function ensurePatientDossier(user, { ip } = {}) {
   if (user.role !== 'patient' || user.patient_id) return;
+
+  const existing = user.email ? await Patient.findOne({ email: user.email.toLowerCase().trim() }) : null;
+  if (existing) {
+    user.patient_id = existing._id;
+    await user.save();
+    await logAction({ utilisateur: user._id, action: 'LINK_PATIENT_DOSSIER', module: 'auth', entite_id: existing._id, ip, message: `Auto-inscription Google liée au dossier patient existant (${existing.numero_dossier || existing._id}) plutôt que d'en créer un second` });
+    return;
+  }
+
   const patient = await Patient.create({
     nom: user.nom,
     prenom: user.prenom,
@@ -34,6 +69,7 @@ async function ensurePatientDossier(user) {
   });
   user.patient_id = patient._id;
   await user.save();
+  await logAction({ utilisateur: user._id, action: 'CREATE', module: 'auth', entite_id: patient._id, ip, message: `Dossier patient créé automatiquement à l'auto-inscription Google (${patient.numero_dossier || patient._id})` });
 }
 
 /**
@@ -118,7 +154,7 @@ const googleLogin = async (req, res) => {
 
     // ── 4. Dossier Patient (nouveau compte OU compte patient existant
     //      jamais lié — ex. créé avant ce correctif) ─────────────────────────
-    await ensurePatientDossier(user);
+    await ensurePatientDossier(user, { ip: req.ip });
 
     // ── 5. Mise à jour dernière connexion ──────────────────────────────────
     user.derniere_connexion = new Date();
