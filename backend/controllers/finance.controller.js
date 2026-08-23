@@ -173,21 +173,52 @@ exports.createRevenu = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-11-6 — l'ancienne séquence (findById → vérifier montant_restant en
+// mémoire → invoice.save()) laissait une fenêtre entre la lecture et
+// l'écriture : deux paiements concurrents sur la même facture (caissier +
+// paiement portail, ou double-clic) pouvaient tous deux lire un solde
+// suffisant avant que le premier n'ait sauvegardé, faisant passer
+// montant_restant en négatif — même famille de bug lire-puis-écrire déjà
+// corrigée dans pharmacy.controller.js (stock_actuel) et
+// hospitalization.controller.js (lits.statut). Un seul findOneAndUpdate
+// atomique filtré sur montant_restant >= montant : Mongo ne peut
+// matcher/modifier qu'un seul des deux appels concurrents, l'autre reçoit 0
+// document modifié et un échec explicite. Le hook pre('save') du modèle
+// (qui dérive montant_paye/montant_restant/statut depuis paiements[] en
+// mémoire) n'intervient jamais sur ce chemin : $push/$inc et la dérivation
+// du statut sont faits explicitement ci-dessous, contre l'état déjà
+// atomiquement à jour renvoyé par { new: true }.
 exports.addPayment = async (req, res, next) => {
   try {
     const { montant, mode, reference } = req.body;
-    const invoice = await Invoice.findById(req.params.id);
-    if (!invoice) return res.status(404).json({ success: false, message: 'Facture introuvable.' });
-    if (!(Number(montant) > 0))
+    const montantNum = Number(montant);
+    if (!(montantNum > 0))
       return res.status(400).json({ success: false, message: 'Le montant du paiement doit être positif.' });
-    if (montant > invoice.montant_restant)
-      return res.status(400).json({ success: false, message: 'Montant supérieur au solde restant.' });
 
-    const avant = invoice.toObject();
-    invoice.paiements.push({ montant, mode, reference, enregistre_par: req.user._id });
-    await invoice.save();
-    await logAction({ utilisateur: req.user._id, action: 'PAYMENT', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Paiement ${montant} (${mode})`, avant, apres: invoice });
-    emitActivity({ module: 'finance', action: 'Paiement reçu', detail: `${Number(montant).toLocaleString('fr-FR')} CFA — ${mode}`, icon: '✅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    const avant = await Invoice.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Facture introuvable.' });
+
+    const invoice = await Invoice.findOneAndUpdate(
+      { _id: req.params.id, montant_restant: { $gte: montantNum } },
+      {
+        $push: { paiements: { montant: montantNum, mode, reference, enregistre_par: req.user._id } },
+        $inc: { montant_paye: montantNum, montant_restant: -montantNum },
+      },
+      { new: true }
+    );
+    if (!invoice) return res.status(400).json({ success: false, message: 'Montant supérieur au solde restant.' });
+
+    // statut dérivé après coup depuis montant_paye/montant_restant, déjà
+    // atomiquement corrects à ce stade — jamais une valeur elle-même en
+    // course, donc sans risque de perte d'écriture ici.
+    const statutAttendu = invoice.montant_restant <= 0 ? 'payee' : (invoice.montant_paye > 0 ? 'partiellement_payee' : invoice.statut);
+    if (statutAttendu !== invoice.statut) {
+      invoice.statut = statutAttendu;
+      await Invoice.updateOne({ _id: invoice._id }, { statut: statutAttendu });
+    }
+
+    await logAction({ utilisateur: req.user._id, action: 'PAYMENT', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Paiement ${montantNum} (${mode})`, avant, apres: invoice });
+    emitActivity({ module: 'finance', action: 'Paiement reçu', detail: `${montantNum.toLocaleString('fr-FR')} CFA — ${mode}`, icon: '✅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
     res.json({ success: true, invoice });
   } catch (err) { next(err); }
@@ -223,16 +254,40 @@ exports.updateStatut = async (req, res, next) => {
     if (statut === 'partiellement_payee' && invoice.montant_paye === 0) {
       return res.status(400).json({ success: false, message: "Aucun paiement enregistré — utilisez « Enregistrer un paiement » pour indiquer le montant versé." });
     }
+
+    let final;
     if (statut === 'payee' && invoice.montant_restant > 0) {
-      invoice.paiements.push({ montant: invoice.montant_restant, mode: 'especes', enregistre_par: req.user._id });
+      // AUDIT-11-6 — même famille de bug que addPayment ci-dessus : lire
+      // montant_restant en mémoire puis pousser un paiement de ce montant
+      // exact avant save() pouvait, sous deux appels concurrents (double-clic,
+      // ou en même temps qu'un vrai paiement via addPayment sur la même
+      // facture), enregistrer deux fois le solde. Le filtre porte sur le
+      // solde exact lu ci-dessus (pas un $gte : payer "le solde restant"
+      // n'a de sens que contre le solde réellement présent au moment de
+      // l'écriture) — si l'état a changé entre-temps, 0 document ne matche,
+      // renvoyé comme un conflit explicite plutôt qu'un double paiement.
+      const soldeAttendu = invoice.montant_restant;
+      final = await Invoice.findOneAndUpdate(
+        { _id: invoice._id, montant_restant: soldeAttendu },
+        {
+          $push: { paiements: { montant: soldeAttendu, mode: 'especes', enregistre_par: req.user._id } },
+          $inc: { montant_paye: soldeAttendu, montant_restant: -soldeAttendu },
+          $set: { statut: 'payee' },
+        },
+        { new: true }
+      );
+      if (!final) {
+        return res.status(409).json({ success: false, message: 'Le solde de cette facture a changé entre-temps (un paiement vient d\'être enregistré) — rechargez la facture et réessayez.' });
+      }
     } else {
       invoice.statut = statut;
+      await invoice.save();
+      final = invoice;
     }
-    await invoice.save();
 
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Statut facture ${invoice.numero_facture} : ${avant.statut} → ${invoice.statut}`, avant, apres: invoice.toObject() });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Statut facture ${invoice.numero_facture} : ${avant.statut} → ${final.statut}`, avant, apres: final.toObject() });
     emitDashboardUpdate();
-    res.json({ success: true, invoice: normalizeInvoice(invoice.toObject()) });
+    res.json({ success: true, invoice: normalizeInvoice(final.toObject()) });
   } catch (err) { next(err); }
 };
 
