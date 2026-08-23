@@ -101,19 +101,40 @@ exports.cancel = async (req, res, next) => {
 // ── PUBLIER (rend visible pour le patient + notif + email) ───────────────────
 exports.publier = async (req, res, next) => {
   try {
-    const rx = await Prescription.findById(req.params.id)
+    const rxAvant = await Prescription.findById(req.params.id)
       .populate('patient', 'nom prenom email telephone')
       .populate('medecin', 'nom prenom specialite')
       .populate('lignes.medicament', 'nom_commercial');
 
-    if (!rx) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
-    if (rx.statut === 'annulee') return res.status(400).json({ success: false, message: 'Impossible de publier une ordonnance annulée.' });
+    if (!rxAvant) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
+    if (rxAvant.statut === 'annulee') return res.status(400).json({ success: false, message: 'Impossible de publier une ordonnance annulée.' });
 
-    const avant = rx.toObject();
+    const avant = rxAvant.toObject();
 
-    rx.statut   = 'publiee';
-    rx.publie_at  = new Date();
-    rx.publie_par = req.user._id;
+    // AUDIT-M-B6 — la vérification ci-dessus n'était pas atomique avec
+    // rx.save() en fin de fonction (email/notification compris) : cancel()
+    // n'a lui-même aucune garde de statut, donc une annulation concurrente
+    // pouvait s'intercaler entre cette lecture et l'écriture finale —
+    // publier() écrasait alors silencieusement statut:'annulee' avec
+    // 'publiee', ressuscitant une ordonnance annulée (intégrité clinique,
+    // pas juste une question de dette technique). Transition atomique EN
+    // PREMIER, avant tout effet de bord (email, notification) — même
+    // principe que finance.controller.js::addPayment et
+    // pharmacy.controller.js::dispenser : le filtre porte la garde
+    // (statut != 'annulee'), jamais une vérification séparée avant l'écriture.
+    const rx = await Prescription.findOneAndUpdate(
+      { _id: rxAvant._id, statut: { $ne: 'annulee' } },
+      { $set: { statut: 'publiee', publie_at: new Date(), publie_par: req.user._id } },
+      { new: true }
+    )
+      .populate('patient', 'nom prenom email telephone')
+      .populate('medecin', 'nom prenom specialite')
+      .populate('lignes.medicament', 'nom_commercial');
+
+    if (!rx) {
+      await logAction({ utilisateur: req.user._id, action: 'PUBLISH', module: 'prescriptions', entite_id: rxAvant._id, ip: req.ip, statut: 'echec', message: `Publication refusée — ordonnance annulée entre-temps (course concurrente)` });
+      return res.status(400).json({ success: false, message: 'Impossible de publier une ordonnance annulée.' });
+    }
 
     // ── Email patient ─────────────────────────────────────────
     let emailEnvoye = false;
