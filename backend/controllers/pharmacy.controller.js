@@ -176,6 +176,12 @@ exports.receptionCommande = async (req, res, next) => {
     }
     const avant = commande.toObject();
 
+    // AUDIT-M-B5 (Groupe B, Point 5) — même famille que dispenser() : lisait
+    // stock_actuel en mémoire (med.stock_actuel += X) puis med.save() —
+    // deux réceptions concurrentes sur le même médicament (deux commandes
+    // différentes livrées en même temps, ou double-clic) pouvaient perdre
+    // un incrément (la dernière écriture gagne, sans jamais additionner les
+    // deux). Remplacé par un $inc atomique, même principe que dispenser().
     const { receptions } = req.body; // [{ index, quantite_recue }]
     for (const r of (receptions || [])) {
       const ligne = commande.lignes[r.index];
@@ -183,12 +189,16 @@ exports.receptionCommande = async (req, res, next) => {
       const recues = Math.min(ligne.quantite, (ligne.quantite_recue || 0) + (r.quantite_recue || 0));
       ligne.quantite_recue = recues;
       if (ligne.medicament) {
-        const med = await Medication.findById(ligne.medicament);
-        if (med) {
-          med.stock_actuel += (r.quantite_recue || 0);
-          med.mouvements.push({ type: 'entree', quantite: r.quantite_recue || 0, reference: commande.numero, notes: `Réception commande ${commande.numero}`, utilisateur: req.user._id });
-          med.statut = med.stock_actuel > 0 && med.statut === 'rupture' ? 'disponible' : med.statut;
-          await med.save();
+        const med = await Medication.findOneAndUpdate(
+          { _id: ligne.medicament },
+          {
+            $inc: { stock_actuel: (r.quantite_recue || 0) },
+            $push: { mouvements: { type: 'entree', quantite: r.quantite_recue || 0, reference: commande.numero, notes: `Réception commande ${commande.numero}`, utilisateur: req.user._id } },
+          },
+          { new: true }
+        );
+        if (med && med.stock_actuel > 0 && med.statut === 'rupture') {
+          await Medication.findByIdAndUpdate(med._id, { $set: { statut: 'disponible' } });
         }
       }
     }
@@ -394,16 +404,23 @@ exports.dispenser = async (req, res, next) => {
       }
     }
 
-    if (echec) {
+    // Recrédite les lignes déjà décrémentées dans cette même requête — motif
+    // paramétrable, réutilisé à la fois pour "stock insuffisant ailleurs dans
+    // la boucle" et pour "ordonnance déjà dispensée entre-temps" (AUDIT-M-B5).
+    const crediterRetour = async (motif) => {
       for (const d of decrementees) {
         const updated = await Medication.findByIdAndUpdate(d.id, {
           $inc: { stock_actuel: d.quantite },
-          $push: { mouvements: { type: 'retour', quantite: d.quantite, reference: prescription.numero_rx, notes: `Annulation automatique — stock insuffisant ailleurs dans la même ordonnance ${prescription.numero_rx}`, utilisateur: req.user._id } },
+          $push: { mouvements: { type: 'retour', quantite: d.quantite, reference: prescription.numero_rx, notes: `Annulation automatique — ${motif} (ordonnance ${prescription.numero_rx})`, utilisateur: req.user._id } },
         }, { new: true });
         if (updated && updated.stock_actuel > 0 && updated.statut === 'rupture') {
           await Medication.findByIdAndUpdate(d.id, { $set: { statut: 'disponible' } });
         }
       }
+    };
+
+    if (echec) {
+      await crediterRetour('stock insuffisant ailleurs dans la même ordonnance');
       await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: prescription._id, ip: req.ip, statut: 'echec', message: `Dispensation refusée — stock insuffisant : ${echec}` });
       return res.status(400).json({
         success: false,
@@ -411,18 +428,45 @@ exports.dispenser = async (req, res, next) => {
       });
     }
 
-    prescription.statut = 'dispensee';
-    prescription.dispensee_par = req.user._id;
-    prescription.date_dispensation = new Date();
-
-    // Interactions médicamenteuses — base partagée (utils/drugInteractions.js)
+    // AUDIT-M-B5 (Groupe B, Point 5) — la garde de statut ci-dessus (ligne 348)
+    // n'est pas atomique avec l'écriture finale : deux dispensations
+    // concurrentes de la même ordonnance, avec un stock suffisant pour les
+    // deux (donc les décréments atomiques par ligne réussissent tous les
+    // deux), pouvaient toutes deux franchir la garde puis toutes deux
+    // transitionner statut → 'dispensee' — une vraie double dispensation
+    // (stock décrémenté deux fois, mouvements dupliqués), pas seulement un
+    // risque de stock négatif. Contrairement au Point 4 (chevauchement de
+    // RDV, une contrainte ENTRE documents), la contrainte ici porte sur
+    // l'état d'un seul document (Prescription._id) : un findOneAndUpdate à
+    // filtre-garde classique (même principe que finance.controller.js::
+    // addPayment et hospitalization.controller.js::discharge) suffit.
     const meds = prescription.lignes.map(l => l.medicament_nom?.toLowerCase() || '');
-    prescription.interactions_detectees = detectInteractions(meds);
+    const dispensee = await Prescription.findOneAndUpdate(
+      { _id: prescription._id, statut: { $in: ['active', 'publiee'] } },
+      {
+        $set: {
+          statut: 'dispensee',
+          dispensee_par: req.user._id,
+          date_dispensation: new Date(),
+          interactions_detectees: detectInteractions(meds),
+        },
+      },
+      { new: true, runValidators: true }
+    );
 
-    await prescription.save();
-    await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: prescription._id, ip: req.ip, avant, apres: prescription });
-    emitActivity({ module: 'pharmacy', action: 'Dispensation ordonnance', detail: prescription.numero_rx, icon: '💊', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    if (!dispensee) {
+      // Perdu la course sur le statut : une autre requête a déjà dispensé
+      // cette ordonnance entre notre lecture initiale et cette écriture —
+      // recrédite le stock qu'on vient de décrémenter, jamais un double
+      // décompte silencieux.
+      await crediterRetour('ordonnance déjà dispensée entre-temps (course concurrente)');
+      await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: prescription._id, ip: req.ip, statut: 'echec', message: 'Dispensation refusée — ordonnance déjà dispensée entre-temps (course concurrente)' });
+      return res.status(409).json({ success: false, message: 'Cette ordonnance vient d\'être dispensée par une autre requête.' });
+    }
+
+    await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: dispensee._id, ip: req.ip, avant, apres: dispensee });
+    emitActivity({ module: 'pharmacy', action: 'Dispensation ordonnance', detail: dispensee.numero_rx, icon: '💊', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
-    res.json({ success: true, prescription });
+    res.json({ success: true, prescription: dispensee });
   } catch (err) { next(err); }
 };
