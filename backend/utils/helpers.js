@@ -73,6 +73,22 @@ const paginate = (query, page = 1, limit = 20) => {
 // filtre, jamais interpréter l'entrée comme un motif.
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// AUDIT-11-7 — messages.controller.js::sendPatientEmail construisait le
+// corps de l'email par interpolation directe du texte saisi par le
+// personnel (`<p>${contenu}</p>`) : un compte compromis ou malveillant peut
+// ainsi envoyer un email contenant du HTML/liens arbitraires avec l'adresse
+// d'expédition officielle de la clinique comme origine — un vecteur de
+// phishing crédible, indétectable côté client. Aucune dépendance
+// d'échappement HTML n'existe déjà dans le projet (escape-html n'est qu'une
+// dépendance transitive d'Express, jamais déclarée dans package.json — n'y
+// pas s'appuyer) ; échapper les 5 caractères HTML-actifs suffit ici, même
+// principe minimaliste que escapeRegex ci-dessus. N'échapper QUE le contenu
+// variable saisi par un utilisateur avant de l'insérer dans un template
+// HTML — jamais le HTML légitime du template lui-même (en-tête, boutons,
+// mise en forme).
+const HTML_ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => HTML_ESCAPE_MAP[c]);
+
 // AUDIT-P7-6 — factorisé depuis appointments.controller.js::create, seul
 // endroit qui vérifiait un conflit de créneau avant ce correctif.
 // update() (report de RDV) et recurring.controller.js::planifier() créaient
@@ -114,4 +130,4 @@ const countUnreadConversations = async (userId) => {
   return unread.length;
 };
 
-module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex, checkAppointmentConflict, countUnreadConversations };
+module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex, escapeHtml, checkAppointmentConflict, countUnreadConversations };

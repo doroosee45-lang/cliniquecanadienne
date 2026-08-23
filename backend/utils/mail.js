@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const { logger } = require('./logger');
 const env = require('../config/env');
+const { escapeHtml } = require('./helpers');
 
 const getTransporter = () =>
   nodemailer.createTransport({
@@ -115,11 +116,14 @@ const sendPasswordResetEmail = async ({ email, prenom, nom, token }) => {
  * @param {{ email, prenom, nom, numero_rx, date, medecin, lignes, diagnostic, lienPortail }} opts
  */
 const sendPrescriptionEmail = async ({ email, prenom, nom, numero_rx, date, medecin, lignes = [], diagnostic, lienPortail }) => {
+  // AUDIT-11-7 — medicament_nom/posologie/duree sont des champs texte libre
+  // saisis par le personnel (Prescription.js), pas une valeur d'énumération
+  // fermée : échappés avant insertion HTML, même principe que sendPatientEmail.
   const lignesHtml = lignes.map(l => `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #F3F7FF;font-size:13px;color:#0B1E3B;font-weight:600;">${l.medicament_nom || l.medicament || '—'}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #F3F7FF;font-size:12px;color:#6B7A99;">${l.posologie || '—'}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #F3F7FF;font-size:12px;color:#6B7A99;">${l.duree || '—'}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #F3F7FF;font-size:13px;color:#0B1E3B;font-weight:600;">${escapeHtml(l.medicament_nom || l.medicament || '—')}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #F3F7FF;font-size:12px;color:#6B7A99;">${escapeHtml(l.posologie || '—')}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #F3F7FF;font-size:12px;color:#6B7A99;">${escapeHtml(l.duree || '—')}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #F3F7FF;font-size:12px;color:#059669;font-weight:600;">${l.quantite ? `${l.quantite} unité(s)` : '—'}</td>
     </tr>
   `).join('');
@@ -140,7 +144,7 @@ const sendPrescriptionEmail = async ({ email, prenom, nom, numero_rx, date, mede
       <h2 style="color:#0B1E3B;font-size:16px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
       <p style="color:#374151;font-size:14px;line-height:1.7;">
         Votre médecin <strong>${medecin}</strong> a émis et publié une ordonnance médicale vous concernant.
-        ${diagnostic ? `<br/>Diagnostic : <strong>${diagnostic}</strong>` : ''}
+        ${diagnostic ? `<br/>Diagnostic : <strong>${escapeHtml(diagnostic)}</strong>` : ''}
       </p>
 
       <div style="margin:20px 0;">
@@ -189,6 +193,10 @@ const sendPrescriptionEmail = async ({ email, prenom, nom, numero_rx, date, mede
   });
 };
 
+// AUDIT-11-7 — motif est un champ texte libre saisi par le personnel/patient
+// (Appointment.js), pas une valeur d'énumération fermée : échappé avant
+// insertion HTML (ici et dans les 3 autres templates de rendez-vous
+// ci-dessous), même principe que sendPatientEmail/sendPrescriptionEmail.
 /**
  * Envoie la confirmation de rendez-vous au patient par email.
  * @param {{ email, prenom, nom, date_heure, medecin, type, motif, duree_minutes, service }} opts
@@ -251,7 +259,7 @@ const sendAppointmentEmail = async ({ email, prenom, nom, date_heure, medecin, t
         ${motif ? `
         <tr>
           <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:12px;color:#6B7A99;font-weight:700;">📝 Motif</td>
-          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:13px;color:#374151;">${motif}</td>
+          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:13px;color:#374151;">${escapeHtml(motif)}</td>
         </tr>` : ''}
       </table>
 
@@ -334,7 +342,7 @@ const sendAppointmentConfirmedEmail = async ({ email, prenom, nom, date_heure, m
         ${motif ? `
         <tr>
           <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:12px;color:#6B7A99;font-weight:700;">📝 Motif</td>
-          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:13px;color:#374151;">${motif}</td>
+          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:13px;color:#374151;">${escapeHtml(motif)}</td>
         </tr>` : ''}
       </table>
     </div>
@@ -404,7 +412,7 @@ const sendAppointmentRescheduledEmail = async ({ email, prenom, nom, date_heure,
         ${motif ? `
         <tr>
           <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:12px;color:#6B7A99;font-weight:700;">📝 Motif</td>
-          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:13px;color:#374151;">${motif}</td>
+          <td style="padding:10px 14px;background:#fff;border-radius:0 0 8px 8px;font-size:13px;color:#374151;">${escapeHtml(motif)}</td>
         </tr>` : ''}
       </table>
       <div style="background:#FFFBEB;border-left:4px solid #F59E0B;border-radius:8px;padding:14px 18px;margin-top:8px;">
@@ -463,7 +471,7 @@ const sendReminderEmail = async ({ email, prenom, nom, date_heure, medecin, type
         <div style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Date :</strong> ${dateStr}</div>
         <div style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Heure :</strong> ${heureStr}</div>
         ${medecin ? `<div style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>Médecin :</strong> ${medecin}</div>` : ''}
-        ${motif ? `<div style="font-size:13px;color:#374151;"><strong>Motif :</strong> ${motif}</div>` : ''}
+        ${motif ? `<div style="font-size:13px;color:#374151;"><strong>Motif :</strong> ${escapeHtml(motif)}</div>` : ''}
       </div>
 
       <p style="color:#374151;font-size:13px;line-height:1.6;">

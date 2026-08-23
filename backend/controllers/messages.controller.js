@@ -4,7 +4,7 @@ const User = require('../models/User');
 const Patient = require('../models/Patient');
 const AuditLog = require('../models/AuditLog');
 const { emitTo } = require('../utils/socket');
-const { logAction } = require('../utils/helpers');
+const { logAction, escapeHtml } = require('../utils/helpers');
 const mail = require('../utils/mail');
 
 // AUDIT-MESSAGES-PhaseA — la modale "Nouveau message" appelait GET
@@ -355,10 +355,36 @@ exports.deleteMessage = async (req, res, next) => {
 // corps JSON.
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
+// AUDIT-11-7 — le compte-rendu échographie (bouton "Envoyer par email",
+// Echographie.jsx) réutilisait cet endpoint générique mais construisait déjà
+// son propre HTML côté FRONTEND (buildRapportEmailHtml : <strong>/<br> autour
+// de rapport_texte/conclusion/recommandations) et l'envoyait tel quel comme
+// `contenu` — le backend ne pouvait alors pas échapper ce contenu sans casser
+// sa mise en forme légitime (<br>/<strong>), ni lui faire confiance sans
+// risque (rapport_texte etc. restent du texte libre saisi par
+// l'échographiste ; un compte compromis aurait pu y injecter du HTML actif
+// tout aussi bien que dans un message classique). Résolu en déplaçant la
+// construction du HTML ICI : le frontend envoie désormais les champs bruts
+// (`rapport`), et cette fonction échappe chacun individuellement avant de
+// les insérer dans une mise en forme de confiance qu'elle contrôle
+// elle-même — jamais de HTML pré-construit côté client accepté tel quel.
+const buildRapportHtml = (rapport) => {
+  const nl2br = (s) => escapeHtml(s).replace(/\n/g, '<br>');
+  const parts = [`<strong>Type d'examen :</strong> ${escapeHtml(rapport.type || '')}${rapport.sous_type ? ` — ${escapeHtml(rapport.sous_type)}` : ''}`];
+  if (rapport.rapport_texte) parts.push(nl2br(rapport.rapport_texte));
+  if (rapport.conclusion) parts.push(`<strong>Conclusion :</strong><br>${nl2br(rapport.conclusion)}`);
+  if (rapport.recommandations) parts.push(`<strong>Recommandations :</strong><br>${nl2br(rapport.recommandations)}`);
+  return parts.join('<br><br>');
+};
+
 exports.sendPatientEmail = async (req, res, next) => {
   try {
-    const { patient: patientId, sujet, contenu, attachment } = req.body;
-    if (!sujet || !sujet.trim() || !contenu || !contenu.trim()) {
+    const { patient: patientId, sujet, contenu, attachment, rapport } = req.body;
+    if (!sujet || !sujet.trim()) {
+      return res.status(400).json({ success: false, message: 'Sujet et message requis.' });
+    }
+    const estRapport = rapport && typeof rapport === 'object';
+    if (!estRapport && (!contenu || !contenu.trim())) {
       return res.status(400).json({ success: false, message: 'Sujet et message requis.' });
     }
     const patient = await Patient.findById(patientId);
@@ -375,7 +401,15 @@ exports.sendPatientEmail = async (req, res, next) => {
     }
 
     try {
-      const result = await mail.sendEmail({ to: patient.email, subject: sujet, html: `<p>${contenu}</p>`, attachments });
+      // AUDIT-11-7 — contenu (message classique) est saisi librement par le
+      // personnel : échappé avant insertion dans le corps HTML de l'email
+      // (jamais interprété comme du HTML/JS actif), sinon un compte
+      // compromis ou malveillant pourrait envoyer un email de phishing
+      // crédible (liens/scripts arbitraires) avec l'adresse d'expédition
+      // officielle de la clinique. rapport (compte-rendu) est construit et
+      // échappé champ par champ par buildRapportHtml ci-dessus.
+      const html = estRapport ? `<p>${buildRapportHtml(rapport)}</p>` : `<p>${escapeHtml(contenu)}</p>`;
+      const result = await mail.sendEmail({ to: patient.email, subject: sujet, html, attachments });
       await logAction({ utilisateur: req.user._id, action: 'SEND_EMAIL', module: 'messages', entite_id: patient._id, ip: req.ip, message: sujet, statut: 'succes' });
       res.json({ success: true, simulated: !!result?.simulated });
     } catch (err) {

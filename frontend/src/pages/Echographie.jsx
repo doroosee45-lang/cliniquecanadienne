@@ -1638,20 +1638,14 @@ const computeAge = (dob) => {
   return Math.max(0, Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000)));
 };
 
-// AUDIT-ECHOGRAPHIE-EMAIL — met en forme le compte-rendu (organe par organe
-// + conclusion + recommandations, déjà persistés via saveRapport) pour
-// l'email patient. Pas de pièce jointe : mail.js::sendEmail n'a de support
-// d'attachment pour aucun module de l'app — plutôt que d'ajouter cette
-// brique pour ce seul cas, le rapport est mis en forme directement dans le
-// corps HTML (sendPatientEmail enveloppe déjà tout contenu dans un <p>).
-const buildRapportEmailHtml = (d) => {
-  const parts = [`<strong>Type d'examen :</strong> ${d.type}${d.sous_type ? ` — ${d.sous_type}` : ""}`];
-  if (d.rapport_texte) parts.push(d.rapport_texte.replace(/\n/g, "<br>"));
-  if (d.conclusion) parts.push(`<strong>Conclusion :</strong><br>${d.conclusion.replace(/\n/g, "<br>")}`);
-  if (d.recommandations) parts.push(`<strong>Recommandations :</strong><br>${d.recommandations.replace(/\n/g, "<br>")}`);
-  return parts.join("<br><br>");
-};
-
+// AUDIT-11-7 — le HTML du compte-rendu (organe par organe + conclusion +
+// recommandations, déjà persistés via saveRapport) est désormais construit
+// côté BACKEND (messages.controller.js::buildRapportHtml), pas ici : chaque
+// champ texte libre saisi par l'échographiste y est échappé avant mise en
+// forme, ce que ce frontend ne pouvait pas garantir en envoyant du HTML
+// déjà construit (indistinguable, côté serveur, entre les balises
+// <strong>/<br> cosmétiques et un <script> qu'un compte compromis aurait pu
+// taper dans rapport_texte). Seuls les champs bruts sont envoyés ci-dessous.
 // Réutilise le pattern d'envoi email patient réel (POST /messages/patient-
 // email, construit en Phase D du module Messages) — jamais de faux succès :
 // si le dossier n'est pas lié à un patient réel (patient_ref), l'envoi est
@@ -1663,7 +1657,7 @@ const sendEchoReportEmail = async (d) => {
     const { data } = await api.post("/messages/patient-email", {
       patient: patientRefId,
       sujet: `Compte-rendu d'échographie — ${d.type}${d.sous_type ? ` (${d.sous_type})` : ""} — ${d.numero}`,
-      contenu: buildRapportEmailHtml(d),
+      rapport: { type: d.type, sous_type: d.sous_type, rapport_texte: d.rapport_texte, conclusion: d.conclusion, recommandations: d.recommandations },
     });
     toast.success(data.simulated ? "📧 Email simulé (SMTP non configuré en environnement local)" : "📧 Email envoyé");
     return true;
