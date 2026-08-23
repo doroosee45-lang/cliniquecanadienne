@@ -14,6 +14,16 @@
 //    jamais seulement une valeur de retour non vérifiée indépendamment.
 // 4. markdownToHtml — conversion réelle du sous-ensemble Markdown attendu du
 //    modèle (titres/listes/paragraphes), pas un simulacre.
+//
+// AUDIT-ANALYTICS-P8-GARDE-FOU — sendWeeklyAnalyticsReportEmail est stubbée
+// pour la durée du test (même pattern que appointmentReminders.test.js pour
+// mail.sendReminderEmail) : sendWeeklyAnalyticsReport() interroge réellement
+// TOUS les superadmins actifs de cette base partagée — un premier passage
+// sans stub a réellement envoyé plusieurs emails SMTP à un vrai compte
+// (constaté et signalé). Le stub porte uniquement sur la livraison email ;
+// la génération du prompt (réelle, anonymisation vérifiée), la trace
+// AuditLog (réelle, relue depuis la base) et le statut simulé/réel restent
+// exercés tels quels, jamais réimplémentés.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -26,10 +36,15 @@ test('Analytics Phase 8 — rapport hebdomadaire IA (mode simulé, base réelle)
   const User = require('../models/User');
   const AuditLog = require('../models/AuditLog');
   const openai = require('../utils/openai');
+  const mailModule = require('../utils/mail');
   const weekly = require('../utils/weeklyAnalyticsReport');
 
   const stamp = Date.now();
   const created = { patients: [], labresults: [], users: [] };
+
+  const originalSendWeeklyAnalyticsReportEmail = mailModule.sendWeeklyAnalyticsReportEmail;
+  const sentTo = [];
+  mailModule.sendWeeklyAnalyticsReportEmail = async ({ email, simulated }) => { sentTo.push({ email, simulated }); return { simulated: true }; };
 
   try {
     await t.test('utils/openai.js — mode simulé réel quand OPENAI_API_KEY est absente (jamais un faux succès)', async () => {
@@ -69,6 +84,8 @@ test('Analytics Phase 8 — rapport hebdomadaire IA (mode simulé, base réelle)
       const logEntry = await AuditLog.findOne({ action: 'WEEKLY_ANALYTICS_REPORT', message: { $regex: admin.email } }).sort('-createdAt').lean();
       assert.equal(logEntry.statut, 'succes', 'un envoi simulé réussi (email envoyé, contenu marqué simulé) n\'est pas un échec d\'audit');
       assert.match(logEntry.message, /simulé/, 'la trace doit indiquer explicitement que c\'était un envoi simulé, jamais masqué en succès réel silencieux');
+
+      assert.ok(sentTo.some(s => s.email === admin.email && s.simulated === true), 'l\'envoi (stubbé) doit réellement avoir été tenté pour ce destinataire, marqué simulé — jamais un email SMTP réel envoyé pendant ce test');
     });
 
     await t.test('markdownToHtml — conversion réelle du sous-ensemble Markdown attendu (titres, listes, paragraphes)', () => {
@@ -80,6 +97,7 @@ test('Analytics Phase 8 — rapport hebdomadaire IA (mode simulé, base réelle)
       assert.match(html, /<ul[^>]*><li[^>]*>Item un<\/li><li[^>]*>Item deux<\/li><\/ul>/);
     });
   } finally {
+    mailModule.sendWeeklyAnalyticsReportEmail = originalSendWeeklyAnalyticsReportEmail;
     for (const l of created.labresults) await LabResult.findByIdAndDelete(l._id);
     for (const p of created.patients) await Patient.findByIdAndDelete(p._id);
     for (const u of created.users) await User.findByIdAndDelete(u._id);
