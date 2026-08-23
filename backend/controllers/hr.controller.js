@@ -19,9 +19,8 @@ function normalizeStaff(s) {
     sexe:           s.sexe           || 'homme',
     date_naissance: s.date_naissance || null,
     nationalite:    s.nationalite    || '',
-    departement:    s.departement    || '',
     adresse:        s.adresse        || '',
-    service:        s.service        || '',
+    service:        s.service        || null,
     contrat:        s.type_contrat   || '',
     conge_solde:    s.conges_restants != null ? s.conges_restants : 20,
     note_eval:      s.note_eval      ?? 0,
@@ -37,6 +36,7 @@ exports.getAll = async (req, res, next) => {
     const rawStaff = await paginate(
       Staff.find(filter)
         .populate('utilisateur', 'nom prenom role email telephone specialite')
+        .populate('service', 'nom')
         .sort('statut'),
       page, limit
     );
@@ -59,12 +59,12 @@ exports.create = async (req, res, next) => {
   try {
     const {
       prenom, nom, email, telephone, sexe, date_naissance, nationalite,
-      departement, adresse, poste, contrat, type_contrat, service,
+      adresse, poste, contrat, type_contrat, service,
       date_embauche, statut, salaire_base,
     } = req.body;
 
     const staffData = {
-      prenom, nom, telephone, sexe, nationalite, departement, adresse,
+      prenom, nom, telephone, sexe, nationalite, adresse,
       poste: poste || 'infirmier',
       type_contrat: contrat || type_contrat,
       service: service || undefined,
@@ -129,7 +129,7 @@ exports.create = async (req, res, next) => {
 // sans validation (runValidators absent) ni contrôle particulier.
 const STAFF_UPDATE_FIELDS = [
   'prenom', 'nom', 'email', 'telephone', 'sexe', 'date_naissance', 'nationalite',
-  'departement', 'adresse', 'poste', 'service', 'date_embauche', 'type_contrat', 'statut',
+  'adresse', 'poste', 'service', 'date_embauche', 'type_contrat', 'statut',
 ];
 
 exports.update = async (req, res, next) => {
@@ -139,6 +139,9 @@ exports.update = async (req, res, next) => {
       if (req.body[field] !== undefined) body[field] = req.body[field];
     }
     if (req.body.contrat !== undefined) body.type_contrat = req.body.contrat;
+    // service est désormais une vraie référence ObjectId — une chaîne vide
+    // (aucun service sélectionné) doit effacer la référence, pas être castée.
+    if (body.service === '') body.service = null;
     const avant = await Staff.findById(req.params.id).lean();
     const staff = await Staff.findByIdAndUpdate(req.params.id, body, { new: true, runValidators: true })
       .populate('utilisateur', 'nom prenom role email telephone specialite')

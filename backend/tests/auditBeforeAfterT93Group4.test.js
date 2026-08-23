@@ -49,12 +49,14 @@ test('donnees_avant/donnees_apres — ambulances, hr, pharmacy, recurring, setti
     });
 
     await t.test('hr.controller — update et updateLeaveStatus journalisent avant/apres', async () => {
+      const svcT93G4 = await Service.create({ nom: `T93G4-HR-Service-${stamp}` });
+      cleanup.push(() => Service.findByIdAndDelete(svcT93G4._id));
       const staff = await Staff.create({ prenom: 'T93G4', nom: 'Staff', poste: 'infirmier', conges_restants: 20 });
       cleanup.push(() => Staff.findByIdAndDelete(staff._id));
 
-      await call(hrC.update, { params: { id: staff._id }, body: { departement: 'Urgences' }, user, ip: '127.0.0.1' });
+      await call(hrC.update, { params: { id: staff._id }, body: { service: svcT93G4._id.toString() }, user, ip: '127.0.0.1' });
       let log = await AuditLog.findOne({ module: 'hr', action: 'UPDATE', entite_id: staff._id.toString() }).sort('-createdAt');
-      assert.equal(log.donnees_apres.departement, 'Urgences');
+      assert.equal(log.donnees_apres.service.toString(), svcT93G4._id.toString());
 
       await call(hrC.leave, { params: { id: staff._id }, body: { type: 'annuel', date_debut: '2026-09-01', date_fin: '2026-09-05' }, user, ip: '127.0.0.1' });
       const fresh = await Staff.findById(staff._id);

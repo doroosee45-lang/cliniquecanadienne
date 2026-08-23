@@ -388,7 +388,7 @@ const DEMO_ABSENCE_MOIS  = [];
 
 const PLAN_LABEL = { travail:"Travail", garde:"Garde", conge:"Congé", repos:"Repos", absence:"Absent", astreinte:"Astreinte" };
 
-const EMPTY_EMP = { matricule:"", prenom:"", nom:"", sexe:"homme", date_naissance:"", nationalite:"", telephone:"", email:"", adresse:"", poste:"infirmier", departement:"", service:"", date_embauche:"", contrat:"cdi", statut:"actif", salaire_base:"" };
+const EMPTY_EMP = { matricule:"", prenom:"", nom:"", sexe:"homme", date_naissance:"", nationalite:"", telephone:"", email:"", adresse:"", poste:"infirmier", service:"", date_embauche:"", contrat:"cdi", statut:"actif", salaire_base:"" };
 const EMPTY_CONGE = { employe_id:"", type:"annuel", date_debut:"", date_fin:"", motif:"" };
 const EMPTY_PLAN = { employe_id:"", date:"", heure_debut:"", heure_fin:"", type:"travail" };
 const EMPTY_CANDIDATURE = { nom:"", poste:"infirmier", experience:"", diplome:"", email:"", telephone:"", statut:"recu" };
@@ -408,9 +408,8 @@ const normalizeEmp = (s) => {
     sexe:           s.sexe           || 'homme',
     date_naissance: s.date_naissance || null,
     nationalite:    s.nationalite    || '',
-    departement:    s.departement    || '',
     adresse:        s.adresse        || '',
-    service:        s.service        || '',
+    service:        s.service        || null,
     contrat:        s.contrat        || s.type_contrat || '',
     conge_solde:    s.conge_solde    != null ? s.conge_solde : (s.conges_restants != null ? s.conges_restants : 20),
     note_eval:      s.note_eval      ?? 0,
@@ -475,6 +474,7 @@ export default function RessourcesHumaines() {
   const [formEval,      setFormEval]      = useState(EMPTY_EVAL);
   const [formFormation, setFormFormation] = useState(EMPTY_FORMATION);
   const [formSanction,  setFormSanction]  = useState(EMPTY_SANCTION);
+  const [servicesReels, setServicesReels] = useState([]);
 
   // Charger les employés depuis l'API
   const loadEmployes = useCallback(async () => {
@@ -487,6 +487,13 @@ export default function RessourcesHumaines() {
   }, []);
 
   useEffect(() => { loadEmployes(); }, [loadEmployes]);
+
+  // Staff.service est désormais une vraie référence Service (Module
+  // Administration Point 3) — même route déjà réelle que celle utilisée par
+  // Analytics.jsx pour son filtre service.
+  useEffect(() => {
+    api.get('/settings/services').then(({ data }) => setServicesReels(data.services || [])).catch(() => {});
+  }, []);
 
   const loadConges = useCallback(async () => {
     try {
@@ -580,7 +587,6 @@ export default function RessourcesHumaines() {
         sexe:           formEmp.sexe,
         date_naissance: formEmp.date_naissance || undefined,
         nationalite:    formEmp.nationalite,
-        departement:    formEmp.departement,
         service:        formEmp.service,
         adresse:        formEmp.adresse,
         poste:          formEmp.poste,
@@ -734,12 +740,12 @@ export default function RessourcesHumaines() {
     pdfHeader(doc, 'Registre du Personnel');
     autoTable(doc, {
       startY: 35,
-      head: [['Matricule', 'Prénom Nom', 'Poste', 'Département', 'Contrat', 'Statut', 'Date embauche', 'Salaire base']],
+      head: [['Matricule', 'Prénom Nom', 'Poste', 'Service', 'Contrat', 'Statut', 'Date embauche', 'Salaire base']],
       body: employes.map(e => [
         e.matricule || '—',
         `${e.prenom} ${e.nom}`,
         POSTE_COLORS[e.poste]?.label || e.poste,
-        e.departement || '—',
+        e.service?.nom || '—',
         CONTRAT_CFG[e.contrat]?.label || e.contrat || '—',
         STATUT_EMP[e.statut]?.label || e.statut || '—',
         fmtDate(e.date_embauche),
@@ -766,11 +772,11 @@ export default function RessourcesHumaines() {
 
   const exportEmployesExcel = useCallback(() => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['Matricule', 'Prénom', 'Nom', 'Poste', 'Département', 'Service', 'Contrat', 'Date embauche', 'Statut', 'Téléphone', 'Email', 'Salaire base', 'Ancienneté'],
+      ['Matricule', 'Prénom', 'Nom', 'Poste', 'Service', 'Contrat', 'Date embauche', 'Statut', 'Téléphone', 'Email', 'Salaire base', 'Ancienneté'],
       ...employes.map(e => [
         e.matricule || '', e.prenom, e.nom,
         POSTE_COLORS[e.poste]?.label || e.poste,
-        e.departement || '', e.service || '',
+        e.service?.nom || '',
         CONTRAT_CFG[e.contrat]?.label || e.contrat || '',
         fmtDate(e.date_embauche),
         STATUT_EMP[e.statut]?.label || e.statut || '',
@@ -779,7 +785,7 @@ export default function RessourcesHumaines() {
         anciennete(e.date_embauche),
       ]),
     ]);
-    ws['!cols'] = [10,12,12,16,16,14,10,14,12,14,22,14,12].map(w => ({ wch: w }));
+    ws['!cols'] = [10,12,12,16,16,10,14,12,14,22,14,12].map(w => ({ wch: w }));
     const wsSummary = XLSX.utils.aoa_to_sheet([
       ['Indicateur', 'Valeur'],
       ['Total employés', employes.length],
@@ -798,11 +804,11 @@ export default function RessourcesHumaines() {
 
   const exportEmployesCSV = useCallback(() => {
     const rows = [
-      ['Matricule', 'Prénom', 'Nom', 'Poste', 'Département', 'Contrat', 'Date embauche', 'Statut', 'Salaire base'].join(';'),
+      ['Matricule', 'Prénom', 'Nom', 'Poste', 'Service', 'Contrat', 'Date embauche', 'Statut', 'Salaire base'].join(';'),
       ...employes.map(e => [
         e.matricule || '', e.prenom, e.nom,
         POSTE_COLORS[e.poste]?.label || e.poste,
-        e.departement || '',
+        e.service?.nom || '',
         CONTRAT_CFG[e.contrat]?.label || e.contrat || '',
         fmtDate(e.date_embauche),
         STATUT_EMP[e.statut]?.label || e.statut || '',
@@ -1053,8 +1059,8 @@ export default function RessourcesHumaines() {
     const wb = XLSX.utils.book_new();
     // Feuille 1 : Personnel
     const wsPersonnel = XLSX.utils.aoa_to_sheet([
-      ['Matricule','Prénom','Nom','Poste','Département','Contrat','Statut','Date embauche','Salaire base','Ancienneté'],
-      ...employes.map(e => [e.matricule||'',e.prenom,e.nom,POSTE_COLORS[e.poste]?.label||e.poste,e.departement||'',CONTRAT_CFG[e.contrat]?.label||e.contrat||'',STATUT_EMP[e.statut]?.label||e.statut||'',fmtDate(e.date_embauche),e.salaire_base||0,anciennete(e.date_embauche)]),
+      ['Matricule','Prénom','Nom','Poste','Service','Contrat','Statut','Date embauche','Salaire base','Ancienneté'],
+      ...employes.map(e => [e.matricule||'',e.prenom,e.nom,POSTE_COLORS[e.poste]?.label||e.poste,e.service?.nom||'',CONTRAT_CFG[e.contrat]?.label||e.contrat||'',STATUT_EMP[e.statut]?.label||e.statut||'',fmtDate(e.date_embauche),e.salaire_base||0,anciennete(e.date_embauche)]),
     ]);
     // Feuille 2 : Salaires
     const wsSalaires = XLSX.utils.aoa_to_sheet([
@@ -1227,7 +1233,7 @@ export default function RessourcesHumaines() {
                 </div>
                 <div style={{ overflowX:"auto" }}>
                   <table className="rh-tbl">
-                    <thead><tr><th>Matricule</th><th>Employé</th><th>Poste</th><th>Département</th><th>Contrat</th><th>Ancienneté</th><th>Note</th><th>Statut</th><th>Action</th></tr></thead>
+                    <thead><tr><th>Matricule</th><th>Employé</th><th>Poste</th><th>Service</th><th>Contrat</th><th>Ancienneté</th><th>Note</th><th>Statut</th><th>Action</th></tr></thead>
                     <tbody>
                       {employes.slice(0,8).map(e => {
                         const pc = POSTE_COLORS[e.poste] || { cls:"gray", label:e.poste };
@@ -1248,7 +1254,7 @@ export default function RessourcesHumaines() {
                               </div>
                             </td>
                             <td><Badge cls={pc.cls}>{pc.label}</Badge></td>
-                            <td style={{ fontSize:12, color:"var(--rm)" }}>{e.departement}</td>
+                            <td style={{ fontSize:12, color:"var(--rm)" }}>{e.service?.nom || "—"}</td>
                             <td><Badge cls={cc.cls}>{cc.label}</Badge></td>
                             <td style={{ fontSize:12, color:"var(--rm)" }}>{anciennete(e.date_embauche)}</td>
                             <td>
@@ -1299,7 +1305,7 @@ export default function RessourcesHumaines() {
               <div className="rh-card">
                 <div style={{ overflowX:"auto" }}>
                   <table className="rh-tbl" style={{ minWidth:1000 }}>
-                    <thead><tr><th>Matricule</th><th>Employé</th><th>Poste</th><th>Département</th><th>Téléphone</th><th>Contrat</th><th>Date embauche</th><th>Ancienneté</th><th>Solde congé</th><th>Statut</th><th>Action</th></tr></thead>
+                    <thead><tr><th>Matricule</th><th>Employé</th><th>Poste</th><th>Service</th><th>Téléphone</th><th>Contrat</th><th>Date embauche</th><th>Ancienneté</th><th>Solde congé</th><th>Statut</th><th>Action</th></tr></thead>
                     <tbody>
                       {filteredEmps.map(e => {
                         const pc = POSTE_COLORS[e.poste] || { cls:"gray", label:e.poste, color:"#6B7280" };
@@ -1318,7 +1324,7 @@ export default function RessourcesHumaines() {
                               </div>
                             </td>
                             <td><Badge cls={pc.cls}>{pc.label}</Badge></td>
-                            <td style={{ fontSize:12, color:"var(--rm)" }}>{e.departement}</td>
+                            <td style={{ fontSize:12, color:"var(--rm)" }}>{e.service?.nom || "—"}</td>
                             <td style={{ fontSize:12, color:"var(--rm)" }}>{e.telephone}</td>
                             <td><Badge cls={cc.cls}>{cc.label}</Badge></td>
                             <td style={{ fontSize:12, color:"var(--rm)" }}>{fmtDate(e.date_embauche)}</td>
@@ -1362,7 +1368,7 @@ export default function RessourcesHumaines() {
                       <div>
                         <div style={{ fontSize:18, fontWeight:700 }}>{currentEmp.prenom} {currentEmp.nom}</div>
                         <div style={{ fontSize:12, color:"rgba(255,255,255,.65)", marginTop:2 }}>
-                          {pc.label} · {currentEmp.departement} · {anciennete(currentEmp.date_embauche)} d'ancienneté
+                          {pc.label} · {currentEmp.service?.nom || "—"} · {anciennete(currentEmp.date_embauche)} d'ancienneté
                         </div>
                         <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginTop:3 }}>
                           📞 {currentEmp.telephone} · ✉️ {currentEmp.email}
@@ -1455,8 +1461,14 @@ export default function RessourcesHumaines() {
                           </select>
                         </div>
                         <div>
-                          <label className="rlbl">Département</label>
-                          <input className="rinp" value={currentEmp.departement} onChange={e => setCurrentEmp(p => ({...p, departement:e.target.value}))} />
+                          <label className="rlbl">Service</label>
+                          <select className="rinp" value={currentEmp.service?._id || ''} onChange={e => {
+                            const svc = servicesReels.find(s => s._id === e.target.value) || null;
+                            setCurrentEmp(p => ({...p, service:svc}));
+                          }}>
+                            <option value="">— Aucun —</option>
+                            {servicesReels.map(s => <option key={s._id} value={s._id}>{s.nom}</option>)}
+                          </select>
                         </div>
                         <div style={{ background:"#EEF4FF", borderRadius:12, padding:"12px 14px" }}>
                           <div style={{ fontSize:11, fontWeight:700, color:"var(--rm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>🔗 Liaisons modules</div>
@@ -1466,7 +1478,7 @@ export default function RessourcesHumaines() {
                             ))}
                           </div>
                         </div>
-                        <button className="rbtn rbtn-teal rbtn-sm" disabled={saving} onClick={() => updateEmp({ statut:currentEmp.statut, poste:currentEmp.poste, departement:currentEmp.departement })}>
+                        <button className="rbtn rbtn-teal rbtn-sm" disabled={saving} onClick={() => updateEmp({ statut:currentEmp.statut, poste:currentEmp.poste, service:currentEmp.service?._id || '' })}>
                           {I.save} Enregistrer
                         </button>
                       </div>
@@ -1482,8 +1494,7 @@ export default function RessourcesHumaines() {
                       <div style={{ padding:20, display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
                         {[
                           ["Poste", (POSTE_COLORS[currentEmp.poste]||{}).label || currentEmp.poste],
-                          ["Département", currentEmp.departement || "—"],
-                          ["Service", currentEmp.service || "—"],
+                          ["Service", currentEmp.service?.nom || "—"],
                           ["Date d'embauche", fmtDate(currentEmp.date_embauche)],
                           ["Ancienneté", anciennete(currentEmp.date_embauche)],
                           ["Type de contrat", (CONTRAT_CFG[currentEmp.contrat]||{}).label || currentEmp.contrat],
@@ -1786,7 +1797,7 @@ export default function RessourcesHumaines() {
                             <div className="emp-avatar" style={{ background:cfg.color, width:28, height:28, fontSize:11, borderRadius:8 }}>{e.prenom[0]}{e.nom[0]}</div>
                             <div>
                               <div style={{ fontSize:12, fontWeight:600, color:"var(--rn)" }}>{e.prenom} {e.nom}</div>
-                              <div style={{ fontSize:10, color:"var(--rm)" }}>{e.departement}</div>
+                              <div style={{ fontSize:10, color:"var(--rm)" }}>{e.service?.nom || "—"}</div>
                             </div>
                             <Badge cls={(STATUT_EMP[e.statut]||{}).cls || "gray"} style={{ marginLeft:"auto", fontSize:10 }}>{(STATUT_EMP[e.statut]||{}).label}</Badge>
                           </div>
@@ -2357,8 +2368,12 @@ export default function RessourcesHumaines() {
                   {Object.entries(POSTE_COLORS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
                 </select>
               </div>
-              <div><label className="rlbl">Département</label><input className="rinp" value={formEmp.departement} onChange={e=>setFormEmp(f=>({...f,departement:e.target.value}))} /></div>
-              <div><label className="rlbl">Service</label><input className="rinp" value={formEmp.service} onChange={e=>setFormEmp(f=>({...f,service:e.target.value}))} /></div>
+              <div><label className="rlbl">Service</label>
+                <select className="rinp" value={formEmp.service} onChange={e=>setFormEmp(f=>({...f,service:e.target.value}))}>
+                  <option value="">— Aucun —</option>
+                  {servicesReels.map(s => <option key={s._id} value={s._id}>{s.nom}</option>)}
+                </select>
+              </div>
               <div><label className="rlbl">Date d'embauche *</label><input type="date" className="rinp" required value={formEmp.date_embauche} onChange={e=>setFormEmp(f=>({...f,date_embauche:e.target.value}))} /></div>
               <div><label className="rlbl">Type de contrat</label>
                 <select className="rinp" value={formEmp.contrat} onChange={e=>setFormEmp(f=>({...f,contrat:e.target.value}))}>

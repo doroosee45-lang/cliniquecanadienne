@@ -102,15 +102,20 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
     });
 
     // ── Staff ─────────────────────────────────────────────────
-    let staffId;
-    await t.test('hr.update — champs légitimes (statut/poste/departement, seul usage réel actuel) persistent toujours', async () => {
+    let staffId, serviceId;
+    await t.test('hr.update — champs légitimes (statut/poste/service, seul usage réel actuel) persistent toujours', async () => {
+      const Service = require('../models/Service');
+      const svc = await Service.create({ nom: `_p21-service-${stamp}` });
+      serviceId = svc._id;
+      cleanup.push(() => Service.findByIdAndDelete(serviceId));
+
       const staff = await Staff.create({ prenom: 'Avant', nom: 'Staff', poste: 'infirmier', statut: 'actif', salaire_base: 250000 });
       staffId = staff._id;
       cleanup.push(() => Staff.findByIdAndDelete(staffId));
 
       const { status } = await call(hrC.update, {
         params: { id: staffId },
-        body: { statut: 'conge', poste: 'infirmier_chef', departement: 'Urgences' },
+        body: { statut: 'conge', poste: 'infirmier_chef', service: serviceId.toString() },
         user: superadmin, ip: '127.0.0.1',
       });
       assert.equal(status, 200);
@@ -118,7 +123,7 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
       const fresh = await Staff.findById(staffId).lean();
       assert.equal(fresh.statut, 'conge');
       assert.equal(fresh.poste, 'infirmier_chef');
-      assert.equal(fresh.departement, 'Urgences');
+      assert.equal(fresh.service.toString(), serviceId.toString());
     });
 
     await t.test('hr.update — salaire_base et matricule ne sont jamais modifiables via cet endpoint générique', async () => {

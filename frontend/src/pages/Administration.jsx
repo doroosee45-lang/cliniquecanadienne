@@ -246,8 +246,6 @@ const AVATAR_COLORS = ["#1B4F9E","#0EA5A0","#7C3AED","#DC2626","#D97706","#05966
 // ─── DEMO DATA ───────────────────────────────────────────────
 const DEMO_USERS = [];
 
-const DEMO_DEPTS = [];
-
 const DEMO_ROOMS = [];
 
 const DEMO_SUPPLIERS = [];
@@ -264,6 +262,7 @@ const REVENUS_DATA = [];
 const EMPTY_USER = { prenom:"", nom:"", email:"", telephone:"", role:"medecin", service:"", statut:"actif", mot_de_passe:"", must_change_password:false };
 const EMPTY_TASK = { titre:"", assignee:"", priorite:"normale", statut:"en_attente", echeance:"", categorie:"administratif", description:"" };
 const EMPTY_SUPPLIER = { nom:"", contact:"", telephone:"", email:"", adresse:"", produits:"" };
+const EMPTY_SERVICE = { nom:"", code:"", description:"", etage:"", couleur:"#2563eb" };
 
 // ─── Modal wrapper ───────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth = 620 }) {
@@ -381,7 +380,7 @@ export default function Administration() {
   // Data
   const [kpis, setKpis]         = useState(DEMO_KPIS);
   const [users, setUsers]       = useState([]);
-  const [depts, setDepts]       = useState([]);
+  const [services, setServices] = useState([]);
   const [rooms, setRooms]       = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [tasks, setTasks]       = useState([]);
@@ -393,11 +392,13 @@ export default function Administration() {
   const [modalUser, setModalUser]         = useState(false);
   const [modalTask, setModalTask]         = useState(false);
   const [modalSupplier, setModalSupplier] = useState(false);
+  const [modalService, setModalService]   = useState(false);
   const [editUser, setEditUser]           = useState(null);
 
   // Forms
   const [formUser, setFormUser]           = useState(EMPTY_USER);
   const [formTask, setFormTask]           = useState(EMPTY_TASK);
+  const [formService, setFormService]     = useState(EMPTY_SERVICE);
   const [formSupplier, setFormSupplier]   = useState(EMPTY_SUPPLIER);
 
   // Settings state
@@ -415,10 +416,10 @@ export default function Administration() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [kRes, uRes, dRes, rRes, sRes, tRes, aRes, depRes] = await Promise.allSettled([
+      const [kRes, uRes, svcRes, rRes, sRes, tRes, aRes, depRes] = await Promise.allSettled([
         api.get("/admin/kpis"),
         api.get("/admin/users"),
-        api.get("/admin/departments"),
+        api.get("/settings/services"),
         api.get("/admin/rooms"),
         api.get("/admin/suppliers"),
         api.get("/admin/tasks"),
@@ -432,7 +433,7 @@ export default function Administration() {
         if (Array.isArray(k.revenus_par_mois)) setRevenus(k.revenus_par_mois);
       }
       setUsers(uRes.status === "fulfilled"  ? toArr(uRes.value.data.users  || uRes.value.data, DEMO_USERS)     : DEMO_USERS);
-      setDepts(dRes.status === "fulfilled"  ? toArr(dRes.value.data.departments || dRes.value.data, DEMO_DEPTS): DEMO_DEPTS);
+      setServices(svcRes.status === "fulfilled" ? toArr(svcRes.value.data.services || svcRes.value.data, []) : []);
       setRooms(rRes.status === "fulfilled"  ? toArr(rRes.value.data.rooms  || rRes.value.data, DEMO_ROOMS)     : DEMO_ROOMS);
       setSuppliers(sRes.status === "fulfilled" ? toArr(sRes.value.data.suppliers || sRes.value.data, DEMO_SUPPLIERS) : DEMO_SUPPLIERS);
       setTasks(tRes.status === "fulfilled"  ? toArr(tRes.value.data.tasks  || tRes.value.data, DEMO_TASKS)     : DEMO_TASKS);
@@ -441,7 +442,7 @@ export default function Administration() {
       // charge maintenant les vraies dépenses (GET /finance/depenses, déjà réel).
       setDepenses(depRes.status === "fulfilled" ? toArr(depRes.value.data.depenses || depRes.value.data, []) : []);
     } catch {
-      setUsers(DEMO_USERS); setDepts(DEMO_DEPTS); setRooms(DEMO_ROOMS);
+      setUsers(DEMO_USERS); setServices([]); setRooms(DEMO_ROOMS);
       setSuppliers(DEMO_SUPPLIERS); setTasks(DEMO_TASKS); setAudit(DEMO_AUDIT);
     } finally { setLoading(false); }
   }, []);
@@ -543,6 +544,33 @@ export default function Administration() {
       toast.success("✅ Fournisseur ajouté (local)");
     } finally {
       setSaving(false); setModalSupplier(false); setFormSupplier(EMPTY_SUPPLIER);
+    }
+  };
+
+  // ── Create service ────────────────────────────────────────
+  // AUDIT-ADMIN-P3 — POST /settings/services est un endpoint réel, jamais
+  // exposé par aucune UI avant ce correctif (Settings.jsx renvoyait déjà
+  // l'utilisateur vers "le bouton Ajouter dans Administration", qui
+  // n'existait pas). Pas de repli local fictif ici : un échec doit rester
+  // un échec visible, la donnée créée doit être réelle.
+  const saveService = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const { data } = await api.post("/settings/services", {
+        nom: formService.nom,
+        code: formService.code || undefined,
+        description: formService.description,
+        etage: formService.etage !== "" ? Number(formService.etage) : undefined,
+        couleur: formService.couleur,
+      });
+      setServices(prev => [...prev, data.service]);
+      toast.success(`✅ Service "${data.service.nom}" créé`);
+      setModalService(false); setFormService(EMPTY_SERVICE);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la création du service.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -779,7 +807,6 @@ export default function Administration() {
                   { id:"utilisateurs",  label:"👤 Utilisateurs" },
                   { id:"roles",         label:"🔑 Rôles & Permissions" },
                   { id:"services",      label:"🏥 Services" },
-                  { id:"departements",  label:"🏢 Départements" },
                   { id:"salles",        label:"🚪 Salles & Infrastructures" },
                   { id:"taches",        label:`✅ Tâches (${tasks.length})` },
                   { id:"ressources",    label:"🖥️ Ressources" },
@@ -916,60 +943,43 @@ export default function Administration() {
               )}
 
               {/* ── SERVICES ── */}
+              {/* AUDIT-ADMIN-P3 — remplace deux constructions fictives distinctes
+                  (cet onglet "Services" en dur, ET un onglet "Départements" séparé
+                  adossé à /admin/departments, route inexistante) par un seul
+                  onglet réel, adossé à GET/POST /settings/services (déjà utilisé
+                  par Analytics.jsx et désormais par HR.jsx — Staff.service). */}
               {section === "services" && (
                 <div>
-                  <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Services médicaux</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:16 }}>
-                    {[
-                      { nom:"Consultation",    icon:"🩺", desc:"Consultations générales et spécialisées",     col:"#1B4F9E", personnel:8 },
-                      { nom:"Urgences",        icon:"🚨", desc:"Prise en charge des urgences médicales",       col:"#DC2626", personnel:6 },
-                      { nom:"Hospitalisation", icon:"🛏️", desc:"Suivi des patients hospitalisés",              col:"#7C3AED", personnel:12 },
-                      { nom:"Chirurgie",       icon:"🔪", desc:"Interventions chirurgicales programmées",       col:"#0EA5A0", personnel:5 },
-                      { nom:"Maternité",       icon:"👶", desc:"Obstétrique et suivi de grossesse",             col:"#D97706", personnel:7 },
-                      { nom:"Pédiatrie",       icon:"🧒", desc:"Soins médicaux pour enfants",                  col:"#059669", personnel:4 },
-                      { nom:"Laboratoire",     icon:"🔬", desc:"Analyses biologiques et microbiologiques",     col:"#4F46E5", personnel:3 },
-                      { nom:"Imagerie",        icon:"🩻", desc:"Radiologie, échographie, scanner",              col:"#6B7280", personnel:2 },
-                      { nom:"Pharmacie",       icon:"💊", desc:"Dispensation et gestion des médicaments",      col:"#0B1E3B", personnel:3 },
-                    ].map((s) => (
-                      <div key={s.nom} className="adm-card" style={{ borderTop:`3px solid ${s.col}` }}>
-                        <div style={{ padding:16 }}>
-                          <div style={{ fontSize:28, marginBottom:10 }}>{s.icon}</div>
-                          <div style={{ fontWeight:700, color:"var(--cn)", fontSize:14, marginBottom:4 }}>{s.nom}</div>
-                          <div style={{ fontSize:11.5, color:"var(--cm)", marginBottom:12 }}>{s.desc}</div>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                            <Badge cls="blue">{s.personnel} agents</Badge>
-                            <button className="cbtn cbtn-ghost cbtn-sm">{I.edit}</button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
+                    <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Services de la clinique</div>
+                    <button className="cbtn cbtn-primary" onClick={() => { setFormService(EMPTY_SERVICE); setModalService(true); }}>
+                      {I.plus} Nouveau service
+                    </button>
                   </div>
-                </div>
-              )}
-
-              {/* ── DÉPARTEMENTS ── */}
-              {section === "departements" && (
-                <div>
-                  <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Départements administratifs</div>
                   <div className="adm-card">
                     <div style={{ overflowX:"auto" }}>
                       <table className="adm-tbl">
                         <thead>
-                          <tr><th>Département</th><th>Responsable</th><th>Personnel</th><th>Budget alloué</th><th>Statut</th><th>Action</th></tr>
+                          <tr><th>Service</th><th>Code</th><th>Étage</th><th>Chef de service</th><th>Statut</th></tr>
                         </thead>
                         <tbody>
-                          {depts.map(d => (
-                            <tr key={d._id}>
-                              <td><div style={{ fontWeight:700, color:"var(--cn)" }}>{d.nom}</div></td>
-                              <td style={{ fontSize:12, color:"var(--cm)" }}>{d.responsable}</td>
-                              <td><Badge cls="blue">{d.personnel} agents</Badge></td>
-                              <td style={{ fontWeight:600, color:"var(--cb)" }}>{fmtMoney(d.budget)}</td>
-                              <td><Badge cls="green">Actif</Badge></td>
+                          {services.map(s => (
+                            <tr key={s._id}>
                               <td>
-                                <button className="cbtn cbtn-ghost cbtn-sm">{I.edit} Modifier</button>
+                                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                  <span style={{ width:10, height:10, borderRadius:3, background:s.couleur || "#2563eb", display:"inline-block", flexShrink:0 }} />
+                                  <div style={{ fontWeight:700, color:"var(--cn)" }}>{s.nom}</div>
+                                </div>
                               </td>
+                              <td style={{ fontSize:12, color:"var(--cm)" }}>{s.code || "—"}</td>
+                              <td style={{ fontSize:12, color:"var(--cm)" }}>{s.etage ?? "—"}</td>
+                              <td style={{ fontSize:12, color:"var(--cm)" }}>{s.chef_service ? `${s.chef_service.prenom || ""} ${s.chef_service.nom || ""}`.trim() : "—"}</td>
+                              <td><Badge cls={s.statut === "ferme" ? "gray" : "green"}>{s.statut === "ferme" ? "Fermé" : "Actif"}</Badge></td>
                             </tr>
                           ))}
+                          {services.length === 0 && (
+                            <tr><td colSpan={5} style={{ textAlign:"center", color:"var(--cm)", padding:20 }}>Aucun service configuré — utilisez "Nouveau service" ci-dessus.</td></tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -1191,24 +1201,10 @@ export default function Administration() {
                 <KpiCard color={impayesCount > 10 ? "red" : "orange"} icon={I.alert} value={impayesCount} label="Factures impayées" sub="à recouvrer" urgent={impayesCount > 10} />
               </div>
 
-              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:20, marginBottom:24 }}>
                 <div className="adm-card fu">
                   <div className="adm-card-hdr"><div><h3>{I.trend} Revenus mensuels</h3><p>Exercice 2025</p></div></div>
                   <div style={{ padding:20 }}><BarChart labels={MONTHS} data={revenus} color="#1B4F9E" /></div>
-                </div>
-                <div className="adm-card fu">
-                  <div className="adm-card-hdr"><div><h3>Budget par département</h3></div></div>
-                  <div style={{ padding:20 }}>
-                    {depts.map(d => (
-                      <div key={d._id} style={{ marginBottom:10 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
-                          <span style={{ color:"var(--cm)" }}>{d.nom}</span>
-                          <span style={{ fontWeight:700, color:"var(--cn)" }}>{(d.budget / 1000000).toFixed(1)}M</span>
-                        </div>
-                        <Prog pct={Math.round(d.budget / 8500000 * 100)} color="#1B4F9E" />
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
 
@@ -1608,6 +1604,41 @@ export default function Administration() {
                 <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalSupplier(false)}>Annuler</button>
                 <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
                   {I.save} {saving ? "..." : "Ajouter le fournisseur"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal open={modalService} onClose={() => setModalService(false)} title={`${I.plus} Nouveau service`} maxWidth={480}>
+          <form onSubmit={saveService}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div>
+                <label className="clbl">Nom du service *</label>
+                <input className="cinp" required value={formService.nom} onChange={e => setFormService(f=>({...f,nom:e.target.value}))} placeholder="Ex: Cardiologie" />
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div>
+                  <label className="clbl">Code</label>
+                  <input className="cinp" value={formService.code} onChange={e => setFormService(f=>({...f,code:e.target.value}))} placeholder="Ex: CARDIO" />
+                </div>
+                <div>
+                  <label className="clbl">Étage</label>
+                  <input type="number" className="cinp" value={formService.etage} onChange={e => setFormService(f=>({...f,etage:e.target.value}))} placeholder="Ex: 2" />
+                </div>
+              </div>
+              <div>
+                <label className="clbl">Description</label>
+                <input className="cinp" value={formService.description} onChange={e => setFormService(f=>({...f,description:e.target.value}))} placeholder="Rôle du service" />
+              </div>
+              <div>
+                <label className="clbl">Couleur</label>
+                <input type="color" className="cinp" style={{ height:38, padding:4 }} value={formService.couleur} onChange={e => setFormService(f=>({...f,couleur:e.target.value}))} />
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalService(false)}>Annuler</button>
+                <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
+                  {I.save} {saving ? "..." : "Créer le service"}
                 </button>
               </div>
             </div>
