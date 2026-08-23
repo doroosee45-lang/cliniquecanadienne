@@ -519,7 +519,7 @@ export default function Ordonnances() {
       setCurrent(prev => ({ ...prev, statut:"publiee", publie_at: new Date().toISOString() }));
       setOrds(prev => prev.map(o => o._id === currentOrd._id ? { ...o, statut:"publiee" } : o));
       const msg = data.email_envoye
-        ? "📨 Ordonnance publiée et envoyée au patient par email !"
+        ? "✅ Ordonnance publiée et envoyée au patient par email."
         : "✅ Ordonnance publiée (email non envoyé — SMTP non configuré).";
       toast.success(msg, { duration: 5000 });
       loadStats();
@@ -908,14 +908,14 @@ export default function Ordonnances() {
                                       try {
                                         const { data } = await api.post(`/prescriptions/${ord._id}/publier`);
                                         setOrds(prev => prev.map(o => o._id === ord._id ? { ...o, statut:"publiee" } : o));
-                                        toast.success(data.email_envoye ? "📨 Publiée et envoyée au patient !" : "✅ Ordonnance publiée.", { duration: 4000 });
+                                        toast.success(data.email_envoye ? "✅ Ordonnance publiée et envoyée au patient par email." : "✅ Ordonnance publiée (email non envoyé — SMTP non configuré).", { duration: 4000 });
                                         loadStats();
                                       } catch (err) {
                                         toast.error(err?.response?.data?.message || "Erreur publication.");
                                       }
                                     }}
                                   >
-                                    📨 Publier
+                                    ✅ Publier
                                   </button>
                                 )}
 
@@ -1327,7 +1327,7 @@ export default function Ordonnances() {
                         disabled={publishing}
                         onClick={handlePublier}
                       >
-                        {publishing ? "⏳ Publication…" : "📨 Publier & Envoyer au patient"}
+                        {publishing ? "Publication…" : "✅ Publier & envoyer au patient"}
                       </button>
                     )}
 
