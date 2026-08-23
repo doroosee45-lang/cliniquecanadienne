@@ -53,7 +53,9 @@ export const fetchKpis = createAsyncThunk(
         if (dateFin) params.set('date_fin', dateFin);
       }
       const { data } = await api.get(`/analytics/stats?${params}`);
-      return data.kpi || {};
+      // AUDIT-ANALYTICS-P2 — trends réels "vs période précédente" (getStats)
+      // remontés à côté de kpi, jamais fabriqués côté frontend.
+      return { kpi: data.kpi || {}, trends: data.trends || {} };
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Erreur KPIs');
     }
@@ -69,6 +71,7 @@ const analyticsSlice = createSlice({
     financialData: null,
     patientStats: null,
     kpi: {},
+    trends: {},
     loading: false,
     kpiLoading: false,
     error: null,
@@ -90,7 +93,7 @@ const analyticsSlice = createSlice({
       .addCase(fetchFinancialReport.fulfilled,  (state, action) => { state.financialData = action.payload; })
       .addCase(fetchPatientStats.fulfilled,     (state, action) => { state.patientStats = action.payload; })
       .addCase(fetchKpis.pending,   (state) => { state.kpiLoading = true; })
-      .addCase(fetchKpis.fulfilled, (state, action) => { state.kpiLoading = false; state.kpi = action.payload; })
+      .addCase(fetchKpis.fulfilled, (state, action) => { state.kpiLoading = false; state.kpi = action.payload.kpi; state.trends = action.payload.trends; })
       .addCase(fetchKpis.rejected,  (state) => { state.kpiLoading = false; });
   },
 });
@@ -101,6 +104,7 @@ export const selectAnalyticsChartData  = (state) => state.analytics.chartData;
 export const selectFinancialData       = (state) => state.analytics.financialData;
 export const selectPatientStats        = (state) => state.analytics.patientStats;
 export const selectAnalyticsKpi        = (state) => state.analytics.kpi;
+export const selectAnalyticsTrends     = (state) => state.analytics.trends;
 export const selectAnalyticsLoading    = (state) => state.analytics.loading;
 export const selectAnalyticsKpiLoading = (state) => state.analytics.kpiLoading;
 export const selectAnalyticsFilters    = (state) => state.analytics.filters;

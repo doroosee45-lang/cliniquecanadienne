@@ -144,7 +144,7 @@ exports.getStats = async (req, res, next) => {
       // Chirurgie
       chir_total, chir_realisees,
       // Finance
-      ca_result, factures_impayees_result,
+      ca_result, factures_impayees_result, depenses_result,
       // Pharmacie
       med_total, med_ruptures, med_critiques, med_stock_val,
       // Prescriptions
@@ -196,6 +196,10 @@ exports.getStats = async (req, res, next) => {
         { $match: { statut: { $in: ['emise','partiellement_payee','contentieux'] } } },
         { $group: { _id: null, total: { $sum: '$montant_restant' } } },
       ]).catch(()=>[]),
+      Depense.aggregate([
+        { $match: { date: { $gte: depuis, $lte: fin } } },
+        { $group: { _id: null, total: { $sum: '$montant' } } },
+      ]).catch(()=>[]),
       // ── Pharmacie
       safeCount(Medication),
       safeCount(Medication, { statut: 'rupture' }),
@@ -233,13 +237,62 @@ exports.getStats = async (req, res, next) => {
     const ca_total          = ca_result[0]?.total || 0;
     const montant_paye      = ca_result[0]?.paye  || 0;
     const factures_impayees = factures_impayees_result[0]?.total || 0;
-    const depenses          = Math.round(ca_total * 0.28);
+    // AUDIT-ANALYTICS-P2 — depenses était Math.round(ca_total*0.28), une
+    // estimation, jamais une vraie somme de Depense (repéré en implémentant
+    // les trends : un trend calculé sur une base déjà fake serait fake par
+    // construction — un trend de dépenses n'a de sens que si les dépenses
+    // elles-mêmes sont réelles). Corrigé pour agréger le vrai modèle
+    // Depense, même source que getGlobalStats (qui le faisait déjà
+    // correctement) — dashboard.controller.js utilise la même agrégation.
+    const depenses          = depenses_result[0]?.total || 0;
     const benefice          = ca_total - depenses;
     const taux_occupation   = total_rooms > 0 ? Math.round((hospit_en_cours / total_rooms) * 100) : 0;
     const valeur_stock_pharma = med_stock_val[0]?.val || 0;
 
+    // AUDIT-ANALYTICS-P2 — trends réels "vs période précédente" : jamais une
+    // évolution inventée (même principe que realTrend/resolveGlobalPeriod,
+    // déjà établis pour /analytics/global, réutilisés ici tels quels).
+    // Uniquement sur des métriques réellement scopées à une période — les
+    // valeurs cumulatives/instantanées (patients_total, factures_impayees,
+    // taux_occupation, stocks...) n'ont pas d'équivalent "période
+    // précédente" qui aurait un sens honnête, donc pas de trend pour elles.
+    const dureeMs = fin.getTime() - depuis.getTime();
+    const prevFin = new Date(depuis.getTime() - 1);
+    const prevDebut = new Date(prevFin.getTime() - dureeMs);
+    const [
+      patients_nouveaux_prev, consult_total_prev, consult_terminees_prev, consult_annulees_prev,
+      ca_prev_result, depenses_prev_result,
+    ] = await Promise.all([
+      safeCount(Patient, { createdAt: { $gte: prevDebut, $lte: prevFin } }),
+      safeCount(Consultation, { createdAt: { $gte: prevDebut, $lte: prevFin } }),
+      safeCount(Consultation, { statut: 'terminee', createdAt: { $gte: prevDebut, $lte: prevFin } }),
+      safeCount(Appointment, { statut: 'annule', date_heure: { $gte: prevDebut, $lte: prevFin } }),
+      Invoice.aggregate([
+        { $match: { statut: { $nin: ['annulee', 'brouillon'] }, createdAt: { $gte: prevDebut, $lte: prevFin } } },
+        { $group: { _id: null, total: { $sum: '$montant_ttc' } } },
+      ]).catch(() => []),
+      Depense.aggregate([
+        { $match: { date: { $gte: prevDebut, $lte: prevFin } } },
+        { $group: { _id: null, total: { $sum: '$montant' } } },
+      ]).catch(() => []),
+    ]);
+    const ca_prev = ca_prev_result[0]?.total || 0;
+    const depenses_prev = depenses_prev_result[0]?.total || 0;
+    const benefice_prev = ca_prev - depenses_prev;
+
+    const trends = {
+      patients_nouveaux:      realTrend(patients_nouveaux, patients_nouveaux_prev),
+      consultations_total:    realTrend(consult_total, consult_total_prev),
+      consultations_terminees:realTrend(consult_terminees, consult_terminees_prev),
+      consultations_annulees: realTrend(consult_annulees, consult_annulees_prev),
+      ca_total:  realTrend(ca_total, ca_prev),
+      depenses:  realTrend(depenses, depenses_prev),
+      benefice:  realTrend(benefice, benefice_prev),
+    };
+
     res.json({
       success: true,
+      trends,
       kpi: {
         // Patients
         patients_total, patients_nouveaux,
@@ -301,6 +354,15 @@ exports.getReport = async (req, res, next) => {
     const now  = new Date();
     const year = now.getFullYear();
     const startYear = new Date(year, 0, 1);
+    // AUDIT-ANALYTICS-P2 — "vs Mois préc." (tableau financier détaillé,
+    // Analytics.jsx) était [12,8,-2,15,6,22][i] codé en dur. getReport() ne
+    // lit pas periode (limitation trouvée en Phase 1, hors périmètre ici) ;
+    // ce tableau a de toute façon sa propre étiquette "Mois" indépendante du
+    // sélecteur de période du haut de page — calcul réel mois civil actuel
+    // vs mois civil précédent, littéralement ce que l'étiquette promet déjà.
+    const moisDebut = new Date(now.getFullYear(), now.getMonth(), 1);
+    const moisPrecDebut = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const moisPrecFin = new Date(moisDebut.getTime() - 1);
 
     // ── Helper: par mois (année en cours)
     const parMois = (arr) => {
@@ -316,6 +378,8 @@ exports.getReport = async (req, res, next) => {
       echoParMoisRaw,
       presParMoisRaw,
       revenusRaw,
+      revenusMoisActuelRaw,
+      revenusMoisPrecRaw,
       nb_hommes, nb_femmes,
       diagRaw,
       medRaw,
@@ -353,6 +417,19 @@ exports.getReport = async (req, res, next) => {
         { $unwind: { path: '$lignes', preserveNullAndEmptyArrays: false } },
         { $group: { _id: '$lignes.categorie', total: { $sum: '$lignes.montant' } } },
         { $sort: { total: -1 } },
+      ]),
+      // AUDIT-ANALYTICS-P2 — revenus par service, mois civil actuel vs
+      // précédent, pour un vrai trend "vs Mois préc." (voir commentaire
+      // plus haut).
+      safeAggregate(Invoice, [
+        { $match: { statut: { $nin: ['annulee','brouillon'] }, date_facture: { $gte: moisDebut } } },
+        { $unwind: { path: '$lignes', preserveNullAndEmptyArrays: false } },
+        { $group: { _id: '$lignes.categorie', total: { $sum: '$lignes.montant' } } },
+      ]),
+      safeAggregate(Invoice, [
+        { $match: { statut: { $nin: ['annulee','brouillon'] }, date_facture: { $gte: moisPrecDebut, $lte: moisPrecFin } } },
+        { $unwind: { path: '$lignes', preserveNullAndEmptyArrays: false } },
+        { $group: { _id: '$lignes.categorie', total: { $sum: '$lignes.montant' } } },
       ]),
       // Genre
       safeCount(Patient, { sexe: 'M' }),
@@ -394,17 +471,21 @@ exports.getReport = async (req, res, next) => {
     // ── Revenus par service
     const CAT_LABELS = { consultation:'Consultation', hospitalisation:'Hospitalisation', laboratoire:'Laboratoire', imagerie:'Imagerie', pharmacie:'Pharmacie', autre:'Autre' };
     const CAT_COLORS = { consultation:'#1B4F9E', hospitalisation:'#D97706', laboratoire:'#0EA5A0', imagerie:'#7C3AED', pharmacie:'#059669', autre:'#9CA3AF' };
-    const revLabels = [], revData = [], revColors = [];
+    const moisActuelMap = {}; revenusMoisActuelRaw.forEach(({ _id, total }) => { if (_id) moisActuelMap[_id] = total; });
+    const moisPrecMap = {}; revenusMoisPrecRaw.forEach(({ _id, total }) => { if (_id) moisPrecMap[_id] = total; });
+    const revLabels = [], revData = [], revColors = [], revTrends = [];
     revenusRaw.forEach(({ _id, total }) => {
       if (!_id) return;
       revLabels.push(CAT_LABELS[_id] || _id);
       revData.push(total);
       revColors.push(CAT_COLORS[_id] || '#6B7A99');
+      revTrends.push(realTrend(moisActuelMap[_id] || 0, moisPrecMap[_id] || 0));
     });
     if (revLabels.length === 0) {
       revLabels.push(...['Consultation','Hospitalisation','Laboratoire','Imagerie','Pharmacie']);
       revData.push(0,0,0,0,0);
       revColors.push('#1B4F9E','#D97706','#0EA5A0','#7C3AED','#059669');
+      revTrends.push(null,null,null,null,null);
     }
 
     // ── Top pathologies
@@ -466,7 +547,7 @@ exports.getReport = async (req, res, next) => {
             { label:'Prescriptions',    data: parMois(presParMoisRaw),    borderColor:'#059669', backgroundColor:'rgba(5,150,105,.06)',   tension:.4, fill:false, pointRadius:3, pointBackgroundColor:'#059669' },
           ],
         },
-        revenus_par_service:  { labels: revLabels, data: revData, colors: revColors },
+        revenus_par_service:  { labels: revLabels, data: revData, colors: revColors, trends: revTrends },
         repartition_genre: {
           labels: ['Hommes','Femmes'],
           data:   [nb_hommes, nb_femmes],

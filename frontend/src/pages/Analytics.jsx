@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchAnalyticsReport, fetchFinancialReport, fetchPatientStats, fetchKpis,
   selectAnalyticsChartData, selectFinancialData, selectPatientStats,
-  selectAnalyticsLoading, selectAnalyticsKpi, selectAnalyticsKpiLoading,
+  selectAnalyticsLoading, selectAnalyticsKpi, selectAnalyticsKpiLoading, selectAnalyticsTrends,
 } from '../store/slices/analyticsSlice';
 import api from "../api";
 import toast from "react-hot-toast";
@@ -353,6 +353,7 @@ export default function Analytics() {
   const reduxFinancialData= useSelector(selectFinancialData);
   const reduxLoading      = useSelector(selectAnalyticsLoading);
   const reduxKpi          = useSelector(selectAnalyticsKpi);
+  const reduxTrends       = useSelector(selectAnalyticsTrends);
   const reduxKpiLoading   = useSelector(selectAnalyticsKpiLoading);
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
@@ -386,6 +387,12 @@ export default function Analytics() {
 
   // ── KPIs (viennent du Redux store) ────────────────────────
   const kpi = reduxKpi || {};
+  // AUDIT-ANALYTICS-P2 — trends réels "vs période précédente" (getStats).
+  // trend est passé à KpiCard seulement quand une valeur réelle existe ;
+  // realTrend() (backend) renvoie null si la période précédente est à 0 —
+  // jamais un pourcentage inventé pour remplir une carte.
+  const trends = reduxTrends || {};
+  const trendProps = (key) => trends[key] ? { trend: trends[key].pct, trendUp: trends[key].sens === 'up' } : {};
 
   // ── Données graphiques depuis Redux ───────────────────────
   const charts = reduxChartData || {};
@@ -394,7 +401,7 @@ export default function Analytics() {
     [charts.consultations_par_mois]
   );
   const DEMO_REVENUS_BAR = useMemo(
-    () => charts.revenus_par_service || { labels: [], data: [], colors: [] },
+    () => charts.revenus_par_service || { labels: [], data: [], colors: [], trends: [] },
     [charts.revenus_par_service]
   );
   const DEMO_GENDER = useMemo(
@@ -758,7 +765,7 @@ export default function Analytics() {
                   Patients
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))", gap:14, marginBottom:24 }}>
-                  <KpiCard color="blue" icon={I.patients} value={fmtNum(kpi.patients_total)} label="Total patients" trend={5.2} trendUp sub="depuis le début">
+                  <KpiCard color="blue" icon={I.patients} value={fmtNum(kpi.patients_total)} label="Total patients" {...trendProps('patients_nouveaux')} sub="depuis le début">
                     <div className="akpi-sub" style={{ marginTop:6 }}>{kpi.patients_actifs} actifs ce mois</div>
                   </KpiCard>
                   <div className="anl-kpi blue fu d1">
@@ -787,9 +794,9 @@ export default function Analytics() {
                   Consultations
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:24 }}>
-                  <KpiCard color="teal" icon={I.consult} value={kpi.consultations_total} label="Total consultations" trend={8.4} trendUp />
-                  <KpiCard color="green" icon={I.consult} value={kpi.consultations_terminees} label="Terminées" sub={`${Math.round(kpi.consultations_terminees/kpi.consultations_total*100)}% de taux de complétion`} />
-                  <KpiCard color="orange" icon={I.consult} value={kpi.consultations_annulees} label="Annulées" trend={2.1} trendUp={false} urgent />
+                  <KpiCard color="teal" icon={I.consult} value={kpi.consultations_total} label="Total consultations" {...trendProps('consultations_total')} />
+                  <KpiCard color="green" icon={I.consult} value={kpi.consultations_terminees} label="Terminées" sub={`${Math.round(kpi.consultations_terminees/kpi.consultations_total*100)}% de taux de complétion`} {...trendProps('consultations_terminees')} />
+                  <KpiCard color="orange" icon={I.consult} value={kpi.consultations_annulees} label="Annulées" {...trendProps('consultations_annulees')} urgent />
                   <KpiCard color="blue" icon={I.consult} value={`${kpi.temps_moyen_consult}min`} label="Durée moyenne" sub="Par consultation" />
                 </div>
               </div>
@@ -873,12 +880,16 @@ export default function Analytics() {
               {/* ── KPIs FINANCE RÉSUMÉ ── */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:14, marginBottom:28 }}>
                 {[
-                  { color:"green",  icon:I.money, label:"Chiffre d'affaires",  val:fmtNum(kpi.ca_total)+" CFA",    sub:`${periode==="mois"?"Ce mois":"Cette période"}`, trend:12.5, up:true },
-                  { color:"blue",   icon:I.money, label:"Dépenses totales",     val:fmtNum(kpi.depenses)+" CFA",    sub:"Charges opérationnelles",      trend:3.2,  up:true },
-                  { color:"teal",   icon:I.money, label:"Bénéfice net",         val:fmtNum(kpi.benefice)+" CFA",    sub:`Marge ${beneficePct}%`,        trend:18.7, up:true },
+                  { color:"green",  icon:I.money, label:"Chiffre d'affaires",  val:fmtNum(kpi.ca_total)+" CFA",    sub:`${periode==="mois"?"Ce mois":"Cette période"}`, key:'ca_total' },
+                  { color:"blue",   icon:I.money, label:"Dépenses totales",     val:fmtNum(kpi.depenses)+" CFA",    sub:"Charges opérationnelles",      key:'depenses' },
+                  { color:"teal",   icon:I.money, label:"Bénéfice net",         val:fmtNum(kpi.benefice)+" CFA",    sub:`Marge ${beneficePct}%`,        key:'benefice' },
                   { color:"red",    icon:I.money, label:"Factures impayées", val:fmtNum(kpi.factures_impayees)+" CFA", sub:`${kpi.factures_impayees>0?kpi.factures_impayees+" facture(s)":"Aucune"}`, urgent:kpi.factures_impayees>0 },
+                  /* AUDIT-ANALYTICS-P2 — pas de trend pour "Factures impayées" :
+                     c'est un solde instantané (créances en cours), pas une
+                     valeur de flux sur la période — un "vs période
+                     précédente" n'aurait pas de sens honnête ici. */
                 ].map((k,i) => (
-                  <KpiCard key={i} color={k.color} icon={k.icon} value={k.val} label={k.label} sub={k.sub} trend={k.trend} trendUp={k.up} urgent={k.urgent} />
+                  <KpiCard key={i} color={k.color} icon={k.icon} value={k.val} label={k.label} sub={k.sub} urgent={k.urgent} {...(k.key ? trendProps(k.key) : {})} />
                 ))}
               </div>
 
@@ -1143,12 +1154,12 @@ export default function Analytics() {
               {/* Grandes KPI finance */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:14, marginBottom:24 }}>
                 {[
-                  { color:"green",  icon:I.money, label:"Chiffre d'affaires",  val:fmtCFA(kpi.ca_total),          trend:12.5, up:true,  sub:"vs période précédente" },
-                  { color:"orange", icon:I.money, label:"Dépenses totales",     val:fmtCFA(kpi.depenses),          trend:3.2,  up:true,  sub:"Charges opérationnelles" },
-                  { color:"teal",   icon:I.money, label:"Bénéfice net",         val:fmtCFA(kpi.benefice),          trend:18.7, up:true,  sub:`Marge nette : ${beneficePct}%` },
-                  { color:"red",    icon:I.money, label:"Factures impayées",    val:fmtCFA(kpi.factures_impayees), trend:5.1,  up:true,  sub:`${kpi.factures_impayees>0?kpi.factures_impayees+" facture(s) en attente":"Aucune impayée"}`, urgent:kpi.factures_impayees>0 },
+                  { color:"green",  icon:I.money, label:"Chiffre d'affaires",  val:fmtCFA(kpi.ca_total),          sub:"vs période précédente", key:'ca_total' },
+                  { color:"orange", icon:I.money, label:"Dépenses totales",     val:fmtCFA(kpi.depenses),          sub:"Charges opérationnelles", key:'depenses' },
+                  { color:"teal",   icon:I.money, label:"Bénéfice net",         val:fmtCFA(kpi.benefice),          sub:`Marge nette : ${beneficePct}%`, key:'benefice' },
+                  { color:"red",    icon:I.money, label:"Factures impayées",    val:fmtCFA(kpi.factures_impayees), sub:`${kpi.factures_impayees>0?kpi.factures_impayees+" facture(s) en attente":"Aucune impayée"}`, urgent:kpi.factures_impayees>0 },
                 ].map((k,i) => (
-                  <KpiCard key={i} color={k.color} icon={k.icon} value={k.val} label={k.label} sub={k.sub} trend={k.trend} trendUp={k.up} urgent={k.urgent} />
+                  <KpiCard key={i} color={k.color} icon={k.icon} value={k.val} label={k.label} sub={k.sub} urgent={k.urgent} {...(k.key ? trendProps(k.key) : {})} />
                 ))}
               </div>
 
@@ -1216,11 +1227,19 @@ export default function Analytics() {
                   <table className="anl-tbl">
                     <thead><tr><th>Service</th><th style={{textAlign:"right"}}>Revenus (CFA)</th><th style={{textAlign:"right"}}>Part (%)</th><th style={{textAlign:"right"}}>vs Mois préc.</th><th>Tendance</th><th>Statut</th></tr></thead>
                     <tbody>
+                      {/* AUDIT-ANALYTICS-P2 — "vs Mois préc." était
+                          [12,8,-2,15,6,22][i] codé en dur ; utilise
+                          maintenant DEMO_REVENUS_BAR.trends[i] (réel, mois
+                          civil actuel vs précédent, calculé côté backend —
+                          voir getReport::revenus_par_service). null quand le
+                          mois précédent est à 0 (jamais un pourcentage
+                          inventé). */}
                       {DEMO_REVENUS_BAR.labels.map((lbl,i) => {
                         const val = DEMO_REVENUS_BAR.data[i];
                         const total = DEMO_REVENUS_BAR.data.reduce((a,b)=>a+b,0);
                         const pct = Math.round(val/total*100);
-                        const trend = [12,8,-2,15,6,22][i];
+                        const trendObj = DEMO_REVENUS_BAR.trends?.[i];
+                        const trend = trendObj?.pct;
                         return (
                           <tr key={lbl}>
                             <td>
@@ -1231,26 +1250,43 @@ export default function Analytics() {
                             </td>
                             <td style={{ textAlign:"right", fontWeight:700, color:"var(--an)" }}>{val.toLocaleString("fr-FR")}</td>
                             <td style={{ textAlign:"right" }}><Badge cls="blue">{pct}%</Badge></td>
-                            <td style={{ textAlign:"right", color: trend>0?"var(--ag)":"var(--ar)", fontWeight:700, display:"flex", alignItems:"center", justifyContent:"flex-end", gap:3 }}>
-                              {trend>0?I.up:I.down} {Math.abs(trend)}%
+                            <td style={{ textAlign:"right", color: trend==null?"var(--am)":trend>0?"var(--ag)":"var(--ar)", fontWeight:700, display:"flex", alignItems:"center", justifyContent:"flex-end", gap:3 }}>
+                              {trend==null ? "—" : <>{trend>0?I.up:I.down} {Math.abs(trend)}%</>}
                             </td>
                             <td>
                               <div style={{ width:80, height:5, background:"#EEF4FF", borderRadius:99, overflow:"hidden" }}>
                                 <div style={{ height:"100%", width:`${pct*2}%`, background:DEMO_REVENUS_BAR.colors[i], borderRadius:99, transition:"width .8s" }} />
                               </div>
                             </td>
-                            <td><Badge cls={trend>10?"green":trend>0?"teal":"orange"}>{trend>10?"⬆ Excellent":trend>0?"⬆ En hausse":"⬇ Stable"}</Badge></td>
+                            <td><Badge cls={trend==null?"gray":trend>10?"green":trend>0?"teal":"orange"}>{trend==null?"— Pas de donnée":trend>10?"⬆ Excellent":trend>0?"⬆ En hausse":"⬇ Stable"}</Badge></td>
                           </tr>
                         );
                       })}
-                      <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)", fontWeight:800 }}>
-                        <td style={{ color:"var(--an)" }}>TOTAL</td>
-                        <td style={{ textAlign:"right", color:"var(--ab)", fontSize:15 }}>{DEMO_REVENUS_BAR.data.reduce((a,b)=>a+b,0).toLocaleString("fr-FR")}</td>
-                        <td style={{ textAlign:"right" }}><Badge cls="blue">100%</Badge></td>
-                        <td style={{ textAlign:"right", color:"var(--ag)", fontWeight:700, display:"flex", alignItems:"center", justifyContent:"flex-end", gap:3 }}>{I.up} 12.5%</td>
-                        <td></td>
-                        <td><Badge cls="green">⬆ Excellent</Badge></td>
-                      </tr>
+                      {(() => {
+                        // TOTAL : moyenne pondérée des trends réels (par le
+                        // poids de chaque service dans le total), pas un
+                        // pourcentage fixe — reflète honnêtement les valeurs
+                        // ci-dessus plutôt qu'un chiffre indépendant.
+                        const total = DEMO_REVENUS_BAR.data.reduce((a,b)=>a+b,0);
+                        let weightedSum = 0, weightSum = 0;
+                        DEMO_REVENUS_BAR.data.forEach((val, i) => {
+                          const t = DEMO_REVENUS_BAR.trends?.[i]?.pct;
+                          if (t != null && total > 0) { weightedSum += t * val; weightSum += val; }
+                        });
+                        const totalTrend = weightSum > 0 ? Math.round((weightedSum / weightSum) * 10) / 10 : null;
+                        return (
+                          <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)", fontWeight:800 }}>
+                            <td style={{ color:"var(--an)" }}>TOTAL</td>
+                            <td style={{ textAlign:"right", color:"var(--ab)", fontSize:15 }}>{total.toLocaleString("fr-FR")}</td>
+                            <td style={{ textAlign:"right" }}><Badge cls="blue">100%</Badge></td>
+                            <td style={{ textAlign:"right", color: totalTrend==null?"var(--am)":totalTrend>0?"var(--ag)":"var(--ar)", fontWeight:700, display:"flex", alignItems:"center", justifyContent:"flex-end", gap:3 }}>
+                              {totalTrend==null ? "—" : <>{totalTrend>0?I.up:I.down} {Math.abs(totalTrend)}%</>}
+                            </td>
+                            <td></td>
+                            <td>{totalTrend==null ? <Badge cls="gray">— Pas de donnée</Badge> : <Badge cls={totalTrend>10?"green":totalTrend>0?"teal":"orange"}>{totalTrend>10?"⬆ Excellent":totalTrend>0?"⬆ En hausse":"⬇ Stable"}</Badge>}</td>
+                          </tr>
+                        );
+                      })()}
                     </tbody>
                   </table>
                 </div>
