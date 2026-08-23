@@ -9,6 +9,7 @@ const Invoice         = require('../models/Invoice');
 const Prescription    = require('../models/Prescription');
 const Setting         = require('../models/Setting');
 const { logAction, escapeRegex } = require('../utils/helpers');
+const { cacheStats } = require('../utils/dashboardCache');
 
 // ─── Seuils d'archivage automatique (en jours) ────────────────
 const SEUILS = {
@@ -25,26 +26,33 @@ function octetsVersLisible(n) {
   return `${Math.round(n / 1e3)} Ko`;
 }
 
-// ─── Moissonnage : crée les entrées d'archive depuis les modules
+// ─── Moissonnage : crée les entrées d'archive depuis les modules ─────────────
+// AUDIT-CRIT-4 — tournait auparavant de façon synchrone à CHAQUE requête
+// GET /archives/stats (dans getStats ci-dessous), avec un upsert individuel
+// attendu séquentiellement par document trouvé : à grande échelle (ex. 50 000
+// patients inactifs), des dizaines de milliers d'allers-retours d'écriture
+// bloquants sur un seul chargement de page, sans aucun cache. Découplé du
+// chemin de lecture (appelé désormais uniquement par le job planifié
+// ci-dessous, même famille que appointmentReminders.js/planningReminders.js),
+// et les upserts individuels sont regroupés en un seul bulkWrite au lieu
+// d'attendre chacun l'un après l'autre.
 async function harvestArchivables() {
   const now = new Date();
   const ago = (days) => new Date(now - days * 24 * 3600 * 1000);
-
-  async function upsert(data) {
-    try {
-      await ArchiveEntry.updateOne(
-        { source_id: data.source_id, source_model: data.source_model },
-        { $setOnInsert: data },
-        { upsert: true }
-      );
-    } catch { /* doublon ignoré */ }
-  }
+  const ops = [];
+  const push = (data) => ops.push({
+    updateOne: {
+      filter: { source_id: data.source_id, source_model: data.source_model },
+      update: { $setOnInsert: data },
+      upsert: true,
+    },
+  });
 
   // 1. Patients inactifs
   const patientsInactifs = await Patient.find({ statut: 'inactif' })
     .select('_id nom prenom numero_dossier updatedAt').lean();
   for (const p of patientsInactifs) {
-    await upsert({
+    push({
       titre: `Dossier — ${p.prenom} ${p.nom}`,
       description: `N° dossier : ${p.numero_dossier || '—'}`,
       categorie: 'patient', source_model: 'Patient', source_id: p._id,
@@ -60,7 +68,7 @@ async function harvestArchivables() {
   }).populate('patient','nom prenom').select('_id patient updatedAt diagnostic_sortie').lean();
   for (const h of hospits) {
     const nom = h.patient ? `${h.patient.prenom} ${h.patient.nom}` : 'Patient';
-    await upsert({
+    push({
       titre: `Hospitalisation — ${nom}`, description: h.diagnostic_sortie || 'Séjour terminé',
       categorie: 'hospitalisation', source_model: 'Hospitalization', source_id: h._id,
       patient: h.patient?._id, patient_nom: nom,
@@ -73,7 +81,7 @@ async function harvestArchivables() {
     statut: 'valide', date_validation: { $lt: ago(SEUILS.laboratoire) },
   }).select('_id patient patient_nom date_validation').lean();
   for (const l of labs) {
-    await upsert({
+    push({
       titre: `Résultat labo — ${l.patient_nom || 'Patient'}`,
       description: `Validé le ${l.date_validation ? new Date(l.date_validation).toLocaleDateString('fr-FR') : '—'}`,
       categorie: 'laboratoire', source_model: 'LabResult', source_id: l._id,
@@ -87,7 +95,7 @@ async function harvestArchivables() {
     statut: { $in: ['valide','rapporte'] }, date_validation: { $lt: ago(SEUILS.imagerie) },
   }).select('_id patient patient_nom type_examen date_validation').lean();
   for (const i of imgs) {
-    await upsert({
+    push({
       titre: `Imagerie — ${i.type_examen || 'Examen'} — ${i.patient_nom || 'Patient'}`,
       description: 'Rapport validé',
       categorie: 'imagerie', source_model: 'ImagingResult', source_id: i._id,
@@ -100,7 +108,7 @@ async function harvestArchivables() {
   const chirs = await DossierChirurgical.find({ statut: 'cloture' })
     .select('_id patient patient_nom date_intervention_reelle type_intervention').lean();
   for (const c of chirs) {
-    await upsert({
+    push({
       titre: `Chirurgie — ${c.type_intervention || 'Intervention'} — ${c.patient_nom || '—'}`,
       description: 'Dossier clôturé',
       categorie: 'chirurgie', source_model: 'DossierChirurgical', source_id: c._id,
@@ -114,7 +122,7 @@ async function harvestArchivables() {
     statut: { $in: ['payee','annulee'] }, date_facture: { $lt: ago(SEUILS.financier) },
   }).select('_id patient patient_nom numero_facture montant_ttc date_facture statut').lean();
   for (const f of factures) {
-    await upsert({
+    push({
       titre: `Facture ${f.numero_facture} — ${f.patient_nom || 'Patient'}`,
       description: `${f.statut === 'payee' ? 'Payée' : 'Annulée'} — ${(f.montant_ttc || 0).toLocaleString('fr-FR')} CFA`,
       categorie: 'financier', source_model: 'Invoice', source_id: f._id,
@@ -129,7 +137,7 @@ async function harvestArchivables() {
     date_prescription: { $lt: ago(SEUILS.prescription) },
   }).select('_id patient numero_rx date_prescription statut').lean();
   for (const o of ordos) {
-    await upsert({
+    push({
       titre: `Ordonnance ${o.numero_rx || '—'}`,
       description: `Statut : ${o.statut}`,
       categorie: 'document', source_model: 'Prescription', source_id: o._id,
@@ -137,15 +145,36 @@ async function harvestArchivables() {
       priorite: 'basse', tags: ['ordonnance', o.statut],
     });
   }
+
+  if (ops.length === 0) return { candidats: 0, inseres: 0 };
+  // ordered:false — un doublon (index unique source_id+source_model déjà
+  // présent) sur un op ne bloque jamais les autres ; même tolérance que le
+  // try/catch "doublon ignoré" d'avant, en un seul aller-retour au lieu d'un
+  // par document. Le catch récupère le compte partiel sur BulkWriteError
+  // (ex. course furtive entre deux exécutions du job) plutôt que de laisser
+  // toute la moisson échouer pour un seul conflit.
+  let result;
+  try {
+    result = await ArchiveEntry.bulkWrite(ops, { ordered: false });
+  } catch (err) {
+    if (!err.result) throw err;
+    result = err.result;
+  }
+  return { candidats: ops.length, inseres: result.upsertedCount || 0 };
 }
+
+exports.harvestArchivables = harvestArchivables;
 
 // ═══════════════════════════════════════════════════════════════
 // GET /api/archives/stats
 // ═══════════════════════════════════════════════════════════════
+// AUDIT-CRIT-4 — la moisson (harvestArchivables) tournait ici même, de façon
+// synchrone, sur chaque requête. Désormais uniquement déclenchée par le job
+// planifié (utils/archiveHarvestJob.js) ; ce endpoint ne fait plus que lire
+// les entrées déjà collectées, et est mis en cache (30s, voir dashboardCache.js)
+// comme les autres statistiques de tableau de bord.
 exports.getStats = async (req, res, next) => {
   try {
-    await harvestArchivables();
-
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const [catCounts, archivesMois, derniere, total] = await Promise.all([
@@ -364,3 +393,9 @@ exports.updateConfig = async (req, res, next) => {
     res.json({ success: true, config });
   } catch (err) { next(err); }
 };
+
+// AUDIT-CRIT-4 — non personnalisé (mêmes stats pour tout le monde,
+// contrairement à medecinStats/sageFemmeStats) ; invalidé comme les autres
+// par emitDashboardUpdate() (utils/socket.js), notamment appelé par le job
+// de moisson lui-même quand de nouvelles entrées sont insérées.
+exports.getStats = cacheStats('archiveStats', false, exports.getStats);
