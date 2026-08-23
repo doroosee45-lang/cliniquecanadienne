@@ -36,6 +36,11 @@ module.exports = {
 
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
 
+  // AUDIT-ANALYTICS-P8 — rapport hebdomadaire IA (utils/openai.js),
+  // même pattern que TWILIO_* : absent en développement, utils/openai.js
+  // retombe alors en mode simulé (jamais un faux succès).
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+
   LOG_LEVEL:  process.env.LOG_LEVEL || 'info',
   SENTRY_DSN: process.env.SENTRY_DSN,
 

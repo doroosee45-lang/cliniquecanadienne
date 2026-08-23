@@ -658,4 +658,38 @@ const sendAnalyticsReportEmail = async ({ email, prenom, nom, attachment }) => {
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendPlanningPublishedEmail, sendPlanningReminderEmail, sendAnalyticsReportEmail };
+// AUDIT-ANALYTICS-P8 — rapport hebdomadaire IA, distinct du rapport manuel
+// sendAnalyticsReportEmail ci-dessus (PDF joint, déclenché par un clic) :
+// celui-ci est un corps HTML généré à partir du Markdown produit par
+// utils/openai.js (ou du message de repli en mode simulé), aucune pièce
+// jointe. Les deux coexistent, aucun ne remplace l'autre.
+const sendWeeklyAnalyticsReportEmail = async ({ email, prenom, nom, htmlContenu, simulated }) => {
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#EFF6FF;border-left:4px solid #1B4F9E;border-radius:8px;padding:14px 18px;margin-bottom:22px;">
+        <div style="font-size:11px;color:#6B7A99;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Analytics · Rapport hebdomadaire</div>
+        <div style="font-size:18px;font-weight:800;color:#0B1E3B;margin-top:4px;">🤖 Synthèse générée par IA</div>
+      </div>
+      <h2 style="color:#0B1E3B;font-size:16px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      ${simulated ? `<p style="color:#D97706;font-size:13px;background:#FFFBEB;border-radius:8px;padding:10px 14px;"><strong>Mode simulé</strong> — OPENAI_API_KEY non configurée cette semaine, aucune synthèse IA réelle n'a été générée.</p>` : ''}
+      <div style="color:#374151;font-size:14px;">${htmlContenu}</div>
+    </div>
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: `Rapport hebdomadaire Analytics (IA) — ${new Date().toLocaleDateString('fr-FR')}`,
+    html,
+  });
+};
+
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendPlanningPublishedEmail, sendPlanningReminderEmail, sendAnalyticsReportEmail, sendWeeklyAnalyticsReportEmail };

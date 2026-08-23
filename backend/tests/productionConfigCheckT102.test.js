@@ -52,6 +52,7 @@ const GOOD_ENV = {
   JWT_SECRET: 'x'.repeat(80),
   SMTP_HOST: 'smtp.example.com',
   SMTP_USER: 'noreply@example.com',
+  OPENAI_API_KEY: 'sk-' + 'x'.repeat(40),
 };
 
 test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart de configuration production', async (t) => {
@@ -87,6 +88,11 @@ test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart 
   await t.test('SMTP non configuré (mode simulé) — signalé', async () => {
     const findings = await checkProductionConfig({ env: { ...GOOD_ENV, SMTP_HOST: undefined, SMTP_USER: undefined } });
     assert.ok(findings.some(f => f.check === 'SMTP'), 'doit signaler SMTP en mode simulé');
+  });
+
+  await t.test('OpenAI non configurée (mode simulé) — signalé', async () => {
+    const findings = await checkProductionConfig({ env: { ...GOOD_ENV, OPENAI_API_KEY: undefined } });
+    assert.ok(findings.some(f => f.check === 'OPENAI'), 'doit signaler OpenAI en mode simulé');
   });
 
   await t.test('plusieurs écarts simultanés — tous signalés, pas seulement le premier', async () => {

@@ -25,6 +25,7 @@ const routes         = require('./routes');
 const { setIO }      = require('./utils/socket');
 const { startReminderJob } = require('./utils/appointmentReminders');
 const { startPlanningReminderJob } = require('./utils/planningReminders');
+const { startWeeklyAnalyticsReportJob } = require('./utils/weeklyAnalyticsReport');
 const { logger, captureException } = require('./utils/logger');
 
 // Capturée plutôt que traitée en fire-and-forget : bootstrap() (fin de
@@ -271,6 +272,7 @@ async function bootstrap() {
     logger.info('Serveur démarré', { port: PORT, env: env.NODE_ENV });
     startReminderJob();
     startPlanningReminderJob();
+    startWeeklyAnalyticsReportJob();
   });
 }
 

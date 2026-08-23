@@ -60,6 +60,14 @@ function checkSmtp(env, findings) {
   }
 }
 
+// AUDIT-ANALYTICS-P8 — même pattern que checkSmtp ci-dessus :
+// vérifie uniquement la PRÉSENCE de la clé, jamais sa valeur.
+function checkOpenAI(env, findings) {
+  if (!env.OPENAI_API_KEY) {
+    findings.push({ level: 'error', check: 'OPENAI', message: 'OPENAI_API_KEY non configurée — utils/openai.js retombera en mode simulé : le rapport hebdomadaire Analytics ne sera jamais réellement généré par IA.' });
+  }
+}
+
 // checkSeedAccounts — nécessite une connexion Mongo (paramètre injecté,
 // jamais géré en interne) pour rester testable sans dépendre d'une base
 // précise ; utilise une connexion mongoose distincte de celle de l'appelant
@@ -89,6 +97,7 @@ async function checkProductionConfig({ env = process.env, mongoUri } = {}) {
   checkNodeEnv(env, findings);
   checkJwtSecret(env, findings);
   checkSmtp(env, findings);
+  checkOpenAI(env, findings);
   if (mongoUri) {
     await checkSeedAccounts(mongoUri, findings);
   }
