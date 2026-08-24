@@ -42,9 +42,9 @@ test('Chirurgie→Journal d\'audit — createDossier/addBilan/addSuivi/addCompli
     await t.test('createDossier écrit une entrée AuditLog module=chirurgie, action=CREATE', async () => {
       const { status, body } = await call(chirC.createDossier, { body: { patient: patient._id, chirurgien_id: medecin._id, motif_consultation: 'T101 douleur' }, user, ip: '127.0.0.1' });
       assert.equal(status, 201);
-      cleanup.push(() => DossierChirurgical.findByIdAndDelete(body._id));
+      cleanup.push(() => DossierChirurgical.findByIdAndDelete(body.dossier._id));
 
-      const log = await AuditLog.findOne({ module: 'chirurgie', action: 'CREATE', entite_id: body._id.toString(), message: { $regex: 'Nouveau dossier chirurgical' } });
+      const log = await AuditLog.findOne({ module: 'chirurgie', action: 'CREATE', entite_id: body.dossier._id.toString(), message: { $regex: 'Nouveau dossier chirurgical' } });
       assert.ok(log, 'createDossier doit journaliser la création du dossier');
       assert.equal(String(log.utilisateur), String(medecin._id));
     });
@@ -55,19 +55,19 @@ test('Chirurgie→Journal d\'audit — createDossier/addBilan/addSuivi/addCompli
 
       const { status: sB, body: bB } = await call(chirC.addBilan, { params: { id: dossier._id }, body: { type: 'biologie', examen: 'NFS-T101' }, user, ip: '127.0.0.1' });
       assert.equal(sB, 201);
-      cleanup.push(() => Bilan.findByIdAndDelete(bB._id));
+      cleanup.push(() => Bilan.findByIdAndDelete(bB.bilan._id));
       const logBilan = await AuditLog.findOne({ module: 'chirurgie', action: 'CREATE', entite_id: dossier._id.toString(), message: { $regex: 'Bilan ajouté' } });
       assert.ok(logBilan, 'addBilan doit journaliser');
 
       const { status: sS, body: bS } = await call(chirC.addSuivi, { params: { id: dossier._id }, body: { temperature: 37.5, etat_plaie: 'bonne_evolution' }, user, ip: '127.0.0.1' });
       assert.equal(sS, 201);
-      cleanup.push(() => SuiviPostop.findByIdAndDelete(bS._id));
+      cleanup.push(() => SuiviPostop.findByIdAndDelete(bS.suivi._id));
       const logSuivi = await AuditLog.findOne({ module: 'chirurgie', action: 'CREATE', entite_id: dossier._id.toString(), message: { $regex: 'Suivi postopératoire ajouté' } });
       assert.ok(logSuivi, 'addSuivi doit journaliser');
 
       const { status: sC, body: bC } = await call(chirC.addComplication, { params: { id: dossier._id }, body: { type_complication: 'infection', description: 'T101 infection test' }, user, ip: '127.0.0.1' });
       assert.equal(sC, 201);
-      cleanup.push(() => Complication.findByIdAndDelete(bC._id));
+      cleanup.push(() => Complication.findByIdAndDelete(bC.complication._id));
       const logComp = await AuditLog.findOne({ module: 'chirurgie', action: 'CREATE', entite_id: dossier._id.toString(), message: { $regex: 'Complication' } });
       assert.ok(logComp, 'addComplication doit journaliser');
     });

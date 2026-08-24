@@ -472,7 +472,7 @@ export default function Chirurgie() {
     setSaving(true);
     try {
       const { data } = await api.post("/chirurgie", formDossier);
-      toast.success(`✅ Dossier ${data.numero || "créé"} avec succès`);
+      toast.success(`✅ Dossier ${data.dossier?.numero || "créé"} avec succès`);
       setModalNouv(false);
       setFormDossier(EMPTY_DOSSIER);
       loadDossiers(); loadStats();

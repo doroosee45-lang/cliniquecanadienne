@@ -5,7 +5,7 @@ const { logAction } = require('../utils/helpers');
 exports.getAmbulances = async (req, res, next) => {
   try {
     const ambulances = await Ambulance.find().sort({ numero: 1 });
-    res.json({ ambulances });
+    res.json({ success: true, ambulances });
   } catch (err) { next(err); }
 };
 
@@ -29,7 +29,7 @@ exports.assignMission = async (req, res, next) => {
     amb.missions.push({ destination, motif_mission, heure_depart });
     await amb.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'ambulances', entite_id: amb._id, ip: req.ip, message: `Mission assignée — ambulance ${numero} vers ${destination}`, avant, apres: amb });
-    res.status(201).json({ ambulance: amb, message: `Mission ambulance ${numero} assignée` });
+    res.status(201).json({ success: true, ambulance: amb, message: `Mission ambulance ${numero} assignée` });
   } catch (err) { next(err); }
 };
 
@@ -37,7 +37,7 @@ exports.assignMission = async (req, res, next) => {
 exports.retourAmbulance = async (req, res, next) => {
   try {
     const amb = await Ambulance.findOne({ numero: req.params.numero });
-    if (!amb) return res.status(404).json({ message: 'Ambulance introuvable' });
+    if (!amb) return res.status(404).json({ success: false, message: 'Ambulance introuvable' });
     const avant = amb.toObject();
     amb.statut = 'disponible';
     amb.destination = '';
@@ -45,6 +45,6 @@ exports.retourAmbulance = async (req, res, next) => {
     if (dernier) dernier.heure_retour = new Date().toTimeString().substring(0, 5);
     await amb.save();
     await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'ambulances', entite_id: amb._id, ip: req.ip, message: `Retour ambulance ${amb.numero} — disponible`, avant, apres: amb });
-    res.json({ ambulance: amb });
+    res.json({ success: true, ambulance: amb });
   } catch (err) { next(err); }
 };

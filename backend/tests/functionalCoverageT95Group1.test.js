@@ -45,15 +45,15 @@ test('couverture fonctionnelle — chirurgie, bloc opératoire, laboratoire, ima
     await t.test('chirurgieController.createDossier copie et transforme les données patient', async () => {
       const { status, body } = await call(chirC.createDossier, { body: { patient: patient._id, chirurgien_id: medecin._id, motif_consultation: 'Douleur abdominale' }, user });
       assert.equal(status, 201);
-      cleanup.push(() => DossierChirurgical.findByIdAndDelete(body._id));
+      cleanup.push(() => DossierChirurgical.findByIdAndDelete(body.dossier._id));
 
-      assert.ok(body.numero?.length, 'un numéro doit être généré');
-      assert.equal(body.patient_nom, `${patient.prenom} ${patient.nom}`);
-      assert.equal(body.sexe, 'femme', 'sexe F doit être transformé en "femme"');
-      assert.equal(body.groupe_sanguin, 'O+');
-      assert.equal(body.allergies, 'Pénicilline', 'tableau d\'allergies doit être joint en chaîne');
-      assert.equal(body.chirurgien_nom, `Dr. ${medecin.prenom} ${medecin.nom}`);
-      assert.equal(body.statut, 'consultation');
+      assert.ok(body.dossier.numero?.length, 'un numéro doit être généré');
+      assert.equal(body.dossier.patient_nom, `${patient.prenom} ${patient.nom}`);
+      assert.equal(body.dossier.sexe, 'femme', 'sexe F doit être transformé en "femme"');
+      assert.equal(body.dossier.groupe_sanguin, 'O+');
+      assert.equal(body.dossier.allergies, 'Pénicilline', 'tableau d\'allergies doit être joint en chaîne');
+      assert.equal(body.dossier.chirurgien_nom, `Dr. ${medecin.prenom} ${medecin.nom}`);
+      assert.equal(body.dossier.statut, 'consultation');
     });
 
     await t.test('chirurgieController.addBilan, addSuivi, addComplication créent les sous-documents attendus', async () => {
@@ -62,20 +62,20 @@ test('couverture fonctionnelle — chirurgie, bloc opératoire, laboratoire, ima
 
       const { status: sB, body: bB } = await call(chirC.addBilan, { params: { id: dossier._id }, body: { type: 'biologie', examen: 'NFS', resultat: 'Normal' }, user });
       assert.equal(sB, 201);
-      cleanup.push(() => Bilan.findByIdAndDelete(bB._id));
-      assert.equal(bB.examen, 'NFS');
+      cleanup.push(() => Bilan.findByIdAndDelete(bB.bilan._id));
+      assert.equal(bB.bilan.examen, 'NFS');
 
       const { status: sS, body: bS } = await call(chirC.addSuivi, { params: { id: dossier._id }, body: { temperature: 37.2, etat_plaie: 'bonne_evolution' }, user });
       assert.equal(sS, 201);
-      cleanup.push(() => SuiviPostop.findByIdAndDelete(bS._id));
-      assert.equal(bS.etat_plaie, 'bonne_evolution');
+      cleanup.push(() => SuiviPostop.findByIdAndDelete(bS.suivi._id));
+      assert.equal(bS.suivi.etat_plaie, 'bonne_evolution');
       const freshDossier = await DossierChirurgical.findById(dossier._id);
       assert.equal(freshDossier.nb_suivis, 1, 'addSuivi doit incrémenter le compteur sur le dossier');
 
       const { status: sC, body: bC } = await call(chirC.addComplication, { params: { id: dossier._id }, body: { type_complication: 'infection', description: 'Infection superficielle' }, user });
       assert.equal(sC, 201);
-      cleanup.push(() => Complication.findByIdAndDelete(bC._id));
-      assert.equal(bC.type_complication, 'infection');
+      cleanup.push(() => Complication.findByIdAndDelete(bC.complication._id));
+      assert.equal(bC.complication.type_complication, 'infection');
     });
 
     await t.test('blocoperatoireController.createIntervention — branche nouveau dossier ET branche dossier existant', async () => {

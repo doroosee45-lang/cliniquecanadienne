@@ -78,7 +78,16 @@ exports.getStats = async (req, res, next) => {
       chartValues.push(entry ? entry.count : 0);
     }
 
+    // AUDIT-M-C7 (Groupe C, Point 7) — ce contrôleur ne renvoyait jamais
+    // `success` (0/21 réponses) — seul du fichier avec ambulances.controller.js
+    // et chirurgieController.js à s'écarter du format standard {success,...}
+    // utilisé partout ailleurs. Ajouté ici et sur toutes les réponses
+    // ci-dessous, purement additif (aucune clé existante retirée/renommée) —
+    // vérifié qu'aucun code frontend ne s'en trouve cassé
+    // (store/slices/urgencesSlice.js lit déjà les clés nommées directement,
+    // jamais data.success).
     res.json({
+      success: true,
       kpis: { actives, attente, consultation, observation, critique, admissions_jour: admissionsJour, sorties_jour: sortiesJour, temps_attente_moy },
       triageMap,
       chart: { labels, data: chartValues },
@@ -114,7 +123,7 @@ exports.getAll = async (req, res, next) => {
       Urgence.countDocuments(filter),
     ]);
 
-    res.json({ urgences: urgences.map(normalize), total, page: Number(page) });
+    res.json({ success: true, urgences: urgences.map(normalize), total, page: Number(page) });
   } catch (err) { next(err); }
 };
 
@@ -124,8 +133,8 @@ exports.getOne = async (req, res, next) => {
     const u = await Urgence.findById(req.params.id)
       .populate('patient', 'prenom nom numero_dossier date_naissance')
       .populate('medecin_responsable', 'prenom nom');
-    if (!u) return res.status(404).json({ message: 'Dossier urgence introuvable' });
-    res.json({ urgence: normalize(u) });
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier urgence introuvable' });
+    res.json({ success: true, urgence: normalize(u) });
   } catch (err) { next(err); }
 };
 
@@ -147,7 +156,7 @@ exports.create = async (req, res, next) => {
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Admission urgences ${u.numero} — ${u.patient_nom} (triage ${u.niveau_triage})` });
     emitDashboardUpdate();
     await u.populate('patient', 'prenom nom numero_dossier');
-    res.status(201).json({ urgence: normalize(u), message: `Patient ${u.numero} admis aux urgences` });
+    res.status(201).json({ success: true, urgence: normalize(u), message: `Patient ${u.numero} admis aux urgences` });
   } catch (err) { next(err); }
 };
 
@@ -155,7 +164,7 @@ exports.create = async (req, res, next) => {
 exports.update = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
-    if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
 
     // ADR-0005 — admission_status n'est jamais réassignable directement par
     // le client (retiré des champs génériques, comme soins/prescriptions/
@@ -189,7 +198,7 @@ exports.update = async (req, res, next) => {
     emitDashboardUpdate();
     await u.populate('patient', 'prenom nom numero_dossier');
     await u.populate('medecin_responsable', 'prenom nom');
-    res.json({ urgence: normalize(u) });
+    res.json({ success: true, urgence: normalize(u) });
   } catch (err) { next(err); }
 };
 
@@ -197,8 +206,8 @@ exports.update = async (req, res, next) => {
 exports.getSoins = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id).select('soins');
-    if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
-    res.json({ soins: u.soins.sort((a, b) => new Date(b.date) - new Date(a.date)) });
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
+    res.json({ success: true, soins: u.soins.sort((a, b) => new Date(b.date) - new Date(a.date)) });
   } catch (err) { next(err); }
 };
 
@@ -206,7 +215,7 @@ exports.getSoins = async (req, res, next) => {
 exports.addSoin = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
-    if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
     const soin = { ...req.body, heure: req.body.heure || new Date().toTimeString().substring(0, 5) };
     u.soins.unshift(soin);
     u.timeline.push({
@@ -216,7 +225,7 @@ exports.addSoin = async (req, res, next) => {
     });
     await u.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Soin (${soin.acte || 'acte'}) ajouté au dossier urgences ${u.numero}` });
-    res.status(201).json({ soin: u.soins[0], message: 'Soin enregistré' });
+    res.status(201).json({ success: true, soin: u.soins[0], message: 'Soin enregistré' });
   } catch (err) { next(err); }
 };
 
@@ -224,8 +233,8 @@ exports.addSoin = async (req, res, next) => {
 exports.getPrescriptions = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id).select('prescriptions');
-    if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
-    res.json({ prescriptions: u.prescriptions });
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
+    res.json({ success: true, prescriptions: u.prescriptions });
   } catch (err) { next(err); }
 };
 
@@ -233,12 +242,12 @@ exports.getPrescriptions = async (req, res, next) => {
 exports.addPrescription = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
-    if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
     u.prescriptions.push(req.body);
     u.timeline.push({ action: `Prescription : ${req.body.designation || req.body.type}`, heure: new Date().toTimeString().substring(0,5), personnel: req.body.medecin || 'Médecin' });
     await u.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Prescription (${req.body.designation || req.body.type || '—'}) ajoutée au dossier urgences ${u.numero}` });
-    res.status(201).json({ prescription: u.prescriptions[u.prescriptions.length - 1] });
+    res.status(201).json({ success: true, prescription: u.prescriptions[u.prescriptions.length - 1] });
   } catch (err) { next(err); }
 };
 
@@ -246,8 +255,8 @@ exports.addPrescription = async (req, res, next) => {
 exports.getExamens = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id).select('examens');
-    if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
-    res.json({ examens: u.examens });
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
+    res.json({ success: true, examens: u.examens });
   } catch (err) { next(err); }
 };
 
@@ -255,12 +264,12 @@ exports.getExamens = async (req, res, next) => {
 exports.addExamen = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
-    if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
     u.examens.push(req.body);
     u.timeline.push({ action: `Examen demandé : ${req.body.designation}${req.body.urgent ? ' 🚨URGENT' : ''}`, heure: new Date().toTimeString().substring(0,5), personnel: 'Médecin' });
     await u.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Examen demandé (${req.body.designation || '—'}) — dossier urgences ${u.numero}` });
-    res.status(201).json({ examen: u.examens[u.examens.length - 1] });
+    res.status(201).json({ success: true, examen: u.examens[u.examens.length - 1] });
   } catch (err) { next(err); }
 };
 
@@ -268,7 +277,7 @@ exports.addExamen = async (req, res, next) => {
 exports.getTimeline = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id).select('timeline');
-    if (!u) return res.status(404).json({ message: 'Dossier introuvable' });
-    res.json({ timeline: u.timeline.sort((a, b) => new Date(b.date) - new Date(a.date)) });
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
+    res.json({ success: true, timeline: u.timeline.sort((a, b) => new Date(b.date) - new Date(a.date)) });
   } catch (err) { next(err); }
 };

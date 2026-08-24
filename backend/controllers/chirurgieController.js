@@ -106,6 +106,7 @@ exports.getStats = async (req, res, next) => {
     }
 
     res.json({
+      success: true,
       kpis: { total: k.total, consultations: k.consultations, preoperatoires: k.preoperatoires, operes: k.operes, suivis_nb: k.suivis_nb, clotures: k.clotures, risques_eleves: k.risques_eleves, score_moyen },
       chart: { labels: moisLabels, data: moisData },
       taux_compl
@@ -117,13 +118,13 @@ exports.getStats = async (req, res, next) => {
 exports.getDossierById = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
-    if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
+    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier non trouvé' });
 
     const bilan = await Bilan.find({ dossier_chirurgical_id: dossier._id }).sort({ createdAt: -1 });
     const suivis = await SuiviPostop.find({ dossier_chirurgical_id: dossier._id }).sort({ date_suivi: -1 });
     const complications = await Complication.find({ dossier_chirurgical_id: dossier._id }).sort({ date_survenue: -1 });
 
-    res.json({ dossier, bilan, suivis, complications });
+    res.json({ success: true, dossier, bilan, suivis, complications });
   } catch (err) { next(err); }
 };
 
@@ -134,7 +135,7 @@ exports.createDossier = async (req, res, next) => {
 
     // Récupérer les infos du patient
     const patient = await Patient.findById(patient_id);
-    if (!patient) return res.status(400).json({ message: 'Patient introuvable' });
+    if (!patient) return res.status(400).json({ success: false, message: 'Patient introuvable' });
 
     let chirurgien_nom = null;
     if (chirurgien_id) {
@@ -172,7 +173,16 @@ exports.createDossier = async (req, res, next) => {
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Nouveau dossier chirurgical ${dossier.numero} — ${dossier.patient_nom}` });
     emitActivity({ module: 'chirurgie', action: 'Nouveau dossier chirurgical', detail: `${dossier.patient_nom} — ${dossier.type_intervention || dossier.motif_consultation || ''}`, icon: '🏥', userId: chirurgien_id || null, userName: chirurgien_nom || 'Système' });
     emitDashboardUpdate();
-    res.status(201).json(dossier);
+    // AUDIT-M-C7 (Groupe C, Point 7) — seul contrôleur du chantier renvoyant
+    // un document brut sans wrapper {success,...} pour ses 5 réponses de
+    // succès (les 3 autres contrôleurs du point n'avaient que l'inverse : le
+    // wrapper présent partout sauf le champ success lui-même). Chirurgie.jsx
+    // était le seul lecteur frontend vivant de createDossier (data.numero) —
+    // corrigé en parallèle (data.dossier.numero). chirurgieSlice.js::
+    // createSurgery lit aussi cette réponse mais n'est jamais dispatché nulle
+    // part dans l'UI (code mort, déjà désynchronisé de la forme actuelle
+    // avant ce changement) — laissé tel quel, hors périmètre.
+    res.status(201).json({ success: true, dossier });
   } catch (err) { next(err); }
 };
 
@@ -185,7 +195,7 @@ const DOSSIER_CHIR_BLOCKED_FIELDS = ['numero', 'patient'];
 exports.updateDossier = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
-    if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
+    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier non trouvé' });
     const avant = dossier.toObject();
 
     const data = {};
@@ -198,7 +208,7 @@ exports.updateDossier = async (req, res, next) => {
     await dossier.save();
 
     await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Dossier chirurgical ${dossier.numero} modifié`, avant, apres: dossier });
-    res.json(dossier);
+    res.json({ success: true, dossier });
   } catch (err) { next(err); }
 };
 
@@ -206,7 +216,7 @@ exports.updateDossier = async (req, res, next) => {
 exports.addBilan = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
-    if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
+    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier non trouvé' });
 
     const bilan = new Bilan({
       dossier_chirurgical_id: dossier._id,
@@ -214,7 +224,7 @@ exports.addBilan = async (req, res, next) => {
     });
     await bilan.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Bilan ajouté au dossier ${dossier.numero} (${bilan.type})` });
-    res.status(201).json(bilan);
+    res.status(201).json({ success: true, bilan });
   } catch (err) { next(err); }
 };
 
@@ -222,7 +232,7 @@ exports.addBilan = async (req, res, next) => {
 exports.addSuivi = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
-    if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
+    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier non trouvé' });
 
     const suivi = new SuiviPostop({
       dossier_chirurgical_id: dossier._id,
@@ -235,7 +245,7 @@ exports.addSuivi = async (req, res, next) => {
     await dossier.save();
 
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Suivi postopératoire ajouté au dossier ${dossier.numero}` });
-    res.status(201).json(suivi);
+    res.status(201).json({ success: true, suivi });
   } catch (err) { next(err); }
 };
 
@@ -243,7 +253,7 @@ exports.addSuivi = async (req, res, next) => {
 exports.addComplication = async (req, res, next) => {
   try {
     const dossier = await DossierChirurgical.findById(req.params.id);
-    if (!dossier) return res.status(404).json({ message: 'Dossier non trouvé' });
+    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier non trouvé' });
 
     const complication = new Complication({
       dossier_chirurgical_id: dossier._id,
@@ -261,6 +271,6 @@ exports.addComplication = async (req, res, next) => {
     await dossier.save();
 
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Complication (${complication.type_complication}) enregistrée pour le dossier ${dossier.numero}` });
-    res.status(201).json(complication);
+    res.status(201).json({ success: true, complication });
   } catch (err) { next(err); }
 };
