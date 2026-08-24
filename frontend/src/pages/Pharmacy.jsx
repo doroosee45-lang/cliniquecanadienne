@@ -8,11 +8,9 @@ import {
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
-import jsPDF from 'jspdf';
 import { Pill, Plus, ShoppingCart, Zap } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
-import autoTable from 'jspdf-autotable';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 import { printReceipt58mm, downloadReceiptPdf } from '../utils/receipt58mm';
 
@@ -1047,7 +1045,11 @@ ${lignes}
   });
 
   // ─── Export inventaire PDF ──────────────────────────────────
-  const exportInventairePDF = () => {
+  const exportInventairePDF = async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
     const dateStr = new Date().toLocaleDateString('fr-FR');
@@ -1195,7 +1197,11 @@ ${lignes}
   };
 
   // ─── Exports rapports ───────────────────────────────────────
-  const exportRapportPDF = (type) => {
+  const exportRapportPDF = async (type) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const today = new Date().toISOString().split('T')[0];
     let startY, rows, head, filename;
@@ -1406,7 +1412,7 @@ ${lignes}
 
     } else {
       // ── Rapport global (bouton PDF du header) ─────────────
-      exportInventairePDF();
+      await exportInventairePDF();
       return;
     }
 

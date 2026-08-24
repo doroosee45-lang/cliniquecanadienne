@@ -10,9 +10,6 @@ import {
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 import { BarChart3, Printer, Download } from 'lucide-react';
 import Hero, { HeroButton } from '../components/UI/Hero';
@@ -507,7 +504,11 @@ export default function Analytics() {
   // juste un doc renvoyé au lieu d'un .save() direct — pas de 3e
   // implémentation du rapport (le bouton "Rapport complet PDF" de la section
   // export, qui n'était qu'un toast, appelle maintenant exportAnalyticsPDF).
-  const buildAnalyticsPdfDoc = () => {
+  const buildAnalyticsPdfDoc = async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
     const dateStr = new Date().toLocaleDateString('fr-FR');
@@ -562,8 +563,8 @@ export default function Analytics() {
     return doc;
   };
 
-  const exportAnalyticsPDF = () => {
-    const doc = buildAnalyticsPdfDoc();
+  const exportAnalyticsPDF = async () => {
+    const doc = await buildAnalyticsPdfDoc();
     const filename = `analytics-${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(filename);
     toast.success(`📄 PDF exporté : ${filename}`);
@@ -596,7 +597,7 @@ export default function Analytics() {
   const sendAnalyticsReportEmail = async () => {
     setSendingReport(true);
     try {
-      const doc = buildAnalyticsPdfDoc();
+      const doc = await buildAnalyticsPdfDoc();
       const contentBase64 = doc.output('datauristring').split(',')[1];
       const { data } = await api.post('/analytics/report/email', {
         role: reportRole,
@@ -673,7 +674,8 @@ export default function Analytics() {
     URL.revokeObjectURL(url);
   };
 
-  const exportMedicalExcel = () => {
+  const exportMedicalExcel = async () => {
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const revData = [['Service', 'Revenus (CFA)'], ...DEMO_REVENUS_BAR.labels.map((lbl, i) => [lbl, DEMO_REVENUS_BAR.data[i] ?? 0])];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(revData), 'Revenus par source');
@@ -684,7 +686,8 @@ export default function Analytics() {
     toast.success(`📊 Excel exporté : ${filename}`);
   };
 
-  const exportMedecinsExcel = () => {
+  const exportMedecinsExcel = async () => {
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const data = [
       ['Rang', 'Médecin', 'Spécialité', 'Consultations', 'Taux satisfaction (%)'],
@@ -696,12 +699,13 @@ export default function Analytics() {
     toast.success(`📊 Excel exporté : ${filename}`);
   };
 
-  const exportFinancialEvolutionExcel = () => {
+  const exportFinancialEvolutionExcel = async () => {
     const labels = reduxFinancialData?.financial?.labels || MOIS;
     const ca = reduxFinancialData?.financial?.ca || [];
     const dep = reduxFinancialData?.financial?.depenses || [];
     const ben = reduxFinancialData?.financial?.benefice || [];
     const data = [['Mois', 'Chiffre d\'affaires (CFA)', 'Dépenses (CFA)', 'Bénéfice (CFA)'], ...labels.map((l, i) => [l, ca[i] ?? 0, dep[i] ?? 0, ben[i] ?? 0])];
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Évolution financière');
     const filename = `analytics-evolution-financiere-${new Date().toISOString().split('T')[0]}.xlsx`;
@@ -718,7 +722,8 @@ export default function Analytics() {
       return [lbl, val, Math.round((val / total) * 100)];
     });
   };
-  const exportFinancialTableExcel = () => {
+  const exportFinancialTableExcel = async () => {
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const data = [['Service', 'Revenus (CFA)', 'Part (%)'], ...financialTableRows()];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Tableau financier');
@@ -734,7 +739,8 @@ export default function Analytics() {
   // Export global (section "Exportation des rapports") — classeur multi-
   // feuilles couvrant KPIs + les mêmes données que les exports par section
   // ci-dessus, même principe que exportFinanceExcel (Finance.jsx, 4 feuilles).
-  const exportGlobalExcel = () => {
+  const exportGlobalExcel = async () => {
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const beneficePctCalc = kpi.ca_total > 0 ? Math.round((kpi.benefice / kpi.ca_total) * 100) : 0;
     const kpiData = [

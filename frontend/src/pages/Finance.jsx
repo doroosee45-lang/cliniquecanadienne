@@ -12,12 +12,9 @@ import {
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { Wallet, Download, Banknote, Plus } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
-import * as XLSX from 'xlsx';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 import { printReceipt58mm, buildReceiptPdfBase64, downloadReceiptPdf } from '../utils/receipt58mm';
 
@@ -910,7 +907,11 @@ export default function Finance() {
   });
 
   // ── Export PDF ───────────────────────────────────────────────
-  const exportFinancePDF = () => {
+  const exportFinancePDF = async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
     const W = doc.internal.pageSize.getWidth();
     const dateStr = new Date().toLocaleDateString('fr-FR');
@@ -963,7 +964,8 @@ export default function Finance() {
     toast.success('📄 PDF exporté');
   };
 
-  const exportFinanceExcel = () => {
+  const exportFinanceExcel = async () => {
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const revData = [['Date','Référence','Patient','Service','Montant CFA','Mode','Statut'],
       ...revenus.map(r=>[fmtDate(r.date),r.reference||'',r.patient||'',r.service||'',Number(r.montant||0),r.mode||'',r.statut||''])];
@@ -996,7 +998,11 @@ export default function Finance() {
   // succès ("Fiche de paie imprimée") sans jamais générer ni ouvrir de PDF.
   // Génère une vraie fiche de paie individuelle (jsPDF, déjà utilisé ailleurs
   // dans ce fichier) avec les données réelles de la ligne.
-  const printFicheDePaie = (s) => {
+  const printFicheDePaie = async (s) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF();
     const W = doc.internal.pageSize.getWidth();
     const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
@@ -1032,7 +1038,8 @@ export default function Finance() {
   // AUDIT-GLOBAL — "Exporter fiches" (salaires) affichait un faux succès
   // (toast seul, aucun fichier). Génération réelle, même pattern que
   // exportFinanceExcel ci-dessus.
-  const exportSalairesExcel = () => {
+  const exportSalairesExcel = async () => {
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const data = [['Employé','Fonction','Salaire base CFA','Primes CFA','Déductions CFA','Salaire net CFA','Statut','Date paiement'],
       ...salaires.map(s => [s.employe||'', s.fonction||'', Number(s.base||0), Number(s.primes||0), Number(s.deductions||0), Number(s.net||0), s.statut === 'paye' ? 'Payé' : 'En attente', fmtDate(s.date_paiement) || ''])];
@@ -2524,7 +2531,7 @@ export default function Finance() {
             <div style={{ fontSize:12, color:"var(--cm)" }}>Exporte Revenus, Dépenses, Factures et Paiements du mois en cours — filtrage par période à venir.</div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="fbtn fbtn-ghost" onClick={() => setModalExport(false)}>Annuler</button>
-              <button className="fbtn fbtn-teal" style={{ marginLeft:"auto" }} onClick={() => { ({pdf:exportFinancePDF, excel:exportFinanceExcel, csv:exportFinanceCSV}[exportFormat])(); setModalExport(false); }}>
+              <button className="fbtn fbtn-teal" style={{ marginLeft:"auto" }} onClick={async () => { await ({pdf:exportFinancePDF, excel:exportFinanceExcel, csv:exportFinanceCSV}[exportFormat])(); setModalExport(false); }}>
                 {I.dl} Exporter maintenant
               </button>
             </div>

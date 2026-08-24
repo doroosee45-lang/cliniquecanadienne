@@ -16,9 +16,6 @@ import {
 } from '../store/slices/archiveSlice';
 import api from "../api";
 import toast from "react-hot-toast";
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 import { Archive as ArchiveIcon } from 'lucide-react';
 import Hero from '../components/UI/Hero';
@@ -624,7 +621,11 @@ export default function Archivage() {
   // faux succès (toast seul, déjà signalé en commentaire dans ce fichier).
   // Génère une vraie fiche PDF pour ce dossier d'archive précis, même
   // en-tête que exportPDF ci-dessous.
-  const printOneArchive = (d) => {
+  const printOneArchive = async (d) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
     doc.setFillColor(11, 30, 59); doc.rect(0, 0, W, 24, 'F');
@@ -650,8 +651,8 @@ export default function Archivage() {
     });
     return doc;
   };
-  const downloadOneArchive = (d) => printOneArchive(d).save(`archive-${(d.reference||'dossier').replace(/[^a-z0-9-]+/gi,'-')}.pdf`);
-  const printOneArchiveNow = (d) => { const doc = printOneArchive(d); doc.autoPrint(); window.open(doc.output('bloburl'), '_blank'); };
+  const downloadOneArchive = async (d) => (await printOneArchive(d)).save(`archive-${(d.reference||'dossier').replace(/[^a-z0-9-]+/gi,'-')}.pdf`);
+  const printOneArchiveNow = async (d) => { const doc = await printOneArchive(d); doc.autoPrint(); window.open(doc.output('bloburl'), '_blank'); };
 
   // AUDIT-GLOBAL — le panneau "Options d'exportation" affichait 4 boutons
   // fake (toast seul). 3 sont maintenant réels (réutilisent exportPDF avec
@@ -659,14 +660,14 @@ export default function Archivage() {
   // désactivé honnêtement — aucune librairie de génération ZIP (jszip)
   // n'est installée, l'ajouter serait une nouvelle dépendance, pas un
   // correctif de bug.
-  const exportIndividuel = () => {
+  const exportIndividuel = async () => {
     const ref = window.prompt("Référence exacte du dossier à exporter :");
     if (!ref) return;
     const found = archives.find(a => (a.reference||'').toLowerCase() === ref.trim().toLowerCase());
     if (!found) { toast.error(`Aucun dossier trouvé pour la référence "${ref}".`); return; }
-    downloadOneArchive(found);
+    await downloadOneArchive(found);
   };
-  const exportParPeriode = () => {
+  const exportParPeriode = async () => {
     const debut = window.prompt("Date de début (AAAA-MM-JJ) :");
     if (!debut) return;
     const fin = window.prompt("Date de fin (AAAA-MM-JJ) :", new Date().toISOString().split('T')[0]);
@@ -674,18 +675,22 @@ export default function Archivage() {
     const d0 = new Date(debut), d1 = new Date(fin);
     const subset = archives.filter(a => { const d = new Date(a.date_archive); return d >= d0 && d <= d1; });
     if (subset.length === 0) { toast.error("Aucune archive dans cette période."); return; }
-    exportPDF(subset);
+    await exportPDF(subset);
   };
-  const exportParService = () => {
+  const exportParService = async () => {
     const service = window.prompt("Nom du service (ex: Chirurgie, Maternité, Laboratoire...) :");
     if (!service) return;
     const subset = archives.filter(a => (a.service||'').toLowerCase().includes(service.trim().toLowerCase()));
     if (subset.length === 0) { toast.error(`Aucune archive pour le service "${service}".`); return; }
-    exportPDF(subset);
+    await exportPDF(subset);
   };
 
-  const exportPDF = (overrideList) => {
+  const exportPDF = async (overrideList) => {
     const rows = getExportData(overrideList);
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
 
@@ -748,8 +753,9 @@ export default function Archivage() {
     toast.success(`📄 PDF exporté : ${filename}`);
   };
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const rows = getExportData();
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(rows);
 
     // Largeur des colonnes
@@ -819,9 +825,9 @@ export default function Archivage() {
     toast.success(`📋 CSV exporté : archives-${today}.csv`);
   };
 
-  const handleExport = (format) => {
-    if (format === 'pdf')   return exportPDF();
-    if (format === 'excel') return exportExcel();
+  const handleExport = async (format) => {
+    if (format === 'pdf')   return await exportPDF();
+    if (format === 'excel') return await exportExcel();
     if (format === 'csv')   return exportCSV();
   };
 

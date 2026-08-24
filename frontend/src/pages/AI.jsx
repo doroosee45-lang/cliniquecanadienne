@@ -10,9 +10,6 @@ import {
 import api from '../api';
 import toast from 'react-hot-toast';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { BrainCircuit, Zap } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
@@ -547,7 +544,11 @@ export default function IntelligenceArtificielle() {
   // et n'ont plus de handler d'envoi.
 
   // ── Export journal IA (PDF) ───────────────────────────────
-  const exportHistoriqueIA = useCallback(() => {
+  const exportHistoriqueIA = useCallback(async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
     doc.setFillColor(11, 30, 59);

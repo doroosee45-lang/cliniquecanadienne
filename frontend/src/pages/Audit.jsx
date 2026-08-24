@@ -9,9 +9,6 @@ import {
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { ClipboardCheck, RefreshCw, Download, Archive as ArchiveIcon } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
@@ -287,7 +284,11 @@ const I = {
 };
 
 // ── Export PDF d'un événement ─────────────────────────────────
-const exportEventPDF = (ev) => {
+const exportEventPDF = async (ev) => {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
@@ -668,9 +669,13 @@ export default function JournalAudit() {
     return data;
   }, [events, filterDateDeb, filterDateFin]);
 
-  const exportAuditPDF = useCallback(() => {
+  const exportAuditPDF = useCallback(async () => {
     const clinicFull = `${CLINIC_NAME} ${CLINIC_SUBTITLE}`;
     const data = getExportEvents(exportForm);
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
@@ -712,7 +717,7 @@ export default function JournalAudit() {
     toast.success('📄 Export PDF téléchargé');
   }, [getExportEvents, exportForm]);
 
-  const exportAuditExcel = useCallback(() => {
+  const exportAuditExcel = useCallback(async () => {
     const data = getExportEvents(exportForm);
     const rows = data.map(e => ({
       'Date': fmtDT(e.date), 'Utilisateur': e.utilisateur, 'Rôle': e.role,
@@ -720,6 +725,7 @@ export default function JournalAudit() {
       'Action': (e.action||'').replace(/_/g,' '), 'Description': e.description,
       'Adresse IP': e.ip, 'Appareil': e.device, 'Risque': e.risque, 'Résultat': e.resultat,
     }));
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [22,22,14,26,18,22,55,18,30,12,10].map(w => ({ wch:w }));
@@ -1568,7 +1574,7 @@ export default function JournalAudit() {
                   <button className="abtn abtn-ghost abtn-sm" onClick={() => printEvent(selectedEvent)}>
                     {I.print} Imprimer
                   </button>
-                  <button className="abtn abtn-teal abtn-sm" onClick={() => { exportEventPDF(selectedEvent); setModalEvent(false); }}>
+                  <button className="abtn abtn-teal abtn-sm" onClick={async () => { await exportEventPDF(selectedEvent); setModalEvent(false); }}>
                     {I.dl} Télécharger PDF
                   </button>
                   {selectedEvent.risque === "critique" && (
@@ -1652,9 +1658,9 @@ export default function JournalAudit() {
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="abtn abtn-ghost" onClick={() => setModalExport(false)}>Annuler</button>
-              <button className="abtn abtn-teal" style={{ marginLeft: "auto" }} onClick={() => {
-                if (exportForm.format === 'pdf') exportAuditPDF();
-                else if (exportForm.format === 'excel') exportAuditExcel();
+              <button className="abtn abtn-teal" style={{ marginLeft: "auto" }} onClick={async () => {
+                if (exportForm.format === 'pdf') await exportAuditPDF();
+                else if (exportForm.format === 'excel') await exportAuditExcel();
                 else exportAuditCSV();
                 setModalExport(false);
               }}>
