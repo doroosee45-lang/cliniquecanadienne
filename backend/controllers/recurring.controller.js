@@ -1,20 +1,43 @@
 const RecurringProtocol = require('../models/RecurringProtocol');
 const Appointment        = require('../models/Appointment');
-const { logAction, checkAppointmentConflict, isAppointmentRaceWinner } = require('../utils/helpers');
+const { logAction, paginate, checkAppointmentConflict, isAppointmentRaceWinner } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { logger } = require('../utils/logger');
+
+// AUDIT-FAIBLE-G2 — getAll() n'avait aucune pagination (contrairement au
+// reste du projet, patients/consultations/prescriptions/audit via
+// paginate()) : un find() non borné, correct aujourd'hui (1 protocole actif
+// en tout dans la base réelle) mais pas garanti de le rester. Limite haute
+// délibérée (200, pas 20) : le frontend (Appointments.jsx::loadProtocols)
+// ne demande jamais de page suivante et n'a aucune UI de pagination pour
+// cette liste — un plafond à 20 tronquerait silencieusement la liste d'un
+// médecin dès son 21e protocole actif. 200 rend la troncature non
+// pratique aux volumes réalistes de ce module (protocoles récurrents par
+// médecin), sans avoir à toucher au frontend (hors périmètre de ce point).
+const RECURRING_LIST_LIMIT = 200;
 
 // ── GET ALL ──────────────────────────────────────────────────────────────────
 exports.getAll = async (req, res, next) => {
   try {
+    const { page = 1, limit = RECURRING_LIST_LIMIT } = req.query || {};
     const filter = { actif: true };
     // Médecin ne voit que ses propres protocoles, admin voit tout
     if (!['superadmin','adminclinique'].includes(req.user.role)) {
       filter.medecin = req.user._id;
     }
-    const protocols = await RecurringProtocol.find(filter)
-      .populate('medecin', 'nom prenom specialite')
-      .sort('prochaine_date');
-    res.json({ success: true, protocols });
+    const total = await RecurringProtocol.countDocuments(filter);
+    const protocols = await paginate(
+      RecurringProtocol.find(filter)
+        .populate('medecin', 'nom prenom specialite')
+        .sort('prochaine_date'),
+      page, limit
+    );
+    // Avertissement, pas une erreur — signale si le plafond devient un jour
+    // réellement contraignant, plutôt qu'une troncature silencieuse.
+    if (protocols.length >= Number(limit)) {
+      logger.warn(`recurring.controller.getAll : limite de pagination (${limit}) atteinte — total réel ${total}, résultat potentiellement tronqué`, { filter });
+    }
+    res.json({ success: true, total, protocols });
   } catch (err) { next(err); }
 };
 
