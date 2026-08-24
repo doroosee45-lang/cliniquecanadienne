@@ -332,7 +332,6 @@ const genNum = (prefix) => `${prefix}-${new Date().getFullYear()}-${String(Math.
 const ECHOGRAPHISTES = ["Dr. Amina Cherif", "Dr. Paul Nkoma", "Dr. Sophie Pierre", "Dr. Marie Koné"];
 const SALLES = ["Salle Écho 1", "Salle Écho 2", "Salle Doppler", "Salle Maternité"];
 const RADIOLOGUES = ["Dr. Jean-Pierre Mbemba", "Dr. Fatou Diallo", "Dr. André Leblanc"];
-const SERVICES_SOURCE = ["Consultation générale","Maternité","Gynécologie","Pédiatrie","Urgences","Hospitalisation","Chirurgie","Cardiologie"];
 
 const TYPES_ECHO = [
   { id:"obstet",   label:"Obstétricale",  icon:"🤰", color:"#BE185D", bg:"#FDF2F8", border:"#FBCFE8",
@@ -1532,9 +1531,16 @@ function Facturation({ demandes }) {
 }
 
 // ─── STATISTIQUES ─────────────────────────────────────────────
-function Statistiques({ demandes, chart }) {
+function Statistiques({ demandes, chart, servicesActifs = [] }) {
   const byType = TYPES_ECHO.map(t=>({ ...t, count:demandes.filter(d=>d.type===t.label).length })).filter(t=>t.count>0);
-  const bySource = SERVICES_SOURCE.map(s=>({ name:s, count:demandes.filter(d=>d.source===s).length })).filter(s=>s.count>0);
+  // AUDIT-M-PHASE3-5 — union des services actifs ET des valeurs de `source`
+  // réellement présentes dans les demandes (service depuis fermé/renommé,
+  // ou différence de casse avec la collection Service) : une demande dont
+  // le service prescripteur n'existe plus tel quel dans la collection ne
+  // doit pas disparaître silencieusement des statistiques.
+  const sourcesNoms = new Set(servicesActifs.map(s => s.nom));
+  demandes.forEach(d => { if (d.source) sourcesNoms.add(d.source); });
+  const bySource = [...sourcesNoms].map(s=>({ name:s, count:demandes.filter(d=>d.source===s).length })).filter(s=>s.count>0);
   const totalRevenu = demandes.filter(d=>d.statut!=="annulee").length * 25000;
 
   return (
@@ -1675,10 +1681,10 @@ const sendEchoReportEmail = async (d) => {
 // GET /patients/search, sélection, champs dérivés en lecture seule),
 // patient_ref réel envoyé à la création.
 // ─── COMPOSANT NOUVELLE DEMANDE (Modal) ───────────────────────
-function NouvelleDemandeModal({ open, onClose, onAdd }) {
+function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
   const [form, setForm] = useState({
     dossier:"",
-    source:SERVICES_SOURCE[0], medecin_presc:ECHOGRAPHISTES[0],
+    source:"", medecin_presc:ECHOGRAPHISTES[0],
     type:"obstet", sous_type:"",
     motif:"", priorite:"normale",
   });
@@ -1704,6 +1710,7 @@ function NouvelleDemandeModal({ open, onClose, onAdd }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!selectedPatient) { toast.error("Sélectionnez un patient existant avant de créer la demande."); return; }
+    if (!form.source) { toast.error("Sélectionnez le service prescripteur."); return; }
     onAdd({
       patient: `${selectedPatient.prenom} ${selectedPatient.nom}`.trim(),
       patient_ref: selectedPatient._id,
@@ -1772,7 +1779,8 @@ function NouvelleDemandeModal({ open, onClose, onAdd }) {
           <div>
             <label className="clbl req">Service prescripteur</label>
             <select className="cinp" value={form.source} onChange={e=>setForm(f=>({...f,source:e.target.value}))}>
-              {SERVICES_SOURCE.map(s=><option key={s}>{s}</option>)}
+              <option value="" disabled>Sélectionner un service…</option>
+              {servicesActifs.map(s=><option key={s._id} value={s.nom}>{s.nom}</option>)}
             </select>
           </div>
           <div>
@@ -1826,6 +1834,17 @@ export default function Echographie() {
     dispatch(fetchEchographieStats());
     dispatch(fetchDemandes({ limit: 100 }));
   }, [dispatch]);
+
+  // AUDIT-M-PHASE3-5 — source (service prescripteur) était une liste codée
+  // en dur (SERVICES_SOURCE), jamais reliée à la collection Service réelle.
+  // Chargée une fois ici, filtrée aux services actifs, transmise à
+  // NouvelleDemandeModal (choix à la création) et à Statistiques (bySource).
+  const [servicesActifs, setServicesActifs] = useState([]);
+  useEffect(() => {
+    api.get('/settings/services')
+      .then(({ data }) => setServicesActifs((data.services || []).filter(s => s.statut === 'actif')))
+      .catch(() => setServicesActifs([]));
+  }, []);
 
   const TABS = [
     { id:"dashboard",   label:"Tableau de bord", icon:"📊" },
@@ -1890,7 +1909,7 @@ export default function Echographie() {
           {mainTab==="planning"     && <Planning demandes={demandes} />}
           {mainTab==="realisation"  && <Realisation demandes={demandes} />}
           {mainTab==="facturation"  && <Facturation demandes={demandes} />}
-          {mainTab==="statistiques" && <Statistiques demandes={demandes} chart={chart} />}
+          {mainTab==="statistiques" && <Statistiques demandes={demandes} chart={chart} servicesActifs={servicesActifs} />}
           {mainTab==="resultats"    && (
             <div className="fu echo-card" style={{ padding:40, textAlign:"center" }}>
               <div style={{ fontSize:48, marginBottom:16 }}>📄</div>
@@ -1933,6 +1952,7 @@ export default function Echographie() {
           open={modalNouv}
           onClose={()=>setModalNouv(false)}
           onAdd={d=>{ dispatch(createDemande(d)); setMainTab("demandes"); }}
+          servicesActifs={servicesActifs}
         />
       </div>
     </>

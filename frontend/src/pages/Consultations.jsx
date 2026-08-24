@@ -235,7 +235,6 @@ const GRAVITE_CFG = {
   critique: { cls: "red", label: "Critique" },
 };
 
-const SERVICES = ["Médecine générale", "Pédiatrie", "Gynécologie-obstétrique", "Chirurgie", "Cardiologie", "Urgences", "Orthopédie", "Ophtalmologie", "ORL", "Dermatologie"];
 const MEDECINS = ["Dr. Martin Leblanc", "Dr. Sophie Pierre", "Dr. Paul Nkoma", "Dr. Fatou Diallo", "Dr. André Mbemba"];
 const MEDICAMENTS_COURANTS = ["Paracétamol 500mg", "Amoxicilline 500mg", "Ibuprofène 400mg", "Métronidazole 250mg", "Oméprazole 20mg", "Cétirizine 10mg", "Diclofénac 50mg", "Cotrimoxazole 480mg"];
 
@@ -322,7 +321,7 @@ const EMPTY_CONS = {
   patient_nom: "", patient_prenom: "", patient_sexe: "homme", patient_ddn: "",
   patient_tel: "", patient_adresse: "", patient_groupe_sanguin: "",
   patient_antecedents: "", patient_allergies: "",
-  date_heure: now(), medecin: MEDECINS[0], service: SERVICES[0],
+  date_heure: now(), medecin: MEDECINS[0], service: "",
   type_consultation: "nouvelle_visite",
   motif: "",
   temp: "", poids: "", taille: "", ta_sys: "", ta_dia: "", fc: "", spo2: "",
@@ -879,6 +878,20 @@ export default function Consultation() {
   const [formRx, setFormRx] = useState(EMPTY_RX);
   const [formExam, setFormExam] = useState(EMPTY_EXAM);
 
+  // AUDIT-M-PHASE3-5 — service était une liste codée en dur (10 spécialités
+  // figées), jamais reliée à la collection Service réelle : une modification
+  // faite dans Administration n'avait aucun effet ici. Chargée une fois au
+  // montage, filtrée aux services actifs — un service fermé ne doit plus
+  // être proposé pour une NOUVELLE consultation (ce formulaire ne sert qu'à
+  // la création, il n'existe aucun flux d'édition d'une consultation
+  // existante dans ce fichier — recherché, confirmé absent).
+  const [servicesActifs, setServicesActifs] = useState([]);
+  useEffect(() => {
+    api.get('/settings/services')
+      .then(({ data }) => setServicesActifs((data.services || []).filter(s => s.statut === 'actif')))
+      .catch(() => setServicesActifs([]));
+  }, []);
+
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const age = ageCalc(form.patient_ddn);
@@ -928,6 +941,10 @@ export default function Consultation() {
     if (!form.patient_id) {
       toast.error('Veuillez sélectionner un patient dans la base de données.');
       setSection('patient');
+      return;
+    }
+    if (!form.service) {
+      toast.error('Veuillez sélectionner un service.');
       return;
     }
     setSaving(true);
@@ -1385,7 +1402,8 @@ export default function Consultation() {
                   <div style={{ gridColumn: "2 / span 2" }}>
                     <label className="clbl req">Service</label>
                     <select className="cinp" value={form.service} onChange={e => setF("service", e.target.value)}>
-                      {SERVICES.map(s => <option key={s} value={s}>{s}</option>)}
+                      <option value="" disabled>Sélectionner un service…</option>
+                      {servicesActifs.map(s => <option key={s._id} value={s.nom}>{s.nom}</option>)}
                     </select>
                   </div>
                   <div style={{ gridColumn: "1/-1" }}>
