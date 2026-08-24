@@ -2,6 +2,7 @@
 const User = require('../models/User');
 const Patient = require('../models/Patient');
 const { sendTokenCookie, logAction } = require('../utils/helpers');
+const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { OAuth2Client } = require('google-auth-library');
 const { logger, captureException } = require('../utils/logger');
 const env = require('../config/env');
@@ -56,6 +57,11 @@ async function ensurePatientDossier(user, { ip } = {}) {
     user.patient_id = existing._id;
     await user.save();
     await logAction({ utilisateur: user._id, action: 'LINK_PATIENT_DOSSIER', module: 'auth', entite_id: existing._id, ip, message: `Auto-inscription Google liée au dossier patient existant (${existing.numero_dossier || existing._id}) plutôt que d'en créer un second` });
+    // AUDIT-M-C8 (Point 8) — même pattern que patients.controller.js::create :
+    // rendre cette liaison visible en temps réel pour le personnel (flux
+    // d'activité + rafraîchissement dashboard), jusqu'ici invisible.
+    emitActivity({ module: 'auth', action: 'Dossier patient lié (Google)', detail: `${user.prenom} ${user.nom} (${existing.numero_dossier || existing._id})`, icon: '🔗', userId: user._id, userName: `${user.prenom} ${user.nom}` });
+    emitDashboardUpdate();
     return;
   }
 
@@ -70,6 +76,11 @@ async function ensurePatientDossier(user, { ip } = {}) {
   user.patient_id = patient._id;
   await user.save();
   await logAction({ utilisateur: user._id, action: 'CREATE', module: 'auth', entite_id: patient._id, ip, message: `Dossier patient créé automatiquement à l'auto-inscription Google (${patient.numero_dossier || patient._id})` });
+  // AUDIT-M-C8 (Point 8) — même pattern que patients.controller.js::create :
+  // rendre cette création visible en temps réel pour le personnel (flux
+  // d'activité + rafraîchissement dashboard), jusqu'ici invisible.
+  emitActivity({ module: 'auth', action: 'Nouveau patient (auto-inscription Google)', detail: `${user.prenom} ${user.nom} (${patient.numero_dossier || patient._id})`, icon: '👤', userId: user._id, userName: `${user.prenom} ${user.nom}` });
+  emitDashboardUpdate();
 }
 
 /**
