@@ -828,7 +828,7 @@ export default function Ordonnances() {
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <div style={{ position:"relative" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="oinp" style={{ paddingLeft:34, width:210 }} placeholder="Patient, N° ordonnance..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+                    <input className="oinp" style={{ paddingLeft:34, width:210 }} placeholder="Patient, N° ordonnance..." aria-label="Patient, N° ordonnance" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
                   </div>
                   <select className="oinp" style={{ width:150 }} value={filterSt} onChange={e => { setFilterSt(e.target.value); setPage(1); }}>
                     <option value="">Tous statuts</option>

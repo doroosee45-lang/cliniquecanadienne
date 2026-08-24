@@ -620,7 +620,7 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
       {/* Filtres */}
       <div className="echo-card" style={{ marginBottom:16 }}>
         <div style={{ padding:"14px 20px", display:"flex", gap:12, alignItems:"center", flexWrap:"wrap" }}>
-          <input className="cinp" placeholder="🔍 Rechercher patient, N° demande, type..." value={search} onChange={e=>setSearch(e.target.value)} style={{ maxWidth:320 }} />
+          <input className="cinp" placeholder="🔍 Rechercher patient, N° demande, type..." aria-label="Rechercher patient, N° demande, type" value={search} onChange={e=>setSearch(e.target.value)} style={{ maxWidth:320 }} />
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
             {[["tous","Tous",""],[...STATUTS_DEMANDE],["urgente","Urgentes","red"]].flat().filter((v,i,a)=>typeof v==="object"||i===0).map(f => {
               if (!f) return null;
@@ -1737,7 +1737,7 @@ function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
           <label className="clbl req">Patient</label>
           {!selectedPatient ? (
             <>
-              <input className="cinp" placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={patientQuery} onChange={e=>setPatientQuery(e.target.value)} />
+              <input className="cinp" placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." aria-label="Rechercher un patient (nom, n° dossier, téléphone)" value={patientQuery} onChange={e=>setPatientQuery(e.target.value)} />
               <div style={{ maxHeight:200, overflowY:"auto", display:"flex", flexDirection:"column", gap:4, marginTop:8 }}>
                 {patientQuery.trim().length >= 2 && patientResults.length === 0 && (
                   <div style={{ textAlign:"center", padding:12, color:"var(--cm)", fontSize:12 }}>Aucun patient trouvé.</div>

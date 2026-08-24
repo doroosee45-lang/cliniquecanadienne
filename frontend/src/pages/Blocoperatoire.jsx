@@ -868,7 +868,7 @@ export default function BlocOperatoire() {
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <div style={{ position:"relative" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="binp" style={{ paddingLeft:34, width:220 }} placeholder="Patient, intervention..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+                    <input className="binp" style={{ paddingLeft:34, width:220 }} placeholder="Patient, intervention..." aria-label="Patient, intervention" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
                   </div>
                   <select className="binp" style={{ width:180 }} value={filterStatut} onChange={e => { setFilter(e.target.value); setPage(1); }}>
                     <option value="">Tous les statuts</option>

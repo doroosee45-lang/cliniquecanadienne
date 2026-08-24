@@ -346,7 +346,7 @@ function ModalDossier({ onClose, saving }) {
           {!selectedPatient && (
             <div className="pfield" style={{ marginBottom:10 }}>
               <label className="plabel">Patient *</label>
-              <input className="pinput" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={patientQuery} onChange={e => setPatientQuery(e.target.value)} />
+              <input className="pinput" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." aria-label="Rechercher un patient (nom, n° dossier, téléphone)" value={patientQuery} onChange={e => setPatientQuery(e.target.value)} />
               <div style={{ maxHeight:220, overflowY:"auto", display:"flex", flexDirection:"column", gap:4, marginTop:8 }}>
                 {patientQuery.trim().length >= 2 && patientResults.length === 0 && (
                   <div style={{ textAlign:"center", padding:12, color:"var(--pm)", fontSize:12 }}>Aucun patient trouvé.</div>
@@ -955,7 +955,7 @@ export default function Pediatrie() {
           {tab === "patients" && (
             <div>
               <div className="pfilter-bar">
-                <input className="pinput" style={{ width:220, padding:"8px 14px" }} placeholder="🔍 Rechercher nom, dossier..." value={searchQ} onChange={e => setSearchQ(e.target.value)}/>
+                <input className="pinput" style={{ width:220, padding:"8px 14px" }} placeholder="🔍 Rechercher nom, dossier..." aria-label="Rechercher nom, dossier" value={searchQ} onChange={e => setSearchQ(e.target.value)}/>
                 {[["tous","Tous"],["nourr","👶 0-1 an"],["enfant","🧒 1-5 ans"],["grand","🏫 6-12 ans"]].map(([k,l]) => (
                   <button key={k} className={`pfilter-btn ${filterAge===k?"active":""}`} onClick={() => setFilterAge(k)}>{l}</button>
                 ))}

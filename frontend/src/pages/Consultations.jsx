@@ -1822,7 +1822,7 @@ export default function Consultation() {
         {/* ═══ MODAL : SÉLECTIONNER PATIENT ═══ */}
         <Modal open={modalPatient} onClose={() => setModalPatient(false)} title="👤 Sélectionner un patient" maxWidth={560}>
           <div style={{ marginBottom: 14 }}>
-            <input className="cinp" placeholder="🔍 Rechercher par nom, prénom, numéro dossier..." value={patientSearch} onChange={e => setPatientSearch(e.target.value)} autoFocus />
+            <input className="cinp" placeholder="🔍 Rechercher par nom, prénom, numéro dossier..." aria-label="Rechercher par nom, prénom, numéro dossier" value={patientSearch} onChange={e => setPatientSearch(e.target.value)} autoFocus />
           </div>
           {patientLoading ? (
             <div style={{ textAlign:"center", color:"var(--cm)", padding:24 }}>Chargement…</div>

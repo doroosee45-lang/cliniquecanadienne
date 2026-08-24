@@ -1309,7 +1309,7 @@ export default function RessourcesHumaines() {
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <div style={{ position:"relative" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="rinp" style={{ paddingLeft:34, width:220 }} placeholder="Nom, matricule, poste..." value={search} onChange={e => setSearch(e.target.value)} />
+                    <input className="rinp" style={{ paddingLeft:34, width:220 }} placeholder="Nom, matricule, poste..." aria-label="Nom, matricule, poste" value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
                   <select className="rinp" style={{ width:160 }} value={filterPoste} onChange={e => setFilterPoste(e.target.value)}>
                     <option value="">Tous les postes</option>

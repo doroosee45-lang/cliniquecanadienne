@@ -1672,7 +1672,7 @@ ${lignes}
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <div style={{ position:"relative" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="pinp" style={{ paddingLeft:34, width:220, fontSize:12 }} placeholder="Nom, DCI, code..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+                    <input className="pinp" style={{ paddingLeft:34, width:220, fontSize:12 }} placeholder="Nom, DCI, code..." aria-label="Nom, DCI, code" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
                   </div>
                   <select className="pinp" style={{ width:160, fontSize:12 }} value={filterCat} onChange={e => setFilterCat(e.target.value)}>
                     <option value="">Toutes catégories</option>

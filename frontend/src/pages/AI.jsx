@@ -1419,7 +1419,7 @@ export default function IntelligenceArtificielle() {
                 <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>📚 Base de connaissances médicale</div>
                 <div style={{ position:"relative" }}>
                   <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.iaS}</span>
-                  <input className="iinp" style={{ paddingLeft:32, width:260 }} placeholder="Recherche intelligente…" value={kbSearch} onChange={e => setKbSearch(e.target.value)} />
+                  <input className="iinp" style={{ paddingLeft:32, width:260 }} placeholder="Recherche intelligente…" aria-label="Recherche intelligente" value={kbSearch} onChange={e => setKbSearch(e.target.value)} />
                 </div>
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>

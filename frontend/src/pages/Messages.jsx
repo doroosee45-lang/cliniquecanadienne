@@ -1379,7 +1379,7 @@ export default function Messagerie() {
               <div className="msg-sidebar-hdr">
                 <div className="msg-search">
                   <span className="msg-search-ic">{I.search}</span>
-                  <input placeholder="Rechercher une conversation..." value={search} onChange={e => setSearch(e.target.value)} />
+                  <input placeholder="Rechercher une conversation..." aria-label="Rechercher une conversation" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
               </div>
 
@@ -2118,7 +2118,7 @@ export default function Messagerie() {
               {/* Étape 1 : patient */}
               {shareStep === "patient" && (
                 <>
-                  <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={shareQuery} onChange={e => setShareQuery(e.target.value)} />
+                  <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." aria-label="Rechercher un patient (nom, n° dossier, téléphone)" value={shareQuery} onChange={e => setShareQuery(e.target.value)} />
                   <div style={{ maxHeight:320, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
                     {shareQuery.trim().length >= 2 && sharePatients.length === 0 && (
                       <div style={{ textAlign:"center", padding:16, color:"var(--cm)", fontSize:12 }}>Aucun patient trouvé.</div>
@@ -2219,7 +2219,7 @@ export default function Messagerie() {
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             {emailStep === "patient" && (
               <>
-                <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={emailQuery} onChange={e => setEmailQuery(e.target.value)} />
+                <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." aria-label="Rechercher un patient (nom, n° dossier, téléphone)" value={emailQuery} onChange={e => setEmailQuery(e.target.value)} />
                 <div style={{ maxHeight:320, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
                   {emailQuery.trim().length >= 2 && emailPatients.length === 0 && (
                     <div style={{ textAlign:"center", padding:16, color:"var(--cm)", fontSize:12 }}>Aucun patient trouvé.</div>
@@ -2259,7 +2259,7 @@ export default function Messagerie() {
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             {waStep === "patient" && (
               <>
-                <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={waQuery} onChange={e => setWaQuery(e.target.value)} />
+                <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." aria-label="Rechercher un patient (nom, n° dossier, téléphone)" value={waQuery} onChange={e => setWaQuery(e.target.value)} />
                 <div style={{ maxHeight:320, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
                   {waQuery.trim().length >= 2 && waPatients.length === 0 && (
                     <div style={{ textAlign:"center", padding:16, color:"var(--cm)", fontSize:12 }}>Aucun patient trouvé.</div>

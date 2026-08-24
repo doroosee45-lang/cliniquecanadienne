@@ -746,7 +746,7 @@ export default function Patient() {
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <div style={{ position:"relative" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="pinp" style={{ paddingLeft:34, width:220 }} placeholder="Nom, prénom, n° dossier..." value={search} onChange={e => setSearch(e.target.value)} />
+                    <input className="pinp" style={{ paddingLeft:34, width:220 }} placeholder="Nom, prénom, n° dossier..." aria-label="Nom, prénom, n° dossier" value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
                   <select className="pinp" style={{ width:160 }} value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
                     <option value="">Tous les statuts</option>

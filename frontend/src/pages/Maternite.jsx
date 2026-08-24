@@ -316,7 +316,7 @@ function ModalDossier({ onClose, saving }) {
           {!selectedPatient && (
             <div className="mat-field" style={{ marginBottom:10 }}>
               <label className="mat-label">Patient *</label>
-              <input className="mat-input" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." value={patientQuery} onChange={e => setPatientQuery(e.target.value)} />
+              <input className="mat-input" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." aria-label="Rechercher un patient (nom, n° dossier, téléphone)" value={patientQuery} onChange={e => setPatientQuery(e.target.value)} />
               <div style={{ maxHeight:220, overflowY:"auto", display:"flex", flexDirection:"column", gap:4, marginTop:8 }}>
                 {patientQuery.trim().length >= 2 && patientResults.length === 0 && (
                   <div style={{ textAlign:"center", padding:12, color:"var(--am)", fontSize:12 }}>Aucun patient trouvé.</div>
@@ -1060,7 +1060,7 @@ export default function Maternite() {
           {tab==="patientes" && (
             <div>
               <div className="filter-bar">
-                <input className="mat-input" style={{width:220,padding:"8px 14px"}} placeholder="🔍 Rechercher patiente, dossier..." value={searchQ} onChange={e=>setSearchQ(e.target.value)}/>
+                <input className="mat-input" style={{width:220,padding:"8px 14px"}} placeholder="🔍 Rechercher patiente, dossier..." aria-label="Rechercher patiente, dossier" value={searchQ} onChange={e=>setSearchQ(e.target.value)}/>
                 {[["tous","Toutes"],["faible","✅ Faible"],["modere","⚠️ Modéré"],["eleve","🔴 Élevé"]].map(([val,lbl])=>(
                   <button key={val} className={`filter-btn ${filterRisque===val?"active":""}`} onClick={()=>setFilterRisque(val)}>{lbl}</button>
                 ))}

@@ -1293,7 +1293,7 @@ export default function Finance() {
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <div style={{ position:"relative" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="finp" style={{ paddingLeft:32, width:200 }} placeholder="Rechercher..." value={searchDep} onChange={e => setSearchDep(e.target.value)} />
+                    <input className="finp" style={{ paddingLeft:32, width:200 }} placeholder="Rechercher..." aria-label="Rechercher une dépense" value={searchDep} onChange={e => setSearchDep(e.target.value)} />
                   </div>
                   <select className="finp" style={{ width:180 }} value={filterCatDep} onChange={e => setFilterCatDep(e.target.value)}>
                     <option value="">Toutes catégories</option>
@@ -1491,7 +1491,7 @@ export default function Finance() {
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <div style={{ position:"relative" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="finp" style={{ paddingLeft:32, width:200 }} placeholder="Patient, numéro..." value={searchFact} onChange={e => setSearchFact(e.target.value)} />
+                    <input className="finp" style={{ paddingLeft:32, width:200 }} placeholder="Patient, numéro..." aria-label="Patient, numéro" value={searchFact} onChange={e => setSearchFact(e.target.value)} />
                   </div>
                   <select className="finp" style={{ width:180 }} value={filterStatutFact} onChange={e => setFilterStatutFact(e.target.value)}>
                     <option value="">Tous les statuts</option>

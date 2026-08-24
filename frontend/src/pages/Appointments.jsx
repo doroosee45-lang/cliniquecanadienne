@@ -771,7 +771,7 @@ function RecurrentsTab({ medecins }) {
                 </div>
               ) : (
                 <div style={{ position:"relative" }}>
-                  <input className="cinp" placeholder="Rechercher par nom, prénom ou n° dossier…"
+                  <input className="cinp" placeholder="Rechercher par nom, prénom ou n° dossier…" aria-label="Rechercher par nom, prénom ou n° dossier"
                     value={planSearch} onChange={e => setPlanSearch(e.target.value)} required={!planPatient} />
                   {planResults.length > 0 && (
                     <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:"1.5px solid #E2EAF4", borderRadius:10, boxShadow:"0 8px 24px rgba(11,30,59,.12)", zIndex:100, maxHeight:180, overflowY:"auto" }}>
@@ -1406,7 +1406,7 @@ export default function RendezVous() {
                 <div className="rdv-filters">
                   <div style={{ position:"relative", flex:"1 1 200px" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="cinp rdv-inp-s" style={{ paddingLeft:34 }} placeholder="Patient, référence, n° dossier..." value={search} onChange={e => setSearch(e.target.value)} />
+                    <input className="cinp rdv-inp-s" style={{ paddingLeft:34 }} placeholder="Patient, référence, n° dossier..." aria-label="Patient, référence, n° dossier" value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
                   <select className="cinp rdv-inp-m" value={filterStatut} onChange={e => setFilter(e.target.value)}>
                     <option value="">Tous les statuts</option>
@@ -1745,7 +1745,7 @@ export default function RendezVous() {
                     </div>
                   ) : (
                     <div style={{ position:"relative" }}>
-                      <input className="cinp" placeholder="Rechercher un patient par nom ou dossier…"
+                      <input className="cinp" placeholder="Rechercher un patient par nom ou dossier…" aria-label="Rechercher un patient par nom ou dossier"
                         value={patientSearch} onChange={e => setPatientSearch(e.target.value)}
                         required={!selectedPatient} />
                       {patientResults.length > 0 && (

@@ -729,7 +729,7 @@ export default function Imagerie() {
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <div style={{ position:"relative" }}>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                    <input className="iinp" style={{ paddingLeft:34, width:200 }} placeholder="Patient, examen..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+                    <input className="iinp" style={{ paddingLeft:34, width:200 }} placeholder="Patient, examen..." aria-label="Patient, examen" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
                   </div>
                   <select className="iinp" style={{ width:160 }} value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}>
                     <option value="">Tous types</option>

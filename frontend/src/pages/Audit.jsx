@@ -1002,7 +1002,7 @@ export default function JournalAudit() {
               <div className="filter-panel">
                 <div style={{ position: "relative", marginBottom: showFilters ? 14 : 0 }}>
                   <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}>{I.search}</span>
-                  <input className="ainp" style={{ paddingLeft: 36 }} placeholder="Rechercher : utilisateur, description, IP..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+                  <input className="ainp" style={{ paddingLeft: 36 }} placeholder="Rechercher : utilisateur, description, IP..." aria-label="Rechercher : utilisateur, description, IP" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
                 </div>
 
                 {showFilters && (

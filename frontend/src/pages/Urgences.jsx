@@ -902,7 +902,7 @@ export default function Urgences() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <div style={{ position: "relative" }}>
                     <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}>{I.search}</span>
-                    <input className="uinp" style={{ paddingLeft: 34, width: 200 }} placeholder="Nom, N° dossier..." value={search} onChange={e => {
+                    <input className="uinp" style={{ paddingLeft: 34, width: 200 }} placeholder="Nom, N° dossier..." aria-label="Nom, N° dossier" value={search} onChange={e => {
                       setSearch(e.target.value);
                       dispatch(fetchUrgences({ page:1, limit:20, q:e.target.value, niveau_triage:filterNiveau, statut:filterStatut }));
                     }} />

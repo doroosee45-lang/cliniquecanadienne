@@ -984,7 +984,7 @@ export default function Archivage() {
                 <label className="albl">Recherche rapide</label>
                 <div style={{ position:"relative" }}>
                   <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                  <input className="ainp" style={{ paddingLeft:34 }} placeholder="Nom patient, n° dossier, référence..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+                  <input className="ainp" style={{ paddingLeft:34 }} placeholder="Nom patient, n° dossier, référence..." aria-label="Nom patient, n° dossier, référence" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
                 </div>
               </div>
               <div>

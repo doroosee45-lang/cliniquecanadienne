@@ -886,7 +886,7 @@ export default function Administration() {
                     <div style={{ display:"flex", gap:8 }}>
                       <div style={{ position:"relative" }}>
                         <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
-                        <input className="cinp" style={{ paddingLeft:34, width:220 }} placeholder="Nom, email, rôle..." value={search} onChange={e => setSearch(e.target.value)} />
+                        <input className="cinp" style={{ paddingLeft:34, width:220 }} placeholder="Nom, email, rôle..." aria-label="Nom, email, rôle" value={search} onChange={e => setSearch(e.target.value)} />
                       </div>
                       <button className="cbtn cbtn-primary" onClick={() => { setFormUser(EMPTY_USER); setEditUser(null); setModalUser(true); }}>
                         {I.plus} Ajouter utilisateur
