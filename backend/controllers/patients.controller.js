@@ -40,7 +40,11 @@ exports.getAll = async (req, res, next) => {
     if (q) filter.$text = { $search: q };
 
     const fields = fieldsFor(req.user.role);
-    let query = Patient.find(filter).sort('-createdAt');
+    // AUDIT-FAIBLE-F1 — .lean() : aucun virtual/toJSON transform sur Patient
+    // ni sur User (medecin_referent), vérifié exhaustivement (grep sur tout
+    // backend/models/) — la réponse JSON envoyée reste strictement
+    // identique, seul le coût d'hydratation Mongoose disparaît.
+    let query = Patient.find(filter).sort('-createdAt').lean();
     if (fields) query = query.select(fields);
     if (!fields || fields.includes('medecin_referent')) query = query.populate('medecin_referent', 'nom prenom');
 

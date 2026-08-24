@@ -86,8 +86,11 @@ exports.getAll = async (req, res, next) => {
     }
 
     const total = await AuditLog.countDocuments(filter);
+    // AUDIT-FAIBLE-F1 — .lean() : formatLog() ci-dessous n'accède qu'à des
+    // propriétés brutes (aucune méthode d'instance/virtual Mongoose),
+    // vérifié exhaustivement — compatible tel quel.
     const raw = await paginate(
-      AuditLog.find(filter).populate('utilisateur', 'nom prenom role email').sort('-createdAt'),
+      AuditLog.find(filter).populate('utilisateur', 'nom prenom role email').sort('-createdAt').lean(),
       page, limit
     );
 

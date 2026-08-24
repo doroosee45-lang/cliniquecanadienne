@@ -47,11 +47,14 @@ exports.getAll = async (req, res, next) => {
     if (medecin) filter.medecin = medecin;
     if (statut) filter.statut = statut;
     const total = await Consultation.countDocuments(filter);
+    // AUDIT-FAIBLE-F1 — .lean() : aucun virtual/toJSON transform sur
+    // Consultation ni sur Patient/User (populate), vérifié exhaustivement.
     const consultations = await paginate(
       Consultation.find(filter)
         .populate('patient', 'nom prenom numero_dossier')
         .populate('medecin', 'nom prenom specialite')
-        .sort('-date_consultation'),
+        .sort('-date_consultation')
+        .lean(),
       page, limit
     );
     res.json({ success: true, total, consultations });

@@ -17,12 +17,16 @@ exports.getAll = async (req, res, next) => {
     if (medecin) filter.medecin = medecin;
 
     const total = await Prescription.countDocuments(filter);
+    // AUDIT-FAIBLE-F1 — .lean() : aucun virtual/toJSON transform sur
+    // Prescription ni sur Patient/User/Medication (populate), vérifié
+    // exhaustivement.
     const prescriptions = await paginate(
       Prescription.find(filter)
         .populate('patient',  'nom prenom numero_dossier telephone')
         .populate('medecin',  'nom prenom specialite')
         .populate('lignes.medicament', 'nom_commercial dci')
-        .sort('-date_prescription'),
+        .sort('-date_prescription')
+        .lean(),
       page, limit
     );
     res.json({ success: true, total, prescriptions });
