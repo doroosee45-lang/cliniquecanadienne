@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 import api from '../../api';
 import toast from 'react-hot-toast';
 
@@ -21,19 +22,29 @@ export default function Header({ title, onMenuToggle }) {
   const [aiInput, setAiInput] = useState('');
   const notifRef = useRef(null);
 
-  // Chargement initial + polling de sécurité toutes les 60s
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const { data } = await api.get('/notifications');
-        setNotifications(data.notifications || []);
-        setUnread(data.unread || 0);
-      } catch {}
-    };
-    load();
-    const iv = setInterval(load, 60000);
-    return () => clearInterval(iv);
-  }, []);
+  // Chargement initial
+  const load = async () => {
+    try {
+      const { data } = await api.get('/notifications');
+      setNotifications(data.notifications || []);
+      setUnread(data.unread || 0);
+    } catch {}
+  };
+  useEffect(() => { load(); }, []);
+
+  // AUDIT-M-E10 (Groupe E, Point 10) — un setInterval(60s) brut faisait ce
+  // travail sans jamais tenir compte de l'état du socket : Header est monté
+  // sur TOUTES les pages authentifiées, donc ce polling inconditionnel
+  // tournait en permanence même quand le socket était connecté. Le socket ne
+  // couvre pourtant pas exactement le même besoin : notification:new
+  // (ci-dessous) n'ajoute qu'une notification à la fois — markRead/
+  // markAllRead n'émettent rien, et une notification créée pendant une
+  // coupure socket était perdue pour ce badge jusqu'au prochain poll. Le
+  // hook conserve le même filet de sécurité (60s si déconnecté) et ajoute un
+  // rattrapage complet à la reconnexion (absent jusqu'ici) — le handler
+  // notification:new reste inchangé pour l'instantané pendant que le socket
+  // est actif.
+  useRealtimeRefresh(load, { intervalMs: 60000 });
 
   // Réception des nouvelles notifications en temps réel via Socket.IO
   useEffect(() => {

@@ -587,19 +587,15 @@ export default function Hospitalisation() {
   }, [loadHosps, loadStats, loadPatients, loadLits, dispatch]);
 
   // ── Refresh temps réel ───────────────────────────────────
+  // AUDIT-M-E10 (Groupe E, Point 10) — un setInterval(30s) brut appelait ici
+  // exactement les deux mêmes fonctions que useRealtimeRefresh ci-dessus :
+  // duplication pure, contournant le correctif du hook (polling coupé quand
+  // le socket est connecté, rattrapage à la reconnexion). Supprimé — aucune
+  // perte de couverture, le hook fait déjà tout ce que faisait ce timer.
   useRealtimeRefresh(() => {
     loadHosps();
     loadAllForKpis();
   });
-
-  // ── Rafraîchissement automatique toutes les 30s ──────────
-  useEffect(() => {
-    const interval = setInterval(() => {
-      loadHosps();
-      loadAllForKpis();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [loadHosps, loadAllForKpis]);
 
   const openHosp = (d) => {
     setCurrentHosp(d);

@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { Siren, Plus, LogOut, Printer } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import {
   fetchUrgencesStats,
   fetchUrgences,
@@ -546,18 +547,19 @@ export default function Urgences() {
     dispatch(fetchAmbulances());
   }, [dispatch]);
 
-  // Rafraîchissement auto toutes les 30 s
-  useEffect(() => {
-    const id = setInterval(() => {
-      dispatch(fetchUrgences({ page: currentPage, limit: 20, q: search, niveau_triage: filterNiveau, statut: filterStatut }));
-    }, 30000);
-    return () => clearInterval(id);
-  }, [dispatch, currentPage, search, filterNiveau, filterStatut]);
-
   const reloadList = () => {
     dispatch(fetchUrgences({ page: currentPage, limit: 20, q: search, niveau_triage: filterNiveau, statut: filterStatut }));
     dispatch(fetchUrgencesStats());
   };
+
+  // AUDIT-M-E10 (Groupe E, Point 10) — un setInterval(30s) brut appelait ici
+  // fetchUrgences seul, sans jamais écouter le socket ni les stats — cette
+  // page était totalement hors du système temps réel malgré
+  // urgencesController.js::create/update qui émettent déjà dashboard:refresh.
+  // reloadList (liste + stats, comme après une action manuelle) est
+  // désormais branché sur le hook partagé — même fréquence de secours (30s),
+  // plus rattrapage à la reconnexion, en prime.
+  useRealtimeRefresh(() => reloadList());
 
   const openDossier = (u) => {
     dispatch(setCurrentUrg(normalizeUrgence(u)));
