@@ -103,8 +103,21 @@ exports.create = async (req, res, next) => {
     const tokenActivation = crypto.randomBytes(32).toString('hex');
     const tokenExpire     = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 h
 
+    // AUDIT-FAIBLE-H5 — l'étalement de req.body ci-dessous laissait passer
+    // tout champ non prévu du schéma (ex. statut:'decede' sur un patient
+    // fraîchement créé) : incohérent avec update() (même fichier, plus
+    // bas), qui filtre déjà req.body via PATIENT_BLOCKED_FIELDS. Réutilisé
+    // ici tel quel — alignement de create() sur update(), pas un
+    // durcissement nouveau de PATIENT_BLOCKED_FIELDS lui-même.
+    // medecin_referent/anonymise* restent volontairement non filtrés, pour
+    // rester cohérent avec update() qui ne les bloque pas non plus —
+    // candidat pour un point distinct si on choisit un jour de les ajouter
+    // aux deux fonctions.
+    const bodyData = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!PATIENT_BLOCKED_FIELDS.includes(k)) bodyData[k] = v; }
+
     const patientData = {
-      ...req.body,
+      ...bodyData,
       actif:                   false,          // inactif jusqu'à activation
       token_activation:        tokenActivation,
       token_activation_expire: tokenExpire,
