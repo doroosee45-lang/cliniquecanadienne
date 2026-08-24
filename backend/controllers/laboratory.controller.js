@@ -192,6 +192,21 @@ exports.validate = async (req, res, next) => {
       });
     }
     await logAction({ utilisateur: req.user._id, action: 'VALIDATE', module: 'laboratory', entite_id: result._id, ip: req.ip, message: `Validation résultat${est_critique ? ' CRITIQUE' : ''}`, avant, apres: result });
+    // AUDIT-PHASE4-G3 — seule validate() manquait emitActivity/
+    // emitDashboardUpdate dans ce fichier (create() les a déjà) : un
+    // résultat critique validé ne se propageait à aucune vue temps réel
+    // côté personnel — seule la notification ciblée au médecin prescripteur
+    // existait (ci-dessus). Icône/libellé distincts si est_critique, pour
+    // que ce cas ressorte visuellement dans le flux d'activité.
+    emitActivity({
+      module: 'laboratory',
+      action: est_critique ? 'Résultat critique validé' : 'Résultat de laboratoire validé',
+      detail: `${result.patient?.prenom || ''} ${result.patient?.nom || ''}`.trim() || result.patient_nom || result.numero,
+      icon: est_critique ? '🚨' : '✅',
+      userId: req.user._id,
+      userName: `${req.user.prenom} ${req.user.nom}`,
+    });
+    emitDashboardUpdate();
     res.json({ success: true, result });
   } catch (err) { next(err); }
 };
