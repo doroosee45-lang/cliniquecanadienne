@@ -28,6 +28,13 @@ const SUBPATH_ROLES = {
   // des pièces jointes de messagerie.
   messages: ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme',
              'radiologue', 'pharmacien', 'laborantin', 'comptable', 'receptionniste'],
+  // AUDIT-M-D8 (Groupe D, Point 8) — absente ici alors que
+  // echographieController.js::uploadImages stocke bel et bien les fichiers
+  // dans uploads/echographie/ : toute lecture (SUBPATH_ROLES['echographie']
+  // undefined) échouait en 404 avant même la vérification de rôle. Copie
+  // exacte de CAN (echographie.routes.js) — mêmes rôles que ceux qui créent/
+  // consultent une demande d'échographie, aucun rôle ajouté.
+  echographie: ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'radiologue', 'sage_femme'],
 };
 
 const uploadsRoot = path.resolve(path.join(__dirname, '..', 'uploads'));
