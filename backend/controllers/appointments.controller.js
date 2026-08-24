@@ -1,4 +1,5 @@
 const Appointment = require('../models/Appointment');
+const Consultation = require('../models/Consultation');
 const Patient     = require('../models/Patient');
 const User        = require('../models/User');
 const Service     = require('../models/Service');
@@ -244,7 +245,16 @@ exports.remove = async (req, res, next) => {
   try {
     const appt = await Appointment.findByIdAndDelete(req.params.id);
     if (!appt) return res.status(404).json({ success: false, message: 'Rendez-vous introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'appointments', entite_id: req.params.id, ip: req.ip, avant: appt });
+    // AUDIT-FAIBLE-G3 — même pattern que consultations.controller.js::remove
+    // (AUDIT-3.4) : une Consultation créée depuis ce rendez-vous référence
+    // appointment._id ; sans ce détachement, la suppression laissait une
+    // référence orpheline (Consultation.appointment pointant vers un
+    // document inexistant). La consultation reste un document médical
+    // valide et n'est jamais supprimée — seul le lien vers le RDV d'origine
+    // l'est. Consultation est le seul modèle du projet référençant
+    // Appointment (vérifié exhaustivement).
+    const detached = await Consultation.updateMany({ appointment: appt._id }, { $unset: { appointment: 1 } });
+    await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'appointments', entite_id: req.params.id, ip: req.ip, message: `Rendez-vous supprimé${detached.modifiedCount ? ` (${detached.modifiedCount} consultation(s) détachée(s))` : ''}`, avant: appt });
     res.json({ success: true, message: 'Rendez-vous supprimé.' });
   } catch (err) { next(err); }
 };
