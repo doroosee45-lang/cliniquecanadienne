@@ -254,6 +254,11 @@ exports.setPasswordAndActivate = async (req, res, next) => {
       ip:        req.ip,
       message:   `Compte patient activé (mot de passe défini par le patient) : ${patient.nom} ${patient.prenom} (${patient.numero_dossier})`,
     });
+    // AUDIT-PHASE4-G2 — route publique (pas de req.user, le patient agit
+    // pour lui-même) : acteur = le compte User qui vient de s'activer, même
+    // pattern que googleAuth.controller.js::ensurePatientDossier (Point 8).
+    emitActivity({ module: 'patients', action: 'Compte patient activé', detail: `${patient.prenom} ${patient.nom} (${patient.numero_dossier})`, icon: '🔓', userId: user._id, userName: `${user.prenom} ${user.nom}` });
+    emitDashboardUpdate();
 
     res.json({
       success:    true,
@@ -320,6 +325,8 @@ exports.activateAdmin = async (req, res, next) => {
       ip:          req.ip,
       message:     `Compte patient activé manuellement : ${patient.nom} ${patient.prenom} (${patient.numero_dossier}) par ${req.user.prenom} ${req.user.nom}${lienRenvoye ? ' — nouveau lien envoyé (pas encore de mot de passe)' : ''}`,
     });
+    emitActivity({ module: 'patients', action: 'Compte patient activé (admin)', detail: `${patient.prenom} ${patient.nom} (${patient.numero_dossier})`, icon: '✅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
 
     res.json({
       success: true,
@@ -349,6 +356,13 @@ exports.update = async (req, res, next) => {
     const patient = await Patient.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'patients', entite_id: patient._id, ip: req.ip, avant, apres: patient });
+    // AUDIT-PHASE4-G2 — dashboard:refresh seul (pas emitActivity, comme
+    // consultations.controller.js::update/appointments.controller.js::update
+    // hors changement de statut) : une modification de champs administratifs
+    // routinière n'a pas sa place dans le flux d'activité clinique, mais la
+    // liste des patients doit rester à jour pour les autres utilisateurs
+    // connectés.
+    emitDashboardUpdate();
     res.json({ success: true, patient });
   } catch (err) { next(err); }
 };
@@ -439,6 +453,8 @@ exports.remove = async (req, res, next) => {
         await User.findOneAndUpdate(deactivateFilter, { statut: 'inactif' });
       }
       await logAction({ utilisateur: req.user._id, action: 'DEACTIVATE', module: 'patients', entite_id: patient._id, ip: req.ip, message: `Désactivation (historique existant) : ${patient.nom} ${patient.prenom}` });
+      emitActivity({ module: 'patients', action: 'Dossier patient désactivé', detail: `${patient.prenom} ${patient.nom} (${patient.numero_dossier})`, icon: '🚫', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+      emitDashboardUpdate();
       return res.json({
         success: true,
         deactivated: true,
@@ -470,6 +486,8 @@ exports.remove = async (req, res, next) => {
       await User.deleteOne(deleteFilter);
     }
     await logAction({ utilisateur: req.user._id, action: 'DELETE', module: 'patients', entite_id: req.params.id, ip: req.ip, message: `Suppression : ${patient.nom} ${patient.prenom}` });
+    emitActivity({ module: 'patients', action: 'Dossier patient supprimé', detail: `${patient.prenom} ${patient.nom} (${patient.numero_dossier})`, icon: '🗑️', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
     res.json({ success: true, message: 'Patient supprimé.' });
   } catch (err) { next(err); }
 };
@@ -523,6 +541,10 @@ exports.uploadPhoto = async (req, res, next) => {
     patient.photo = `/uploads/patients/${req.file.filename}`;
     await patient.save();
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'patients', entite_id: patient._id, ip: req.ip, avant: { photo: ancienPhoto }, apres: { photo: patient.photo }, message: 'Photo mise à jour' });
+    // AUDIT-PHASE4-G2 — dashboard:refresh seul : une photo mise à jour doit
+    // rester visible pour les autres utilisateurs connectés, mais ce n'est
+    // pas un événement digne du flux d'activité clinique (pas d'emitActivity).
+    emitDashboardUpdate();
 
     res.json({ success: true, photo: patient.photo, patient });
   } catch (err) { next(err); }
