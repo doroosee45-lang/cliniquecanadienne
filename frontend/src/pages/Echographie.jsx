@@ -9,6 +9,7 @@ import {
 import { Activity, Plus } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import api from "../api";
 import toast from "react-hot-toast";
 
@@ -1834,6 +1835,18 @@ export default function Echographie() {
     dispatch(fetchEchographieStats());
     dispatch(fetchDemandes({ limit: 100 }));
   }, [dispatch]);
+
+  // AUDIT-PHASE4-G1 — seule page du projet sans aucun mécanisme de
+  // rafraîchissement : ni useRealtimeRefresh ni polling de secours.
+  // echographieController.js émet déjà dashboard:refresh sur create/update
+  // (emitActivity n'y est pas importé, donc aucun extraEvents pertinent à
+  // ajouter — dashboard:refresh, déjà écouté par défaut par le hook, est le
+  // seul signal disponible), mais rien ne l'écoutait ici. Même callback que
+  // le chargement initial ci-dessus, réutilisé tel quel.
+  useRealtimeRefresh(() => {
+    dispatch(fetchEchographieStats());
+    dispatch(fetchDemandes({ limit: 100 }));
+  });
 
   // AUDIT-M-PHASE3-5 — source (service prescripteur) était une liste codée
   // en dur (SERVICES_SOURCE), jamais reliée à la collection Service réelle.
