@@ -223,6 +223,17 @@ exports.createService = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-FAIBLE-H4 — pas de liste blanche de champs sur updateService/
+// updateInsurance ci-dessous : vérifié contre le précédent déjà tranché
+// (tasks.controller.js::updateStatut, AUDIT-11-8) — situation identique,
+// pas une omission. Les deux routes sont déjà réservées à ADMIN
+// (superadmin/adminclinique) en écriture ; STAFF n'y a qu'un accès lecture
+// (getServices/getInsurances). Service et Insurance sont des ressources
+// référentielles (pas des documents cliniques partagés entre plusieurs
+// rôles à niveaux de confiance différents) et n'exposent aucun champ
+// auto-géré/dérivé qu'un admin pourrait corrompre par erreur — le pattern
+// *_BLOCKED_FIELDS protège un champ sensible d'un rôle contre un autre sur
+// un document multi-rôles, pas le cas ici.
 exports.updateService = async (req, res, next) => {
   try {
     const avant = await Service.findById(req.params.id).lean();
@@ -259,6 +270,9 @@ exports.createInsurance = async (req, res, next) => {
 // fabriqué (5 lignes codées en dur) et un bouton "Modifier" factice, alors
 // que createInsurance/getInsurances existaient déjà réellement. Aucune
 // route de modification n'existait — ajoutée ici, même style que ci-dessus.
+// AUDIT-FAIBLE-H4 — même raisonnement que updateService ci-dessus : pas de
+// liste blanche nécessaire, situation identique au précédent déjà tranché
+// (tasks.controller.js::updateStatut, AUDIT-11-8).
 exports.updateInsurance = async (req, res, next) => {
   try {
     const insurance = await Insurance.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
