@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef, useId } from "react";
+﻿import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import {
@@ -507,7 +507,11 @@ export default function RessourcesHumaines() {
 
   // Semaine courante (lundi → dimanche), calculée dynamiquement — remplace
   // l'ancienne grille figée sur une semaine de juin 2025.
-  const weekDates = (() => {
+  // AUDIT-M-E9 — recréé (nouveau tableau de nouveaux Date) à chaque rendu
+  // auparavant ; loadSchedules (déps []) supposait déjà implicitement sa
+  // stabilité pour la durée de vie du composant — useMemo(..., []) rend
+  // cette hypothèse explicite sans changer le comportement.
+  const weekDates = useMemo(() => {
     const now = new Date();
     const monday = new Date(now);
     monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
@@ -517,7 +521,7 @@ export default function RessourcesHumaines() {
       d.setDate(monday.getDate() + i);
       return d;
     });
-  })();
+  }, []);
   const weekLabels = weekDates.map(d => `${['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'][((d.getDay()+6)%7)]} ${String(d.getDate()).padStart(2,'0')}`);
   const isoDay = (d) => d.toISOString().substring(0, 10);
 
@@ -542,36 +546,55 @@ export default function RessourcesHumaines() {
   }, [dispatch, loadConges, loadSchedules]);
   useRealtimeRefresh(refreshHR);
 
-  // KPIs
-  const total      = employes.length;
-  const actifs     = employes.filter(e => e.statut === "actif").length;
-  const enConge    = employes.filter(e => e.statut === "conge").length;
-  const medecins   = employes.filter(e => e.poste === "medecin").length;
-  const infirmiers = employes.filter(e => e.poste === "infirmier").length;
+  // AUDIT-M-E9 (Groupe E, Point 9) — KPIs, pivot planning, filtrage et
+  // regroupement par poste recalculés en entier à chaque rendu (aucun
+  // useMemo dans ce fichier de 2598 lignes) : toute mise à jour d'état sans
+  // rapport (ouverture d'un modal, saisie dans un autre onglet) refaisait
+  // ces .filter()/.reduce()/pivot O(employés × schedules). Mémoïsés,
+  // dépendants uniquement des données qu'ils lisent réellement.
+  const { total, actifs, enConge, medecins, infirmiers, congesAttente, masseSalariale } = useMemo(() => ({
+    total:      employes.length,
+    actifs:     employes.filter(e => e.statut === "actif").length,
+    enConge:    employes.filter(e => e.statut === "conge").length,
+    medecins:   employes.filter(e => e.poste === "medecin").length,
+    infirmiers: employes.filter(e => e.poste === "infirmier").length,
+    congesAttente: conges.filter(c => c.statut === "en_attente").length,
+    masseSalariale: employes.reduce((s,e) => s + (e.salaire_base || 0), 0),
+  }), [employes, conges]);
   const nbSanction = sanctions.length;
-  const congesAttente = conges.filter(c => c.statut === "en_attente").length;
-  const masseSalariale = employes.reduce((s,e) => s + (e.salaire_base || 0), 0);
+
+  // Regroupement par poste — réutilisé à la fois par le graphique
+  // "Répartition par poste" et la liste des départements (auparavant deux
+  // employes.filter(e => e.poste === key) indépendants, un par section).
+  const employesByPoste = useMemo(() => {
+    const map = {};
+    employes.forEach(e => { (map[e.poste] ||= []).push(e); });
+    return map;
+  }, [employes]);
 
   // Pivot des créneaux plats (schedules) en grille employé × jour de la
   // semaine courante, pour le rendu du planning hebdomadaire.
-  const scheduleByEmp = {};
-  employes.forEach(e => { scheduleByEmp[e._id] = weekDates.map(() => null); });
-  schedules.forEach(s => {
-    const day = s.date ? String(s.date).substring(0, 10) : '';
-    const dayIdx = weekDates.findIndex(d => isoDay(d) === day);
-    if (dayIdx !== -1 && scheduleByEmp[s.employe_id]) scheduleByEmp[s.employe_id][dayIdx] = { type: s.type, statut: s.statut };
-  });
+  const scheduleByEmp = useMemo(() => {
+    const byEmp = {};
+    employes.forEach(e => { byEmp[e._id] = weekDates.map(() => null); });
+    schedules.forEach(s => {
+      const day = s.date ? String(s.date).substring(0, 10) : '';
+      const dayIdx = weekDates.findIndex(d => isoDay(d) === day);
+      if (dayIdx !== -1 && byEmp[s.employe_id]) byEmp[s.employe_id][dayIdx] = { type: s.type, statut: s.statut };
+    });
+    return byEmp;
+  }, [employes, schedules, weekDates]);
   // Un employé a-t-il au moins un créneau brouillon cette semaine (bouton
   // "Publier" affiché seulement dans ce cas) ?
   const hasBrouillon = (empId) => (scheduleByEmp[empId] || []).some(c => c && c.statut !== 'publie');
 
-  const filteredEmps = employes.filter(e => {
+  const filteredEmps = useMemo(() => employes.filter(e => {
     const q = search.toLowerCase();
     const matchSearch = !q || `${e.prenom} ${e.nom} ${e.matricule} ${e.poste}`.toLowerCase().includes(q);
     const matchPoste  = !filterPoste  || e.poste  === filterPoste;
     const matchStatut = !filterStatut || e.statut === filterStatut;
     return matchSearch && matchPoste && matchStatut;
-  });
+  }), [employes, search, filterPoste, filterStatut]);
 
   const openEmp = (e) => { setCurrentEmp(e); setSection("infos"); setTab("dossier"); };
 
@@ -1206,7 +1229,7 @@ export default function RessourcesHumaines() {
                   <div className="rh-card-hdr"><div><h3>Répartition par poste</h3><p>{total} employés</p></div></div>
                   <div style={{ padding:20 }}>
                     {Object.entries(POSTE_COLORS).map(([key, cfg]) => {
-                      const n = employes.filter(e => e.poste === key).length;
+                      const n = (employesByPoste[key] || []).length;
                       if (n === 0) return null;
                       return (
                         <div key={key} style={{ marginBottom:10 }}>
@@ -1783,7 +1806,7 @@ export default function RessourcesHumaines() {
                 {/* List des dept */}
                 <div style={{ marginTop:40, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(250px,1fr))", gap:16 }}>
                   {Object.entries(POSTE_COLORS).map(([key, cfg]) => {
-                    const emps = employes.filter(e => e.poste === key);
+                    const emps = employesByPoste[key] || [];
                     if (emps.length === 0) return null;
                     return (
                       <div key={key} style={{ background:"#F8FAFD", border:"1.5px solid var(--rbr)", borderRadius:14, padding:14, borderTop:`3px solid ${cfg.color}` }}>
