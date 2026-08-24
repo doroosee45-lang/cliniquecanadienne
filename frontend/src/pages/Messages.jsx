@@ -9,8 +9,6 @@ import toast from "react-hot-toast";
 import { MessageSquare, Plus, Bell } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 // ─── CSS (same design system: Medical Navy + Teal) ────────────
@@ -1062,8 +1060,12 @@ export default function Messagerie() {
 
   useEffect(() => { if (tab === "historique") loadHistorique(); }, [tab, loadHistorique]);
 
-  const exportHistoriquePDF = () => {
+  const exportHistoriquePDF = async () => {
     if (!histData) return;
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     pdfHeader(doc, "Journal d'audit messagerie");
     autoTable(doc, {
@@ -1085,7 +1087,11 @@ export default function Messagerie() {
     return W;
   };
 
-  const buildLaboFile = (patient, r) => {
+  const buildLaboFile = async (patient, r) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     pdfHeader(doc, "Résultat de laboratoire");
     const resultats = r.resultats && typeof r.resultats === "object"
@@ -1117,7 +1123,11 @@ export default function Messagerie() {
     return new File([blob], `resultat-labo-${patient.nom}-${r._id}.pdf`, { type: "application/pdf" });
   };
 
-  const buildOrdonnanceFile = (patient, rx) => {
+  const buildOrdonnanceFile = async (patient, rx) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     pdfHeader(doc, "Ordonnance");
     autoTable(doc, {
@@ -1149,6 +1159,10 @@ export default function Messagerie() {
   const buildDossierFile = async (patientLite) => {
     const { data } = await api.get(`/patients/${patientLite._id}`);
     const p = data.patient;
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     pdfHeader(doc, "Dossier patient");
     autoTable(doc, {
@@ -1182,10 +1196,10 @@ export default function Messagerie() {
         await sendFileAttachment(file, "document");
       } else if (shareType === "labo") {
         if (!shareRecord) throw new Error("Aucun résultat sélectionné.");
-        await sendFileAttachment(buildLaboFile(sharePatient, shareRecord), "document");
+        await sendFileAttachment(await buildLaboFile(sharePatient, shareRecord), "document");
       } else if (shareType === "ordonnance") {
         if (!shareRecord) throw new Error("Aucune ordonnance sélectionnée.");
-        await sendFileAttachment(buildOrdonnanceFile(sharePatient, shareRecord), "document");
+        await sendFileAttachment(await buildOrdonnanceFile(sharePatient, shareRecord), "document");
       } else if (shareType === "imagerie") {
         if (!shareImage) throw new Error("Aucune image sélectionnée.");
         const res = await fetch(shareImage.path, { credentials: "include" });

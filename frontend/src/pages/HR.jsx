@@ -7,9 +7,6 @@ import {
 } from '../store/slices/hrSlice';
 import api from "../api";
 import toast from "react-hot-toast";
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { Briefcase, Plus, Download } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
@@ -758,7 +755,11 @@ export default function RessourcesHumaines() {
   };
 
   // ── 1. Export liste des employés ──────────────────────────────
-  const exportEmployesPDF = useCallback(() => {
+  const exportEmployesPDF = useCallback(async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     pdfHeader(doc, 'Registre du Personnel');
     autoTable(doc, {
@@ -793,7 +794,8 @@ export default function RessourcesHumaines() {
     doc.save(`personnel-${todaySlug()}.pdf`);
   }, [employes, masseSalariale]);
 
-  const exportEmployesExcel = useCallback(() => {
+  const exportEmployesExcel = useCallback(async () => {
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.aoa_to_sheet([
       ['Matricule', 'Prénom', 'Nom', 'Poste', 'Service', 'Contrat', 'Date embauche', 'Statut', 'Téléphone', 'Email', 'Salaire base', 'Ancienneté'],
       ...employes.map(e => [
@@ -845,7 +847,11 @@ export default function RessourcesHumaines() {
   }, [employes]);
 
   // ── 2. Export congés ──────────────────────────────────────────
-  const exportCongesPDF = useCallback(() => {
+  const exportCongesPDF = useCallback(async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     pdfHeader(doc, 'Rapport des Congés');
     autoTable(doc, {
@@ -867,7 +873,11 @@ export default function RessourcesHumaines() {
   }, [conges]);
 
   // ── 3. Export salarial PDF ────────────────────────────────────
-  const exportSalairesPDF = useCallback(() => {
+  const exportSalairesPDF = useCallback(async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     pdfHeader(doc, `Rapport Salarial — ${new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`);
     autoTable(doc, {
@@ -909,7 +919,8 @@ export default function RessourcesHumaines() {
     doc.save(`salaires-${todaySlug()}.pdf`);
   }, [employes, masseSalariale]);
 
-  const exportSalairesExcel = useCallback(() => {
+  const exportSalairesExcel = useCallback(async () => {
+    const XLSX = await import('xlsx');
     const rows = employes.map(e => {
       const base = e.salaire_base || 0;
       const prime = Math.round(base * 0.1);
@@ -927,7 +938,7 @@ export default function RessourcesHumaines() {
   }, [employes]);
 
   // ── 4. Bulletin de paie individuel ───────────────────────────
-  const exportBulletinPDF = useCallback((e) => {
+  const exportBulletinPDF = useCallback(async (e) => {
     const base = e.salaire_base || 0;
     const prime = Math.round(base * 0.1);
     const transport = 25000;
@@ -936,6 +947,10 @@ export default function RessourcesHumaines() {
     const irpp = Math.round(brut * 0.09);
     const autres = Math.round(brut * 0.026);
     const net = brut - cnss - irpp - autres;
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
     // Header
@@ -990,7 +1005,11 @@ export default function RessourcesHumaines() {
   }, []);
 
   // ── 5. Export évaluations PDF ─────────────────────────────────
-  const exportEvaluationsPDF = useCallback(() => {
+  const exportEvaluationsPDF = useCallback(async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     pdfHeader(doc, 'Rapport des Évaluations du Personnel');
     autoTable(doc, {
@@ -1009,7 +1028,11 @@ export default function RessourcesHumaines() {
   }, [evaluations]);
 
   // ── 6. Export candidatures PDF ───────────────────────────────
-  const exportCandidaturesPDF = useCallback(() => {
+  const exportCandidaturesPDF = useCallback(async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     pdfHeader(doc, 'Rapport Recrutement — Candidatures');
     autoTable(doc, {
@@ -1028,7 +1051,11 @@ export default function RessourcesHumaines() {
   }, [candidatures]);
 
   // ── 7. Rapport complet RH PDF ─────────────────────────────────
-  const exportRapportRH_PDF = useCallback((titre, type) => {
+  const exportRapportRH_PDF = useCallback(async (titre, type) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     pdfHeader(doc, titre);
     if (type === 'effectif') {
@@ -1045,13 +1072,13 @@ export default function RessourcesHumaines() {
         alternateRowStyles: { fillColor: [248, 250, 255] },
       });
     } else if (type === 'conges') {
-      exportCongesPDF(); return;
+      await exportCongesPDF(); return;
     } else if (type === 'salaires') {
-      exportSalairesPDF(); return;
+      await exportSalairesPDF(); return;
     } else if (type === 'evaluations') {
-      exportEvaluationsPDF(); return;
+      await exportEvaluationsPDF(); return;
     } else if (type === 'recrutement') {
-      exportCandidaturesPDF(); return;
+      await exportCandidaturesPDF(); return;
     } else {
       autoTable(doc, {
         startY: 35,
@@ -1078,7 +1105,8 @@ export default function RessourcesHumaines() {
   }, [employes, candidatures, formations, sanctions, actifs, enConge, medecins, infirmiers, masseSalariale, congesAttente, exportCongesPDF, exportSalairesPDF, exportEvaluationsPDF, exportCandidaturesPDF]);
 
   // ── 8. Export rapport complet Excel ──────────────────────────
-  const exportRapportRH_Excel = useCallback(() => {
+  const exportRapportRH_Excel = useCallback(async () => {
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     // Feuille 1 : Personnel
     const wsPersonnel = XLSX.utils.aoa_to_sheet([
