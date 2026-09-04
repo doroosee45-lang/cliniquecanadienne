@@ -1,7 +1,11 @@
 const crypto = require('crypto');
 const User = require('../models/User');
 const { logAction, sendTokenCookie } = require('../utils/helpers');
-const { sendPasswordResetEmail } = require('../utils/mail');
+// AUDIT-C4 (ticket 0004) — namespace plutôt que destructuré (même convention
+// que hr.controller.js/messages.controller.js/patients.controller.js) :
+// nécessaire pour que les tests puissent stuber mail.sendPasswordResetEmail
+// et reproduire un vrai échec d'envoi sans dépendre d'un réseau indisponible.
+const mail = require('../utils/mail');
 const { logger } = require('../utils/logger');
 
 // T3.4 — verrouillage de compte après échecs répétés.
@@ -76,16 +80,31 @@ exports.forgotPassword = async (req, res, next) => {
     user.reset_password_expire = new Date(Date.now() + 60 * 60 * 1000); // 1 h
     await user.save({ validateBeforeSave: false });
 
+    let mailSent = true;
     try {
-      await sendPasswordResetEmail({ email: user.email, prenom: user.prenom, nom: user.nom, token });
+      await mail.sendPasswordResetEmail({ email: user.email, prenom: user.prenom, nom: user.nom, token });
     } catch (mailErr) {
+      mailSent = false;
       user.reset_password_token  = undefined;
       user.reset_password_expire = undefined;
       await user.save({ validateBeforeSave: false });
       logger.error('[MAIL] Erreur envoi reset password', { error: mailErr.message, email: user.email });
     }
 
-    await logAction({ utilisateur: user._id, action: 'FORGOT_PASSWORD', module: 'auth', ip: req.ip, message: `Demande reset mdp: ${user.email}` });
+    // AUDIT-C4 (ticket 0004) — l'échec d'envoi n'était visible que dans les
+    // logs applicatifs (logger.error ci-dessus), jamais dans le journal
+    // d'audit métier (AuditLog) que les administrateurs consultent
+    // réellement — un token révoqué silencieusement passait donc inaperçu.
+    // La réponse HTTP reste volontairement identique dans les deux cas
+    // (anti-énumération de comptes, comportement correct à conserver) : seule
+    // l'observabilité côté exploitant change ici.
+    await logAction({
+      utilisateur: user._id, action: 'FORGOT_PASSWORD', module: 'auth', ip: req.ip,
+      message: mailSent
+        ? `Demande reset mdp: ${user.email}`
+        : `Demande reset mdp: ${user.email} — échec envoi email, token révoqué`,
+      statut: mailSent ? 'succes' : 'echec',
+    });
     res.json({ success: true, message: MSG });
   } catch (err) { next(err); }
 };

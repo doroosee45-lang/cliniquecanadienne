@@ -54,14 +54,29 @@ test('forgot-password / reset-password : réponse uniforme, token à usage uniqu
     assert.equal(bodyExisting.success, true);
     assert.equal(bodyUnknown.success, true);
 
+    // AUDIT-C4 (ticket 0004) — SMTP_HOST/SMTP_USER sont volontairement vides
+    // sur ce serveur isolé (mail.js retombe alors en mode simulé, qui ne
+    // lève jamais d'erreur — voir commentaire plus haut sur ces variables) :
+    // ce cas précis reste donc un succès journalisé, pas un échec. Le cas
+    // d'un envoi qui échoue réellement (SMTP configuré mais indisponible)
+    // est couvert séparément par auditC4ForgotPasswordEchecEnvoi.test.js, en
+    // stubant sendPasswordResetEmail plutôt qu'en dépendant d'un vrai réseau
+    // indisponible.
+    const AuditLog = require('../models/AuditLog');
+    const entry = await AuditLog.findOne({ utilisateur: user._id, action: 'FORGOT_PASSWORD' }).sort({ createdAt: -1 });
+    assert.ok(entry, 'la tentative doit être journalisée dans AuditLog');
+    assert.equal(entry.statut, 'succes');
+
     // 2. Le contrôleur génère puis pose le token AVANT la tentative d'envoi
-    //    (auth.controller.js:49-52), mais le révoque explicitement si le mail
-    //    échoue (:56-61) — comportement réel, constaté avec un domaine de
-    //    test (_test.local) que le SMTP réel ne peut pas livrer. La réponse
-    //    HTTP reste "succès" dans les deux cas (pas de fuite), donc on ne
-    //    peut pas dépendre du token posé par cet appel pour la suite du test :
-    //    on simule ici l'état "token généré avec succès" directement en DB,
-    //    ce que ferait le contrôleur avec un SMTP fonctionnel.
+    //    (auth.controller.js:74-77), et le révoque explicitement si le mail
+    //    échoue (:81-86). AUDIT-C4 — correction du commentaire précédent :
+    //    SMTP_HOST/SMTP_USER étant vides sur ce serveur isolé, mail.js
+    //    retombe en mode simulé (jamais d'erreur, voir plus haut), donc le
+    //    token n'est PAS révoqué ici, quel que soit le domaine de l'email
+    //    (_test.local n'entre jamais en jeu — aucune tentative réseau n'a
+    //    lieu). On simule malgré tout l'état "token généré" directement en
+    //    DB ci-dessous, pour ne pas dépendre de cette implémentation interne
+    //    et rester valide même si le comportement de mail.js changeait.
     const token = require('crypto').randomBytes(32).toString('hex');
     await User.findByIdAndUpdate(user._id, {
       reset_password_token: token,
