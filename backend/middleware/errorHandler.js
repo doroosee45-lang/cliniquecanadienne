@@ -1,3 +1,4 @@
+const multer = require('multer');
 const { logger, captureException } = require('../utils/logger');
 
 const errorHandler = (err, req, res, next) => {
@@ -5,6 +6,35 @@ const errorHandler = (err, req, res, next) => {
   error.message = err.message;
 
   const logContext = { method: req.method, path: req.originalUrl, userId: req.user?._id };
+
+  // SEC-002 — multer.MulterError (limite de taille/nombre de fichiers
+  // dépassée) tombait dans la branche générique tout en bas et renvoyait 500
+  // au lieu de 400 : la whitelist d'extensions (middleware/upload.js)
+  // fonctionnait déjà correctement, seul le code HTTP retourné était faux.
+  // Messages fixes ci-dessous plutôt que err.message brut : ne dépend pas du
+  // texte interne de multer, jamais de chemin serveur.
+  if (err instanceof multer.MulterError) {
+    const MULTER_MESSAGES = {
+      LIMIT_FILE_SIZE:        'Fichier trop volumineux.',
+      LIMIT_FILE_COUNT:       'Trop de fichiers envoyés.',
+      LIMIT_UNEXPECTED_FILE:  'Champ de fichier inattendu.',
+    };
+    error.message = MULTER_MESSAGES[err.code] || 'Fichier rejeté.';
+    logger.warn(error.message, logContext);
+    return res.status(400).json({ success: false, message: error.message });
+  }
+
+  // SEC-002 (suite) — erreur de fileFilter (middleware/upload.js, extension
+  // hors whitelist), marquée err.code = 'UPLOAD_FILE_REJECTED' à la source :
+  // détectée ici explicitement, plutôt que de retomber dans la branche
+  // générique tout en bas (qui l'aurait classée en erreur inattendue —
+  // niveau error, envoi Sentry — pour un simple fichier hors format). Le
+  // message vient de fileFilter lui-même (nom d'extension issu du fichier
+  // envoyé par le client, jamais un détail serveur).
+  if (err.code === 'UPLOAD_FILE_REJECTED') {
+    logger.warn(err.message, logContext);
+    return res.status(400).json({ success: false, message: err.message });
+  }
 
   // Mongoose bad ObjectId
   if (err.name === 'CastError') {

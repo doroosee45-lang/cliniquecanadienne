@@ -23,11 +23,20 @@ const storage = multer.diskStorage({
   },
 });
 
+// SEC-002 — statusCode posé explicitement sur chaque erreur de fileFilter
+// ci-dessous : errorHandler.js respecte déjà err.statusCode dans sa branche
+// générique (même convention que utils/patientAnonymization.js, Patient.js),
+// mais une Error() nue n'en porte aucun et retombait donc sur le 500 par
+// défaut de cette branche — un fichier rejeté (extension interdite) devenait
+// ainsi indiscernable d'une vraie panne serveur pour le client.
 const fileFilter = (req, file, cb) => {
   const allowed = ['.dcm', '.jpg', '.jpeg', '.png', '.pdf', '.tiff', '.bmp'];
   const ext = path.extname(file.originalname).toLowerCase();
   if (allowed.includes(ext)) return cb(null, true);
-  cb(new Error(`Type de fichier non autorisé : ${ext}`), false);
+  const err = new Error(`Type de fichier non autorisé : ${ext}`);
+  err.statusCode = 400;
+  err.code = 'UPLOAD_FILE_REJECTED';
+  cb(err, false);
 };
 
 const uploadImages = multer({
@@ -53,7 +62,10 @@ const storagePhoto = multer.diskStorage({
 const fileFilterPhoto = (req, file, cb) => {
   const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
   if (allowed.includes(path.extname(file.originalname).toLowerCase())) return cb(null, true);
-  cb(new Error('Format non autorisé : jpg, jpeg, png ou webp uniquement.'), false);
+  const err = new Error('Format non autorisé : jpg, jpeg, png ou webp uniquement.');
+  err.statusCode = 400;
+  err.code = 'UPLOAD_FILE_REJECTED';
+  cb(err, false);
 };
 
 const uploadPatientPhoto = multer({
@@ -100,7 +112,10 @@ const fileFilterDocument = (req, file, cb) => {
   const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx'];
   const ext = path.extname(file.originalname).toLowerCase();
   if (allowed.includes(ext)) return cb(null, true);
-  cb(new Error(`Type de fichier non autorisé : ${ext}`), false);
+  const err = new Error(`Type de fichier non autorisé : ${ext}`);
+  err.statusCode = 400;
+  err.code = 'UPLOAD_FILE_REJECTED';
+  cb(err, false);
 };
 
 const uploadDocument = multer({
@@ -134,7 +149,10 @@ const fileFilterMessageAttachment = (req, file, cb) => {
   ];
   const ext = path.extname(file.originalname).toLowerCase();
   if (allowed.includes(ext)) return cb(null, true);
-  cb(new Error(`Type de fichier non autorisé : ${ext}`), false);
+  const err = new Error(`Type de fichier non autorisé : ${ext}`);
+  err.statusCode = 400;
+  err.code = 'UPLOAD_FILE_REJECTED';
+  cb(err, false);
 };
 
 const uploadMessageAttachment = multer({
