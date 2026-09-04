@@ -886,11 +886,26 @@ export default function Finance() {
   };
 
   // ── Update statut facture ────────────────────────────────
+  // FE-BUG-001 (audit du 4 sept. 2026) — l'échec réel de PUT /finance/:id
+  // était avalé silencieusement, puis l'état local (liste ET modale de
+  // détail via les deux appelants qui faisaient un setSelectedFacture
+  // optimiste inconditionnel) était quand même mis à jour et un succès
+  // affiché : une panne réseau/serveur réelle produisait un faux succès
+  // visible partout dans l'UI. L'état local (liste ET modale) ne change
+  // désormais que si l'appel a réellement réussi ; sinon, une vraie erreur
+  // est affichée et le statut affiché reste celui d'avant la tentative —
+  // la mise à jour de selectedFacture est donc gérée ici, jamais par les
+  // appelants.
   const updateStatutFacture = async (id, statutFront) => {
     const statutMap = { non_paye:'emise', paye:'payee', partiellement_paye:'partiellement_payee', annule:'annulee' };
-    try { await api.put(`/finance/${id}`, { statut: statutMap[statutFront] || statutFront }); } catch { /* local */ }
-    setFactures(prev => prev.map(f => f._id === id ? { ...f, statut: statutFront } : f));
-    if (statutFront === "paye") toast.success("✅ Facture marquée comme payée");
+    try {
+      await api.put(`/finance/${id}`, { statut: statutMap[statutFront] || statutFront });
+      setFactures(prev => prev.map(f => f._id === id ? { ...f, statut: statutFront } : f));
+      setSelectedFacture(prev => (prev && prev._id === id) ? { ...prev, statut: statutFront } : prev);
+      if (statutFront === "paye") toast.success("✅ Facture marquée comme payée");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de la mise à jour du statut de la facture.");
+    }
   };
 
   // ── Filtered data ────────────────────────────────────────
@@ -2312,7 +2327,7 @@ export default function Finance() {
                 {/* Statut */}
                 <div style={{ marginBottom:14 }}>
                   <label className="flbl">Modifier le statut de paiement</label>
-                  <select className="finp" value={selectedFacture.statut} onChange={e => { updateStatutFacture(selectedFacture._id, e.target.value); setSelectedFacture(f => ({...f, statut:e.target.value})); }}>
+                  <select className="finp" value={selectedFacture.statut} onChange={e => updateStatutFacture(selectedFacture._id, e.target.value)}>
                     <option value="non_paye">❌ Non payée</option>
                     <option value="paye">✅ Payée</option>
                     <option value="partiellement_paye">⚠ Partiellement payée</option>
@@ -2338,7 +2353,7 @@ export default function Finance() {
                     📧 Email
                   </button>
                   {selectedFacture.statut !== "paye" && (
-                    <button className="fbtn fbtn-success" style={{ marginLeft:"auto" }} onClick={() => { updateStatutFacture(selectedFacture._id, "paye"); setSelectedFacture(f => ({...f, statut:"paye"})); }}>
+                    <button className="fbtn fbtn-success" style={{ marginLeft:"auto" }} onClick={() => updateStatutFacture(selectedFacture._id, "paye")}>
                       {I.check} Marquer payée
                     </button>
                   )}

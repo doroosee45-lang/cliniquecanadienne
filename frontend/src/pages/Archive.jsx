@@ -588,15 +588,22 @@ export default function Archivage() {
     }
   };
 
+  // FE-BUG-001 (audit du 4 sept. 2026) — un échec réel de deleteArchive
+  // (DELETE /archives/:id) affichait quand même un succès et, pire, retirait
+  // l'entrée de la liste affichée (setArchives) : l'utilisateur voyait le
+  // dossier disparaître alors qu'il existait toujours réellement en base.
+  // La liste locale et le toast de succès ne sont désormais appliqués que
+  // sur un vrai fulfilled ; sur rejected, une vraie erreur est affichée et
+  // la modale reste ouverte, l'entrée reste visible.
   const confirmDelete = async () => {
     const result = await dispatch(deleteArchive(currentArc._id));
     if (deleteArchive.fulfilled.match(result)) {
       toast.success(`🗑️ Archive ${currentArc.reference} supprimée définitivement`);
+      setArchives(prev => prev.filter(a => a._id !== currentArc._id));
+      setModalDelete(false);
     } else {
-      toast.success(`🗑️ ${currentArc.reference} supprimée (local)`);
+      toast.error(`❌ ${result.payload || "Échec de la suppression, veuillez réessayer."}`);
     }
-    setArchives(prev => prev.filter(a => a._id !== currentArc._id));
-    setModalDelete(false);
   };
 
   // ─── Export helpers ────────────────────────────────────────

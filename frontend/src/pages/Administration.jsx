@@ -457,6 +457,13 @@ export default function Administration() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   // ── Create user ───────────────────────────────────────────
+  // FE-BUG-001 (audit du 4 sept. 2026) — un échec réel de PUT/POST
+  // /admin/users fabriquait quand même un utilisateur local (faux _id
+  // Date.now()) et affichait un succès : la panne serveur devenait invisible
+  // et un utilisateur fictif apparaissait dans la liste. Sur échec réel,
+  // aucune donnée n'est plus fabriquée : une vraie erreur est affichée et la
+  // liste n'est modifiée que par le rechargement réel (loadAll) qui suit un
+  // succès réel.
   const saveUser = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -470,14 +477,8 @@ export default function Administration() {
       }
       setModalUser(false); setFormUser(EMPTY_USER); setEditUser(null);
       loadAll();
-    } catch {
-      if (editUser) {
-        setUsers(prev => prev.map(u => u._id === editUser._id ? { ...u, ...formUser } : u));
-      } else {
-        setUsers(prev => [...prev, { ...formUser, _id: Date.now().toString(), derniere_connexion: null }]);
-      }
-      toast.success(editUser ? "✅ Mis à jour (local)" : "✅ Créé (local)");
-      setModalUser(false); setFormUser(EMPTY_USER); setEditUser(null);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || (editUser ? "❌ Échec de la mise à jour de l'utilisateur." : "❌ Échec de la création de l'utilisateur."));
     } finally { setSaving(false); }
   };
 
@@ -628,13 +629,18 @@ export default function Administration() {
   };
 
   // ── Save settings ─────────────────────────────────────────
+  // FE-BUG-001 (audit du 4 sept. 2026) — un échec réel de PUT /admin/settings
+  // affichait quand même "Paramètres enregistrés (local)" : rien n'indiquait
+  // à l'utilisateur que les paramètres n'avaient pas été persistés côté
+  // serveur.
   const saveSettings = async () => {
     setSaving(true);
     try {
       await api.put("/admin/settings", settings);
       toast.success("✅ Paramètres enregistrés");
-    } catch { toast.success("✅ Paramètres enregistrés (local)"); }
-    finally { setSaving(false); }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'enregistrement des paramètres.");
+    } finally { setSaving(false); }
   };
 
   // Filtered users
