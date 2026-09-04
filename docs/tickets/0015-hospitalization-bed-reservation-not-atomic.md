@@ -1,6 +1,6 @@
 # Ticket 0015 — Réservation de lit non atomique dans `hospitalization.controller.js::create`
 
-**Statut :** Ouvert — non corrigé
+**Statut :** Résolu — voir AUDIT-P7-5 dans hospitalization.controller.js et backend/tests/auditP7-5ReservationLitAtomique.test.js (résolu le 2026-08-18, commit 26b8a3a)
 **Origine :** Constaté en marge de la correction P7-1/P7-2 (audit Phases 2-9, branche `fix/audit2-9-p7-1-2-hospitalisation`), explicitement hors périmètre de cette branche
 **Sévérité :** Élevée — condition de course réelle sur une ressource physique (lit), pas une hypothèse théorique ; aucun test de concurrence n'existe pour ce chemin
 
