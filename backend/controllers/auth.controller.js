@@ -75,8 +75,17 @@ exports.forgotPassword = async (req, res, next) => {
 
     if (!user) return res.json({ success: true, message: MSG });
 
-    const token  = crypto.randomBytes(32).toString('hex');
-    user.reset_password_token  = token;
+    // SEC-006 — le token en clair était stocké tel quel en base
+    // (reset_password_token) : une fuite de backup ou un accès DB compromis
+    // exposait directement un token exploitable, sans même intercepter
+    // l'e-mail. Seul le hash SHA-256 est persisté désormais ; le token en
+    // clair (variable `token` ci-dessous) part toujours dans l'e-mail réel
+    // envoyé à l'utilisateur, seul canal légitime pour le communiquer.
+    // Expiration à 1h et usage unique (effacement après usage, plus bas)
+    // inchangés.
+    const token     = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    user.reset_password_token  = tokenHash;
     user.reset_password_expire = new Date(Date.now() + 60 * 60 * 1000); // 1 h
     await user.save({ validateBeforeSave: false });
 
@@ -117,8 +126,12 @@ exports.resetPassword = async (req, res, next) => {
     if (!password || password.length < 6)
       return res.status(400).json({ success: false, message: 'Le mot de passe doit avoir au moins 6 caractères.' });
 
+    // SEC-006 — le token reçu (en clair, depuis le lien de l'e-mail) est
+    // hashé de la même façon qu'à la génération avant comparaison : jamais
+    // de comparaison en clair contre la base, qui ne stocke que le hash.
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const user = await User.findOne({
-      reset_password_token:  token,
+      reset_password_token:  tokenHash,
       reset_password_expire: { $gt: new Date() },
     });
 

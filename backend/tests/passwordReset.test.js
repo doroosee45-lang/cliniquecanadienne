@@ -77,9 +77,16 @@ test('forgot-password / reset-password : réponse uniforme, token à usage uniqu
     //    lieu). On simule malgré tout l'état "token généré" directement en
     //    DB ci-dessous, pour ne pas dépendre de cette implémentation interne
     //    et rester valide même si le comportement de mail.js changeait.
-    const token = require('crypto').randomBytes(32).toString('hex');
+    // SEC-006 — reset_password_token stocke désormais un hash SHA-256, plus
+    // jamais le token en clair (auth.controller.js::forgotPassword/
+    // resetPassword) : la fixture simule donc le même hash en base, le token
+    // en clair (seul ce qui part réellement dans l'e-mail) restant utilisé
+    // tel quel dans l'URL /auth/reset-password/:token ci-dessous.
+    const crypto = require('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     await User.findByIdAndUpdate(user._id, {
-      reset_password_token: token,
+      reset_password_token: tokenHash,
       reset_password_expire: new Date(Date.now() + 60 * 60 * 1000),
     });
 
