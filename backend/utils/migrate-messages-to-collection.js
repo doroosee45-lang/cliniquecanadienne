@@ -65,7 +65,13 @@ const run = async () => {
       dejaPresents += dupes;
       inseres += batch.length - writeErrors.length;
       if (autres.length > 0) {
-        console.error(`❌ ${autres.length} échec(s) non liés à un doublon :`, autres.slice(0, 3));
+        // AUDIT-F2 — un WriteError MongoDB inclut `.err.op`, le document
+        // complet ayant échoué : ici un message de conversation patient/
+        // personnel réel (contenu, expéditeur, destinataire). Ne jamais le
+        // journaliser tel quel, même en local — seuls index/code/errmsg
+        // aident au diagnostic sans exposer le contenu.
+        console.error(`❌ ${autres.length} échec(s) non liés à un doublon :`,
+          autres.slice(0, 3).map(e => ({ index: e.index, code: e.code, errmsg: e.errmsg })));
         throw new Error(`Échec de migration non récupérable sur ${autres.length} document(s).`);
       }
     }
