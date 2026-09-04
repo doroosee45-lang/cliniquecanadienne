@@ -1938,10 +1938,9 @@ export default function RendezVous() {
                 <label className="clbl">Motif du report</label>
                 <textarea className="cinp" rows={2} placeholder="Raison du report..." value={formReport.motif} onChange={e => setFormReport(f=>({...f,motif:e.target.value}))} />
               </div>
-              <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13, color:"var(--cn)" }}>
-                <input type="checkbox" defaultChecked style={{ accentColor:"var(--ct)", width:15, height:15 }} />
-                Notifier le patient par SMS
-              </label>
+              {/* AUDIT-MESSAGES-PhaseD (ticket 0020) — case "Notifier le
+                  patient par SMS" retirée : non contrôlée (jamais lue par
+                  reporterRdv), aucun SMS n'était réellement envoyé au report. */}
               <div style={{ display:"flex", gap:10 }}>
                 <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalReport(false)}>Annuler</button>
                 <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
@@ -1953,33 +1952,38 @@ export default function RendezVous() {
         </Modal>
 
         {/* ═══ MODAL : NOTIFICATIONS ═══ */}
+        {/* AUDIT-MESSAGES-PhaseD (ticket 0020) — cette modale présentait SMS/
+            E-mail/WhatsApp comme "Actif" avec des cases à cocher éditables et
+            un bouton "Sauvegarder" qui affichait un faux succès : aucune de
+            ces trois listes n'était reliée à un réglage persistable (aucune
+            route backend de préférences de notification n'existe), et les
+            items eux-mêmes ne correspondaient à aucune automatisation réelle.
+            Seul un rappel RDV par e-mail existe réellement (utils/
+            appointmentReminders.js — cron quotidien 8h, une fois par RDV, si
+            le patient a un e-mail). Remplacé par un état honnête, en lecture
+            seule, sans illusion de configuration. */}
         <Modal open={modalNotif} onClose={() => setModalNotif(false)} title={<>{I.bell} Notifications & rappels</>} maxWidth={520}>
           <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
             {[
-              { icon:"💬", titre:"SMS",       items:["Confirmation de rendez-vous","Rappel 24h avant","Rappel 2h avant"], col:"#1B4F9E" },
-              { icon:"📧", titre:"E-mail",    items:["Convocation","Modification de RDV","Annulation"], col:"#0EA5A0" },
-              { icon:"📲", titre:"WhatsApp",  items:["Confirmation automatique","Rappel automatique"], col:"#059669" },
-            ].map(({ icon, titre, items, col }) => (
+              { icon:"📧", titre:"E-mail",   actif:true,  items:["Rappel de RDV, envoi automatique la veille à 8h — uniquement si le patient a un e-mail enregistré"], col:"#0EA5A0" },
+              { icon:"💬", titre:"SMS",      actif:false, items:["Aucun envoi automatique — utilisez Messagerie › Communication patients pour un SMS manuel"], col:"#1B4F9E" },
+              { icon:"📲", titre:"WhatsApp", actif:false, items:["Aucune intégration WhatsApp — non disponible"], col:"#059669" },
+            ].map(({ icon, titre, actif, items, col }) => (
               <div key={titre} style={{ background:"#F8FAFD", border:"1.5px solid var(--cbr)", borderRadius:14, padding:16 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
                   <span style={{ fontSize:20 }}>{icon}</span>
                   <span style={{ fontWeight:700, fontSize:14, color:"var(--cn)" }}>{titre}</span>
-                  <span style={{ marginLeft:"auto" }}><Badge cls="green">Actif</Badge></span>
+                  <span style={{ marginLeft:"auto" }}><Badge cls={actif ? "green" : "gray"}>{actif ? "Actif" : "Indisponible"}</Badge></span>
                 </div>
                 {items.map(item => (
-                  <label key={item} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", marginBottom:8, fontSize:13, color:"var(--cm)" }}>
-                    <input type="checkbox" defaultChecked style={{ accentColor:col, width:15, height:15 }} />
+                  <div key={item} style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:8, fontSize:13, color:"var(--cm)" }}>
+                    <span style={{ color:col }}>{actif ? "✓" : "—"}</span>
                     {item}
-                  </label>
+                  </div>
                 ))}
               </div>
             ))}
-            <div style={{ display:"flex", gap:10 }}>
-              <button className="cbtn cbtn-ghost" style={{ flex:1, justifyContent:"center" }} onClick={() => setModalNotif(false)}>Fermer</button>
-              <button className="cbtn cbtn-teal" style={{ flex:1, justifyContent:"center" }} onClick={() => { toast.success("✅ Paramètres sauvegardés"); setModalNotif(false); }}>
-                {I.save} Sauvegarder
-              </button>
-            </div>
+            <button className="cbtn cbtn-ghost" style={{ justifyContent:"center" }} onClick={() => setModalNotif(false)}>Fermer</button>
           </div>
         </Modal>
 

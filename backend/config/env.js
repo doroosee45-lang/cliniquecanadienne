@@ -49,4 +49,8 @@ module.exports = {
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASS: process.env.SMTP_PASS,
   SMTP_FROM: process.env.SMTP_FROM || '"Clinique Canadienne" <noreply@clinique.cg>',
+
+  TWILIO_ACCOUNT_SID:  process.env.TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN:   process.env.TWILIO_AUTH_TOKEN,
+  TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
 };

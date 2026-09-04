@@ -53,6 +53,9 @@ const GOOD_ENV = {
   SMTP_HOST: 'smtp.example.com',
   SMTP_USER: 'noreply@example.com',
   OPENAI_API_KEY: 'sk-' + 'x'.repeat(40),
+  TWILIO_ACCOUNT_SID: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  TWILIO_AUTH_TOKEN: 'x'.repeat(32),
+  TWILIO_PHONE_NUMBER: '+15005550006',
 };
 
 test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart de configuration production', async (t) => {
@@ -93,6 +96,11 @@ test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart 
   await t.test('OpenAI non configurée (mode simulé) — signalé', async () => {
     const findings = await checkProductionConfig({ env: { ...GOOD_ENV, OPENAI_API_KEY: undefined } });
     assert.ok(findings.some(f => f.check === 'OPENAI'), 'doit signaler OpenAI en mode simulé');
+  });
+
+  await t.test('Twilio non configuré (mode simulé) — signalé', async () => {
+    const findings = await checkProductionConfig({ env: { ...GOOD_ENV, TWILIO_ACCOUNT_SID: undefined, TWILIO_AUTH_TOKEN: undefined, TWILIO_PHONE_NUMBER: undefined } });
+    assert.ok(findings.some(f => f.check === 'TWILIO'), 'doit signaler Twilio en mode simulé');
   });
 
   await t.test('plusieurs écarts simultanés — tous signalés, pas seulement le premier', async () => {

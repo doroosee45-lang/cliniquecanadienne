@@ -457,7 +457,17 @@ export default function Messagerie() {
   const [shareRecordsLoading, setShareRecordsLoading] = useState(false);
   const [shareSending, setShareSending]     = useState(false);
 
-  // Email patient (Phase D)
+  // AUDIT-MESSAGES-PhaseD — SMS patient réel (onglet "Communication
+  // patients"), même recherche patient que le partage de documents Phase C.
+  const [smsOpen, setSmsOpen]         = useState(false);
+  const [smsStep, setSmsStep]         = useState("patient"); // 'patient' | 'compose'
+  const [smsQuery, setSmsQuery]       = useState("");
+  const [smsPatients, setSmsPatients] = useState([]);
+  const [smsPatient, setSmsPatient]   = useState(null);
+  const [smsBody, setSmsBody]         = useState("");
+  const [smsSending, setSmsSending]   = useState(false);
+
+  // Email patient (Phase D) — même structure que SMS
   const [emailOpen, setEmailOpen]         = useState(false);
   const [emailStep, setEmailStep]         = useState("patient");
   const [emailQuery, setEmailQuery]       = useState("");
@@ -971,6 +981,43 @@ export default function Messagerie() {
       setShareRecords([]);
     }
     setShareRecordsLoading(false);
+  };
+
+  // ── SMS patient (Phase D) ──────────────────────────────────
+  const openSms = () => {
+    setSmsOpen(true);
+    setSmsStep("patient");
+    setSmsQuery("");
+    setSmsPatients([]);
+    setSmsPatient(null);
+    setSmsBody("");
+  };
+  const closeSms = () => setSmsOpen(false);
+
+  useEffect(() => {
+    if (!smsOpen || smsStep !== "patient" || smsQuery.trim().length < 2) { setSmsPatients([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/patients/search?q=${encodeURIComponent(smsQuery.trim())}`);
+        setSmsPatients(data.patients || []);
+      } catch { setSmsPatients([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [smsQuery, smsOpen, smsStep]);
+
+  const pickSmsPatient = (p) => { setSmsPatient(p); setSmsStep("compose"); };
+
+  const confirmSendSms = async () => {
+    if (!smsPatient || !smsBody.trim()) return;
+    setSmsSending(true);
+    try {
+      const { data } = await api.post("/messages/patient-sms", { patient: smsPatient._id, contenu: smsBody.trim() });
+      toast.success(data.simulated ? "📱 SMS simulé (Twilio non configuré en environnement local)" : "📱 SMS envoyé");
+      closeSms();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Échec de l'envoi du SMS.");
+    }
+    setSmsSending(false);
   };
 
   // ── Email patient (Phase D) ────────────────────────────────
@@ -1914,15 +1961,17 @@ export default function Messagerie() {
           <div style={{ padding:24 }}>
             <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)", marginBottom:20 }}>Communication avec les patients</div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))", gap:20, marginBottom:24 }}>
+              {/* AUDIT-MESSAGES-PhaseD — carte SMS : envoi réel via Twilio
+                  (utils/sms.js), sélecteur de patient réutilisé de la Phase C.
+                  Le compteur "envoyés" a été retiré : aucun historique
+                  d'envoi n'est persisté (hors périmètre, cf. échanges Phase D
+                  — nécessiterait un nouveau modèle, à valider séparément). */}
               <div className="adm-card" style={{ borderTop:"3px solid #059669" }}>
                 <div style={{ padding:20 }}>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-                    <div style={{ fontSize:28 }}>📱</div>
-                    <span className="cbdg green">128 envoyés</span>
-                  </div>
+                  <div style={{ fontSize:28, marginBottom:12 }}>📱</div>
                   <div style={{ fontWeight:700, fontSize:15, color:"var(--cn)", marginBottom:4 }}>SMS</div>
-                  <div style={{ fontSize:12, color:"var(--cm)", marginBottom:14 }}>Envoi de SMS groupés ou individuels</div>
-                  <button className="cbtn cbtn-teal cbtn-sm" style={{ width:"100%" }} onClick={() => toast.success("📱 Envoi via SMS...")}>
+                  <div style={{ fontSize:12, color:"var(--cm)", marginBottom:14 }}>Envoi de SMS individuels (Twilio)</div>
+                  <button className="cbtn cbtn-teal cbtn-sm" style={{ width:"100%" }} onClick={() => openSms()}>
                     Envoyer via SMS
                   </button>
                 </div>
@@ -1955,6 +2004,13 @@ export default function Messagerie() {
             </div>
             <div className="adm-card">
               <div className="adm-card-hdr"><h3>📤 Templates de communication</h3></div>
+              {/* AUDIT-MESSAGES-PhaseD (ticket 0020) — le bouton "Envoyer" de
+                  chaque modèle affichait un faux succès (toast seul), aucun
+                  envoi réel, quel que soit le canal annoncé (y compris
+                  WhatsApp, jamais intégré). Désactivé plutôt que simulé,
+                  même traitement que le bouton SMS d'Appointments.jsx
+                  (AUDIT-P7-8) : utilisez les cartes SMS/Email ci-dessus pour
+                  un envoi réel individuel. */}
               <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:12 }}>
                 {[
                   { titre:"Confirmation RDV",       icon:"📅", canal:"SMS + Email" },
@@ -1970,7 +2026,7 @@ export default function Messagerie() {
                       <div style={{ fontWeight:600, fontSize:12, color:"var(--cn)" }}>{t.titre}</div>
                       <span className="cbdg gray" style={{ fontSize:10 }}>{t.canal}</span>
                     </div>
-                    <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => toast.success(`${t.icon} Envoi template : ${t.titre}`)}>Envoyer</button>
+                    <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>Envoyer</button>
                   </div>
                 ))}
               </div>
@@ -2226,6 +2282,47 @@ export default function Messagerie() {
               )}
             </div>
           )}
+        </Modal>
+
+        {/* ═══ MODAL : SMS PATIENT (Communication patients) ═══ */}
+        <Modal open={smsOpen} onClose={closeSms} title={<>📱 Envoyer un SMS</>} maxWidth={440}>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {smsStep === "patient" && (
+              <>
+                <input className="cinp" autoFocus placeholder="Rechercher un patient (nom, n° dossier, téléphone)..." aria-label="Rechercher un patient (nom, n° dossier, téléphone)" value={smsQuery} onChange={e => setSmsQuery(e.target.value)} />
+                <div style={{ maxHeight:320, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
+                  {smsQuery.trim().length >= 2 && smsPatients.length === 0 && (
+                    <div style={{ textAlign:"center", padding:16, color:"var(--cm)", fontSize:12 }}>Aucun patient trouvé.</div>
+                  )}
+                  {smsPatients.map(p => (
+                    <div key={p._id} className="msg-conv-item" style={{ borderRadius:10, cursor: p.telephone ? "pointer" : "not-allowed", opacity: p.telephone ? 1 : .5 }} onClick={() => p.telephone && pickSmsPatient(p)}>
+                      <div style={{ width:34, height:34, borderRadius:9, background:"#EEF4FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>🧑‍⚕️</div>
+                      <div style={{ minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{p.prenom} {p.nom}</div>
+                        <div style={{ fontSize:11, color:"var(--cm)" }}>{p.telephone || "Aucun numéro enregistré"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {smsStep === "compose" && (
+              <>
+                <div style={{ fontSize:12, color:"var(--cm)" }}>
+                  Destinataire : <strong style={{ color:"var(--cn)" }}>{smsPatient?.prenom} {smsPatient?.nom}</strong> · {smsPatient?.telephone}
+                </div>
+                <textarea className="cinp" rows={4} placeholder="Votre message..." value={smsBody} onChange={e => setSmsBody(e.target.value)} maxLength={480} />
+                <div style={{ fontSize:11, color:"var(--cm)", textAlign:"right" }}>{smsBody.length}/480</div>
+                <div style={{ display:"flex", gap:10 }}>
+                  <button type="button" className="cbtn cbtn-ghost" onClick={() => setSmsStep("patient")} disabled={smsSending}>← Retour</button>
+                  <button type="button" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} onClick={confirmSendSms} disabled={smsSending || !smsBody.trim()}>
+                    {smsSending ? "Envoi..." : "📱 Envoyer"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </Modal>
 
         {/* ═══ MODAL : EMAIL PATIENT (Communication patients) ═══ */}

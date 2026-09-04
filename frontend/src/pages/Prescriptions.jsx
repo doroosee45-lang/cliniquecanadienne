@@ -1594,12 +1594,16 @@ export default function Ordonnances() {
               })}
 
               {/* Alertes chroniques */}
+              {/* AUDIT-MESSAGES-PhaseD (ticket 0020) — aucun job planifié n'envoie
+                  d'alerte SMS/Email d'expiration (vérifié : aucune référence à ce
+                  traitement chronique côté backend/cron). Libellé corrigé pour ne
+                  plus prétendre à une automatisation inexistante. */}
               <div className="al-ia" style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
                 <span style={{ fontSize:20 }}>🤖</span>
                 <div>
-                  <strong style={{ color:"#1E40AF", fontSize:13 }}>IA — Rappels de renouvellement automatiques</strong>
+                  <strong style={{ color:"#1E40AF", fontSize:13 }}>Traitements chroniques — suivi des renouvellements</strong>
                   <div style={{ fontSize:12, color:"#3B82F6", marginTop:4 }}>
-                    Le système envoie automatiquement des alertes SMS/Email aux patients 15 jours avant l'expiration de leur traitement chronique. Médecin notifié 10 jours avant.
+                    Aucune alerte automatique n'est envoyée pour l'instant : pensez à vérifier manuellement les traitements chroniques approchant de leur expiration.
                   </div>
                 </div>
               </div>
@@ -1807,7 +1811,9 @@ export default function Ordonnances() {
             <div className="al-ia" style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
               <span>🤖</span>
               <div style={{ fontSize:12, color:"#3B82F6" }}>
-                Le renouvellement sera enregistré dans le journal d'audit. Un SMS/email sera envoyé au patient automatiquement.
+                {/* AUDIT-MESSAGES-PhaseD (ticket 0020) — controllers/prescriptions.controller.js::renouveler
+                    ne fait que créer le brouillon et journaliser l'action, aucun SMS/e-mail n'est envoyé. */}
+                Le renouvellement sera enregistré dans le journal d'audit. Aucune notification automatique n'est envoyée au patient — prévenez-le manuellement si besoin.
               </div>
             </div>
             <div style={{ display:"flex", gap:10 }}>

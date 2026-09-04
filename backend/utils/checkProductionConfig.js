@@ -60,11 +60,20 @@ function checkSmtp(env, findings) {
   }
 }
 
-// AUDIT-ANALYTICS-P8 — même pattern que checkSmtp ci-dessus :
+// AUDIT-ANALYTICS-P8 — même pattern que checkSmtp/checkTwilio ci-dessus :
 // vérifie uniquement la PRÉSENCE de la clé, jamais sa valeur.
 function checkOpenAI(env, findings) {
   if (!env.OPENAI_API_KEY) {
     findings.push({ level: 'error', check: 'OPENAI', message: 'OPENAI_API_KEY non configurée — utils/openai.js retombera en mode simulé : le rapport hebdomadaire Analytics ne sera jamais réellement généré par IA.' });
+  }
+}
+
+// AUDIT-MESSAGES-PhaseD — même pattern que checkSmtp ci-dessus : vérifie
+// uniquement la PRÉSENCE des variables, jamais leur valeur (ne jamais logger
+// TWILIO_AUTH_TOKEN, même partiellement).
+function checkTwilio(env, findings) {
+  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_PHONE_NUMBER) {
+    findings.push({ level: 'error', check: 'TWILIO', message: 'Twilio non configuré (TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PHONE_NUMBER absent) — utils/sms.js retombera en mode simulé : aucun SMS réel ne sera envoyé.' });
   }
 }
 
@@ -98,6 +107,7 @@ async function checkProductionConfig({ env = process.env, mongoUri } = {}) {
   checkJwtSecret(env, findings);
   checkSmtp(env, findings);
   checkOpenAI(env, findings);
+  checkTwilio(env, findings);
   if (mongoUri) {
     await checkSeedAccounts(mongoUri, findings);
   }

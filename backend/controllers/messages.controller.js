@@ -6,6 +6,7 @@ const AuditLog = require('../models/AuditLog');
 const { emitTo } = require('../utils/socket');
 const { logAction, escapeHtml } = require('../utils/helpers');
 const mail = require('../utils/mail');
+const sms = require('../utils/sms');
 
 // AUDIT-MESSAGES-PhaseA — la modale "Nouveau message" appelait GET
 // /admin/users (authorize(superadmin, adminclinique)) pour peupler la liste
@@ -341,6 +342,31 @@ exports.deleteMessage = async (req, res, next) => {
     emitTo(`conversation:${msg.conversation_id}`, 'message:deleted', { conversationId: msg.conversation_id, msgId: req.params.msgId });
 
     res.json({ success: true });
+  } catch (err) { next(err); }
+};
+
+// AUDIT-MESSAGES-PhaseD — l'onglet "Communication patients" affichait un
+// faux succès (toast seul) pour l'envoi de SMS à un patient. Réutilise
+// utils/sms.js::sendSms (Twilio) ; tracé dans AuditLog comme les autres
+// canaux (succès/échec), jamais le contenu du secret Twilio.
+exports.sendPatientSms = async (req, res, next) => {
+  try {
+    const { patient: patientId, contenu } = req.body;
+    if (!contenu || !contenu.trim()) {
+      return res.status(400).json({ success: false, message: 'Message requis.' });
+    }
+    const patient = await Patient.findById(patientId);
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+    if (!patient.telephone) return res.status(400).json({ success: false, message: "Ce patient n'a pas de numéro de téléphone enregistré." });
+
+    try {
+      const result = await sms.sendSms({ to: patient.telephone, body: contenu.trim() });
+      await logAction({ utilisateur: req.user._id, action: 'SEND_SMS', module: 'messages', entite_id: patient._id, ip: req.ip, message: contenu.trim(), statut: 'succes' });
+      res.json({ success: true, simulated: !!result?.simulated });
+    } catch (err) {
+      await logAction({ utilisateur: req.user._id, action: 'SEND_SMS', module: 'messages', entite_id: patient._id, ip: req.ip, message: contenu.trim(), statut: 'echec' });
+      res.status(502).json({ success: false, message: err.message || "Échec de l'envoi du SMS." });
+    }
   } catch (err) { next(err); }
 };
 

@@ -1480,7 +1480,7 @@ export default function Pediatrie() {
                   {[
                     { col:"#059669", ico:"💊", titre:"Calcul doses pédiatriques", desc:"Calcul automatique selon poids : Paracétamol 15mg/kg, Amox 40mg/kg/j..." },
                     { col:"#0EA5E9", ico:"📈", titre:"Analyse courbes de croissance", desc:"Comparaison automatique aux courbes OMS. Détection Z-score, alertes." },
-                    { col:"#7C3AED", ico:"💉", titre:"Alertes vaccinales IA",       desc:"Rappel intelligent basé sur le calendrier PEV. Notification SMS." },
+                    { col:"#7C3AED", ico:"💉", titre:"Alertes vaccinales IA",       desc:"Rappel intelligent basé sur le calendrier PEV. Aucune notification SMS automatique pour l'instant." },
                     { col:"#D97706", ico:"🔍", titre:"Suggestions diagnostiques",   desc:"Aide au diagnostic différentiel basé sur l'âge et les symptômes." },
                   ].map((r, i) => (
                     <div key={i} style={{ background:"#F0FDF4", borderRadius:14, padding:"14px 16px", borderLeft:`3px solid ${r.col}`, cursor:"pointer" }}

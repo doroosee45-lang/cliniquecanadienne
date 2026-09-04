@@ -8,6 +8,7 @@ router.get('/directory',         protect, msgC.getDirectory);
 // AUDIT-MESSAGES-PhaseD — routes statiques déclarées avant '/:id' (sinon
 // Express les matcherait comme id de conversation).
 router.get('/historique',        protect, msgC.getHistorique);
+router.post('/patient-sms',      protect, msgC.sendPatientSms);
 router.post('/patient-email',    protect, msgC.sendPatientEmail);
 router.get('/',                  protect, msgC.getConversations);
 router.post('/',                 protect, msgC.getOrCreate);
