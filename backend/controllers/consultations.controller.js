@@ -1,5 +1,7 @@
 const Consultation = require('../models/Consultation');
 const Prescription  = require('../models/Prescription');
+const Invoice       = require('../models/Invoice');
+const Patient       = require('../models/Patient');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
@@ -117,10 +119,46 @@ exports.create = async (req, res, next) => {
       });
     }
 
+    // FLOW-002 (audit du 4 sept. 2026) — aucun contrôleur clinique ne créait
+    // de Invoice : l'onglet "Facturation" de Consultations.jsx calculait un
+    // montant côté client, sans lien réel avec le module Finance. Même
+    // principe que la génération automatique de Prescription ci-dessus :
+    // une consultation clôturée (statut 'terminee', seul moment où ce
+    // contrôleur reçoit un statut final — Consultations.jsx soumet tout le
+    // formulaire en un seul POST, il n'y a pas de transition ultérieure via
+    // update()) avec des frais renseignés (frais_consultation, champ réel du
+    // formulaire — pas une valeur inventée ici) génère une vraie facture
+    // persistée, liée par consultation._id. Gardé sur > 0 : une consultation
+    // sans frais renseignés (frais_consultation absent/0, ex. suivi
+    // gratuit) ne doit pas produire une facture fantôme à 0 CFA.
+    let factureGeneree = null;
+    const fraisConsultation = Number(consultation.frais_consultation) || 0;
+    if (consultation.statut === 'terminee' && fraisConsultation > 0) {
+      const patientDoc = await Patient.findById(consultation.patient).select('nom prenom').lean();
+      factureGeneree = await Invoice.create({
+        patient: consultation.patient,
+        patient_nom: patientDoc ? `${patientDoc.prenom} ${patientDoc.nom}`.trim() : undefined,
+        service_label: 'Consultation',
+        consultation: consultation._id,
+        created_by: req.user._id,
+        lignes: [{
+          libelle: `Consultation médicale${consultation.type_consultation ? ` — ${consultation.type_consultation}` : ''}`,
+          categorie: 'consultation', prix_unitaire: fraisConsultation, quantite: 1, montant: fraisConsultation,
+        }],
+        montant_ht: fraisConsultation,
+        montant_ttc: fraisConsultation,
+      });
+      await logAction({
+        utilisateur: req.user._id, action: 'CREATE', module: 'finance',
+        entite_id: factureGeneree._id, ip: req.ip,
+        message: `Facture ${factureGeneree.numero_facture} générée automatiquement depuis la consultation ${consultation._id}`,
+      });
+    }
+
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'consultations', entite_id: consultation._id, ip: req.ip });
     emitActivity({ module: 'consultations', action: 'Nouvelle consultation', detail: req.body.motif || 'Consultation médicale', icon: '🩺', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
-    res.status(201).json({ success: true, consultation, prescription: prescriptionGeneree });
+    res.status(201).json({ success: true, consultation, prescription: prescriptionGeneree, invoice: factureGeneree });
   } catch (err) { next(err); }
 };
 

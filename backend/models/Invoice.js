@@ -15,6 +15,15 @@ const InvoiceSchema = new Schema({
   patient_nom:    String,
   service_label:  String,
   montant_direct: Number,
+  // FLOW-002 (audit du 4 sept. 2026) — aucun contrôleur clinique ne créait
+  // ni ne mettait à jour de Invoice : les onglets "Facturation" du frontend
+  // calculaient un montant côté client, sans aucun lien traçable vers l'acte
+  // à l'origine de la facture. Ces deux références (optionnelles — une
+  // facture peut toujours être créée manuellement sans acte source, comme
+  // aujourd'hui) permettent de retrouver la vraie facture liée à une
+  // consultation/un séjour, et réciproquement.
+  consultation:    { type: Schema.Types.ObjectId, ref: 'Consultation' },
+  hospitalisation: { type: Schema.Types.ObjectId, ref: 'Hospitalization' },
   created_by:     { type: Schema.Types.ObjectId, ref: 'User' },
   date_facture: { type: Date, default: Date.now },
   date_echeance: Date,

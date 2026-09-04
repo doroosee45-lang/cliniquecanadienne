@@ -2,6 +2,7 @@ const Hospitalization = require('../models/Hospitalization');
 const Room    = require('../models/Room');
 const User    = require('../models/User');
 const Urgence = require('../models/Urgence');
+const Invoice = require('../models/Invoice');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate, emitTo } = require('../utils/socket');
 
@@ -350,9 +351,53 @@ exports.discharge = async (req, res, next) => {
         });
       }
     }
+    // FLOW-002 (audit du 4 sept. 2026) — aucun contrôleur clinique ne créait
+    // de Invoice à la sortie : l'onglet "Facturation" de Hospitalization.jsx
+    // calculait un montant côté client (tarifs + ratio de paiement fixes
+    // arbitraires), sans lien réel avec le module Finance. Lien réel posé
+    // ici, à partir de hosp.cout_total (champ réel du schéma) — jamais un
+    // tarif journalier ou un ratio inventés ici.
+    //
+    // LIMITE CONNUE, documentée plutôt que masquée : hosp.cout_total vaut
+    // 0 par défaut (schéma) et n'est actuellement JAMAIS renseigné par le
+    // formulaire de sortie frontend (vérifié : absent de EMPTY_SORTIE dans
+    // Hospitalization.jsx, et aucun sous-document — constantes/traitements/
+    // examens/visites — ne porte de champ de coût dans ce schéma). Le
+    // mécanisme ci-dessous est réel et créera une vraie facture liée dès
+    // qu'un cout_total réel existe (saisie manuelle via PUT /:id, ou une
+    // future capture de coût côté formulaire), mais EN PRATIQUE, tant que ce
+    // champ n'est renseigné nulle part, aucune sortie ne générera de facture
+    // automatique aujourd'hui. Combler ce vide demanderait d'inventer un
+    // tarif (journalier, par chambre...) qu'aucune donnée réelle ne
+    // supporte actuellement — décision produit hors périmètre de ce
+    // correctif, à trancher séparément. Gardé sur > 0 pour ne jamais créer
+    // de facture fantôme à 0 CFA.
+    let factureGeneree = null;
+    const coutTotal = Number(hosp.cout_total) || 0;
+    if (coutTotal > 0) {
+      factureGeneree = await Invoice.create({
+        patient: hosp.patient,
+        patient_nom: pat ? `${pat.prenom} ${pat.nom}`.trim() : undefined,
+        service_label: 'Hospitalisation',
+        hospitalisation: hosp._id,
+        created_by: req.user._id,
+        lignes: [{
+          libelle: `Séjour hospitalier${hosp.service_nom ? ` — ${hosp.service_nom}` : ''}`,
+          categorie: 'hospitalisation', prix_unitaire: coutTotal, quantite: 1, montant: coutTotal,
+        }],
+        montant_ht: coutTotal,
+        montant_ttc: coutTotal,
+      });
+      await logAction({
+        utilisateur: req.user._id, action: 'CREATE', module: 'finance',
+        entite_id: factureGeneree._id, ip: req.ip,
+        message: `Facture ${factureGeneree.numero_facture} générée automatiquement depuis la sortie du séjour ${hosp._id}`,
+      });
+    }
+
     await logAction({ utilisateur: req.user._id, action: 'DISCHARGE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip, avant, apres: hosp });
     emitActivity({ module: 'hospitalization', action: 'Sortie patient', detail: `${pat?.prenom || ''} ${pat?.nom || ''}`, icon: '🚪', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
-    res.json({ success: true, hospitalization: hosp });
+    res.json({ success: true, hospitalization: hosp, invoice: factureGeneree });
   } catch (err) { next(err); }
 };
