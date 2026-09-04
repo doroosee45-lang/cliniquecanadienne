@@ -129,6 +129,14 @@ exports.updatePassword = async (req, res, next) => {
     if (newPassword.length < 6)
       return res.status(400).json({ success: false, message: 'Le nouveau mot de passe doit avoir au moins 6 caractères.' });
     user.password = newPassword;
+    // AUDIT-C3 (ticket 0003, piste 3) — must_change_password était déjà
+    // positionné à la création d'un compte staff (hr.controller.js) et
+    // renvoyé par /auth/login et /auth/me, mais rien ne le remettait jamais
+    // à false : cette route (seul point d'entrée générique de changement de
+    // mot de passe, utilisé par le nouveau blocage frontend côté personnel)
+    // ne le faisait pas, contrairement à portal.controller.js::changePassword
+    // qui le fait déjà côté portail patient.
+    user.must_change_password = false;
     await user.save();
     await logAction({ utilisateur: user._id, action: 'UPDATE_PASSWORD', module: 'auth', ip: req.ip, message: 'Changement de mot de passe' });
     sendTokenCookie(user, 200, res);

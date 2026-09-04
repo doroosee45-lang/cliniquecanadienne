@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import MustChangePasswordGate from './MustChangePasswordGate';
 
 const PAGE_TITLES = {
   '/':               'Tableau de bord',
@@ -71,6 +72,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Poppins, sans-serif' }}>
+      <MustChangePasswordGate />
       <Sidebar isOpen={mobileOpen} collapsed={desktopCollapsed} onClose={closeSidebar} />
       <div className={`main-content ${desktopCollapsed ? 'sidebar-collapsed' : ''}`}>
         <Header title={title} onMenuToggle={toggleSidebar} />
