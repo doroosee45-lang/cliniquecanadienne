@@ -129,7 +129,10 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
       assert.equal(freshDelivery.terme, 39, 'donnée clinique conservée');
 
       const freshChir = await DossierChirurgical.findById(dossierChir._id).lean();
-      assert.equal(freshChir.patient_nom, undefined);
+      // AUDIT-C2 (ticket 0017) — patient_nom est `required: true` sur ce
+      // modèle : remplacé par le libellé neutre, pas retiré, sinon le
+      // prochain .save() réel sur ce document échouerait en ValidationError.
+      assert.equal(freshChir.patient_nom, 'Patient anonymisé');
       assert.equal(freshChir.telephone, undefined);
       assert.equal(freshChir.date_naissance, undefined);
       assert.equal(freshChir.diagnostic_chirurgical, 'Appendicite', 'donnée clinique conservée');
@@ -159,7 +162,9 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
       assert.ok(freshPreg.ddr, 'donnée clinique conservée');
 
       const freshUrg = await Urgence.findById(urgence._id).lean();
-      assert.equal(freshUrg.patient_nom, undefined);
+      // AUDIT-C2 (ticket 0017) — même raison que DossierChirurgical.patient_nom
+      // ci-dessus : required:true sur ce modèle.
+      assert.equal(freshUrg.patient_nom, 'Patient anonymisé');
       assert.equal(freshUrg.patient_tel, undefined);
       assert.equal(freshUrg.patient_dob, undefined);
       assert.equal(freshUrg.contact_urgence, undefined);

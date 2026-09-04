@@ -102,7 +102,12 @@ test('Audit critique 3 — références fantômes à la suppression patient (bas
       await anonymizePatient(p._id, { utilisateur: superadmin._id, ip: '127.0.0.1' });
 
       const freshChild = await Child.findById(child._id).lean();
-      assert.equal(freshChild.nom, undefined, 'Child.nom doit être scrubé');
+      // AUDIT-C2 (ticket 0017) — Child.nom est `required: true` : remplacé
+      // par le libellé neutre, pas retiré, sinon le prochain .save() réel
+      // sur ce document échouerait en ValidationError (même défaut que
+      // DossierChirurgical.patient_nom/Urgence.patient_nom, corrigé ici pour
+      // les 3 modèles en même temps — voir CASCADE_TARGETS.requiredFields).
+      assert.equal(freshChild.nom, 'Patient anonymisé', 'Child.nom doit être scrubé (remplacé par le libellé neutre, champ required)');
       assert.equal(freshChild.prenom, undefined, 'Child.prenom doit être scrubé');
       assert.equal(freshChild.parent_nom, undefined);
       assert.equal(freshChild.parent_tel, undefined);

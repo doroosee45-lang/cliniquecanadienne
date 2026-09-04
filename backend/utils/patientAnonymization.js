@@ -66,17 +66,30 @@ const ANONYMOUS_LABEL = 'Patient anonymisé';
 // dupliqué (piiFields vide) — gardés dans cette liste pour que
 // anonymizePatient() les couvre explicitement (traçabilité), la boucle
 // ci-dessous saute simplement l'écriture quand piiFields est vide.
+// AUDIT-C2 (ticket 0017) — 3 des piiFields ci-dessus sont déclarés
+// `required: true` sur leur schéma (DossierChirurgical.patient_nom,
+// Urgence.patient_nom, Child.nom — vérifié champ par champ sur les 14
+// modèles). $unset (via updateMany, qui ne déclenche pas les validateurs)
+// les retirait silencieusement, laissant en base un document dont un champ
+// obligatoire est absent : le prochain .save() réel sur ce document (un
+// contrôleur qui recharge puis sauvegarde, ex. urgencesController.js)
+// échoue alors en ValidationError, sans rapport apparent avec
+// l'anonymisation pour quelqu'un qui découvre ce comportement. `requiredFields`
+// ci-dessous liste, par modèle, le sous-ensemble de piiFields à remplacer par
+// ANONYMOUS_LABEL plutôt qu'à retirer — même principe que Patient.nom /
+// User.nom déjà traités ainsi plus haut — pour satisfaire la contrainte
+// `required` sans réintroduire de donnée identifiante.
 const CASCADE_TARGETS = [
   { model: require('../models/ArchiveEntry'),        refField: 'patient',    piiFields: ['patient_nom'] },
   { model: require('../models/Delivery'),             refField: 'patient_id', piiFields: ['patient_nom'] },
-  { model: require('../models/DossierChirurgical'),   refField: 'patient',    piiFields: ['patient_nom', 'telephone', 'date_naissance'] },
+  { model: require('../models/DossierChirurgical'),   refField: 'patient',    piiFields: ['patient_nom', 'telephone', 'date_naissance'], requiredFields: ['patient_nom'] },
   { model: require('../models/ImagingResult'),        refField: 'patient',    piiFields: ['patient_nom', 'patient_dossier', 'patient_dob', 'telephone', 'adresse'] },
   { model: require('../models/Invoice'),               refField: 'patient',    piiFields: ['patient_nom'] },
   { model: require('../models/LabResult'),             refField: 'patient',    piiFields: ['patient_nom', 'patient_dossier', 'telephone', 'date_naissance'] },
   { model: require('../models/Pregnancy'),             refField: 'patient_id', piiFields: ['patient_nom', 'patient_prenom', 'telephone', 'date_naissance'] },
-  { model: require('../models/Urgence'),               refField: 'patient',    piiFields: ['patient_nom', 'patient_dob', 'patient_tel', 'contact_urgence', 'tel_urgence'] },
+  { model: require('../models/Urgence'),               refField: 'patient',    piiFields: ['patient_nom', 'patient_dob', 'patient_tel', 'contact_urgence', 'tel_urgence'], requiredFields: ['patient_nom'] },
   { model: require('../models/AIPrediction'),          refField: 'patient',              piiFields: [] },
-  { model: require('../models/Child'),                 refField: 'patient_id',           piiFields: ['nom', 'prenom', 'parent_nom', 'parent_tel'] },
+  { model: require('../models/Child'),                 refField: 'patient_id',           piiFields: ['nom', 'prenom', 'parent_nom', 'parent_tel'], requiredFields: ['nom'] },
   { model: require('../models/Document'),              refField: 'patient',              piiFields: [] },
   { model: require('../models/Echographie'),           refField: 'patient_ref',           piiFields: ['patient'] },
   { model: require('../models/Newborn'),               refField: 'patient_id',           piiFields: ['mere_nom'] },
@@ -133,13 +146,20 @@ async function anonymizePatient(patientId, { utilisateur, ip } = {}) {
 
   // ── 3. Cascade — scrub des copies d'identité, contenu clinique conservé ──
   const cascade = {};
-  for (const { model, refField, piiFields } of CASCADE_TARGETS) {
+  for (const { model, refField, piiFields, requiredFields = [] } of CASCADE_TARGETS) {
     // Modèles sans aucun champ d'identité dupliqué (AIPrediction/Document/
     // Room) : rien à écrire — un $unset vide serait de toute façon rejeté
     // par MongoDB ("$unset with no fields specified").
     if (piiFields.length === 0) { cascade[model.modelName] = 0; continue; }
-    const unset = Object.fromEntries(piiFields.map(f => [f, 1]));
-    const result = await model.updateMany({ [refField]: patient._id }, { $unset: unset });
+    const toUnset = piiFields.filter(f => !requiredFields.includes(f));
+    const update = {};
+    if (toUnset.length) update.$unset = Object.fromEntries(toUnset.map(f => [f, 1]));
+    // requiredFields (AUDIT-C2, ticket 0017) : remplacés par ANONYMOUS_LABEL
+    // plutôt que retirés, pour ne jamais laisser en base un document dont un
+    // champ `required` du schéma est absent (voir commentaire sur
+    // CASCADE_TARGETS ci-dessus).
+    if (requiredFields.length) update.$set = Object.fromEntries(requiredFields.map(f => [f, ANONYMOUS_LABEL]));
+    const result = await model.updateMany({ [refField]: patient._id }, update);
     cascade[model.modelName] = result.modifiedCount;
   }
 
