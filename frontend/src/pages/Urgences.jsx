@@ -1039,8 +1039,21 @@ export default function Urgences() {
                         )}
                         {a.statut === "en_route" && (
                           <button className="ubtn ubtn-success ubtn-sm" style={{ width: "100%", marginTop: 6 }} onClick={async () => {
+                            // Correction B (relecture du 5 sept. 2026) — un échec réel de
+                            // PUT /ambulances/:numero/retour ne donnait aucun retour à
+                            // l'utilisateur (ni succès ni erreur) : silence total, pas un
+                            // faux succès comme assignMissionThunk (FE-BUG-001), mais tout
+                            // aussi trompeur — rien n'indiquait que l'action avait échoué.
+                            // retourAmbulance.rejected n'a aucun reducer (urgencesSlice.js) :
+                            // l'état de l'ambulance n'est donc déjà mis à jour que sur un vrai
+                            // fulfilled, jamais de façon optimiste — seul le retour visuel
+                            // manquait ici.
                             const result = await dispatch(retourAmbulanceThunk(a.numero));
-                            if (retourAmbulanceThunk.fulfilled.match(result)) toast.success(`🏥 Ambulance ${a.numero} : retour confirmé`);
+                            if (retourAmbulanceThunk.fulfilled.match(result)) {
+                              toast.success(`🏥 Ambulance ${a.numero} : retour confirmé`);
+                            } else {
+                              toast.error(`❌ ${result.payload || "Échec de la confirmation du retour, veuillez réessayer."}`);
+                            }
                           }}>
                             ✅ Confirmer retour
                           </button>
