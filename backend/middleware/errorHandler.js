@@ -1,4 +1,5 @@
 const multer = require('multer');
+const env = require('../config/env');
 const { logger, captureException } = require('../utils/logger');
 
 const errorHandler = (err, req, res, next) => {
@@ -67,9 +68,22 @@ const errorHandler = (err, req, res, next) => {
   logger.error(err.message, { ...logContext, stack: err.stack });
   captureException(err, logContext);
 
+  // SEC-003 — cette branche générique renvoyait error.message (le message
+  // brut de l'exception réellement imprévue : driver Mongo, TypeError,
+  // erreur réseau...) tel quel au client, y compris en production. La stack
+  // trace elle-même n'a jamais été renvoyée (seulement loguée ci-dessus) —
+  // seul le message était en cause. En production, message générique fixe :
+  // le détail réel reste dans les logs/Sentry (déjà capturés ci-dessus),
+  // jamais exposé au client. Les 3 branches 4xx explicites au-dessus (et les
+  // 2 branches SEC-002) gardent leur propre message contrôlé dans les deux
+  // environnements — non concernées par ce changement.
+  const messagePublic = env.NODE_ENV === 'production'
+    ? 'Erreur interne du serveur.'
+    : (error.message || 'Erreur interne du serveur.');
+
   res.status(err.statusCode || 500).json({
     success: false,
-    message: error.message || 'Erreur interne du serveur.',
+    message: messagePublic,
   });
 };
 
