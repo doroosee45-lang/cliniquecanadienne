@@ -423,6 +423,25 @@ exports.updateIntervention = async (req, res, next) => {
     const avant = await DossierChirurgical.findById(req.params.id).lean();
     if (!avant) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
 
+    // AUDIT-C1 (ticket 0022) — updateIntervention appliquait req.body.statut
+    // tel quel (vocabulaire UI : programmee/en_cours/reveil/terminee/annulee)
+    // au lieu de le traduire vers l'enum réel du modèle via toModelStatut(),
+    // comme le fait déjà createIntervention. `annulee` (UI) → 'consultation'
+    // (modèle) échouait donc systématiquement en 400 (enum invalide).
+    //
+    // Règle de transition adoptée par défaut (à valider avec l'équipe
+    // clinique — non tranchée dans le ticket) : une annulation ne peut se
+    // faire que depuis 'consultation' ou 'preoperatoire', jamais depuis
+    // 'opere'/'suivi_postop'/'cloture'. Sans cette garde, traduire
+    // aveuglément 'annulee' → 'consultation' ferait régresser une
+    // intervention déjà opérée au tout premier statut du parcours — un
+    // chirurgien qui clique "Annulée" par erreur sur un dossier déjà
+    // clôturé corromprait silencieusement l'historique chirurgical.
+    if (update.statut === 'annulee' && !['consultation', 'preoperatoire'].includes(avant.statut)) {
+      return res.status(400).json({ success: false, message: "Impossible d'annuler une intervention déjà opérée, en suivi post-opératoire ou clôturée." });
+    }
+    if (update.statut !== undefined) update.statut = toModelStatut(update.statut);
+
     // AUDIT-CRIT-2 — même détection de conflit que createIntervention/
     // scheduleIntervention (checkBlocConflict, en tête de fichier), absente
     // ici jusqu'à présent : replanifier une intervention vers une salle/un
