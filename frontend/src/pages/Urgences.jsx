@@ -1873,8 +1873,16 @@ export default function Urgences() {
               setModalAmbulance(false);
               setFormAmb({ numero:"", conducteur:"", destination:"", motif_mission:"" });
             } else {
-              toast.success(`✅ Mission ambulance ${formAmb.numero} assignée`, { id: toastId });
-              setModalAmbulance(false);
+              // FE-BUG-001 (audit du 4 sept. 2026) — affichait un faux succès
+              // même en cas d'échec réel, ET fermait la modale : rien dans
+              // l'état affiché ne reflétait alors l'échec (assignMission.
+              // rejected ne modifie jamais state.ambulances côté slice, donc
+              // aucune liste ne se met à jour non plus — la modale qui se
+              // ferme sur un toast de succès était la SEULE chose que
+              // l'utilisateur voyait, et elle mentait). La modale reste
+              // désormais ouverte (formAmb conservé) pour que l'utilisateur
+              // voie l'échec et puisse corriger/réessayer.
+              toast.error(`❌ ${result.payload || "Échec de l'assignation, veuillez réessayer."}`, { id: toastId });
             }
           }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
