@@ -469,6 +469,11 @@ export default function MonEspacePatient() {
     telephone: reduxPatient.telephone || "",
     adresse:   reduxPatient.adresse   || {},
     contact_urgence: reduxPatient.contact_urgence || {},
+    // AUDIT-D2 (ticket 0002) — uniquement pertinents tant que le profil est
+    // à compléter (voir portal.controller.js::updateProfile, qui n'accepte
+    // ces deux champs que dans ce cas précis).
+    date_naissance: reduxPatient.date_naissance ? String(reduxPatient.date_naissance).substring(0,10) : "",
+    sexe: reduxPatient.sexe || "",
   }); }, [reduxPatient]);
 
   const notifCount = notifs.filter(n => !getNotifLu(n)).length;
@@ -541,6 +546,7 @@ export default function MonEspacePatient() {
             <span className="flex items-center gap-2 flex-wrap">
               <span>📋 {patient.numero_dossier || patient.dossier || "—"} · 🎂 {ageCalc(patient.date_naissance) || patient.age} · 🩸 {patient.groupe_sanguin || "—"}</span>
               {mustChangePwd && <span style={{ color:"#FCD34D", fontWeight:700 }}>🔒 Changez votre mot de passe temporaire</span>}
+              {patient.profil_a_completer && <span style={{ color:"#FCD34D", fontWeight:700 }}>⚠ Profil à compléter</span>}
             </span>
           }
           right={
@@ -578,6 +584,22 @@ export default function MonEspacePatient() {
           {/* ══ DASHBOARD ══ */}
           {tab === "dashboard" && (
             <div>
+              {/* AUDIT-D2 (ticket 0002) — dossier créé automatiquement via
+                  Google OAuth (T3.1) sans date de naissance ni sexe :
+                  invite le patient à les renseigner. Disparaît d'elle-même
+                  dès que profil_a_completer repasse à false côté backend
+                  (portal.controller.js::updateProfile). */}
+              {patient.profil_a_completer && (
+                <div className="al-warn fu" style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20, flexWrap:"wrap" }}>
+                  <div style={{ width:40, height:40, background:"#FEF3C7", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>⚠</div>
+                  <div style={{ flex:1 }}>
+                    <strong style={{ color:"#92400E", fontSize:13 }}>Profil à compléter</strong>
+                    <div style={{ fontSize:12, color:"#B45309", marginTop:2 }}>Votre date de naissance et votre sexe sont manquants — merci de les renseigner pour finaliser votre dossier.</div>
+                  </div>
+                  <button className="ebtn ebtn-ghost ebtn-sm" style={{ borderColor:"#FCD34D", color:"#92400E" }} onClick={() => setModalProfil(true)}>Compléter mon profil →</button>
+                </div>
+              )}
+
               {/* Alerte vaccin */}
               <div className="al-warn fu" style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20, flexWrap:"wrap" }}>
                 <div style={{ width:40, height:40, background:"#FEF3C7", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>💉</div>
@@ -1239,6 +1261,25 @@ export default function MonEspacePatient() {
         {/* ═══ MODAL : MODIFIER PROFIL ═══ */}
         <Modal open={modalProfil} onClose={() => { setModalProfil(false); setProfilSuccess(""); }} title="✏️ Modifier mon profil" maxWidth={600}>
           <div className="ep-g11s">
+            {/* AUDIT-D2 (ticket 0002) — dossier créé via Google OAuth
+                (T3.1) : date de naissance/sexe absents à l'origine, non
+                modifiables en usage normal (gérées par la réception une
+                fois le profil complété — voir portal.controller.js::
+                updateProfile). */}
+            {patient.profil_a_completer && (
+              <>
+                <div><label className="elbl">Date de naissance *</label>
+                  <input type="date" className="einp" value={profilForm.date_naissance||""} onChange={e => setProfilForm(f => ({...f, date_naissance:e.target.value}))} />
+                </div>
+                <div><label className="elbl">Sexe *</label>
+                  <select className="einp" value={profilForm.sexe||""} onChange={e => setProfilForm(f => ({...f, sexe:e.target.value}))}>
+                    <option value="">— Sélectionner —</option>
+                    <option value="M">Masculin</option>
+                    <option value="F">Féminin</option>
+                  </select>
+                </div>
+              </>
+            )}
             <div><label className="elbl">Téléphone</label>
               <input className="einp" value={profilForm.telephone||""} onChange={e => setProfilForm(f => ({...f, telephone:e.target.value}))} />
             </div>

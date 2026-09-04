@@ -315,6 +315,21 @@ exports.updateProfile = async (req, res, next) => {
     const update  = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
 
+    // AUDIT-D2 (ticket 0002) — date_naissance/sexe ne sont modifiables par le
+    // patient QUE pour compléter un dossier créé via Google OAuth (T3.1,
+    // profil_a_completer:true, ces deux champs alors absents) — jamais en
+    // usage général, pour ne pas ouvrir un canal de modification libre de
+    // l'identité administrative d'un patient déjà admis normalement (gérée
+    // par la réception dans ce cas). Une fois les deux renseignés,
+    // profil_a_completer repasse à false.
+    if (patient.profil_a_completer) {
+      if (req.body.date_naissance !== undefined) update.date_naissance = req.body.date_naissance;
+      if (req.body.sexe !== undefined) update.sexe = req.body.sexe;
+      const dateFinale = update.date_naissance !== undefined ? update.date_naissance : patient.date_naissance;
+      const sexeFinal  = update.sexe !== undefined ? update.sexe : patient.sexe;
+      if (dateFinale && sexeFinal) update.profil_a_completer = false;
+    }
+
     const updated = await Patient.findByIdAndUpdate(patient._id, update, { new: true, runValidators: true });
 
     // Sync téléphone dans User si modifié

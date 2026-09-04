@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
 import Spinner from '../components/UI/Spinner';
-import { StatusBadge } from '../components/UI/Badge';
+import Badge, { StatusBadge } from '../components/UI/Badge';
 
 // ── Onglets du dossier patient ────────────────────────────────────────────────
 const TABS = [
@@ -228,6 +228,8 @@ export default function PatientDetail() {
               <h1 className="text-xl font-bold text-gray-900">{patient.prenom} {patient.nom}</h1>
               <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-lg">{patient.numero_dossier}</span>
               <StatusBadge statut={patient.statut} />
+              {/* AUDIT-D2 (ticket 0002) — dossier créé via Google OAuth (T3.1), date de naissance/sexe manquants. */}
+              {patient.profil_a_completer && <Badge variant="orange">Profil à compléter</Badge>}
             </div>
             <div className="flex flex-wrap gap-4 text-sm text-gray-500">
               {age !== null && <span>🎂 {age} ans ({fmt(patient.date_naissance)})</span>}

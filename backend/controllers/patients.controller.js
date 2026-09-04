@@ -16,7 +16,11 @@ const { logger } = require('../utils/logger');
 // leur activité, jamais des champs cliniques (antecedents_medicaux,
 // antecedents_familiaux, notes) — matrice validée avec l'utilisateur.
 // null = aucune restriction (dossier complet).
-const DEMO_FIELDS = 'nom prenom numero_dossier date_naissance sexe telephone email photo adresse statut createdAt';
+// AUDIT-D2 (ticket 0002) — profil_a_completer ajouté : champ administratif
+// (pas clinique), nécessaire pour que le badge "Profil à compléter" côté
+// Patients.jsx/PatientDetail.jsx s'affiche aussi pour les rôles restreints
+// (réceptionniste en particulier — c'est elle qui doit relancer le patient).
+const DEMO_FIELDS = 'nom prenom numero_dossier date_naissance sexe telephone email photo adresse statut createdAt profil_a_completer';
 const RESTRICTED_FIELDS = {
   // Risque clinique immédiat (prélèvement) → groupe sanguin + allergies.
   laborantin:     `${DEMO_FIELDS} groupe_sanguin allergies`,

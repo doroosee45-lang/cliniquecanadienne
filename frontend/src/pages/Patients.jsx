@@ -782,7 +782,11 @@ export default function Patient() {
                                     : <span>{SEXE_ICON[p.sexe] || "👤"}</span>}
                                 </div>
                                 <div>
-                                  <div style={{ fontWeight:700, color:"var(--cn)" }}>{p.prenom} {p.nom}</div>
+                                  <div style={{ fontWeight:700, color:"var(--cn)", display:"flex", alignItems:"center", gap:6 }}>
+                                    {p.prenom} {p.nom}
+                                    {/* AUDIT-D2 (ticket 0002) — dossier créé via Google OAuth (T3.1), date de naissance/sexe manquants. */}
+                                    {p.profil_a_completer && <Badge cls="orange">Profil à compléter</Badge>}
+                                  </div>
                                   <div style={{ fontSize:10, color:"var(--cm)" }}>{p.email || "—"}</div>
                                 </div>
                               </div>
@@ -865,7 +869,11 @@ export default function Patient() {
                         </div>
                     }
                     <div>
-                      <div style={{ fontSize:20, fontWeight:700 }}>{currentPatient.prenom} {currentPatient.nom}</div>
+                      <div style={{ fontSize:20, fontWeight:700, display:"flex", alignItems:"center", gap:8 }}>
+                        {currentPatient.prenom} {currentPatient.nom}
+                        {/* AUDIT-D2 (ticket 0002) — dossier créé via Google OAuth (T3.1), date de naissance/sexe manquants. */}
+                        {currentPatient.profil_a_completer && <Badge cls="orange">Profil à compléter</Badge>}
+                      </div>
                       <div style={{ fontSize:12, color:"rgba(255,255,255,.65)", marginTop:2 }}>
                         {ageCalc(currentPatient.date_naissance)} · {currentPatient.sexe ? currentPatient.sexe.charAt(0).toUpperCase() + currentPatient.sexe.slice(1) : "—"} · Gr. {currentPatient.groupe_sanguin || "—"}
                         {currentPatient.allergies && <span style={{ color:"#FCA5A5" }}> · ⚠ {currentPatient.allergies}</span>}
