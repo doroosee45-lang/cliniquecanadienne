@@ -229,10 +229,16 @@ const ROLES_PERMS = [
 
 const DEMO_LOGS = [];
 
+// Ticket 0020 — les champs "statut" ci-dessous ne sont plus lus par le rendu
+// (voir AUDIT-03 plus bas : chaque carte affiche "Bientôt disponible" et un
+// bouton désactivé, quelle que soit cette valeur). Corrigés ici pour ne plus
+// dire "connecté" en clair dans la source alors qu'aucune de ces intégrations
+// n'est réellement provisionnée (SMS patient a depuis un canal réel distinct,
+// via Messages.jsx/Twilio — cette carte reste une entrée générique "Orange").
 const INTEGRATIONS = [
-  { nom:"SMS Gateway (Orange)",  statut:"connecté",    icon:"📱", desc:"Envoi SMS patients & alertes",             color:"#059669" },
-  { nom:"WhatsApp Business API", statut:"connecté",    icon:"💬", desc:"Messages automatiques WhatsApp",           color:"#059669" },
-  { nom:"Paiement Mobile Money", statut:"connecté",    icon:"💰", desc:"MTN Mobile Money & Airtel Money",          color:"#059669" },
+  { nom:"SMS Gateway (Orange)",  statut:"déconnecté",  icon:"📱", desc:"Envoi SMS patients & alertes",             color:"#DC2626" },
+  { nom:"WhatsApp Business API", statut:"déconnecté",  icon:"💬", desc:"Messages automatiques WhatsApp",           color:"#DC2626" },
+  { nom:"Paiement Mobile Money", statut:"déconnecté",  icon:"💰", desc:"MTN Mobile Money & Airtel Money",          color:"#DC2626" },
   { nom:"Assurance CNSS",        statut:"en attente",  icon:"🏦", desc:"Liaison tiers payant CNSS Congo",          color:"#D97706" },
   { nom:"Labo externe CHL",      statut:"déconnecté",  icon:"🔬", desc:"Centre Hospitalier de Libreville",         color:"#DC2626" },
   { nom:"Radiologie externe",    statut:"déconnecté",  icon:"🩻", desc:"Centre d'imagerie partenaire",             color:"#DC2626" },

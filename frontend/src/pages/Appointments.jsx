@@ -1815,16 +1815,15 @@ export default function RendezVous() {
                 <textarea className="cinp" rows={2} placeholder="Informations complémentaires..." value={formRdv.notes} onChange={e => setFormRdv(f=>({...f,notes:e.target.value}))} />
               </div>
 
-              {/* Notifications */}
+              {/* AUDIT-MESSAGES-PhaseD (ticket 0020) — les 3 cases ("SMS de
+                  confirmation", "Rappel 24h avant", "Rappel 2h avant")
+                  n'étaient jamais lues par createRdv() : aucune ne
+                  déclenchait quoi que ce soit. Remplacées par une note
+                  honnête sur le seul rappel réel (e-mail, la veille, si le
+                  patient a un e-mail enregistré). */}
               <div className="rdv-col-all" style={{ background:"#F0FDFC", border:"1.5px solid #99F6E4", borderRadius:12, padding:"12px 16px" }}>
-                <div style={{ fontSize:12, fontWeight:700, color:"var(--ct)", marginBottom:8 }}>{I.bell} Notifications automatiques</div>
-                <div style={{ display:"flex", gap:16, flexWrap:"wrap", fontSize:12, color:"var(--cm)" }}>
-                  {["SMS de confirmation","Rappel 24h avant","Rappel 2h avant"].map(n => (
-                    <label key={n} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
-                      <input type="checkbox" defaultChecked style={{ accentColor:"var(--ct)", width:14, height:14 }} /> {n}
-                    </label>
-                  ))}
-                </div>
+                <div style={{ fontSize:12, fontWeight:700, color:"var(--ct)", marginBottom:4 }}>{I.bell} Notification automatique</div>
+                <div style={{ fontSize:12, color:"var(--cm)" }}>Rappel par e-mail envoyé automatiquement la veille — uniquement si le patient a un e-mail enregistré.</div>
               </div>
             </div>
             <div style={{ display:"flex", gap:10, marginTop:20 }}>
