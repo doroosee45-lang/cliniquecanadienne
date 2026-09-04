@@ -2127,6 +2127,7 @@ export default function Finance() {
                       <input className="finp" required={!formFacture.patient_id}
                         value={formFacture.patient_nom}
                         placeholder="Taper le nom du patient..."
+                        aria-label="Taper le nom du patient"
                         autoComplete="off"
                         onChange={e => {
                           setFormFacture(f=>({...f, patient_nom:e.target.value, patient_id:""}));
@@ -2375,6 +2376,7 @@ export default function Finance() {
                   <div>
                     <input className="finp" value={paiementFactureQ}
                       placeholder="Rechercher par n° facture ou patient..."
+                      aria-label="Rechercher par n° facture ou patient"
                       onChange={e => setPaiementFactureQ(e.target.value)}
                       autoComplete="off"
                     />

@@ -1825,6 +1825,7 @@ export default function Messagerie() {
                             ref={textRef}
                             className="msg-textarea"
                             placeholder={`Message à ${getConvDisplayName(selected, me._id)}…`}
+                            aria-label={`Message à ${getConvDisplayName(selected, me._id)}`}
                             value={input}
                             onChange={handleInput}
                             onKeyDown={handleKey}

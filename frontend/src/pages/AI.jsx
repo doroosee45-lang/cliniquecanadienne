@@ -1272,7 +1272,7 @@ export default function IntelligenceArtificielle() {
                         <div ref={chatEndRef} />
                       </div>
                       <div className="chat-input-row">
-                        <input className="chat-input" placeholder="Fonctionnalité en cours de développement — aucune donnée réelle" value={chatInput} onChange={e => setChatInput(e.target.value)} disabled title="Fonctionnalité en cours de développement — aucune donnée réelle" />
+                        <input className="chat-input" placeholder="Fonctionnalité en cours de développement — aucune donnée réelle" aria-label="Fonctionnalité en cours de développement — aucune donnée réelle" value={chatInput} onChange={e => setChatInput(e.target.value)} disabled title="Fonctionnalité en cours de développement — aucune donnée réelle" />
                         <button className="ibtn ibtn-teal ibtn-sm" disabled title="Fonctionnalité en cours de développement — aucune donnée réelle">{I.send}</button>
                       </div>
                     </div>

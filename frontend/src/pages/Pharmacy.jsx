@@ -2598,6 +2598,7 @@ ${lignes}
                         className="pinp"
                         style={{ fontSize:12, paddingRight:it.med ? 28 : 12 }}
                         placeholder="🔍 Taper pour rechercher (ex: Amox, Parac...)"
+                        aria-label="Taper pour rechercher (ex: Amox, Parac...)"
                         value={inputVal}
                         onChange={e => {
                           const val = e.target.value;
@@ -2757,7 +2758,7 @@ ${lignes}
                             dosage: matched ? (matched.dosage || x.dosage) : x.dosage,
                             prix_unitaire: matched ? (matched.prix_achat || x.prix_unitaire) : x.prix_unitaire,
                           }:x)}));
-                        }} placeholder="Nom médicament" />
+                        }} placeholder="Nom médicament" aria-label="Nom médicament" />
                         {l.medicament && <div style={{ fontSize:10, color:"var(--pb)", marginTop:2 }}>🔗 Lié au stock — réception incrémentera cette fiche</div>}
                       </td>
                       <td><input className="pinp" style={{ fontSize:12, padding:"6px 10px", width:100 }} value={l.forme} onChange={e=>setFormCmd(f=>({...f,lignes:f.lignes.map(x=>x.id===l.id?{...x,forme:e.target.value}:x)}))} placeholder="Comprimé" /></td>
