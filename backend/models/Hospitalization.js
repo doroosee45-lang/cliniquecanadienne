@@ -90,6 +90,11 @@ const HospitalizationSchema = new Schema({
   notes_cliniques:      [NoteSchema],
   statut:               { type: String, enum: ['en_cours','sorti','transfere','decede'], default: 'en_cours' },
   cout_total:           { type: Number, default: 0 },
+  // Correction A (relecture du 5 sept. 2026) — traçabilité du calcul réel de
+  // cout_total à la sortie (hospitalization.controller.js::discharge) :
+  // détail lisible (durée × tarif réel du lit) quand calculé automatiquement,
+  // absent si cout_total a été saisi manuellement.
+  cout_detail:          String,
   // champs supplémentaires du formulaire
   provenance:           String,
   type_chambre:         String,

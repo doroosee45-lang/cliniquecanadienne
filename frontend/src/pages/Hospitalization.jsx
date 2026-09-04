@@ -276,7 +276,7 @@ const EMPTY_CONSTANTE    = { date:"", temperature:"", tension_sys:"", tension_di
 const EMPTY_TRAITEMENT   = { medicament:"", dose:"", heure:"", voie:"orale", personnel:"", statut:"planifie" };
 const EMPTY_EXAMEN       = { type:"labo", designation:"", date:"", statut:"attente", resultat:"" };
 const EMPTY_VISITE       = { date:"", visiteur:"", heure_entree:"", heure_sortie:"", note:"" };
-const EMPTY_SORTIE       = { date_sortie:"", heure_sortie:"", diagnostic_sortie:"", etat_patient:"gueri", recommandations:"", rdv_controle:"" };
+const EMPTY_SORTIE       = { date_sortie:"", heure_sortie:"", diagnostic_sortie:"", etat_patient:"gueri", recommandations:"", rdv_controle:"", cout_total:"" };
 
 // ─── SVG Icons ────────────────────────────────────────────────
 const I = {
@@ -770,7 +770,14 @@ export default function Hospitalisation() {
     setSaving(true);
     const toastId = toast.loading("🚪 Enregistrement de la sortie...");
     try {
-      const { data } = await api.put(`/hospitalization/${currentHosp._id}/discharge`, formSortie);
+      // Correction A (relecture du 5 sept. 2026) — cout_total est optionnel :
+      // laissé vide, le backend le calcule depuis le vrai tarif du lit occupé
+      // (discharge()) ; envoyer une chaîne vide ferait échouer la validation
+      // Mongoose (cast Number), donc on ne l'envoie que si réellement saisi.
+      const payload = { ...formSortie };
+      if (payload.cout_total === "" || payload.cout_total == null) delete payload.cout_total;
+      else payload.cout_total = Number(payload.cout_total);
+      const { data } = await api.put(`/hospitalization/${currentHosp._id}/discharge`, payload);
       const updated = normalizeHosp(data.hospitalization || data.hospitalisation || data.data || { ...currentHosp, statut:"sorti", ...formSortie });
 
       setCurrentHosp(updated);
@@ -2174,6 +2181,15 @@ export default function Hospitalisation() {
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="hlbl">Rendez-vous de contrôle</label>
                 <input className="hinp" value={formSortie.rdv_controle} onChange={e => setFormSortie(f=>({...f,rdv_controle:e.target.value}))} placeholder="Ex: Dans 2 semaines en chirurgie..." />
+              </div>
+              <div style={{ gridColumn:"1/-1" }}>
+                <label className="hlbl">Coût du séjour (CFA) — optionnel</label>
+                <input type="number" min="0" step="1" className="hinp" value={formSortie.cout_total} onChange={e => setFormSortie(f=>({...f,cout_total:e.target.value}))} placeholder="Laissez vide pour un calcul automatique depuis le tarif réel du lit occupé" />
+                <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>
+                  {currentHosp?.chambre_label
+                    ? "Si vide, calculé automatiquement : tarif réel du lit occupé × durée du séjour."
+                    : "Aucun lit structuré n'est rattaché à ce séjour — sans saisie ici, aucune facture ne sera générée automatiquement."}
+                </div>
               </div>
               <div style={{ gridColumn:"1/-1", display:"flex", gap:10 }}>
                 <button type="button" className="hbtn hbtn-ghost" onClick={() => setModalSortie(false)}>Annuler</button>

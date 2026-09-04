@@ -358,20 +358,36 @@ exports.discharge = async (req, res, next) => {
     // ici, à partir de hosp.cout_total (champ réel du schéma) — jamais un
     // tarif journalier ou un ratio inventés ici.
     //
-    // LIMITE CONNUE, documentée plutôt que masquée : hosp.cout_total vaut
-    // 0 par défaut (schéma) et n'est actuellement JAMAIS renseigné par le
-    // formulaire de sortie frontend (vérifié : absent de EMPTY_SORTIE dans
-    // Hospitalization.jsx, et aucun sous-document — constantes/traitements/
-    // examens/visites — ne porte de champ de coût dans ce schéma). Le
-    // mécanisme ci-dessous est réel et créera une vraie facture liée dès
-    // qu'un cout_total réel existe (saisie manuelle via PUT /:id, ou une
-    // future capture de coût côté formulaire), mais EN PRATIQUE, tant que ce
-    // champ n'est renseigné nulle part, aucune sortie ne générera de facture
-    // automatique aujourd'hui. Combler ce vide demanderait d'inventer un
-    // tarif (journalier, par chambre...) qu'aucune donnée réelle ne
-    // supporte actuellement — décision produit hors périmètre de ce
-    // correctif, à trancher séparément. Gardé sur > 0 pour ne jamais créer
-    // de facture fantôme à 0 CFA.
+    // Correction A (relecture du 5 sept. 2026) — hosp.cout_total n'était
+    // alimenté par aucun mécanisme réel (ni saisie, ni calcul). Une vraie
+    // source de tarif existait déjà ailleurs dans le schéma, vérifiée avant
+    // d'en inventer une : Room.lits[].prix_par_jour, un tarif journalier réel
+    // par lit (8000 à 45000 CFA selon type/service dans les données réelles,
+    // cf. utils/seed.js), déjà branché sur un vrai sélecteur chambre→lit à
+    // l'admission (AUDIT-P7-5, Hospitalization.jsx::loadLits) — hosp.chambre
+    // et hosp.lit_numero référencent donc un vrai lit dans le cas normal.
+    // Si aucun cout_total réel n'a été saisi manuellement (nouveau champ
+    // optionnel du formulaire de sortie, transmis tel quel via ce même
+    // endpoint), il est calculé ici : tarif journalier réel du lit occupé ×
+    // durée réelle du séjour (date_sortie − date_entree, arrondie au jour
+    // supérieur, minimum 1). Persisté sur hosp.cout_total pour que la facture
+    // et le dossier restent cohérents à la relecture.
+    // LIMITE qui subsiste, documentée plutôt que masquée : un séjour admis
+    // avec une chambre en texte libre (hosp.chambre non renseigné — cas
+    // encore possible, ex. saisie historique ou admission d'urgence sans
+    // attribution de lit) n'a aucune source de tarif réelle ; cout_total y
+    // reste à 0 et aucune facture n'est générée (garde ci-dessous), plutôt
+    // que d'inventer un tarif par défaut.
+    if (!(Number(hosp.cout_total) > 0) && hosp.chambre?.lits?.length && hosp.lit_numero) {
+      const bed = hosp.chambre.lits.find(l => l.numero === hosp.lit_numero);
+      if (bed && Number(bed.prix_par_jour) > 0) {
+        const MS_PAR_JOUR = 24 * 60 * 60 * 1000;
+        const dureeJours = Math.max(1, Math.ceil((hosp.date_sortie - hosp.date_entree) / MS_PAR_JOUR));
+        hosp.cout_total = bed.prix_par_jour * dureeJours;
+        hosp.cout_detail = `${dureeJours} jour(s) × ${bed.prix_par_jour} CFA (lit ${bed.numero}, tarif réel)`;
+        await hosp.save();
+      }
+    }
     let factureGeneree = null;
     const coutTotal = Number(hosp.cout_total) || 0;
     if (coutTotal > 0) {
@@ -382,7 +398,7 @@ exports.discharge = async (req, res, next) => {
         hospitalisation: hosp._id,
         created_by: req.user._id,
         lignes: [{
-          libelle: `Séjour hospitalier${hosp.service_nom ? ` — ${hosp.service_nom}` : ''}`,
+          libelle: `Séjour hospitalier${hosp.service_nom ? ` — ${hosp.service_nom}` : ''}${hosp.cout_detail ? ` (${hosp.cout_detail})` : ''}`,
           categorie: 'hospitalisation', prix_unitaire: coutTotal, quantite: 1, montant: coutTotal,
         }],
         montant_ht: coutTotal,
