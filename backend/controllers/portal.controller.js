@@ -272,6 +272,16 @@ exports.getDashboard = async (req, res, next) => {
         resultats_disponibles: resultats_labo_dispo + resultats_imagerie_dispo,
         factures_impayees, consultations_total, messages_non_lus,
       },
+      // AUDIT-D2 (ticket 0002) — vérification manuelle réelle (Phase G2) a
+      // montré qu'un patient atterrit sur Dashboard.jsx (/) après connexion,
+      // jamais sur Portal.jsx (/portal) où vivait jusqu'ici la bannière
+      // "Profil à compléter" : la bannière n'était donc en pratique jamais
+      // vue à la connexion, l'objectif du ticket ("à la connexion
+      // suivante"). Exposé ici pour que Dashboard.jsx puisse afficher la
+      // même alerte sans dupliquer la logique de complétion (le patient est
+      // renvoyé vers /portal pour la remplir, seul endroit où le formulaire
+      // existe).
+      profil_a_completer: patient.profil_a_completer || false,
       prochain_rdv, mes_rdv, ordonnances, resultats, factures, alertes, constantes,
       medecin_ref: medecin_ref ? {
         nom: medecin_ref.nom, prenom: medecin_ref.prenom,

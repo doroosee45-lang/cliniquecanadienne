@@ -244,12 +244,30 @@ function PatientDashboard({ data, user, isMobile }) {
   const alertes      = data?.alertes        || [];
   const constantes   = data?.constantes     || {};
   const medecin      = data?.medecin_ref    || null;
+  const profilACompleter = data?.profil_a_completer || false;
 
   const stRdv = (s) => ({ confirme:"green", en_attente:"orange", annule:"red", termine:"gray" }[s] || "blue");
   const lbRdv = (s) => ({ confirme:"✅ Confirmé", en_attente:"⏳ En attente", annule:"❌ Annulé", termine:"✓ Passé" }[s] || s);
 
   return (
     <div>
+      {/* AUDIT-D2 (ticket 0002) — c'est ici, pas Portal.jsx, que le patient
+          voit réellement cette alerte en arrivant après connexion (Portal.jsx
+          n'est atteint que par navigation explicite vers "Mon Espace
+          Patient" — vérifié en Phase G2). Le formulaire de complétion vit
+          uniquement sur /portal (pas de modale dupliquée ici) : le bouton y
+          renvoie. */}
+      {profilACompleter && (
+        <div className="al-warn" style={{ marginBottom:20, display:"flex", gap:12, alignItems:"center", flexWrap:"wrap" }}>
+          <span style={{ fontSize:20 }}>⚠</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#92400E" }}>Profil à compléter</div>
+            <div style={{ fontSize:12, color:"#B45309" }}>Votre date de naissance et votre sexe sont manquants — merci de les renseigner pour finaliser votre dossier.</div>
+          </div>
+          <button className="dbtn dbtn-primary dbtn-sm" onClick={() => navigate("/portal")}>Compléter mon profil →</button>
+        </div>
+      )}
+
       {/* ── Prochain RDV — bannière mise en avant ── */}
       {prochainRdv ? (
         <div style={{ background:"linear-gradient(135deg,#0EA5A0 0%,#0B1E3B 100%)", borderRadius:18, padding:"20px 24px", marginBottom:20, display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
