@@ -296,7 +296,15 @@ const NAV_SECTIONS = [
     items: [
       { to: '/hr',       label: 'Ressources Humaines', icon: Briefcase,     roles: ADMINS },
       { to: '/finance',  label: 'Finance',             icon: Wallet,        roles: withAdmins('comptable') },
-      { to: '/messages', label: 'Messagerie',          icon: MessageSquare, roles: null },
+      // Correction 1 (relecture du 5 sept. 2026, découverte pendant SEC-004/005) —
+      // roles: null affichait ce lien à tout rôle connecté, y compris patient,
+      // pour une page qui n'a pas d'équivalent patient (Portal.jsx a son
+      // propre onglet "Messagerie" séparé). withAdmins() couvre déjà tout le
+      // personnel non-admin listé ci-dessus ; complété ici des rôles
+      // restants de STAFF (backend/utils/roles.js) qui n'apparaissent dans
+      // aucune autre entrée de ce fichier (sage_femme, laborantin,
+      // radiologue, pharmacien, comptable, receptionniste).
+      { to: '/messages', label: 'Messagerie',          icon: MessageSquare, roles: withAdmins('medecin','infirmier','sage_femme','laborantin','radiologue','pharmacien','comptable','receptionniste') },
     ],
   },
   {

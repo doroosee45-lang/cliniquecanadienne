@@ -135,6 +135,15 @@ const ROLES = {
   laboratoire     : ['superadmin', 'adminclinique', 'medecin', 'laborantin'],
   imagerie        : ['superadmin', 'adminclinique', 'medecin', 'radiologue'],
   echographie     : ['superadmin', 'adminclinique', 'medecin', 'radiologue', 'infirmier'],
+  // Correction 1 (relecture du 5 sept. 2026, découverte pendant SEC-004/005) —
+  // même liste que STAFF (backend/utils/roles.js), qui exclut explicitement
+  // 'patient' : la page Messages.jsx (annuaire du personnel, ouverture de
+  // conversation avec n'importe quel utilisateur) n'a pas d'équivalent
+  // patient — Portal.jsx a son propre onglet "Messagerie" séparé (pour
+  // l'instant non fonctionnel, bouton désactivé, cf. commentaire AUDIT-11 in
+  // situ), jamais cette page-ci.
+  messages        : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme',
+                      'laborantin', 'radiologue', 'pharmacien', 'comptable', 'receptionniste'],
 };
 
 // Composant raccourci pour éviter la répétition
@@ -208,7 +217,7 @@ const AppRoutes = () => {
         <Route path="settings"       element={<Guard roles={ROLES.admin}><Settings /></Guard>} />
 
         {/* ── Outils & Communication ───────────────────────────────────── */}
-        <Route path="messages"  element={<Messages />} />
+        <Route path="messages"  element={<Guard roles={ROLES.messages}><Messages /></Guard>} />
         <Route path="ai"        element={<Guard roles={ROLES.medecin}><AI /></Guard>} />
         <Route path="archive"   element={<Guard roles={ROLES.admin}><Archive /></Guard>} />
         <Route path="audit"     element={<Guard roles={ROLES.audit}><Audit /></Guard>} />
