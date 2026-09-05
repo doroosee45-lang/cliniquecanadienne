@@ -346,8 +346,83 @@ function BarChart({ labels, data, color = "#1B4F9E", height = 200 }) {
 // ─── DEMO DATA ───────────────────────────────────────────────
 const DEMO_ANALYSES = [];
 
-const DEMO_MOIS = [];
-const DEMO_VOLUMES = [];
+// Sous-phase 5.1 (relecture du 6 sept. 2026) — l'onglet Statistiques
+// affichait un graphique 12 mois toujours vide (DEMO_MOIS/DEMO_VOLUMES),
+// une liste "examens les plus prescrits" et un "délai moyen de rendu" tous
+// deux codés en dur, sans rapport avec les analyses réellement chargées.
+// Remplacés par de vraies agrégations sur `analyses` (déjà chargées) et
+// `catalogue` (GET /laboratory/catalogue, déjà réel).
+const PALETTE_5_1 = ["#1B4F9E","#0EA5A0","#D97706","#7C3AED","#059669","#DC2626"];
+
+const buildAnalysesParMois = (analyses) => {
+  const now = new Date();
+  const labels = [], data = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    labels.push(d.toLocaleString('fr-FR', { month: 'short' }));
+    const count = analyses.filter(a => {
+      const ad = new Date(a.date_prescription || a.date_demande);
+      return ad.getFullYear() === d.getFullYear() && ad.getMonth() === d.getMonth();
+    }).length;
+    data.push(count);
+  }
+  return { labels, data };
+};
+
+// Résout un ObjectId d'examen vers son nom réel au catalogue — jamais un
+// libellé fabriqué ; un ID non résolu (catalogue non chargé, id local
+// hérité d'un ancien format) est simplement exclu de l'agrégation.
+const resolveExamenNom = (id, catalogue) => {
+  if (!id) return null;
+  const found = catalogue.find(c => c._id === String(id));
+  return found ? found.nom : null;
+};
+
+const buildExamensPlusPrescrits = (analyses, catalogue) => {
+  const counts = {};
+  let total = 0;
+  analyses.forEach(a => {
+    (a.examens_demandes || []).forEach(id => {
+      const nom = resolveExamenNom(id, catalogue);
+      if (!nom) return;
+      counts[nom] = (counts[nom] || 0) + 1;
+      total += 1;
+    });
+  });
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([nom, n], i) => [nom, total ? Math.round((n / total) * 100) : 0, PALETTE_5_1[i % PALETTE_5_1.length]]);
+};
+
+const formatDelaiMs = (ms) => {
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60), m = totalMin % 60;
+  if (h <= 0) return `${m}min`;
+  return m > 0 ? `${h}h${String(m).padStart(2,'0')}` : `${h}h00`;
+};
+
+// Délai réel = date_resultat - date_prescription (saisirResultats() pose
+// date_resultat au moment où le résultat est réellement rendu). Exclut les
+// analyses encore en attente (aucune des deux dates fabriquée si absente).
+const buildDelaisMoyens = (analyses, catalogue) => {
+  const groups = {};
+  let globalSumMs = 0, globalCount = 0;
+  analyses.forEach(a => {
+    if (!a.date_resultat || !a.date_prescription) return;
+    const delayMs = new Date(a.date_resultat) - new Date(a.date_prescription);
+    if (!(delayMs > 0)) return;
+    globalSumMs += delayMs; globalCount += 1;
+    const nom = resolveExamenNom(a.examen, catalogue);
+    if (!nom) return;
+    if (!groups[nom]) groups[nom] = { sum: 0, count: 0 };
+    groups[nom].sum += delayMs; groups[nom].count += 1;
+  });
+  const rows = Object.entries(groups)
+    .map(([nom, { sum, count }], i) => [nom, formatDelaiMs(sum / count), PALETTE_5_1[i % PALETTE_5_1.length]])
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  return { rows, globalLabel: globalCount ? formatDelaiMs(globalSumMs / globalCount) : null };
+};
 
 // Garantit que `resultats` est toujours un tableau, quel que soit le type retourné par l'API
 const asArr = v => (Array.isArray(v) ? v : []);
@@ -422,6 +497,12 @@ export default function Laboratoire() {
   // Les examens sélectionnés référencent désormais ce vrai _id, jamais un
   // libellé texte inventé — la facturation cesse d'être inerte en pratique.
   const [catalogue, setCatalogue] = useState([]);
+
+  // Sous-phase 5.1 — agrégations réelles pour l'onglet Statistiques,
+  // recalculées uniquement quand les analyses/le catalogue changent.
+  const analysesParMois = useMemo(() => buildAnalysesParMois(analyses), [analyses]);
+  const examensPlusPrescrits = useMemo(() => buildExamensPlusPrescrits(analyses, catalogue), [analyses, catalogue]);
+  const delaisMoyens = useMemo(() => buildDelaisMoyens(analyses, catalogue), [analyses, catalogue]);
 
   // Ré-ouverture de P6-1 : est_critique n'est plus une pure dérivation
   // silencieuse — la case à cocher est pré-cochée depuis la détection
@@ -1445,20 +1526,16 @@ export default function Laboratoire() {
                     <div><h3>{I.trend} Volume d'analyses — 12 mois</h3><p>Nombre d'analyses biologiques mensuelles</p></div>
                   </div>
                   <div style={{ padding:20 }}>
-                    <BarChart labels={DEMO_MOIS} data={DEMO_VOLUMES} color="#0EA5A0" />
+                    <BarChart labels={analysesParMois.labels} data={analysesParMois.data} color="#0EA5A0" />
                   </div>
                 </div>
                 <div className="lab-card fu">
                   <div className="lab-card-hdr"><div><h3>Examens les plus prescrits</h3></div></div>
                   <div style={{ padding:20 }}>
-                    {[
-                      ["NFS",             68, "#1B4F9E"],
-                      ["Glycémie",        54, "#0EA5A0"],
-                      ["Test paludisme",  47, "#D97706"],
-                      ["Hépatite B",      32, "#7C3AED"],
-                      ["Créatinine",      28, "#059669"],
-                      ["ECBU",            22, "#DC2626"],
-                    ].map(([lbl,val,col]) => (
+                    {examensPlusPrescrits.length === 0 && (
+                      <div style={{ textAlign:"center", color:"var(--lm)", fontSize:12, padding:12 }}>Aucun examen réel du catalogue prescrit pour l'instant.</div>
+                    )}
+                    {examensPlusPrescrits.map(([lbl,val,col]) => (
                       <div key={lbl} style={{ marginBottom:10 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
                           <span style={{ display:"flex", alignItems:"center", gap:7, fontSize:12, color:"var(--lm)" }}>
@@ -1475,45 +1552,38 @@ export default function Laboratoire() {
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+                {/* Sous-phase 5.1 (relecture du 6 sept. 2026) — LIMITE
+                    DOCUMENTÉE : aucune taxonomie de catégorie biologique
+                    (Biochimie/Hématologie/Parasitologie/Sérologie/Urines)
+                    n'existe réellement dans ce système (ni sur LabResult, ni
+                    sur ExamCatalogue — vérifié champ par champ). Plutôt que
+                    d'inventer une catégorisation ou de fabriquer des taux,
+                    ce widget est désactivé honnêtement (option B). */}
                 <div className="lab-card fu">
                   <div className="lab-card-hdr"><h3>📊 Taux d'anomalies par catégorie</h3></div>
-                  <div style={{ padding:20 }}>
-                    {[
-                      ["Biochimie",      22, "#D97706"],
-                      ["Hématologie",    15, "#DC2626"],
-                      ["Parasitologie",  34, "#7C3AED"],
-                      ["Sérologie",       8, "#1B4F9E"],
-                      ["Urines",         19, "#0EA5A0"],
-                    ].map(([lbl,pct,col]) => (
-                      <div key={lbl} style={{ marginBottom:10 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:12, color:"var(--lm)" }}>{lbl}</span>
-                          <span style={{ fontWeight:700, fontSize:12, color:col }}>{pct}% anormaux</span>
-                        </div>
-                        <Prog pct={pct} color={col} />
-                      </div>
-                    ))}
+                  <div style={{ padding:40, textAlign:"center", color:"var(--lm)" }}>
+                    <div style={{ fontSize:36, marginBottom:10, opacity:.4 }}>📊</div>
+                    <div style={{ fontSize:12 }}>🚧 Indicateur non disponible — aucune catégorie biologique réelle n'est enregistrée sur les analyses dans ce système.</div>
                   </div>
                 </div>
                 <div className="lab-card fu">
                   <div className="lab-card-hdr"><h3>⏱ Délais moyens de rendu</h3></div>
                   <div style={{ padding:20 }}>
-                    {[
-                      ["NFS / Hémoglobine",   "2h30", "#059669"],
-                      ["Biochimie courante",  "3h00", "#0EA5A0"],
-                      ["Sérologie",           "4h00", "#1B4F9E"],
-                      ["Parasitologie",       "1h30", "#7C3AED"],
-                      ["ECBU (culture)",      "48h",  "#D97706"],
-                    ].map(([lbl,delai,col]) => (
+                    {delaisMoyens.rows.length === 0 && (
+                      <div style={{ textAlign:"center", color:"var(--lm)", fontSize:12, padding:12 }}>Aucune analyse réellement rendue pour l'instant (date_resultat non renseignée).</div>
+                    )}
+                    {delaisMoyens.rows.map(([lbl,delai,col]) => (
                       <div key={lbl} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", background:"#F8FAFD", borderRadius:8, marginBottom:6 }}>
                         <span style={{ fontSize:12, color:"var(--ln)", fontWeight:500 }}>{lbl}</span>
                         <span style={{ fontSize:14, fontWeight:800, color:col }}>{delai}</span>
                       </div>
                     ))}
-                    <div style={{ marginTop:12, background:"linear-gradient(135deg,#EEF4FF,#DBEAFE)", borderRadius:12, padding:"12px 14px" }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:"var(--lb)" }}>📈 Délai moyen global</div>
-                      <div style={{ fontSize:24, fontWeight:800, color:"var(--ln)", marginTop:4 }}>3h 12min</div>
-                    </div>
+                    {delaisMoyens.globalLabel && (
+                      <div style={{ marginTop:12, background:"linear-gradient(135deg,#EEF4FF,#DBEAFE)", borderRadius:12, padding:"12px 14px" }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:"var(--lb)" }}>📈 Délai moyen global</div>
+                        <div style={{ fontSize:24, fontWeight:800, color:"var(--ln)", marginTop:4 }}>{delaisMoyens.globalLabel}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
