@@ -359,11 +359,19 @@ const NOTIFICATIONS = [
   { id: 5, type: "message", message: "Nouveau message de Dr. Alain Dupont — Résultats spirométrie", date: "Il y a 5j", lu: true, color: "var(--cp)" },
 ];
 
-const MESSAGES = [
-  { id: 1, de: "Dr. Claire Fontaine", service: "Cardiologie", msg: "Bonjour Mme Mercier, vos résultats sont bons. À bientôt.", date: "05/06/2025", lu: true },
-  { id: 2, de: "Dr. Alain Dupont", service: "Pneumologie", msg: "Merci de me transmettre les résultats de spirométrie avant notre RDV.", date: "20/05/2025", lu: false },
-  { id: 3, de: "Administration", service: "Clinique", msg: "Votre facture du 01/07 est disponible dans votre espace.", date: "01/07/2025", lu: false },
-];
+// Correction 3 (relecture du 6 sept. 2026) — MESSAGES était une constante
+// statique (jamais fetchée depuis l'API), affichant à un vrai patient trois
+// conversations entièrement fabriquées (dont une facture et un message
+// médical inventés) comme si elles étaient réelles. Aucun canal de
+// messagerie patient-scopé n'existe aujourd'hui (Conversation/Message sont
+// réservés au personnel — SEC-004/SEC-005 — et le bouton "Nouveau message"
+// de cet onglet est déjà honnêtement désactivé depuis AUDIT-11). Plutôt que
+// de construire précipitamment un nouveau canal patient↔personnel sous
+// pression de temps — une extension sensible du périmètre de sécurité
+// délibérément fermé par SEC-004/SEC-005 — l'onglet est désactivé
+// honnêtement dans son ensemble, cohérent avec le pattern déjà utilisé
+// partout ailleurs sur cette page ("Fonctionnalité momentanément
+// indisponible").
 
 const CONSTANTES = [
   { date: "2025-06-05", tension: "118/75", pouls: 68, poids: 62, imc: 22.1, glycemie: 4.8 },
@@ -519,7 +527,7 @@ export default function MonEspacePatient() {
     { key: "imageries",   icon: "🩻", label: "Imageries" },
     { key: "vaccinations",icon: "💉", label: "Vaccinations" },
     { key: "factures",    icon: "💰", label: "Factures" },
-    { key: "messagerie",  icon: "💬", label: "Messagerie", badge: MESSAGES.filter(m=>!m.lu).length },
+    { key: "messagerie",  icon: "💬", label: "Messagerie" },
     { key: "notifs",      icon: "🔔", label: "Notifications", badge: notifCount > 0 ? notifCount : 0 },
     { key: "ia",          icon: "🤖", label: "Assistant IA" },
   ];
@@ -1055,33 +1063,30 @@ export default function MonEspacePatient() {
           )}
 
           {/* ══ MESSAGERIE ══ */}
+          {/* Correction 3 (relecture du 6 sept. 2026) — cet onglet affichait
+              MESSAGES, une constante statique de trois conversations
+              entièrement fabriquées (dont une facture inventée), jamais
+              chargée depuis l'API, comme si un vrai patient recevait ces
+              messages. Aucun canal de messagerie patient-scopé n'existe
+              aujourd'hui : Conversation/Message sont réservés au personnel
+              (SEC-004/SEC-005), et "Nouveau message" ci-dessous est déjà
+              honnêtement désactivé depuis AUDIT-11. Plutôt que de construire
+              précipitamment un nouveau canal patient↔personnel — une
+              extension sensible du périmètre de sécurité délibérément fermé
+              par SEC-004/SEC-005 — désactivé honnêtement dans son ensemble,
+              même pattern que le reste de cette page. */}
           {tab === "messagerie" && (
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 }}>
-                <div><div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Messagerie Sécurisée</div><div style={{ fontSize:12, color:"var(--cm)" }}>{MESSAGES.filter(m=>!m.lu).length} message(s) non lu(s)</div></div>
-                {/* AUDIT-11 (Vague 2, P3-3/W1) — messagerie du portail
-                    désactivée : décision déjà actée plus tôt dans le projet
-                    (neutraliser comme AUDIT-03/AUDIT-07), jamais réellement
-                    appliquée à cette page jusqu'ici. */}
+                <div><div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Messagerie Sécurisée</div><div style={{ fontSize:12, color:"var(--cm)" }}>Fonctionnalité momentanément indisponible</div></div>
                 <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>✉️ Nouveau message</button>
               </div>
               <div className="ep-card fu">
-                {MESSAGES.map(m => (
-                  <div key={m.id} className="ep-notif" style={{ background: m.lu ? "" : "rgba(14,165,160,.04)", cursor:"pointer" }}>
-                    <div style={{ width:44, height:44, borderRadius:12, background: m.lu ? "#EEF4FF" : "linear-gradient(135deg,#EEF4FF,#DBEAFE)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>👨‍⚕️</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
-                        <span style={{ fontWeight: m.lu ? 600 : 700, color:"var(--cn)", fontSize:13 }}>{m.de}</span>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          {!m.lu && <div style={{ width:8, height:8, borderRadius:"50%", background:"var(--ct)" }} />}
-                          <span style={{ fontSize:11, color:"var(--cm)" }}>{m.date}</span>
-                        </div>
-                      </div>
-                      <div style={{ fontSize:11, color:"var(--cm)", marginTop:1 }}>{m.service}</div>
-                      <div style={{ fontSize:12.5, color: m.lu ? "var(--cm)" : "var(--cn)", marginTop:4 }}>{m.msg}</div>
-                    </div>
-                  </div>
-                ))}
+                <div style={{ padding:"32px 20px", textAlign:"center", color:"var(--cm)" }}>
+                  <div style={{ fontSize:36, marginBottom:10 }}>💬</div>
+                  <div style={{ fontWeight:600, color:"var(--cn)", fontSize:14 }}>Messagerie momentanément indisponible</div>
+                  <div style={{ fontSize:12.5, marginTop:6 }}>Pour toute question, contactez directement votre clinique par téléphone.</div>
+                </div>
               </div>
             </div>
           )}
