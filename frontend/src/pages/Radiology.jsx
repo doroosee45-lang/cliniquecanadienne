@@ -1216,7 +1216,11 @@ export default function Imagerie() {
                     <div style={{ display:"flex", gap:8 }}>
                       <button className="ibtn ibtn-primary" onClick={() => setModalImg(true)}>{I.upload} Importer images</button>
                       {(currentExamen.images?.length > 0 || uploadedImages.length > 0) && (
-                        <button className="ibtn ibtn-ghost">{I.dl} Télécharger tout</button>
+                        // Sous-phase 5.2 — n'avait aucun onClick. Câblé sur le
+                        // même mécanisme réel déjà utilisé par la vignette
+                        // (window.open(img.path)) plutôt que d'inventer une
+                        // archive ZIP inexistante côté backend.
+                        <button className="ibtn ibtn-ghost" onClick={() => (currentExamen.images || []).forEach(img => img.path && window.open(img.path, '_blank'))}>{I.dl} Télécharger tout</button>
                       )}
                     </div>
                   </div>
@@ -1420,10 +1424,17 @@ export default function Imagerie() {
                           <div style={{ fontSize:24 }}>{icon}</div>
                           <div style={{ fontWeight:700, color:"var(--cn)", fontSize:13 }}>{title}</div>
                           <div style={{ fontSize:11, color:"var(--cm)" }}>{desc}</div>
+                          {/* Sous-phase 5.2 — "Générer"/"Envoyer" affichaient
+                              un faux succès (toast.success) sans aucune
+                              génération de document ni envoi réel. Aucun
+                              moteur de génération de documents d'imagerie
+                              n'existe dans ce système. Désactivés
+                              honnêtement plutôt que de laisser cette
+                              simulation. */}
                           <div style={{ display:"flex", gap:6, marginTop:"auto", flexWrap:"wrap" }}>
-                            <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:11 }} onClick={() => toast.success(`📄 Génération : ${title}...`)}>{I.dl} Générer</button>
+                            <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:11 }} disabled title="Fonctionnalité en cours de développement — aucune génération réelle de document n'existe pour ce type." onClick={() => toast("🚧 Génération de documents non disponible — fonctionnalité en cours de développement.")}>{I.dl} Générer</button>
                             {title !== "Clichés numérisés" && (
-                              <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:11 }} onClick={() => toast.success(`📨 Envoi : ${title}...`)}>{I.send} Envoyer</button>
+                              <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:11 }} disabled title="Fonctionnalité en cours de développement — aucun envoi réel n'existe pour ce document." onClick={() => toast("🚧 Envoi non disponible — fonctionnalité en cours de développement.")}>{I.send} Envoyer</button>
                             )}
                           </div>
                         </div>
