@@ -327,6 +327,7 @@ const EMPTY_DOSSIER = {
   patient: "", chirurgien_id: "", statut: "consultation", niveau_urgence: "electif",
   motif_consultation: "", symptomes: "", examen_clinique: "",
   diagnostic_chirurgical: "", decision: "intervention", type_intervention: "",
+  hospitalisation_id: "",
 };
 
 const EMPTY_BILAN = { type: "biologie", examen: "", valeur: "", resultat: "", date_examen: "", statut: "prescrit", urgence: false };
@@ -373,6 +374,11 @@ export default function Chirurgie() {
   const [patients, setPatients]   = useState([]);
   const [chirurgiens, setChirurgiens] = useState([]);
   const [saving, setSaving]       = useState(false);
+  // Correction 11 (relecture du 6 sept. 2026, FLOW-001) — séjours
+  // d'hospitalisation réellement en cours pour le patient sélectionné dans
+  // le formulaire "Nouveau dossier", pour permettre un lien réel et
+  // volontaire (jamais automatique/deviné) entre chirurgie et hospitalisation.
+  const [sejoursActifs, setSejoursActifs] = useState([]);
 
   // Modals
   const [modalNouv, setModalNouv]         = useState(false);
@@ -467,6 +473,18 @@ export default function Chirurgie() {
 
   useEffect(() => { loadDossiers(); loadStats(); loadSelects(); }, [loadDossiers, loadStats, loadSelects]);
   useRealtimeRefresh(loadDossiers);
+
+  // Correction 11 (FLOW-001) — dès qu'un patient est choisi dans le
+  // formulaire de création, recherche réelle d'un séjour d'hospitalisation
+  // en cours pour ce patient (aucune invention : liste vide si aucun séjour actif).
+  useEffect(() => {
+    if (!modalNouv || !formDossier.patient) { setSejoursActifs([]); return; }
+    let cancelled = false;
+    api.get("/hospitalization", { params: { patient: formDossier.patient, statut: "en_cours" } })
+      .then(({ data }) => { if (!cancelled) setSejoursActifs(data.hospitalizations || []); })
+      .catch(() => { if (!cancelled) setSejoursActifs([]); });
+    return () => { cancelled = true; };
+  }, [modalNouv, formDossier.patient]);
 
   // ── Open dossier ───────────────────────────────────────────
   const openDossier = (d) => {
@@ -1518,11 +1536,20 @@ export default function Chirurgie() {
             <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="clbl">Patient *</label>
-                <select className="cinp" required value={formDossier.patient} onChange={e => setFormDossier(f=>({...f,patient:e.target.value}))}>
+                <select className="cinp" required value={formDossier.patient} onChange={e => setFormDossier(f=>({...f,patient:e.target.value,hospitalisation_id:""}))}>
                   <option value="">— Sélectionner un patient —</option>
                   {patients.map(p => <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier}</option>)}
                 </select>
               </div>
+              {formDossier.patient && sejoursActifs.length > 0 && (
+                <div style={{ gridColumn:"1/-1" }}>
+                  <label className="clbl">Lier à un séjour d'hospitalisation en cours (FLOW-001)</label>
+                  <select className="cinp" value={formDossier.hospitalisation_id} onChange={e => setFormDossier(f=>({...f,hospitalisation_id:e.target.value}))}>
+                    <option value="">— Ne pas lier —</option>
+                    {sejoursActifs.map(h => <option key={h._id} value={h._id}>Séjour depuis le {new Date(h.date_entree).toLocaleDateString('fr-FR')} — {h.motif_entree || 'motif non renseigné'}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="clbl">Chirurgien responsable</label>
                 <select className="cinp" value={formDossier.chirurgien_id} onChange={e => setFormDossier(f=>({...f,chirurgien_id:e.target.value}))}>

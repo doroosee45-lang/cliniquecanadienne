@@ -1,5 +1,6 @@
 // backend/controllers/chirurgieController.js
 const DossierChirurgical = require('../models/DossierChirurgical');
+const Hospitalization = require('../models/Hospitalization');
 const Bilan = require('../models/Bilan');
 const SuiviPostop = require('../models/SuiviPostop');
 const Complication = require('../models/Complication');
@@ -145,11 +146,23 @@ exports.getDossierById = async (req, res, next) => {
 // Création d'un nouveau dossier
 exports.createDossier = async (req, res, next) => {
   try {
-    const { patient: patient_id, chirurgien_id, statut, niveau_urgence, motif_consultation, diagnostic_chirurgical, type_intervention, symptomes, decision } = req.body;
+    const { patient: patient_id, chirurgien_id, statut, niveau_urgence, motif_consultation, diagnostic_chirurgical, type_intervention, symptomes, decision, hospitalisation_id } = req.body;
 
     // Récupérer les infos du patient
     const patient = await Patient.findById(patient_id);
     if (!patient) return res.status(400).json({ success: false, message: 'Patient introuvable' });
+
+    // Correction 11 (FLOW-001) — si un séjour d'hospitalisation est indiqué,
+    // vérifier réellement qu'il existe, appartient à ce patient et est en
+    // cours avant de le lier : jamais une référence acceptée à l'aveugle.
+    let hospitalisation_id_valide;
+    if (hospitalisation_id) {
+      const hosp = await Hospitalization.findById(hospitalisation_id);
+      if (!hosp || String(hosp.patient) !== String(patient_id) || hosp.statut !== 'en_cours') {
+        return res.status(400).json({ success: false, message: "Séjour d'hospitalisation invalide, non lié à ce patient, ou déjà terminé." });
+      }
+      hospitalisation_id_valide = hosp._id;
+    }
 
     let chirurgien_nom = null;
     if (chirurgien_id) {
@@ -162,6 +175,7 @@ exports.createDossier = async (req, res, next) => {
     const dossier = new DossierChirurgical({
       numero,
       patient: patient._id,
+      hospitalisation_id: hospitalisation_id_valide,
       patient_nom: `${patient.prenom} ${patient.nom}`,
       date_naissance: patient.date_naissance,
       sexe: patient.sexe === 'M' ? 'homme' : patient.sexe === 'F' ? 'femme' : (patient.sexe || 'autre'),

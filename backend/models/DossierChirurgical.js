@@ -5,6 +5,13 @@ const dossierChirurgicalSchema = new mongoose.Schema({
   numero: { type: String, unique: true, required: true },
   patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
   patient_nom: { type: String, required: true },
+  // Correction 11 (relecture du 6 sept. 2026, FLOW-001) — jusqu'ici aucune
+  // référence croisée entre un dossier chirurgical et une hospitalisation
+  // en cours pour le même patient (deux dossiers cloisonnés). Optionnel :
+  // renseigné uniquement quand la chirurgie est réellement créée depuis un
+  // séjour d'hospitalisation en cours (chirurgieController.js::createDossier
+  // valide l'existence et l'appartenance au patient avant persistance).
+  hospitalisation_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Hospitalization' },
   date_naissance: { type: Date },
   sexe: { type: String, enum: ['homme', 'femme', 'autre'] },
   groupe_sanguin: String,
