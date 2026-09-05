@@ -304,59 +304,16 @@ function Modal({ open, onClose, title, children, maxWidth = 540 }) {
   );
 }
 
-// ─── DEMO DATA ────────────────────────────────────────────────
-const PATIENT = {
-  nom: "Sophie", prenom: "Mercier", dossier: "PAT-2025-0847",
-  sexe: "Femme", age: 34, groupe_sanguin: "A+",
-  date_naissance: "1990-07-15", nationalite: "Française",
-  adresse: "12 Rue des Fleurs, 75008 Paris",
-  telephone: "+33 6 12 34 56 78", email: "sophie.mercier@email.com",
-  allergies: "Amoxicilline", maladies_chroniques: "Asthme léger",
-  contact_urgence: { nom: "Marc Mercier", tel: "+33 6 98 76 54 32", lien: "Époux" },
-};
-
-const RDVS = [
-  { id: 1, date: "2025-07-10", heure: "09:30", medecin: "Dr. Claire Fontaine", service: "Cardiologie", statut: "confirme", motif: "Bilan annuel" },
-  { id: 2, date: "2025-07-22", heure: "14:00", medecin: "Dr. Alain Dupont", service: "Pneumologie", statut: "confirme", motif: "Suivi asthme" },
-  { id: 3, date: "2025-06-05", heure: "10:15", medecin: "Dr. Claire Fontaine", service: "Cardiologie", statut: "passe", motif: "Consultation" },
-  { id: 4, date: "2025-04-18", heure: "11:00", medecin: "Dr. Yasmine Benali", service: "Médecine générale", statut: "passe", motif: "Ordonnance renouvellement" },
-];
-
-const ORDONNANCES = [
-  { id: 1, date: "2025-06-05", medecin: "Dr. Claire Fontaine", medicaments: ["Ventoline 100µg – 2 bouffées si besoin", "Flixotide 250µg – 1 bouffée matin et soir"], statut: "active", expire: "2025-09-05" },
-  { id: 2, date: "2025-04-18", medecin: "Dr. Yasmine Benali", medicaments: ["Vitamine D3 1000 UI – 1 cp/jour"], statut: "active", expire: "2025-07-18" },
-  { id: 3, date: "2024-11-10", medecin: "Dr. Claire Fontaine", medicaments: ["Amoxicilline 500mg – 3×/j pendant 7j"], statut: "expiree", expire: "2024-11-17" },
-];
-
-const ANALYSES = [
-  { id: "LAB-001", date_prel: "2025-06-01", date_res: "2025-06-03", laborantin: "Labo Central", examens: [{nom:"NFS",val:"Hb 13.2 g/dL",statut:"normal"},{nom:"Glycémie",val:"4.8 mmol/L",statut:"normal"},{nom:"Cholestérol",val:"5.9 mmol/L",statut:"anormal"}] },
-  { id: "LAB-002", date_prel: "2025-03-15", date_res: "2025-03-17", laborantin: "Labo BioSanté", examens: [{nom:"TSH",val:"2.1 mUI/L",statut:"normal"},{nom:"Ferritine",val:"18 µg/L",statut:"anormal"}] },
-];
-
-const IMAGERIES = [
-  { id: 1, type: "Radiographie", zone: "Thorax", date: "2025-05-20", radiologue: "Dr. Pierre Martin", conclusion: "Pas d'anomalie pulmonaire décelée. Index cardio-thoracique normal.", statut: "disponible" },
-  { id: 2, type: "Échographie", zone: "Abdominale", date: "2025-01-10", radiologue: "Dr. Amina Khoury", conclusion: "Foie, reins, rate et vésicule biliaire d'aspect normal.", statut: "disponible" },
-];
-
-const FACTURES = [
-  { id: "FAC-2025-0312", date: "2025-06-05", montant: 75, statut: "payee", detail: "Consultation cardiologie" },
-  { id: "FAC-2025-0198", date: "2025-06-03", montant: 42, statut: "payee", detail: "Analyses laboratoire" },
-  { id: "FAC-2025-0415", date: "2025-07-01", montant: 120, statut: "impayee", detail: "Échographie + Consultation" },
-];
-
+// Correction 8 (relecture du 6 sept. 2026, FE-BUG-010) — PATIENT/RDVS/
+// ORDONNANCES/ANALYSES/IMAGERIES/FACTURES/NOTIFICATIONS (données de démo
+// "Sophie Mercier") supprimées : servaient de repli silencieux dès que
+// la donnée réelle était vide, y compris pour un vrai patient sans
+// historique réel — voir le state gate plus bas dans le composant.
 const VACCINS = [
   { nom: "Grippe saisonnière", date: "2024-10-15", prochaine: "2025-10-01", statut: "a_jour" },
   { nom: "COVID-19 (rappel)", date: "2024-09-01", prochaine: "Non défini", statut: "a_jour" },
   { nom: "Tétanos (DTP)", date: "2019-03-20", prochaine: "2029-03-20", statut: "a_jour" },
   { nom: "Hépatite B", date: "2010-06-10", prochaine: "Contrôle sérologique", statut: "en_retard" },
-];
-
-const NOTIFICATIONS = [
-  { id: 1, type: "rdv", message: "Rendez-vous confirmé — Dr. Claire Fontaine le 10/07 à 09h30", date: "Il y a 2h", lu: false, color: "var(--ct)" },
-  { id: 2, type: "resultat", message: "Nouveau résultat d'analyse disponible — Bilan du 01/06", date: "Il y a 1j", lu: false, color: "var(--cb)" },
-  { id: 3, type: "facture", message: "Facture FAC-2025-0415 en attente de paiement — 120€", date: "Il y a 2j", lu: false, color: "var(--co)" },
-  { id: 4, type: "vaccin", message: "Rappel : Vérification sérologique Hépatite B recommandée", date: "Il y a 3j", lu: true, color: "var(--cr)" },
-  { id: 5, type: "message", message: "Nouveau message de Dr. Alain Dupont — Résultats spirométrie", date: "Il y a 5j", lu: true, color: "var(--cp)" },
 ];
 
 // Correction 3 (relecture du 6 sept. 2026) — MESSAGES était une constante
@@ -423,14 +380,20 @@ export default function MonEspacePatient() {
   useEffect(() => { refreshPortal(); }, [refreshPortal]);
   useRealtimeRefresh(refreshPortal);
 
-  // ── Données fusionnées (API ou démo si vide) ──────────────
-  const patient     = reduxPatient     || PATIENT;
-  const rdvs        = reduxAppointments.length    ? reduxAppointments    : RDVS;
-  const ordonnances = reduxPrescriptions.length   ? reduxPrescriptions   : ORDONNANCES;
-  const analyses    = reduxLabResults.length      ? reduxLabResults      : ANALYSES;
-  const imageries   = reduxImaging.length         ? reduxImaging         : IMAGERIES;
-  const factures    = reduxInvoices.length        ? reduxInvoices        : FACTURES;
-  const notifs      = reduxNotifications.length   ? reduxNotifications   : NOTIFICATIONS;
+  // Correction 8 (relecture du 6 sept. 2026, FE-BUG-010) — repli sur des
+  // données de démo ("Sophie Mercier" et son historique fictif) dès que la
+  // liste réelle était vide, y compris pour un vrai patient n'ayant tout
+  // simplement encore aucun rendez-vous/ordonnance/résultat réel : il
+  // aurait alors vu l'historique fabriqué d'un autre patient affiché comme
+  // le sien. Retiré : chaque section utilise désormais l'état réel tel
+  // quel, un tableau vide affiche honnêtement un état vide (voir plus bas).
+  const patient     = reduxPatient;
+  const rdvs        = reduxAppointments;
+  const ordonnances = reduxPrescriptions;
+  const analyses    = reduxLabResults;
+  const imageries   = reduxImaging;
+  const factures    = reduxInvoices;
+  const notifs      = reduxNotifications;
 
   // ── Helpers accès champs API ──────────────────────────────
   const getRdvDate   = (r) => r.date_heure   || `${r.date}T${r.heure || "00:00"}`;
@@ -537,6 +500,22 @@ export default function MonEspacePatient() {
       <div style={{ width:48, height:48, border:"4px solid #E2EAF4", borderTop:"4px solid #0EA5A0", borderRadius:"50%", animation:"spin 1s linear infinite" }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{ color:"#6B7A99", fontSize:14 }}>Chargement de votre espace patient…</div>
+    </div>
+  );
+
+  // Correction 8 (relecture du 6 sept. 2026, FE-BUG-010) — au-delà de ce
+  // point, la page affichait auparavant PATIENT/RDVS/ORDONNANCES/... (les
+  // données de démo "Sophie Mercier") dès que reduxPatient était vide —
+  // y compris pour une vraie erreur serveur (ex. GET /portal/me → 404
+  // "Dossier patient introuvable", portal.controller.js::getMe), jamais
+  // seulement pour un chargement en cours. Un vrai patient sans dossier
+  // lié verrait alors le profil fictif d'un autre patient affiché comme
+  // le sien. État d'erreur honnête désormais affiché à sa place.
+  if (!loading && !reduxPatient) return (
+    <div style={{ minHeight:"60vh", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12, padding:24, textAlign:"center" }}>
+      <div style={{ fontSize:40 }}>⚠️</div>
+      <div style={{ color:"#0B1E3B", fontSize:16, fontWeight:700 }}>Impossible de charger votre dossier patient</div>
+      <div style={{ color:"#6B7A99", fontSize:13, maxWidth:420 }}>{portalError || "Votre compte ne semble lié à aucun dossier patient. Contactez la clinique si le problème persiste."}</div>
     </div>
   );
 
