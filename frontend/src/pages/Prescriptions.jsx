@@ -463,16 +463,19 @@ export default function Ordonnances() {
     } catch {}
   }, []);
 
+  // Correction 7 (relecture du 6 sept. 2026, FE-BUG-009) — un échec de
+  // GET /patients injectait silencieusement 3 patients fictifs (Jean
+  // Dupont, Marie Paul, Paul Nguema), sans jamais avertir l'utilisateur —
+  // une ordonnance aurait pu être créée pour l'un de ces faux patients
+  // sans que personne ne s'en aperçoive. Repli honnête : liste vide,
+  // erreur explicite.
   const loadPatients = useCallback(async () => {
     try {
       const { data } = await api.get("/patients?limit=500");
       setPatients(data.patients || data.data || []);
     } catch {
-      setPatients([
-        { _id:"p1", prenom:"Jean", nom:"Dupont", numero_dossier:"PAT-001", date_naissance:"1975-04-12" },
-        { _id:"p2", prenom:"Marie", nom:"Paul", numero_dossier:"PAT-002", date_naissance:"1988-11-03" },
-        { _id:"p3", prenom:"Paul", nom:"Nguema", numero_dossier:"PAT-003", date_naissance:"1962-07-22" },
-      ]);
+      setPatients([]);
+      toast.error("Impossible de charger la liste des patients — réessayez ou contactez le support.");
     }
   }, []);
 
