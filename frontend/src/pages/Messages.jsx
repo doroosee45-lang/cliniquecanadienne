@@ -1634,7 +1634,22 @@ export default function Messagerie() {
                                   <div style={{ background:isMe ? "rgba(255,255,255,.15)" : "#F0FDF4", border:`1.5px solid ${isMe ? "rgba(255,255,255,.3)" : "#A7F3D0"}`, borderRadius:14, padding:"10px 14px", maxWidth:320 }}>
                                     <div style={{ fontSize:11, fontWeight:700, color:isMe ? "rgba(255,255,255,.8)" : "#059669", marginBottom:6, textTransform:"uppercase", letterSpacing:.4 }}>🔬 Résultat médical</div>
                                     <div style={{ fontSize:13, color:isMe ? "#fff" : "var(--cn)", lineHeight:1.5 }}>{msg.contenu}</div>
-                                    <button style={{ marginTop:8, fontSize:11, fontWeight:600, color:isMe ? "rgba(255,255,255,.8)" : "var(--ct)", background:"none", border:"none", cursor:"pointer", padding:0, display:"flex", alignItems:"center", gap:4 }} onClick={() => toast.success("📄 Ouverture du résultat...")}>
+                                    {/* Sous-phase 5.2 — affichait un faux
+                                        succès (toast.success) sans ouvrir ni
+                                        télécharger le moindre fichier réel.
+                                        Annexe : msg.type_special n'est par
+                                        ailleurs jamais produit nulle part
+                                        (ni ce champ ni la moindre logique
+                                        "resultat" n'existent dans
+                                        Message.js/messages.controller.js) —
+                                        cette bulle entière est donc du code
+                                        mort avec un vrai message ; hors
+                                        périmètre de cette correction
+                                        (retirer/reconstruire la
+                                        fonctionnalité de partage de résultat
+                                        dépasse "ajouter un handler à un
+                                        bouton"), signalé sans être traité. */}
+                                    <button style={{ marginTop:8, fontSize:11, fontWeight:600, color:isMe ? "rgba(255,255,255,.8)" : "var(--ct)", background:"none", border:"none", cursor:"not-allowed", opacity:.6, padding:0, display:"flex", alignItems:"center", gap:4 }} disabled title="Fonctionnalité en cours de développement — aucun téléchargement réel n'existe pour ce type de message." onClick={() => toast("🚧 Téléchargement non disponible — fonctionnalité en cours de développement.")}>
                                       {I.dl} Télécharger le résultat
                                     </button>
                                   </div>
