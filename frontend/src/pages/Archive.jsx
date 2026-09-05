@@ -212,8 +212,6 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : "—";
 
 const DEMO_ARCHIVES = [];
 
-const DEMO_LOGS = [];
-
 const CAT_CONFIG = {
   patient:        { icon:"👤", label:"Patient",         color:"#1B4F9E", bg:"#EFF6FF", border:"#BFDBFE" },
   consultation:   { icon:"🩺", label:"Consultation",    color:"#0EA5A0", bg:"#F0FDFC", border:"#99F6E4" },
@@ -536,8 +534,31 @@ export default function Archivage() {
     } finally { setLoadingRestaurations(false); }
   }, []);
 
+  // Sous-phase 5.4 — l'onglet "Journal d'audit" (spécifique aux archives)
+  // n'a jamais eu la moindre donnée réelle : rendait directement DEMO_LOGS=[]
+  // (même pas un état React, une constante inerte). archive.controller.js
+  // journalise pourtant déjà réellement chaque opération
+  // (logAction({module:'archive', action:'ARCHIVE_CREATION'|
+  // 'ARCHIVE_RESTAURATION'|'ARCHIVE_SUPPRESSION'|'ARCHIVE_EXPORT'|...})) dans
+  // le vrai journal d'audit partagé (même source que Administration.jsx/
+  // HR.jsx/Audit.jsx — GET /audit, déjà réel et déjà testé pour le filtre
+  // module) : câblé dessus plutôt que construit depuis rien.
+  const [archiveAuditLog, setArchiveAuditLog] = useState([]);
+  const [loadingArchiveAudit, setLoadingArchiveAudit] = useState(false);
+  const loadArchiveAuditLog = useCallback(async () => {
+    setLoadingArchiveAudit(true);
+    try {
+      const { data } = await api.get('/audit?module=archive&limit=30');
+      setArchiveAuditLog(data.events || []);
+    } catch (err) {
+      console.error("Erreur chargement journal d'audit archives:", err);
+      setArchiveAuditLog([]);
+    } finally { setLoadingArchiveAudit(false); }
+  }, []);
+
   useEffect(() => { loadArchives(); loadStats(); }, [loadArchives, loadStats]);
   useEffect(() => { if (active === "restaurations") loadRestaurations(); }, [active, loadRestaurations]);
+  useEffect(() => { if (active === "audit") loadArchiveAuditLog(); }, [active, loadArchiveAuditLog]);
   // Correction 4 (relecture du 6 sept. 2026, FE-BUG-006) — relit la vraie
   // configuration persistée (PUT /archives/config l'écrivait déjà, mais rien
   // ne la relisait au chargement de la page).
@@ -1233,7 +1254,7 @@ export default function Archivage() {
             <button className="abtn abtn-ghost abtn-sm" onClick={() => handleExport("pdf")}>📄 PDF</button>
             <button className="abtn abtn-ghost abtn-sm" onClick={() => handleExport("excel")}>📊 Excel</button>
             <button className="abtn abtn-ghost abtn-sm" onClick={() => handleExport("csv")}>📋 CSV</button>
-            <button className="abtn abtn-ghost abtn-sm" onClick={loadArchives}>{I.refresh}</button>
+            <button className="abtn abtn-ghost abtn-sm" onClick={loadArchiveAuditLog}>{I.refresh}</button>
           </div>
         </div>
 
@@ -1242,25 +1263,34 @@ export default function Archivage() {
             <table className="arc-tbl">
               <thead><tr><th>Utilisateur</th><th>Action</th><th>Type</th><th>Date & Heure</th><th>Adresse IP</th></tr></thead>
               <tbody>
-                {DEMO_LOGS.map((log, i) => {
-                  const tc = {
-                    view:     ["teal",   "👁 Consultation"],
-                    export:   ["blue",   "📤 Export"],
-                    restore:  ["green",  "↩ Restauration"],
-                    download: ["purple", "📥 Téléchargement"],
-                    archive:  ["blue",   "📦 Archivage"],
-                    delete:   ["red",    "🗑️ Suppression"],
-                    print:    ["gray",   "🖨 Impression"],
-                    config:   ["orange", "⚙️ Configuration"],
-                  }[log.type] || ["gray","•"];
+                {loadingArchiveAudit && (
+                  <tr><td colSpan={5} style={{ textAlign:"center", color:"var(--am)", padding:20 }}>Chargement...</td></tr>
+                )}
+                {!loadingArchiveAudit && archiveAuditLog.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign:"center", color:"var(--am)", padding:20 }}>Aucune action enregistrée.</td></tr>
+                )}
+                {/* Sous-phase 5.4 — adapté aux vrais champs renvoyés par
+                    GET /audit (formatLog(), audit.controller.js) : `action`
+                    est la version normalisée réelle (ex. "archive
+                    restauration", "exportation", "modification" — pas les
+                    catégories fictives view/download/print/config, jamais
+                    produites par archive.controller.js), `description` est
+                    le vrai message, `ip` le vrai log.ip_address. */}
+                {archiveAuditLog.map((log) => {
+                  const tc = log.action.includes("restauration") ? ["green",  "↩ Restauration"]
+                    : log.action.includes("suppression")         ? ["red",    "🗑️ Suppression"]
+                    : log.action === "exportation"                ? ["blue",   "📤 Export"]
+                    : log.action === "modification"                ? ["orange", "⚙️ Configuration"]
+                    : log.action.includes("creation")              ? ["teal",   "📦 Archivage"]
+                    : ["gray", log.action];
                   return (
-                    <tr key={i}>
+                    <tr key={log._id}>
                       <td>
-                        <div style={{ fontWeight:600, color:"var(--an)", fontSize:13 }}>{log.user}</div>
+                        <div style={{ fontWeight:600, color:"var(--an)", fontSize:13 }}>{log.utilisateur}</div>
                       </td>
-                      <td style={{ fontSize:12, color:"var(--am)" }}>{log.action}</td>
+                      <td style={{ fontSize:12, color:"var(--am)" }}>{log.description}</td>
                       <td><Badge cls={tc[0]}>{tc[1]}</Badge></td>
-                      <td style={{ fontSize:12, color:"var(--am)", fontFamily:"monospace" }}>{log.date}</td>
+                      <td style={{ fontSize:12, color:"var(--am)", fontFamily:"monospace" }}>{new Date(log.date).toLocaleString("fr-FR")}</td>
                       <td style={{ fontSize:12, fontFamily:"monospace", color:"var(--am)" }}>{log.ip}</td>
                     </tr>
                   );
