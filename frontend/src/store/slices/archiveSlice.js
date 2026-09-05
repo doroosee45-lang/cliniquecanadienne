@@ -106,6 +106,23 @@ export const exportArchives = createAsyncThunk(
   }
 );
 
+// Correction 4 (relecture du 6 sept. 2026, FE-BUG-006) — updateAutoConfig
+// persiste réellement depuis longtemps, mais rien ne relisait jamais la
+// config au chargement de la page : elle repartait toujours des valeurs
+// par défaut ci-dessous (initialState.configAuto), masquant que l'écriture
+// fonctionnait déjà.
+export const fetchAutoConfig = createAsyncThunk(
+  'archive/fetchAutoConfig',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/archives/config');
+      return data.config;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur chargement config');
+    }
+  }
+);
+
 export const updateAutoConfig = createAsyncThunk(
   'archive/updateAutoConfig',
   async (config, { rejectWithValue }) => {
@@ -280,7 +297,10 @@ const archiveSlice = createSlice({
         state.error = action.payload;
       })
 
-      // updateAutoConfig
+      // fetchAutoConfig / updateAutoConfig
+      .addCase(fetchAutoConfig.fulfilled, (state, action) => {
+        if (action.payload) state.configAuto = { ...state.configAuto, ...action.payload };
+      })
       .addCase(updateAutoConfig.fulfilled, (state, action) => {
         state.configAuto = { ...state.configAuto, ...action.payload };
       });

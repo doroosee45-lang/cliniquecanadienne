@@ -8,6 +8,7 @@ router.get('/stats',         protect, authorize(...ADMIN), archiveC.getStats);
 router.get('/export',        protect, authorize(...ADMIN), archiveC.exportAll);
 router.post('/bulk-restore', protect, authorize(...ADMIN), archiveC.bulkRestore);
 router.post('/bulk-delete',  protect, authorize(...ADMIN), archiveC.bulkDelete);
+router.get('/config',        protect, authorize(...ADMIN), archiveC.getConfig);
 router.put('/config',        protect, authorize(...ADMIN), archiveC.updateConfig);
 
 // ── CRUD principal ────────────────────────────────────────────

@@ -381,6 +381,19 @@ exports.exportAll = async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════════
 // PUT /api/archives/config  — sauvegarder config archivage auto
 // ═══════════════════════════════════════════════════════════════
+// Correction 4 (relecture du 6 sept. 2026, FE-BUG-006) — updateConfig()
+// persiste réellement la configuration depuis longtemps, mais rien ne la
+// relisait jamais au chargement de la page : Archive.jsx repartait toujours
+// des valeurs par défaut codées en dur (archiveSlice.js::initialState),
+// masquant que l'écriture fonctionnait déjà.
+exports.getConfig = async (req, res, next) => {
+  try {
+    const setting = await Setting.findOne({ cle: 'archive_auto_config' }).lean();
+    const config = setting?.valeur || { actif: true, duree: '1an', consultations: true, hospitalisations: true, factures: true, examens: true };
+    res.json({ success: true, config });
+  } catch (err) { next(err); }
+};
+
 exports.updateConfig = async (req, res, next) => {
   try {
     const config = req.body;

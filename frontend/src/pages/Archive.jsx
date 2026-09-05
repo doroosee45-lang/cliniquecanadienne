@@ -7,12 +7,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchArchives, fetchArchiveStats,
   restoreArchive, deleteArchive, createArchive,
-  bulkRestore, bulkDelete, exportArchives, updateAutoConfig,
+  bulkRestore, bulkDelete, exportArchives, updateAutoConfig, fetchAutoConfig,
   selectArchives, selectArchiveTotal, selectArchiveLoading, selectArchiveSaving,
   selectArchiveExporting, selectArchiveKPIs, selectArchiveFilters,
   selectSelectedIds, selectConfigAuto,
   setPage as setReduxPage, setFilters, selectId, deselectId, selectAll, clearSelection,
-  setConfigAuto,
 } from '../store/slices/archiveSlice';
 import api from "../api";
 import toast from "react-hot-toast";
@@ -465,6 +464,18 @@ export default function Archivage() {
     if (reduxConfigAuto) setConfigAutoLocal(reduxConfigAuto);
   }, [reduxConfigAuto]);
 
+  // Correction 4 (relecture du 6 sept. 2026, FE-BUG-006) — les toggles
+  // appelaient setConfigAuto (l'action Redux importée, jamais dispatch()ée :
+  // sans effet réel) au lieu de ce thunk, qui persiste réellement via
+  // PUT /archives/config (même mécanisme Setting déjà utilisé par
+  // /admin/settings) et remet configAuto local à jour via l'effet ci-dessus
+  // une fois la réponse serveur reçue.
+  const updateConfigField = (patch) => {
+    dispatch(updateAutoConfig({ ...configAuto, ...patch })).then(res => {
+      if (updateAutoConfig.rejected.match(res)) toast.error(res.payload || "Échec de la mise à jour de la configuration.");
+    });
+  };
+
   // ── Load ─────────────────────────────────────────────────
   const loadArchives = useCallback(async () => {
     dispatch(fetchArchives({ page, limit: 15, search, categorie: filterCat, service: filterSvc, date_debut: filterDate1, date_fin: filterDate2 }));
@@ -506,6 +517,10 @@ export default function Archivage() {
   }, [dispatch]);
 
   useEffect(() => { loadArchives(); loadStats(); }, [loadArchives, loadStats]);
+  // Correction 4 (relecture du 6 sept. 2026, FE-BUG-006) — relit la vraie
+  // configuration persistée (PUT /archives/config l'écrivait déjà, mais rien
+  // ne la relisait au chargement de la page).
+  useEffect(() => { dispatch(fetchAutoConfig()); }, [dispatch]);
 
   // Filter by nav category
   const catForNav = {
@@ -1236,11 +1251,11 @@ export default function Archivage() {
                   <div style={{ fontSize:13, fontWeight:600, color:"var(--an)" }}>Activer l'archivage automatique</div>
                   <div style={{ fontSize:11, color:"var(--am)" }}>Exécuté chaque nuit à 02:00</div>
                 </div>
-                <Toggle checked={configAuto.actif} onChange={v => setConfigAuto(p=>({...p,actif:v}))} />
+                <Toggle checked={configAuto.actif} onChange={v => updateConfigField({ actif: v })} />
               </div>
               <div>
                 <label className="albl">Durée avant archivage automatique</label>
-                <select className="ainp" value={configAuto.duree} onChange={e => setConfigAuto(p=>({...p,duree:e.target.value}))}>
+                <select className="ainp" value={configAuto.duree} onChange={e => updateConfigField({ duree: e.target.value })}>
                   <option value="1an">Après 1 an</option>
                   <option value="3ans">Après 3 ans</option>
                   <option value="5ans">Après 5 ans</option>
@@ -1277,7 +1292,7 @@ export default function Archivage() {
                   </div>
                   <Toggle
                     checked={configAuto[item.key]}
-                    onChange={v => setConfigAuto(p=>({...p,[item.key]:v}))}
+                    onChange={v => updateConfigField({ [item.key]: v })}
                   />
                 </div>
               ))}
