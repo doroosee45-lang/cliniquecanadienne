@@ -1513,7 +1513,12 @@ export default function RendezVous() {
                   <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>Suivi en temps réel — {new Date().toLocaleDateString("fr-FR", { weekday:"long", day:"numeric", month:"long" })}</div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { /* refresh */ }}>🔄 Actualiser</button>
+                  {/* Sous-phase 5.3 — onClick vide (littéralement { /* refresh
+                      */ }), aucun rechargement réel. refreshRdvs() existe déjà
+                      (dispatch(fetchAppointments({})), utilisé ailleurs dans ce
+                      fichier — ex. rollback optimiste) mais n'était jamais
+                      appelé par ce bouton. */}
+                  <button className="cbtn cbtn-ghost cbtn-sm" onClick={refreshRdvs}>🔄 Actualiser</button>
                   <button className="cbtn cbtn-primary cbtn-sm" onClick={() => { setFormRdv(makeEmptyRdv()); setModalNouv(true); }}>
                     {I.plus} Enregistrer arrivée
                   </button>
