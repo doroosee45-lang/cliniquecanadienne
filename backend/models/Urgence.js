@@ -14,6 +14,12 @@ const PrescriptionUrgSchema = new mongoose.Schema({
   posologie:   { type: String },
   medecin:     { type: String },
   date:        { type: Date, default: Date.now },
+  // Correction 2 (module 4/6, relecture du 6 sept. 2026) — référence réelle
+  // et optionnelle vers le catalogue Medication (prix_vente réel), jamais
+  // fabriquée si absente. Uniquement pertinente pour type:'medicament' —
+  // perfusion/soin n'ont aujourd'hui aucun catalogue tarifaire réel
+  // équivalent dans ce codebase (documenté, pas simulé).
+  medicament:  { type: mongoose.Schema.Types.ObjectId, ref: 'Medication' },
 }, { _id: true });
 
 const ExamenUrgSchema = new mongoose.Schema({
@@ -23,6 +29,10 @@ const ExamenUrgSchema = new mongoose.Schema({
   statut:      { type: String, enum: ['attente','en_cours','resultat'], default: 'attente' },
   resultat:    { type: String },
   date:        { type: Date, default: Date.now },
+  // Correction 2 (module 4/6) — référence réelle et optionnelle vers
+  // ExamCatalogue (labo → type:'laboratoire', imagerie → type:'imagerie'),
+  // même pattern que Laboratory/Radiology/Echographie.
+  examen:      { type: mongoose.Schema.Types.ObjectId, ref: 'ExamCatalogue' },
 }, { _id: true });
 
 const TimelineSchema = new mongoose.Schema({

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useId } from "react";
+import { useState, useEffect, useMemo, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
@@ -6,6 +6,7 @@ import { Siren, Plus, LogOut, Printer } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import api from '../api';
 import {
   fetchUrgencesStats,
   fetchUrgences,
@@ -335,8 +336,8 @@ const EMPTY_URG = {
   date_arrivee:"",
 };
 const EMPTY_SOIN = { acte:"", personnel:"", heure:"", note:"" };
-const EMPTY_PRESCRIPTION_U = { type:"medicament", designation:"", posologie:"", medecin:"" };
-const EMPTY_EXAMEN_U = { type:"labo", designation:"", statut:"attente", resultat:"", urgent:false };
+const EMPTY_PRESCRIPTION_U = { type:"medicament", designation:"", posologie:"", medecin:"", medicament:"" };
+const EMPTY_EXAMEN_U = { type:"labo", designation:"", statut:"attente", resultat:"", urgent:false, examen:"" };
 const EMPTY_CLOTURE = { decision:"retour_domicile", diagnostic_final:"", recommandations:"", date_sortie:"", heure_sortie:"" };
 
 const normalizeUrgence = (u) => ({
@@ -540,6 +541,34 @@ export default function Urgences() {
     import("../api").then(m => m.default.get("/patients?limit=500")).then(r => setPatients(r.data.patients || [])).catch(() => {});
   }, []);
 
+  // Correction 2 (module 4/6, relecture du 6 sept. 2026) — remplace les
+  // désignations en texte libre des examens/prescriptions par les vrais
+  // catalogues déjà utilisés par Laboratoire/Radiology (ExamCatalogue) et
+  // Pharmacie (Medication.prix_vente) : sources de tarif réelles vérifiées
+  // avant d'en inventer une, jamais un nouveau catalogue fabriqué ici.
+  const [catalogueLabo, setCatalogueLabo]         = useState([]);
+  const [catalogueImagerie, setCatalogueImagerie] = useState([]);
+  const [medicaments, setMedicaments]             = useState([]);
+  useEffect(() => {
+    api.get("/laboratory/catalogue").then(({ data }) => setCatalogueLabo(data.examens || [])).catch(() => setCatalogueLabo([]));
+    api.get("/radiology/catalogue").then(({ data }) => setCatalogueImagerie(data.examens || [])).catch(() => setCatalogueImagerie([]));
+    api.get("/pharmacy?limit=500&statut=disponible").then(({ data }) => setMedicaments(data.medications || [])).catch(() => setMedicaments([]));
+  }, []);
+  const catalogueExamenById = useMemo(() => {
+    const all = [...catalogueLabo, ...catalogueImagerie];
+    return Object.fromEntries(all.map(ex => [ex._id, ex]));
+  }, [catalogueLabo, catalogueImagerie]);
+  const medicamentById = useMemo(() => Object.fromEntries(medicaments.map(m => [m._id, m])), [medicaments]);
+
+  // Vraie facture (Invoice) liée au dossier ouvert — jamais un calcul
+  // recomposé côté client. null tant qu'aucune facture réelle n'existe
+  // (dossier non clôturé, ou clôturé sans aucun examen/médicament réel lié).
+  const [currentInvoice, setCurrentInvoice] = useState(null);
+  const loadInvoice = async (id) => {
+    try { const { data } = await api.get(`/urgences/${id}`); setCurrentInvoice(data.invoice || null); }
+    catch { setCurrentInvoice(null); }
+  };
+
   // Chargement initial
   useEffect(() => {
     dispatch(fetchUrgencesStats());
@@ -566,6 +595,7 @@ export default function Urgences() {
     setSection("triage");
     setTab("dossier");
     dispatch(fetchDossierData(u._id));
+    loadInvoice(u._id);
   };
 
   // ─── CRÉER UNE URGENCE ──────────────────────────────────
@@ -645,6 +675,7 @@ export default function Urgences() {
       : "sorti";
     await updateUrgence({ statut: statutFinal, ...formCloture, date_sortie: formCloture.date_sortie || new Date().toISOString().substring(0, 10) });
     setModalCloture(false);
+    if (currentUrg?._id) loadInvoice(currentUrg._id);
   };
 
   // ─── Compteurs locaux ────────────────────────────────────
@@ -1496,45 +1527,52 @@ export default function Urgences() {
               )}
 
               {/* ── FACTURATION ── */}
+              {/* Correction 2 (module 4/6, relecture du 6 sept. 2026) —
+                  calculait un montant entièrement inventé (tarifs fixes par
+                  catégorie d'acte + "payé = 60% du total", une formule
+                  arbitraire), sans qu'aucune Invoice n'existe jamais en
+                  base. Affiche désormais la VRAIE facture (générée par
+                  urgencesController.js::update à la clôture réelle de
+                  l'épisode) ou un état honnête d'absence de facture. */}
               {section === "facturation" && (
                 <div style={{ marginTop: 20 }}>
                   <div className="urg-card">
                     <div className="urg-card-hdr"><h3>💰 Facturation urgences</h3></div>
                     <div style={{ padding: 20 }}>
-                      {(() => {
-                        const actes = [
-                          ["Consultation urgence", 20000],
-                          ["Triage infirmier", 5000],
-                          ["Soins infirmiers", soins.length * 8000],
-                          ["Médicaments administrés", prescriptions.filter(p => p.type === "medicament").length * 15000],
-                          ["Analyses biologiques", examens.filter(e => e.type === "labo").length * 12000],
-                          ["Imagerie médicale", examens.filter(e => e.type === "imagerie").length * 35000],
-                        ];
-                        const total = actes.reduce((s, [, v]) => s + v, 0);
-                        const paye = Math.round(total * 0.6);
-                        const reste = total - paye;
-                        return (
-                          <>
-                            <table className="urg-tbl" style={{ marginBottom: 20 }}>
-                              <thead><tr><th>Prestation</th><th style={{ textAlign: "right" }}>Montant (CFA)</th></tr></thead>
-                              <tbody>{actes.map(([lbl, val]) => val > 0 && <tr key={lbl}><td style={{ fontSize: 12 }}>{lbl}</td><td style={{ textAlign: "right", fontWeight: 600 }}>{val.toLocaleString("fr-FR")}</td></tr>)}</tbody>
-                            </table>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
-                              {[["TOTAL", total, "var(--ur)","#FDEDEC"],["PAYÉ", paye, "var(--ug)","#EAFAF1"],["RESTE", reste, "var(--uo)","#FEF9E7"]].map(([lbl, val, col, bg]) => (
-                                <div key={lbl} style={{ background: bg, borderRadius: 10, padding: 14, textAlign: "center" }}>
-                                  <div style={{ fontSize: 18, fontWeight: 800, color: col }}>{val.toLocaleString("fr-FR")}</div>
-                                  <div style={{ fontSize: 11, color: "var(--ucm)", marginTop: 2 }}>{lbl} (CFA)</div>
-                                </div>
-                              ))}
-                            </div>
-                            <Prog pct={Math.round(paye / total * 100)} color="var(--ug)" />
-                            <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-                              <button className="ubtn ubtn-danger" onClick={() => toast.success("📄 Génération facture...")}>{I.dl} Générer facture</button>
-                              <button className="ubtn ubtn-ghost" onClick={() => window.print()}>{I.print} Imprimer</button>
-                            </div>
-                          </>
-                        );
-                      })()}
+                      {currentInvoice ? (
+                        <>
+                          <table className="urg-tbl" style={{ marginBottom: 20 }}>
+                            <thead><tr><th>Prestation</th><th style={{ textAlign: "right" }}>Montant (CFA)</th></tr></thead>
+                            <tbody>{currentInvoice.lignes.map((l, i) => <tr key={i}><td style={{ fontSize: 12 }}>{l.libelle}</td><td style={{ textAlign: "right", fontWeight: 600 }}>{Number(l.montant||0).toLocaleString("fr-FR")}</td></tr>)}</tbody>
+                          </table>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
+                            {[["TOTAL", currentInvoice.montant_ttc, "var(--ur)","#FDEDEC"],["PAYÉ", currentInvoice.montant_paye, "var(--ug)","#EAFAF1"],["RESTE", currentInvoice.montant_restant, "var(--uo)","#FEF9E7"]].map(([lbl, val, col, bg]) => (
+                              <div key={lbl} style={{ background: bg, borderRadius: 10, padding: 14, textAlign: "center" }}>
+                                <div style={{ fontSize: 18, fontWeight: 800, color: col }}>{Number(val||0).toLocaleString("fr-FR")}</div>
+                                <div style={{ fontSize: 11, color: "var(--ucm)", marginTop: 2 }}>{lbl} (CFA)</div>
+                              </div>
+                            ))}
+                          </div>
+                          {currentInvoice.montant_ttc > 0 && (
+                            <Prog pct={Math.round((currentInvoice.montant_paye / currentInvoice.montant_ttc) * 100)} color="var(--ug)" />
+                          )}
+                          <div style={{ fontSize: 11, color: "var(--ucm)", marginTop: 12 }}>
+                            N° {currentInvoice.numero_facture} — voir le module Finance pour encaisser un paiement.
+                          </div>
+                          <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+                            <button className="ubtn ubtn-ghost" onClick={() => window.print()}>{I.print} Imprimer</button>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ padding: "20px 4px", color: "var(--ucm)", fontSize: 13, lineHeight: 1.6 }}>
+                          {["sorti","transfere","decede"].includes(currentUrg.statut)
+                            ? "Aucune facture réelle n'a été générée pour ce dossier : aucun examen/médicament de cet épisode ne référence le catalogue réel (ExamCatalogue/Pharmacie)."
+                            : "Aucune facture pour l'instant — une vraie facture est générée automatiquement à la clôture du dossier (sortie/transfert/décès), à partir des examens et médicaments réellement liés au catalogue."}
+                          <div style={{ marginTop: 10, background: "#FFF7ED", border: "1.5px solid #FED7AA", borderRadius: 10, padding: "10px 12px", color: "#92400E" }}>
+                            ⚠️ Limite documentée : les soins infirmiers et les prescriptions de type perfusion/soin ne sont jamais inclus dans la facture réelle — aucun catalogue tarifaire n'existe aujourd'hui pour eux dans ce système.
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1775,16 +1813,41 @@ export default function Urgences() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div>
                 <label className="ulbl">Type</label>
-                <select className="uinp" value={formPrescription.type} onChange={e => setFormPrescription_(f => ({ ...f, type: e.target.value }))}>
+                <select className="uinp" value={formPrescription.type} onChange={e => setFormPrescription_(f => ({ ...f, type: e.target.value, medicament: "" }))}>
                   <option value="medicament">💊 Médicament</option>
                   <option value="perfusion">🩸 Perfusion</option>
                   <option value="soin">🩺 Soin</option>
                 </select>
               </div>
-              <div>
-                <label className="ulbl">Désignation *</label>
-                <input className="uinp" required placeholder="Nom du médicament..." value={formPrescription.designation} onChange={e => setFormPrescription_(f => ({ ...f, designation: e.target.value }))} />
-              </div>
+              {formPrescription.type === "medicament" ? (
+                <div>
+                  {/* Correction 2 (module 4/6) — remplace la désignation en
+                      texte libre par le vrai catalogue Pharmacie
+                      (Medication.prix_vente), seule source de tarif réelle
+                      pour un médicament : la facturation automatique à la
+                      clôture (urgencesController.js) cesse d'être inerte
+                      pour les médicaments réels. Perfusion/Soin n'ont
+                      aujourd'hui aucun équivalent réel — restent en texte
+                      libre, non facturés (limite documentée, pas simulée). */}
+                  <label className="ulbl">Médicament (catalogue réel) *</label>
+                  <select className="uinp" required value={formPrescription.medicament} onChange={e => {
+                    const m = medicaments.find(x => x._id === e.target.value);
+                    setFormPrescription_(f => ({ ...f, medicament: e.target.value, designation: m?.nom_commercial || "" }));
+                  }}>
+                    <option value="">— Sélectionner —</option>
+                    {medicaments.map(m => <option key={m._id} value={m._id}>{m.nom_commercial} — {Number(m.prix_vente||0).toLocaleString("fr-FR")} CFA</option>)}
+                  </select>
+                  {medicaments.length === 0 && (
+                    <div style={{ fontSize: 11, color: "var(--ucm)", marginTop: 4 }}>Aucun médicament disponible dans le catalogue réel (Pharmacie) pour l'instant.</div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="ulbl">Désignation *</label>
+                  <input className="uinp" required placeholder={formPrescription.type === "perfusion" ? "Ex: Sérum salé 0,9% 500ml" : "Ex: Pansement, surveillance..."} value={formPrescription.designation} onChange={e => setFormPrescription_(f => ({ ...f, designation: e.target.value }))} />
+                  <div style={{ fontSize: 11, color: "var(--ucm)", marginTop: 4 }}>Aucun catalogue tarifaire réel n'existe aujourd'hui pour perfusion/soin — non inclus dans la facture réelle.</div>
+                </div>
+              )}
               <div>
                 <label className="ulbl">Posologie</label>
                 <input className="uinp" placeholder="Ex: 500mg IV toutes les 8h" value={formPrescription.posologie} onChange={e => setFormPrescription_(f => ({ ...f, posologie: e.target.value }))} />
@@ -1807,14 +1870,31 @@ export default function Urgences() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div>
                 <label className="ulbl">Type</label>
-                <select className="uinp" value={formExamen.type} onChange={e => setFormExamen_(f => ({ ...f, type: e.target.value }))}>
+                <select className="uinp" value={formExamen.type} onChange={e => setFormExamen_(f => ({ ...f, type: e.target.value, examen: "", designation: "" }))}>
                   <option value="labo">Analyse biologique</option>
                   <option value="imagerie">Imagerie médicale</option>
                 </select>
               </div>
               <div>
-                <label className="ulbl">Désignation *</label>
-                <input className="uinp" required placeholder="Ex: NFS, CRP, Radio thorax, ECG..." value={formExamen.designation} onChange={e => setFormExamen_(f => ({ ...f, designation: e.target.value }))} />
+                {/* Correction 2 (module 4/6) — remplace la désignation en
+                    texte libre par le vrai catalogue déjà utilisé par
+                    Laboratoire (type:'labo') / Radiology (type:'imagerie') :
+                    la facturation automatique à la clôture
+                    (urgencesController.js) cesse d'être inerte. */}
+                <label className="ulbl">Examen (catalogue réel) *</label>
+                <select className="uinp" required value={formExamen.examen} onChange={e => {
+                  const list = formExamen.type === "labo" ? catalogueLabo : catalogueImagerie;
+                  const ex = list.find(x => x._id === e.target.value);
+                  setFormExamen_(f => ({ ...f, examen: e.target.value, designation: ex?.nom || "" }));
+                }}>
+                  <option value="">— Sélectionner —</option>
+                  {(formExamen.type === "labo" ? catalogueLabo : catalogueImagerie).map(ex => (
+                    <option key={ex._id} value={ex._id}>{ex.nom} — {Number(ex.prix||0).toLocaleString("fr-FR")} CFA</option>
+                  ))}
+                </select>
+                {(formExamen.type === "labo" ? catalogueLabo : catalogueImagerie).length === 0 && (
+                  <div style={{ fontSize: 11, color: "var(--ucm)", marginTop: 4 }}>Aucun examen disponible dans le catalogue réel pour l'instant.</div>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <input type="checkbox" id="urgent_examen" checked={formExamen.urgent} onChange={e => setFormExamen_(f => ({ ...f, urgent: e.target.checked }))} />

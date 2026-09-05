@@ -1,6 +1,17 @@
 const Urgence   = require('../models/Urgence');
+const ExamCatalogue = require('../models/ExamCatalogue');
+const Medication = require('../models/Medication');
+const Invoice   = require('../models/Invoice');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction, escapeRegex } = require('../utils/helpers');
+
+const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
+// Correction 2 (module 4/6, relecture du 6 sept. 2026) — statuts de clôture
+// réelle d'un épisode d'urgences facturable par CE module. 'hospitalise' en
+// est exclu : la facturation continue alors sous Hospitalization (cout_total
+// → Invoice, cf. Phase 0), jamais doublée ici.
+const TERMINAL_FACTURABLE = ['sorti', 'transfere', 'decede'];
 
 const normalize = (u) => ({
   ...u.toObject({ virtuals: true }),
@@ -134,7 +145,8 @@ exports.getOne = async (req, res, next) => {
       .populate('patient', 'prenom nom numero_dossier date_naissance')
       .populate('medecin_responsable', 'prenom nom');
     if (!u) return res.status(404).json({ success: false, message: 'Dossier urgence introuvable' });
-    res.json({ success: true, urgence: normalize(u) });
+    const invoice = await Invoice.findOne({ source_module: 'urgences', source_id: u._id });
+    res.json({ success: true, urgence: normalize(u), invoice });
   } catch (err) { next(err); }
 };
 
@@ -173,6 +185,13 @@ exports.update = async (req, res, next) => {
     // (hospitalization.controller.js::create).
     const { soins, prescriptions, examens, timeline, admission_status, ...fields } = req.body;
     const decisionAvant = u.decision;
+    const statutAvant   = u.statut;
+    // AUDIT-URG-STATUT-BUG — la comparaison `fields.statut !== u.statut` ci-
+    // dessous ne détectait plus jamais de changement une fois Object.assign
+    // déjà exécuté (u.statut valait déjà fields.statut). Capturé avant
+    // Object.assign (statutAvant), même correctif nécessaire pour que la
+    // génération de facture ci-dessous (Correction 2) détecte réellement la
+    // transition vers un statut terminal.
     Object.assign(u, fields);
 
     if (fields.decision !== undefined && fields.decision !== decisionAvant && u.admission_status !== 'terminee') {
@@ -184,7 +203,7 @@ exports.update = async (req, res, next) => {
       }
     }
 
-    if (fields.statut && fields.statut !== u.statut) {
+    if (fields.statut && fields.statut !== statutAvant) {
       u.timeline.push({
         action:    `Statut → ${fields.statut}`,
         heure:     new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
@@ -194,11 +213,61 @@ exports.update = async (req, res, next) => {
     }
 
     await u.save();
+
+    // Correction 2 (module 4/6, relecture du 6 sept. 2026) — l'onglet
+    // Facturation d'Urgences.jsx calculait un montant entièrement inventé
+    // (tarifs fixes par catégorie d'acte + "payé = 60% du total", une
+    // formule arbitraire), sans qu'aucune Invoice n'existe jamais en base.
+    // Génère désormais une vraie facture à la clôture réelle de l'épisode
+    // (sortie/transfert/décès — jamais à l'hospitalisation, déjà facturée
+    // par Hospitalization), uniquement à partir des examens/prescriptions
+    // référençant un vrai ExamCatalogue/Medication. LIMITE DOCUMENTÉE,
+    // jamais simulée : les soins infirmiers (soins[]) et les prescriptions
+    // de type perfusion/soin n'ont aujourd'hui aucun catalogue tarifaire
+    // réel dans ce codebase — exclus de cette facture, pas de valeur
+    // inventée pour les couvrir.
+    let factureGeneree = null;
+    if (fields.statut && fields.statut !== statutAvant && TERMINAL_FACTURABLE.includes(fields.statut)) {
+      const dejaFacture = await Invoice.findOne({ source_module: 'urgences', source_id: u._id });
+      if (!dejaFacture) {
+        const lignes = [];
+        for (const ex of u.examens) {
+          if (ex.examen && isObjectId(String(ex.examen))) {
+            const cat = await ExamCatalogue.findById(ex.examen);
+            const prix = Number(cat?.prix) || 0;
+            if (prix > 0) lignes.push({ libelle: cat.nom, categorie: ex.type === 'labo' ? 'laboratoire' : 'imagerie', prix_unitaire: prix, quantite: 1, montant: prix });
+          }
+        }
+        for (const pr of u.prescriptions) {
+          if (pr.medicament && isObjectId(String(pr.medicament))) {
+            const med = await Medication.findById(pr.medicament);
+            const prix = Number(med?.prix_vente) || 0;
+            if (prix > 0) lignes.push({ libelle: med.nom_commercial, categorie: 'pharmacie', prix_unitaire: prix, quantite: 1, montant: prix });
+          }
+        }
+        if (lignes.length > 0) {
+          const montant = lignes.reduce((s, l) => s + l.montant, 0);
+          factureGeneree = await Invoice.create({
+            patient: u.patient || undefined,
+            patient_nom: u.patient_nom,
+            service_label: 'Urgences',
+            source_module: 'urgences',
+            source_id: u._id,
+            created_by: req.user._id,
+            lignes,
+            montant_ht: montant,
+            montant_ttc: montant,
+          });
+          await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: factureGeneree._id, ip: req.ip, message: `Facture ${factureGeneree.numero_facture} générée automatiquement depuis la clôture du dossier urgences ${u.numero}` });
+        }
+      }
+    }
+
     await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Dossier urgences ${u.numero} modifié${fields.statut ? ` — statut → ${fields.statut}` : ''}` });
     emitDashboardUpdate();
     await u.populate('patient', 'prenom nom numero_dossier');
     await u.populate('medecin_responsable', 'prenom nom');
-    res.json({ success: true, urgence: normalize(u) });
+    res.json({ success: true, urgence: normalize(u), invoice: factureGeneree });
   } catch (err) { next(err); }
 };
 
@@ -243,7 +312,10 @@ exports.addPrescription = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
     if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
-    u.prescriptions.push(req.body);
+    // Correction 2 (module 4/6) — n'accepte `medicament` que si c'est un vrai
+    // ObjectId Medication, jamais fabriqué s'il est absent ou invalide.
+    const medicament = (req.body.medicament && isObjectId(req.body.medicament)) ? req.body.medicament : undefined;
+    u.prescriptions.push({ ...req.body, medicament });
     u.timeline.push({ action: `Prescription : ${req.body.designation || req.body.type}`, heure: new Date().toTimeString().substring(0,5), personnel: req.body.medecin || 'Médecin' });
     await u.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Prescription (${req.body.designation || req.body.type || '—'}) ajoutée au dossier urgences ${u.numero}` });
@@ -265,7 +337,10 @@ exports.addExamen = async (req, res, next) => {
   try {
     const u = await Urgence.findById(req.params.id);
     if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
-    u.examens.push(req.body);
+    // Correction 2 (module 4/6) — n'accepte `examen` que si c'est un vrai
+    // ObjectId ExamCatalogue, jamais fabriqué s'il est absent ou invalide.
+    const examen = (req.body.examen && isObjectId(req.body.examen)) ? req.body.examen : undefined;
+    u.examens.push({ ...req.body, examen });
     u.timeline.push({ action: `Examen demandé : ${req.body.designation}${req.body.urgent ? ' 🚨URGENT' : ''}`, heure: new Date().toTimeString().substring(0,5), personnel: 'Médecin' });
     await u.save();
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Examen demandé (${req.body.designation || '—'}) — dossier urgences ${u.numero}` });
