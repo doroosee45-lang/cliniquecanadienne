@@ -335,6 +335,7 @@ const EMPTY_CONS = {
   notes_generales: "",
   frais_consultation: 15000,
   statut_paiement: "non_paye",
+  mode_paiement: "especes",
 };
 
 const ageCalc = (dob) => {
@@ -993,6 +994,7 @@ export default function Consultation() {
         rdv_note:          form.rdv_note || '',
         frais_consultation: form.frais_consultation,
         statut_paiement:   form.statut_paiement,
+        mode_paiement:     form.mode_paiement,
         statut: 'terminee',
       };
       await dispatch(createConsultation(payload)).unwrap();
@@ -1776,7 +1778,7 @@ export default function Consultation() {
                     </div>
                     <div>
                       <label className="clbl">Mode de paiement</label>
-                      <select className="cinp">
+                      <select className="cinp" value={form.mode_paiement} onChange={e => setF("mode_paiement", e.target.value)}>
                         <option value="especes">💵 Espèces</option>
                         <option value="mobile">📱 Mobile money</option>
                         <option value="virement">🏦 Virement bancaire</option>

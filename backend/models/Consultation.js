@@ -61,6 +61,12 @@ const ConsultationSchema = new Schema({
   rdv_note: String,
   frais_consultation: Number,
   statut_paiement: { type: String, enum: ['non_paye', 'partiel', 'paye', 'assurance', 'exonere'], default: 'non_paye' },
+  // Correction 1 (relecture du 6 sept. 2026, FE-BUG-003) — le <select> "Mode
+  // de paiement" du formulaire (Consultations.jsx) n'avait ni value ni
+  // onChange : la sélection de l'utilisateur n'était jamais transmise, et ce
+  // champ n'existait même pas ici (Consultations.jsx:763-766 le lit déjà en
+  // lecture seule, mais rien ne l'écrivait jamais).
+  mode_paiement: { type: String, enum: ['especes', 'mobile', 'virement', 'assurance'] },
   statut: { type: String, enum: ['en_cours','terminee','suspendue'], default: 'en_cours' },
   ia_suggestions: [{ diagnostic: String, confidence: Number }],
 }, { timestamps: true });

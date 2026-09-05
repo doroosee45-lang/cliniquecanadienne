@@ -38,6 +38,7 @@ const buildConsultationFields = (body) => ({
   rdv_note: body.rdv_note,
   frais_consultation: body.frais_consultation,
   statut_paiement: body.statut_paiement,
+  mode_paiement: body.mode_paiement,
   statut: body.statut,
 });
 
