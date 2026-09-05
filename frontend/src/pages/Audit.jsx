@@ -415,9 +415,17 @@ body{background:#f5f7fa}.page{max-width:700px;margin:0 auto;background:#fff}
   </div>
   <div class="footer">${clinicFull} — Document confidentiel · ${new Date().toLocaleString('fr-FR')}</div>
 </div>
-<script>window.onload=()=>{window.print()}</script>
 </body></html>`);
   win.document.close();
+  // SEC-007 — un <script> inline écrit ici même (window.print() au chargement)
+  // était le seul script inline de tout le frontend, ce qui obligeait à
+  // garder 'unsafe-inline' dans script-src (server.js) pour cette seule
+  // fenêtre d'impression. Remplacé par le même mécanisme déjà utilisé sans
+  // script inline ailleurs (receipt58mm.js, Pharmacy.jsx) : window.onload
+  // posé directement depuis ce contexte JS (celui qui a ouvert la fenêtre),
+  // jamais depuis un <script> écrit dans le document popup lui-même —
+  // fonctionnellement identique, mais rien à autoriser en plus dans la CSP.
+  win.onload = () => { win.focus(); win.print(); };
 };
 
 // ─── Bar Chart ────────────────────────────────────────────────

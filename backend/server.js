@@ -120,7 +120,20 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc:  ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://accounts.google.com", "https://apis.google.com"],
+      // SEC-007 — 'unsafe-inline' affaiblissait sensiblement la protection
+      // anti-XSS de cette CSP. Vérifié exhaustivement avant retrait (grep sur
+      // tout frontend/src) : un seul script inline existait dans toute
+      // l'application (Audit.jsx::printEvent, un <script> écrit dans une
+      // fenêtre popup pour déclencher window.print() au chargement) —
+      // remplacé par le même mécanisme déjà utilisé ailleurs sans script
+      // inline (receipt58mm.js, Pharmacy.jsx) : win.onload posé depuis le
+      // contexte JS qui ouvre la fenêtre, jamais depuis un <script> écrit
+      // dans le document popup. Aucun autre <script> inline, ni attribut
+      // on*="" construit en chaîne, trouvé nulle part ailleurs. Google OAuth
+      // (@react-oauth/google) charge son propre script externe depuis
+      // https://accounts.google.com (déjà autorisé ci-dessous) et ne dépend
+      // d'aucun script inline.
+      scriptSrc:  ["'self'", "https://cdnjs.cloudflare.com", "https://accounts.google.com", "https://apis.google.com"],
       styleSrc:   ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc:    ["'self'", "https://fonts.gstatic.com", "data:"],
       imgSrc:     ["'self'", "data:", "https:", "blob:"],
