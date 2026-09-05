@@ -166,6 +166,30 @@ async function anonymizePatient(patientId, { utilisateur, ip } = {}) {
     cascade[model.modelName] = result.modifiedCount;
   }
 
+  // Correction 14 (relecture du 6 sept. 2026, DATA-002) — PediatricConsultation
+  // duplique bien une identité (patient_nom, jamais scrubé jusqu'ici, resté
+  // en clair après anonymizePatient() alors que Child.nom/prenom du même
+  // patient l'est correctement) mais n'a AUCUNE référence directe vers
+  // Patient._id — seulement child_id -> Child, et c'est Child.patient_id qui
+  // référence le patient. Le mécanisme générique CASCADE_TARGETS ci-dessus
+  // suppose une correspondance directe { [refField]: patient._id } : une
+  // entrée refField:'child_id' y échouerait silencieusement (aucun document
+  // PediatricConsultation n'a jamais patient._id comme child_id). Résolu ici
+  // en deux temps, cas spécial documenté plutôt que d'étendre le mécanisme
+  // générique pour un seul modèle à double indirection.
+  const PediatricConsultation = require('../models/PediatricConsultation');
+  const Child = require('../models/Child');
+  const enfantsIds = (await Child.find({ patient_id: patient._id }).select('_id').lean()).map(c => c._id);
+  if (enfantsIds.length) {
+    const resultPed = await PediatricConsultation.updateMany(
+      { child_id: { $in: enfantsIds } },
+      { $unset: { patient_nom: 1 } }
+    );
+    cascade[PediatricConsultation.modelName] = resultPed.modifiedCount;
+  } else {
+    cascade[PediatricConsultation.modelName] = 0;
+  }
+
   await logAction({
     utilisateur, action: 'ANONYMIZE', module: 'patients', entite_id: patient._id, ip,
     avant: { nom: avant.nom, prenom: avant.prenom, email: avant.email, telephone: avant.telephone },
