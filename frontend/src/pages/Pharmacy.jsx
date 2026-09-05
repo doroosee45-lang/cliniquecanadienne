@@ -405,6 +405,15 @@ export default function Pharmacie() {
   // valeurs fictives précédemment codées en dur.
   const [comptageReel, setComptageReel] = useState({});
   const [validatingInv, setValidatingInv] = useState(false);
+  // Sous-phase 5.3 — la modale "Démarrer un inventaire" avait 3 champs non
+  // contrôlés (type/responsable/observations) : saisis à l'écran mais
+  // ignorés au clic sur "Démarrer l'inventaire" (setComptageReel({}) sans
+  // rapport avec ces champs). Réellement reportés dans les notes de chaque
+  // mouvement de stock persisté par validerInventaire() ci-dessous, pour
+  // tenir la promesse affichée dans la modale ("Tout écart sera enregistré
+  // dans le journal d'audit").
+  const EMPTY_INV_SESSION = { type: "Inventaire complet (tous médicaments)", responsable: "", observations: "" };
+  const [invSession, setInvSession] = useState(EMPTY_INV_SESSION);
   const [qteCmdIA, setQteCmdIA] = useState({});
   const [sendingCmdIA, setSendingCmdIA] = useState(false);
   const [mvts, setMvts]       = useState([]);
@@ -779,6 +788,11 @@ export default function Pharmacie() {
     if (!window.confirm(`Enregistrer ${ecarts.length} écart(s) d'inventaire détecté(s) ?`)) return;
     setValidatingInv(true);
     let ok = 0, fail = 0;
+    const notesSession = [
+      invSession.type,
+      invSession.responsable && `responsable : ${invSession.responsable}`,
+      invSession.observations && `observations : ${invSession.observations}`,
+    ].filter(Boolean).join(" — ");
     for (const { m, compte } of ecarts) {
       const delta = compte - m.stock_quantite;
       try {
@@ -786,7 +800,7 @@ export default function Pharmacie() {
           type: delta > 0 ? "entree" : "sortie",
           quantite: Math.abs(delta),
           reference: "Inventaire physique",
-          notes: `Ajustement inventaire — comptage ${compte} vs théorique ${m.stock_quantite}`,
+          notes: `Ajustement inventaire (${notesSession}) — comptage ${compte} vs théorique ${m.stock_quantite}`,
         });
         setMeds(prev => prev.map(x => x._id === m._id ? { ...x, stock_quantite: compte } : x));
         ok++;
@@ -794,6 +808,7 @@ export default function Pharmacie() {
     }
     setValidatingInv(false);
     setComptageReel({});
+    setInvSession(EMPTY_INV_SESSION);
     if (fail === 0) toast.success(`✅ Inventaire validé — ${ok} ajustement(s) enregistré(s)`);
     else toast.error(`${ok} ajustement(s) enregistré(s), ${fail} échec(s)`);
     loadStats();
@@ -3041,7 +3056,7 @@ ${lignes}
             </div>
             <div>
               <label className="plbl">Type d'inventaire</label>
-              <select className="pinp">
+              <select className="pinp" value={invSession.type} onChange={e => setInvSession(s => ({ ...s, type:e.target.value }))}>
                 <option>Inventaire complet (tous médicaments)</option>
                 <option>Inventaire partiel (par catégorie)</option>
                 <option>Inventaire tournant (par emplacement)</option>
@@ -3049,11 +3064,11 @@ ${lignes}
             </div>
             <div>
               <label className="plbl">Responsable de l'inventaire</label>
-              <input className="pinp" placeholder="Nom du pharmacien responsable" />
+              <input className="pinp" placeholder="Nom du pharmacien responsable" value={invSession.responsable} onChange={e => setInvSession(s => ({ ...s, responsable:e.target.value }))} />
             </div>
             <div>
               <label className="plbl">Observations</label>
-              <textarea className="pinp" rows={2} placeholder="Contexte, motif, notes..." style={{ resize:"none" }} />
+              <textarea className="pinp" rows={2} placeholder="Contexte, motif, notes..." style={{ resize:"none" }} value={invSession.observations} onChange={e => setInvSession(s => ({ ...s, observations:e.target.value }))} />
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="pbtn pbtn-ghost" onClick={() => setModalInv(false)}>Annuler</button>
