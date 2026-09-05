@@ -311,6 +311,26 @@ const normalizeRdv = (r) => {
   };
 };
 
+// Sous-phase 5.1 (relecture du 6 sept. 2026) — remplace le graphique "Volume
+// mensuel de rendez-vous" autrefois alimenté par un tableau moisData codé en
+// dur ([38,52,45,...], toujours identique). Même pattern d'agrégation glissante
+// sur 12 mois que Prescriptions.jsx::buildOrdonnancesParMois — compte les
+// rendez-vous réellement chargés (rdvs) par mois calendaire réel.
+const buildRdvParMois = (rdvs) => {
+  const now = new Date();
+  const labels = [], data = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    labels.push(d.toLocaleString('fr-FR', { month: 'short' }));
+    const count = rdvs.filter(r => {
+      const rd = new Date(r.date_heure);
+      return rd.getFullYear() === d.getFullYear() && rd.getMonth() === d.getMonth();
+    }).length;
+    data.push(count);
+  }
+  return { labels, data };
+};
+
 // Retourne un formulaire vide avec date = aujourd'hui par défaut
 const makeEmptyRdv = () => ({
   patient_id:"",
@@ -1102,8 +1122,11 @@ export default function RendezVous() {
   };
 
   // Chart data
-  const moisLabels = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
-  const moisData   = [38, 52, 45, 61, 73, 58, 42, 35, 50, 67, 55, 70];
+  const { labels: moisLabels, data: moisData } = useMemo(() => buildRdvParMois(rdvs), [rdvs]);
+  // Sous-phase 5.1 — durée moyenne réelle des RDV chargés (Appointment.
+  // duree_minutes, réellement stocké et renvoyé par GET /appointments),
+  // remplace la valeur fixe "28 min" précédente.
+  const dureeMoyenne = rdvs.length ? Math.round(rdvs.reduce((s, r) => s + (parseInt(r.duree, 10) || 0), 0) / rdvs.length) : null;
   const tauxPresence = Math.round(rdvs.filter(r => r.statut === "termine").length / Math.max(1, rdvs.filter(r => !["en_attente","planifie","confirme"].includes(r.statut)).length) * 100);
 
   return (
@@ -1630,7 +1653,7 @@ export default function RendezVous() {
                 <KpiCard color="blue"   icon={I.cal}   value={rdvs.length}    label="Total RDV"        sub="toutes périodes" />
                 <KpiCard color="green"  icon={I.check} value={`${tauxPresence}%`} label="Taux présence" sub="patients venus" />
                 <KpiCard color="red"    icon={I.x}     value={`${rdvs.length > 0 ? Math.round(kpis.annules/rdvs.length*100) : 0}%`} label="Taux annulation" sub="ce mois" />
-                <KpiCard color="orange" icon={I.clock} value="28 min"         label="Durée moy. RDV"   sub="toutes spécialités" />
+                <KpiCard color="orange" icon={I.clock} value={dureeMoyenne !== null ? `${dureeMoyenne} min` : "—"} label="Durée moy. RDV"   sub="toutes spécialités" />
                 <KpiCard color="teal"   icon={I.user}  value={rdvs.filter(r=>r.statut==="termine").length} label="Consultations terminées" sub="ce mois" />
               </div>
 
