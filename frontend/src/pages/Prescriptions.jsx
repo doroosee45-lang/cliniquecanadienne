@@ -573,21 +573,21 @@ export default function Ordonnances() {
     if (!annulMotif.trim()) { toast.error("Indiquez le motif d'annulation."); return; }
     setSaving(true);
     try {
-      // AUDIT-ELEVE-3 (relecture du 6 sept. 2026) — le catch ci-dessous
-      // marquait l'ordonnance "annulee" côté état local même si l'appel
-      // réseau échouait réellement (même famille que FE-BUG-002 relevé
-      // ailleurs) : hors périmètre de la Correction 2 (qui porte
-      // uniquement sur le motif jamais transmis), documenté ici sans être
-      // corrigé — le comportement du catch n'a pas été modifié.
       await api.put(`/prescriptions/${currentOrd._id}/cancel`, { motif: annulMotif });
       toast.success("🚫 Ordonnance annulée");
       setCurrent(prev => ({ ...prev, statut:"annulee", motif_annulation: annulMotif }));
       setOrds(prev => prev.map(o => o._id === currentOrd._id ? { ...o, statut:"annulee" } : o));
       setModalAnnul(false);
       setAnnulMotif("");
-    } catch {
-      setCurrent(prev => ({ ...prev, statut:"annulee" }));
-      setModalAnnul(false);
+    } catch (err) {
+      // Sous-phase 5.3 (traite enfin AUDIT-ELEVE-3, mis en réserve depuis la
+      // Phase 4) — ce catch marquait l'ordonnance "annulee" côté état local
+      // ET fermait la modale même si l'appel réseau échouait réellement,
+      // sans le moindre message d'erreur : un faux succès affiché en cas
+      // d'échec réel de l'annulation. La modale reste désormais ouverte,
+      // aucun état local n'est modifié, et l'erreur réelle est affichée —
+      // même comportement que publierOrd() ci-dessus sur le même modèle.
+      toast.error(err?.response?.data?.message || "Erreur lors de l'annulation de l'ordonnance.");
     } finally { setSaving(false); }
   };
 
