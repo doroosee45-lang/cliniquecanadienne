@@ -21,6 +21,10 @@ const EXEMPT_LINE_PATTERNS = [
   /router\.post\('\/login'/, /router\.post\('\/forgot-password'/, /router\.post\('\/reset-password/,
   /router\.post\('\/google'/, /router\.post\('\/logout'/, /router\.get\('\/me'/, /router\.put\('\/password'/,
   /router\.get\('\/activate\/:token'/, /router\.post\('\/activate\/:token'/,
+  // Correction 9 (FE-BUG-011) — formulaire de contact public (home.jsx) :
+  // aucun utilisateur authentifié possible côté visiteur, route volontairement
+  // sans authorize(), au même titre que /login ou /forgot-password ci-dessus.
+  /router\.post\('\/', contactC\.create\)/,
 ];
 
 function routeFiles() {

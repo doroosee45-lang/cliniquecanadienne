@@ -32,6 +32,7 @@ router.use('/pediatrie',        require('./pediatrie.routes'));        // Pédia
 router.use('/urgences',         require('./urgences.routes'));         // Urgences
 router.use('/ambulances',       require('./ambulances.routes'));       // Ambulances
 router.use('/echographie',      require('./echographie.routes'));      // Échographie
+router.use('/contact',          require('./contact.routes'));          // Formulaire de contact public (Correction 9)
 // Alias admin/* → settings/*
 router.use('/admin',            require('./settings.routes'));
 

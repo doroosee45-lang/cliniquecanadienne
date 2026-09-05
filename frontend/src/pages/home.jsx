@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from 'react-router-dom';
+import api from '../api';
+import toast from 'react-hot-toast';
 
 const COLORS = {
   primary: "#1565C0",
@@ -148,6 +150,29 @@ export default function ClinicLanding() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [formData, setFormData] = useState({ nom: "", tel: "", email: "", sujet: "", message: "" });
+  const [contactSending, setContactSending] = useState(false);
+  // Correction 9 (relecture du 6 sept. 2026, FE-BUG-011) — le bouton
+  // "Envoyer le message" n'avait aucun onClick/onSubmit : la saisie était
+  // possible mais jamais transmise. POST /contact réel (stockage minimal,
+  // voir backend/models/ContactMessage.js — aucune adresse de contact
+  // clinique réelle n'est configurée dans ce système pour justifier un
+  // envoi email à la place).
+  const handleContactSubmit = async () => {
+    if (!formData.nom.trim() || !formData.email.trim() || !formData.message.trim()) {
+      toast.error("Merci de renseigner au moins votre nom, votre email et votre message.");
+      return;
+    }
+    setContactSending(true);
+    try {
+      await api.post('/contact', formData);
+      toast.success("Message envoyé ! Notre équipe vous répondra rapidement.");
+      setFormData({ nom: "", tel: "", email: "", sujet: "", message: "" });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Échec de l'envoi. Réessayez ou appelez-nous directement.");
+    } finally {
+      setContactSending(false);
+    }
+  };
   const [hovered, setHovered] = useState(null);
   const intervalRef = useRef(null);
 
@@ -733,8 +758,11 @@ export default function ClinicLanding() {
                   onFocus={e => e.target.style.borderColor = COLORS.primary}
                   onBlur={e => e.target.style.borderColor = "#DBEAFE"} />
               </div>
-              <button style={{ ...style.btn, background: COLORS.primary, color: COLORS.white, fontSize: "15px", padding: "13px 36px", marginTop: "22px", boxShadow: "0 6px 20px rgba(21,101,192,0.35)" }}>
-                ✉️ Envoyer le message
+              <button
+                onClick={handleContactSubmit}
+                disabled={contactSending}
+                style={{ ...style.btn, background: COLORS.primary, color: COLORS.white, fontSize: "15px", padding: "13px 36px", marginTop: "22px", boxShadow: "0 6px 20px rgba(21,101,192,0.35)", opacity: contactSending ? 0.7 : 1, cursor: contactSending ? "wait" : "pointer" }}>
+                {contactSending ? "Envoi..." : "✉️ Envoyer le message"}
               </button>
             </div>
           </div>
