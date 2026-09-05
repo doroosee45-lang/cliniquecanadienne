@@ -1352,27 +1352,26 @@ export default function JournalAudit() {
                 </div>
               )}
 
-              {/* Surveillance rules */}
+              {/* Sous-phase 5.1 — "Règles de surveillance automatique"
+                  affichait 6 règles présentées comme actives/inactives avec
+                  des seuils et actions précis, alors que 5 des 6 n'ont
+                  strictement aucune application réelle dans le backend
+                  (vérifié : aucune alerte IP-hors-réseau, aucune alerte sur
+                  changement de permissions, aucun blocage de suppression
+                  massive, aucune alerte d'export hors heures, aucune gestion
+                  de session concurrente) et la seule règle partiellement
+                  réelle (verrouillage après échecs de connexion,
+                  auth.controller.js) énonce des paramètres inexacts : le
+                  vrai seuil est 5 échecs cumulés (pas de fenêtre de 5
+                  minutes), verrouillage 15 min (pas "Verrouillage
+                  temporaire" vague) — cf. MAX_TENTATIVES/VERROUILLAGE_MS.
+                  Désactivé honnêtement plutôt que de laisser cette liste
+                  trompeuse. */}
               <div className="aud-card aufu" style={{ marginTop: 24 }}>
                 <div className="aud-card-hdr"><h3>🔔 Règles de surveillance automatique</h3></div>
-                <div style={{ padding: 16 }}>
-                  {[
-                    { regle: "Plus de 3 échecs de connexion en 5 minutes", seuil: "3 tentatives", statut: true, action: "Verrouillage temporaire + Notification admin" },
-                    { regle: "Connexion depuis IP hors réseau local", seuil: "IP externe", statut: true, action: "Alerte critique + Log détaillé" },
-                    { regle: "Modification de permissions utilisateur", seuil: "Tout changement", statut: true, action: "Alerte élevée + Confirmation requise" },
-                    { regle: "Suppression massive de données (> 10 enreg.)", seuil: ">10 suppressions", statut: true, action: "Blocage + Notification urgente" },
-                    { regle: "Exportation de données sensibles hors heures", seuil: "0h-7h", statut: false, action: "Alerte + Rapport automatique" },
-                    { regle: "Connexion simultanée depuis 2 IP différentes", seuil: "2 IP actives", statut: true, action: "Alerte + Déconnexion session ancienne" },
-                  ].map((r, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: "#F8FAFD", borderRadius: 10, marginBottom: 8, flexWrap: "wrap" }}>
-                      <div style={{ width: 10, height: 10, borderRadius: 50, background: r.statut ? "#059669" : "#9CA3AF", flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--an)" }}>{r.regle}</div>
-                        <div style={{ fontSize: 11, color: "var(--cm)" }}>Seuil : {r.seuil} · Action : {r.action}</div>
-                      </div>
-                      <ABadge cls={r.statut ? "green" : "gray"}>{r.statut ? "Actif" : "Inactif"}</ABadge>
-                    </div>
-                  ))}
+                <div style={{ padding: 40, textAlign: "center", color: "var(--cm)" }}>
+                  <div style={{ fontSize: 32, marginBottom: 10, opacity: .4 }}>🔔</div>
+                  <div style={{ fontSize: 13 }}>🚧 Fonctionnalité en cours de développement — seul le verrouillage de compte après échecs de connexion répétés est réellement appliqué (voir la politique de sécurité), les autres règles de surveillance automatique n'existent pas encore.</div>
                 </div>
               </div>
             </div>
@@ -1383,14 +1382,23 @@ export default function JournalAudit() {
             <div>
               <div style={{ fontSize: 16, fontWeight: 700, color: "var(--an)", marginBottom: 20 }}>Statistiques & Analytiques d'audit</div>
 
+              {/* Sous-phase 5.1 — "Événements/jour" comptait events.length (la
+                  page courante paginée, limit:20, jamais une moyenne réelle)
+                  en l'étiquetant "moyenne 7 jours" ; "Taux succès auth." était
+                  fixé à "94%", jamais recalculé alors que connexions
+                  réussies/échecs sont déjà réellement comptés ci-dessus
+                  (kpis.connexions_ok/kpis.echecs, employés ailleurs dans ce
+                  même fichier) ; "Conservation logs: 1 an" affirmait une
+                  politique de rétention qui n'existe pas réellement (même
+                  constat déjà établi et documenté pour la carte "Conservation
+                  & Archivage" ci-dessous, AUDIT-11 Vague 2 A-3). */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 14, marginBottom: 24 }}>
                 {[
-                  { color: "blue", val: events.length, lbl: "Événements/jour", sub: "moyenne 7 jours" },
-                  { color: "green", val: "94%", lbl: "Taux succès auth.", sub: "connexions valides" },
+                  { color: "blue", val: stats.activite_7j.data.length ? Math.round(stats.activite_7j.data.reduce((a, b) => a + b, 0) / stats.activite_7j.data.length) : 0, lbl: "Événements/jour", sub: "moyenne 7 jours" },
+                  { color: "green", val: (kpis.connexions_ok + kpis.echecs) > 0 ? `${Math.round(kpis.connexions_ok / (kpis.connexions_ok + kpis.echecs) * 100)}%` : "—", lbl: "Taux succès auth.", sub: "connexions valides (page courante)" },
                   { color: "red", val: kpis.critiques, lbl: "Alertes critiques", sub: "à traiter" },
                   { color: "orange", val: kpis.modifications, lbl: "Modifications", sub: "données modifiées" },
                   { color: "purple", val: kpis.suppressions, lbl: "Suppressions", sub: "enregistrements" },
-                  { color: "teal", val: "1 an", lbl: "Conservation logs", sub: "politique active" },
                 ].map((k, i) => (
                   <div key={i} className={`aud-kpi ${k.color} aufu`}>
                     <div className="kpi-val-a">{k.val}</div>
@@ -1482,25 +1490,24 @@ export default function JournalAudit() {
                         <strong style={{ fontSize: 12, color: r.color }}>{r.val}</strong>
                       </div>
                     ))}
-                    {/* AUDIT-11 — trouvé en marge de A-3, non traité, hors
-                        périmètre de cette décision : "Utilisation stockage
-                        2.4%" est une valeur codée en dur (pas de requête
-                        réelle derrière), et "Sauvegarder" est un bouton
-                        entièrement factice (toast sans aucun appel réseau).
-                        Même famille de bug que les constats déjà mis en
-                        attente pour une Vague 2bis — signalé, pas corrigé. */}
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
-                        <span style={{ color: "var(--cm)" }}>Utilisation stockage</span>
-                        <span style={{ fontWeight: 700 }}>2.4%</span>
-                      </div>
-                      <Prog pct={2.4} color="var(--at)" />
+                    {/* Sous-phase 5.1 — traite enfin le constat "AUDIT-11 —
+                        trouvé en marge de A-3", mis en attente jusqu'ici :
+                        "Utilisation stockage 2.4%" était une valeur codée en
+                        dur (aucune requête réelle de quota de stockage
+                        n'existe dans ce système), et "Sauvegarder" affichait
+                        un faux succès ("Sauvegarde externe lancée...") sans
+                        le moindre appel réseau — aucun mécanisme de
+                        sauvegarde externe n'existe réellement ici.
+                        Désactivés honnêtement plutôt que de laisser cette
+                        simulation. */}
+                    <div style={{ marginTop: 12, fontSize: 11, color: "var(--cm)" }}>
+                      🚧 Aucun quota de stockage n'est configuré dans ce système.
                     </div>
                     <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                       <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} onClick={() => setModalArchive(true)}>
                         {I.archive} Estimer le volume
                       </button>
-                      <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} onClick={() => toast.success("📦 Sauvegarde externe lancée...")}>
+                      <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} disabled title="Fonctionnalité en cours de développement — aucune sauvegarde externe réelle n'existe dans ce système." onClick={() => toast("🚧 Sauvegarde externe non disponible — fonctionnalité en cours de développement.")}>
                         {I.dl} Sauvegarder
                       </button>
                     </div>
