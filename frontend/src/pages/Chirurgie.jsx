@@ -355,6 +355,14 @@ export default function Chirurgie() {
   const [search, setSearch]       = useState("");
   const [filterStatut, setFilter] = useState("");
   const [currentDossier, setCurrentDossier] = useState(null);
+  // Correction 2 (module 5/6, relecture du 6 sept. 2026) — vraie Invoice
+  // liée à ce dossier (chirurgieController.js::getDossierById), jamais un
+  // calcul recomposé côté client. null tant qu'aucune facture réelle n'a
+  // été créée manuellement (module Finance) pour ce dossier — aucun
+  // catalogue tarifaire réel n'existe pour les interventions chirurgicales
+  // dans ce système, donc aucune génération automatique n'est possible sans
+  // inventer un prix (limite documentée, pas simulée).
+  const [currentInvoice, setCurrentInvoice] = useState(null);
   const [bilan, setBilan]         = useState([]);
   const [suivis, setSuivis]       = useState([]);
   const [complications, setComplications] = useState([]);
@@ -426,9 +434,11 @@ export default function Chirurgie() {
       setBilan(data.bilan || []);
       setSuivis(data.suivis || []);
       setComplications(data.complications || []);
+      setCurrentInvoice(data.invoice || null);
     } catch {
       const d = DEMO_DOSSIERS.find(x => x._id === id);
       setCurrentDossier(d || null);
+      setCurrentInvoice(null);
       setBilan([
         { _id:"b1", type:"biologie", examen:"NFS complète", valeur:"Hb: 12.5 g/dL", statut:"normal", date_examen:"2025-06-01", urgence:false },
         { _id:"b2", type:"biologie", examen:"Glycémie à jeun", valeur:"7.2 mmol/L", statut:"anormal", date_examen:"2025-06-01", urgence:true },
@@ -1334,7 +1344,7 @@ export default function Chirurgie() {
                       </div>
                       <div style={{ background:"linear-gradient(135deg,#ECFDF5,#D1FAE5)", border:"1.5px solid #A7F3D0", borderRadius:12, padding:"12px 14px" }}>
                         <div style={{ fontSize:11, fontWeight:700, color:"var(--cg)", marginBottom:6 }}>💰 Liaison Facturation</div>
-                        <button className="cbtn cbtn-ghost cbtn-sm" style={{ fontSize:11 }}>{I.link} Générer la facture</button>
+                        <button className="cbtn cbtn-ghost cbtn-sm" style={{ fontSize:11 }} onClick={() => setSection("facturation")}>{I.link} Voir la facturation</button>
                       </div>
                     </div>
                   </div>
@@ -1347,36 +1357,47 @@ export default function Chirurgie() {
               )}
 
               {/* ── FACTURATION ── */}
+              {/* Correction 2 (module 5/6, relecture du 6 sept. 2026) —
+                  calculait un montant entièrement inventé (7 postes à
+                  tarif fixe, 670 000 CFA quelle que soit l'intervention
+                  réelle), avec des boutons "Générer facture officielle"/
+                  "Imprimer devis" non fonctionnels. LIMITE DOCUMENTÉE,
+                  pas simulée : contrairement à Laboratoire/Radiology/
+                  Echographie/Urgences, aucun catalogue tarifaire réel
+                  n'existe dans ce système pour les interventions
+                  chirurgicales (type_intervention est un champ texte
+                  libre) — générer une facture automatique ici obligerait
+                  à inventer un prix. Affiche donc la vraie Invoice si le
+                  personnel de facturation en a créé une manuellement via
+                  le module Finance en la liant à ce dossier, sinon un
+                  état honnête invitant à facturer manuellement. */}
               {section === "facturation" && (
                 <div style={{ marginTop:20 }}>
                   <div className="chir-card">
                     <div className="chir-card-hdr"><h3>💰 Facturation chirurgicale</h3></div>
                     <div style={{ padding:20 }}>
-                      {(() => {
-                        const actes = [
-                          ["Consultation chirurgicale", 25000],
-                          ["Bilan préopératoire", 45000],
-                          [`Intervention — ${currentDossier.type_intervention || "—"}`, 350000],
-                          ["Anesthésie générale", 80000],
-                          ["Hospitalisation postopératoire (3j)", 120000],
-                          ["Soins postopératoires", 15000],
-                          ["Médicaments & consommables", 35000],
-                        ];
-                        const total = actes.reduce((s,[,v])=>s+v,0);
-                        return (
-                          <>
-                            <table className="chir-tbl" style={{ marginBottom:20 }}>
-                              <thead><tr><th>Prestation</th><th style={{textAlign:"right"}}>Montant (CFA)</th></tr></thead>
-                              <tbody>{actes.map(([lbl,val]) => <tr key={lbl}><td>{lbl}</td><td style={{textAlign:"right",fontWeight:600}}>{val.toLocaleString("fr-FR")}</td></tr>)}</tbody>
-                              <tfoot><tr style={{background:"linear-gradient(to right,#EEF4FF,#DBEAFE)"}}><td style={{fontWeight:800,fontSize:15,color:"var(--cn)"}}>TOTAL</td><td style={{textAlign:"right",fontWeight:800,fontSize:16,color:"var(--cb)"}}>{total.toLocaleString("fr-FR")} CFA</td></tr></tfoot>
-                            </table>
-                            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                              <button className="cbtn cbtn-teal">{I.dl} Générer facture officielle</button>
-                              <button className="cbtn cbtn-ghost">{I.print} Imprimer devis</button>
-                            </div>
-                          </>
-                        );
-                      })()}
+                      {currentInvoice ? (
+                        <>
+                          <table className="chir-tbl" style={{ marginBottom:20 }}>
+                            <thead><tr><th>Prestation</th><th style={{textAlign:"right"}}>Montant (CFA)</th></tr></thead>
+                            <tbody>{currentInvoice.lignes.map((l,i) => <tr key={i}><td>{l.libelle}</td><td style={{textAlign:"right",fontWeight:600}}>{Number(l.montant||0).toLocaleString("fr-FR")}</td></tr>)}</tbody>
+                            <tfoot><tr style={{background:"linear-gradient(to right,#EEF4FF,#DBEAFE)"}}><td style={{fontWeight:800,fontSize:15,color:"var(--cn)"}}>TOTAL — {currentInvoice.numero_facture}</td><td style={{textAlign:"right",fontWeight:800,fontSize:16,color:"var(--cb)"}}>{Number(currentInvoice.montant_ttc||0).toLocaleString("fr-FR")} CFA</td></tr></tfoot>
+                          </table>
+                          <div style={{ fontSize:11, color:"var(--cm)", marginBottom:12 }}>
+                            {currentInvoice.statut === "payee" ? "✅ Payée" : "⏳ En attente de paiement"} — voir le module Finance pour encaisser.
+                          </div>
+                          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                            <button className="cbtn cbtn-ghost" onClick={() => window.print()}>{I.print} Imprimer</button>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ padding:"20px 4px", color:"var(--cm)", fontSize:13, lineHeight:1.6 }}>
+                          Aucune facture réelle n'existe pour ce dossier. Ce système ne dispose d'aucun catalogue tarifaire réel pour les interventions chirurgicales — établissez une facture manuelle via le module Finance, en la liant à ce dossier.
+                          <div style={{ marginTop:12 }}>
+                            <button className="cbtn cbtn-teal" onClick={() => navigate("/finance")}>{I.link} Aller au module Finance</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -5,6 +5,7 @@ const SuiviPostop = require('../models/SuiviPostop');
 const Complication = require('../models/Complication');
 const Patient = require('../models/Patient');
 const User = require('../models/User');
+const Invoice = require('../models/Invoice');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
 const { logAction, escapeRegex } = require('../utils/helpers');
@@ -124,7 +125,20 @@ exports.getDossierById = async (req, res, next) => {
     const suivis = await SuiviPostop.find({ dossier_chirurgical_id: dossier._id }).sort({ date_suivi: -1 });
     const complications = await Complication.find({ dossier_chirurgical_id: dossier._id }).sort({ date_survenue: -1 });
 
-    res.json({ success: true, dossier, bilan, suivis, complications });
+    // Correction 2 (module 5/6, relecture du 6 sept. 2026) — LIMITE
+    // DOCUMENTÉE : contrairement à Laboratoire/Radiology/Echographie/
+    // Urgences, aucun catalogue tarifaire réel n'existe dans ce système pour
+    // les interventions chirurgicales (DossierChirurgical.type_intervention
+    // est un champ texte libre, sans équivalent d'ExamCatalogue). Générer
+    // automatiquement une facture ici obligerait à inventer un prix — exclu
+    // par les règles de ce chantier. On expose donc uniquement une Invoice
+    // RÉELLE si le personnel de facturation en a créé une manuellement via
+    // le module Finance en la liant à ce dossier (source_module:'chirurgie',
+    // déjà prévu dans le schéma Invoice depuis la Correction FLOW-002) —
+    // jamais un calcul fabriqué côté client.
+    const invoice = await Invoice.findOne({ source_module: 'chirurgie', source_id: dossier._id });
+
+    res.json({ success: true, dossier, bilan, suivis, complications, invoice });
   } catch (err) { next(err); }
 };
 
