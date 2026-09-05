@@ -334,7 +334,7 @@ const DEMO_DATA  = [];
 const EMPTY_EXAMEN = {
   patient_id:"", medecin_prescripteur:"", service_demandeur:"", priorite:"normale",
   motif:"", type_categorie:"echographie", type_examen:"", examen:"", date_rdv:"", heure_rdv:"",
-  salle:"", operateur:"", statut:"programme",
+  salle:"", operateur:"", statut:"programme", consultation:"",
 };
 const EMPTY_CR = {
   date_realisation:"", operateur:"", observations:"", incidents:"",
@@ -365,6 +365,10 @@ export default function Imagerie() {
   const [filterType, setFilterType] = useState("");
   const [currentExamen, setCurrent] = useState(null);
   const [patients, setPatients]     = useState([]);
+  // Correction 12 (relecture du 6 sept. 2026, FLOW-003) — consultations
+  // réelles du patient sélectionné, pour un lien volontaire (vérifié côté
+  // serveur) vers la consultation à l'origine de la demande d'imagerie.
+  const [consultationsPatient, setConsultationsPatient] = useState([]);
   // Correction 2 (relecture du 6 sept. 2026) — remplace TARIFS codé en dur :
   // vrai catalogue chargé depuis GET /radiology/catalogue (déjà réel, déjà
   // utilisé par la facturation branchée en Correction 2 backend).
@@ -463,6 +467,17 @@ export default function Imagerie() {
 
   useEffect(() => { loadExamens(); loadStats(); loadPatients(); loadCatalogue(); }, [loadExamens, loadStats, loadPatients, loadCatalogue]);
   useRealtimeRefresh(loadExamens);
+
+  // Correction 12 (FLOW-003) — dès qu'un patient est choisi dans "Nouvel
+  // examen", recherche réelle de ses consultations (liste vide si aucune).
+  useEffect(() => {
+    if (!modalNouv || !formExamen.patient_id) { setConsultationsPatient([]); return; }
+    let cancelled = false;
+    api.get("/consultations", { params: { patient: formExamen.patient_id, limit: 20 } })
+      .then(({ data }) => { if (!cancelled) setConsultationsPatient(data.consultations || []); })
+      .catch(() => { if (!cancelled) setConsultationsPatient([]); });
+    return () => { cancelled = true; };
+  }, [modalNouv, formExamen.patient_id]);
 
   const openExamen = (e) => {
     setCurrent(e);
@@ -1417,11 +1432,20 @@ export default function Imagerie() {
             <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
               <div style={{ gridColumn:"1/-1" }}>
                 <label className="ilbl">Patient *</label>
-                <select className="iinp" required value={formExamen.patient_id} onChange={e => setFormExamen(f=>({...f,patient_id:e.target.value}))}>
+                <select className="iinp" required value={formExamen.patient_id} onChange={e => setFormExamen(f=>({...f,patient_id:e.target.value,consultation:""}))}>
                   <option value="">— Sélectionner un patient —</option>
                   {patients.map(p => <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier}</option>)}
                 </select>
               </div>
+              {formExamen.patient_id && consultationsPatient.length > 0 && (
+                <div style={{ gridColumn:"1/-1" }}>
+                  <label className="ilbl">Lier à une consultation (FLOW-003, optionnel)</label>
+                  <select className="iinp" value={formExamen.consultation} onChange={e => setFormExamen(f=>({...f,consultation:e.target.value}))}>
+                    <option value="">— Ne pas lier —</option>
+                    {consultationsPatient.map(c => <option key={c._id} value={c._id}>{new Date(c.date_consultation).toLocaleDateString('fr-FR')} — {c.diagnostic || 'diagnostic non renseigné'}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="ilbl">Médecin prescripteur *</label>
                 <input className="iinp" required value={formExamen.medecin_prescripteur} onChange={e => setFormExamen(f=>({...f,medecin_prescripteur:e.target.value}))} placeholder="Dr. Nom Prénom" />

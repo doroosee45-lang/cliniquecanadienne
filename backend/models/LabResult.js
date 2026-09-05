@@ -3,6 +3,11 @@ const { Schema } = mongoose;
 
 const LabResultSchema = new Schema({
   patient:              { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
+  // Correction 12 (relecture du 6 sept. 2026, FLOW-003) — aucune
+  // traçabilité entre un examen demandé et la consultation qui l'a motivé.
+  // Optionnel : renseigné uniquement quand une vraie consultation du même
+  // patient est réellement sélectionnée à la création (laboratory.controller.js::create).
+  consultation:         { type: Schema.Types.ObjectId, ref: 'Consultation' },
   medecin_prescripteur: { type: Schema.Types.ObjectId, ref: 'User' },
   medecin_prescripteur_nom: String,        // texte libre
   technicien:           { type: Schema.Types.ObjectId, ref: 'User' },

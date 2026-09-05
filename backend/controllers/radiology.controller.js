@@ -1,5 +1,6 @@
 const ImagingResult = require('../models/ImagingResult');
 const ExamCatalogue = require('../models/ExamCatalogue');
+const Consultation = require('../models/Consultation');
 const Invoice = require('../models/Invoice');
 const { logAction, createNotification, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
@@ -120,8 +121,20 @@ exports.create = async (req, res, next) => {
     // absent ou invalide.
     const examen = (req.body.examen && isObjectId(req.body.examen)) ? req.body.examen : null;
 
+    // Correction 12 (FLOW-003) — consultation d'origine : vérifiée réelle
+    // (existe, même patient) avant d'être liée, jamais acceptée à l'aveugle.
+    let consultation = null;
+    if (req.body.consultation && isObjectId(req.body.consultation)) {
+      const cons = await Consultation.findById(req.body.consultation).select('patient').lean();
+      if (!cons || String(cons.patient) !== String(patient)) {
+        return res.status(400).json({ success: false, message: 'Consultation invalide ou non liée à ce patient.' });
+      }
+      consultation = req.body.consultation;
+    }
+
     const payload = {
       patient,
+      consultation,
       medecin_prescripteur,
       medecin_prescripteur_nom,
       examen,

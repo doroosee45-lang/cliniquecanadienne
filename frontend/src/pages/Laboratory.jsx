@@ -359,6 +359,7 @@ const EMPTY_FORM = {
   type_echantillon: "sang", preleveur: "", observations_prelevement: "",
   autres_examens: "",
   niveau_urgence: "normal",
+  consultation: "",
 };
 
 const EMPTY_RESULTAT_FORM = {
@@ -411,6 +412,10 @@ export default function Laboratoire() {
   const [formValid, setFormValid] = useState(EMPTY_RESULTAT_FORM);
   const [formPrelev,setFormPrelev]= useState({ type_echantillon:"sang", preleveur:"", observations_prelevement:"" });
   const [patients, setPatients]   = useState([]);
+  // Correction 12 (relecture du 6 sept. 2026, FLOW-003) — consultations
+  // réelles du patient sélectionné, pour permettre un lien volontaire (et
+  // vérifié côté serveur) vers la consultation à l'origine de la demande.
+  const [consultationsPatient, setConsultationsPatient] = useState([]);
   // Correction 1 (relecture du 6 sept. 2026) — remplace EXAM_CATALOGUE codé
   // en dur : vrai catalogue chargé depuis GET /laboratory/catalogue (déjà
   // réel, déjà utilisé par la facturation branchée la session précédente).
@@ -491,6 +496,18 @@ export default function Laboratoire() {
 
   useEffect(() => { loadAnalyses(); loadStats(); loadPatients(); loadCatalogue(); }, [loadAnalyses, loadStats, loadPatients, loadCatalogue]);
   useRealtimeRefresh(loadAnalyses);
+
+  // Correction 12 (FLOW-003) — dès qu'un patient est choisi dans "Nouvelle
+  // demande", recherche réelle de ses consultations (aucune invention :
+  // liste vide si le patient n'a aucune consultation réelle).
+  useEffect(() => {
+    if (!modalNouv || !formNouv.patient_id) { setConsultationsPatient([]); return; }
+    let cancelled = false;
+    api.get("/consultations", { params: { patient: formNouv.patient_id, limit: 20 } })
+      .then(({ data }) => { if (!cancelled) setConsultationsPatient(data.consultations || []); })
+      .catch(() => { if (!cancelled) setConsultationsPatient([]); });
+    return () => { cancelled = true; };
+  }, [modalNouv, formNouv.patient_id]);
 
   // ── Open analyse ──────────────────────────────────────────
   const openAnalyse = (a) => {
@@ -1513,12 +1530,21 @@ export default function Laboratoire() {
                 <label className="llbl">Patient *</label>
                 <select className="linp" required value={formNouv.patient_id} onChange={e => {
                   const p = patients.find(x => x._id === e.target.value);
-                  setFormNouv(f => ({ ...f, patient_id:e.target.value, patient_nom:p ? `${p.prenom} ${p.nom}` : "", patient_dossier:p?.numero_dossier || "", date_naissance:p?.date_naissance || "", sexe:p?.sexe || "", telephone:p?.telephone || "" }));
+                  setFormNouv(f => ({ ...f, patient_id:e.target.value, patient_nom:p ? `${p.prenom} ${p.nom}` : "", patient_dossier:p?.numero_dossier || "", date_naissance:p?.date_naissance || "", sexe:p?.sexe || "", telephone:p?.telephone || "", consultation:"" }));
                 }}>
                   <option value="">— Sélectionner un patient —</option>
                   {patients.map(p => <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier}</option>)}
                 </select>
               </div>
+              {formNouv.patient_id && consultationsPatient.length > 0 && (
+                <div style={{ gridColumn:"1/-1" }}>
+                  <label className="llbl">Lier à une consultation (FLOW-003, optionnel)</label>
+                  <select className="linp" value={formNouv.consultation} onChange={e => setFormNouv(f=>({...f,consultation:e.target.value}))}>
+                    <option value="">— Ne pas lier —</option>
+                    {consultationsPatient.map(c => <option key={c._id} value={c._id}>{new Date(c.date_consultation).toLocaleDateString('fr-FR')} — {c.diagnostic || 'diagnostic non renseigné'}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="llbl">Service demandeur</label>
                 <select className="linp" value={formNouv.service_demandeur} onChange={e => setFormNouv(f=>({...f,service_demandeur:e.target.value}))}>

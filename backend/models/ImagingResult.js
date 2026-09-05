@@ -3,6 +3,10 @@ const { Schema } = mongoose;
 
 const ImagingResultSchema = new Schema({
   patient:                { type: Schema.Types.ObjectId, ref: 'Patient' },
+  // Correction 12 (relecture du 6 sept. 2026, FLOW-003) — même correctif
+  // que LabResult.js : traçabilité optionnelle vers la consultation réelle
+  // à l'origine de la demande d'imagerie, validée avant persistance.
+  consultation:           { type: Schema.Types.ObjectId, ref: 'Consultation' },
   medecin_prescripteur:   { type: Schema.Types.ObjectId, ref: 'User' },
   radiologue:             { type: Schema.Types.ObjectId, ref: 'User' },
   examen:                 { type: Schema.Types.ObjectId, ref: 'ExamCatalogue' },
