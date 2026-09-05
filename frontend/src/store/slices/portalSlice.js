@@ -99,6 +99,21 @@ export const markAllNotificationsRead = createAsyncThunk(
   }
 );
 
+// Sous-phase 5.1 (relecture du 6 sept. 2026) — expose les vraies constantes
+// du patient (dernière + historique réel, portal.controller.js::getDashboard)
+// pour remplacer CONSTANTES codée en dur dans Portal.jsx.
+export const fetchPortalDashboard = createAsyncThunk(
+  'portal/fetchDashboard',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/portal/dashboard');
+      return data.stats;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur tableau de bord');
+    }
+  }
+);
+
 export const updatePortalProfile = createAsyncThunk(
   'portal/updateProfile',
   async (body, { rejectWithValue }) => {
@@ -137,6 +152,8 @@ const portalSlice = createSlice({
     imaging:            [],
     invoices:           [],
     notifications:      [],
+    constantes:         {},
+    constantesHistorique: [],
     loading:            false,
     saving:             false,
     error:              null,
@@ -189,6 +206,16 @@ const portalSlice = createSlice({
       .addCase(fetchPortalNotifications.fulfilled, (state, action) => { state.notifications = action.payload; })
       .addCase(fetchPortalNotifications.rejected,  rejected)
 
+      // dashboard (constantes réelles)
+      .addCase(fetchPortalDashboard.fulfilled, (state, action) => {
+        state.constantes = action.payload.constantes || {};
+        state.constantesHistorique = action.payload.constantes_historique || [];
+      })
+      .addCase(fetchPortalDashboard.rejected, (state) => {
+        state.constantes = {};
+        state.constantesHistorique = [];
+      })
+
       // mark all read
       .addCase(markAllNotificationsRead.fulfilled, (state) => {
         state.notifications = state.notifications.map(n => ({ ...n, lu: true }));
@@ -218,6 +245,8 @@ export const selectPortalLabResults    = (s) => s.portal.labResults;
 export const selectPortalImaging       = (s) => s.portal.imaging;
 export const selectPortalInvoices      = (s) => s.portal.invoices;
 export const selectPortalNotifications = (s) => s.portal.notifications;
+export const selectPortalConstantes    = (s) => s.portal.constantes;
+export const selectPortalConstantesHistorique = (s) => s.portal.constantesHistorique;
 export const selectPortalLoading       = (s) => s.portal.loading;
 export const selectPortalSaving        = (s) => s.portal.saving;
 export const selectPortalError         = (s) => s.portal.error;

@@ -170,7 +170,7 @@ exports.getDashboard = async (req, res, next) => {
       labResultsRaw,
       imagingRaw,
       facturesRaw,
-      derniereConsultation,
+      consultationsRecentes,
     ] = await Promise.all([
       Appointment.countDocuments({ patient: patient._id, date_heure: { $gte: now }, statut: { $in: RDV_ACTIFS } }),
       Prescription.countDocuments({ patient: patient._id, statut: { $in: ['active','publiee'] } }),
@@ -192,7 +192,13 @@ exports.getDashboard = async (req, res, next) => {
       LabResult.find({ patient: patient._id, statut: 'valide' }).populate('examen', 'nom').sort('-date_validation').limit(6),
       ImagingResult.find({ patient: patient._id, statut: { $in: ['rapporte','valide'] } }).sort('-date_rapport').limit(6),
       Invoice.find({ patient: patient._id }).sort('-date_facture').limit(8),
-      Consultation.findOne({ patient: patient._id }).sort('-date_consultation').select('signes_vitaux date_consultation'),
+      // Sous-phase 5.1 (relecture du 6 sept. 2026) — Portal.jsx affichait
+      // jusqu'ici un historique de constantes entièrement fabriqué (CONSTANTES,
+      // 3 lignes fixes). Remplacé par les vraies consultations récentes du
+      // patient (limit 8, filtrées ensuite aux seules ayant de vraies
+      // constantes saisies) plutôt qu'une seule (findOne), pour permettre un
+      // vrai historique, pas juste le dernier point.
+      Consultation.find({ patient: patient._id }).sort('-date_consultation').limit(8).select('signes_vitaux date_consultation'),
     ]);
 
     const medecin_ref = patient.medecin_referent
@@ -242,16 +248,31 @@ exports.getDashboard = async (req, res, next) => {
       statut: f.statut === 'payee' ? 'payee' : (f.montant_paye > 0 ? 'en_attente' : 'impayee'),
     }));
 
-    const sv = derniereConsultation?.signes_vitaux || {};
-    const constantes = (sv.poids || sv.tension_systolique || sv.glycemie || sv.temperature) ? {
-      poids: sv.poids,
-      tension: (sv.tension_systolique && sv.tension_diastolique) ? `${sv.tension_systolique}/${sv.tension_diastolique}` : undefined,
-      glycemie: sv.glycemie,
-      temp: sv.temperature,
-      taille: sv.taille,
-      fc: sv.pouls,
-      date: derniereConsultation.date_consultation,
-    } : {};
+    const shapeConstantes = (c) => {
+      const sv = c.signes_vitaux || {};
+      if (!(sv.poids || sv.tension_systolique || sv.glycemie || sv.temperature)) return null;
+      // IMC calculé à la volée depuis poids/taille réels (même formule/
+      // convention — taille en cm — que pediatrieController.js::addMesure),
+      // jamais une valeur inventée quand l'un des deux manque.
+      const imc = (sv.poids && sv.taille) ? parseFloat((sv.poids / ((sv.taille / 100) ** 2)).toFixed(1)) : undefined;
+      return {
+        poids: sv.poids,
+        tension: (sv.tension_systolique && sv.tension_diastolique) ? `${sv.tension_systolique}/${sv.tension_diastolique}` : undefined,
+        glycemie: sv.glycemie,
+        temp: sv.temperature,
+        taille: sv.taille,
+        fc: sv.pouls,
+        imc,
+        date: c.date_consultation,
+      };
+    };
+    // Sous-phase 5.1 — historique réel (jusqu'à 5 consultations les plus
+    // récentes portant de vraies constantes saisies), plus le dernier point
+    // isolé pour les widgets qui n'ont besoin que de la valeur la plus
+    // récente. Jamais de ligne fabriquée si le patient a moins de vraies
+    // constantes que la limite d'affichage.
+    const constantesHistorique = consultationsRecentes.map(shapeConstantes).filter(Boolean).slice(0, 5);
+    const constantes = constantesHistorique[0] || {};
 
     // Alertes réelles uniquement : aucune injection de contenu clinique
     // sensible (ex. résultat critique) côté patient sans validation médicale.
@@ -282,7 +303,7 @@ exports.getDashboard = async (req, res, next) => {
       // renvoyé vers /portal pour la remplir, seul endroit où le formulaire
       // existe).
       profil_a_completer: patient.profil_a_completer || false,
-      prochain_rdv, mes_rdv, ordonnances, resultats, factures, alertes, constantes,
+      prochain_rdv, mes_rdv, ordonnances, resultats, factures, alertes, constantes, constantes_historique: constantesHistorique,
       medecin_ref: medecin_ref ? {
         nom: medecin_ref.nom, prenom: medecin_ref.prenom,
         specialite: medecin_ref.specialite, telephone: medecin_ref.telephone,

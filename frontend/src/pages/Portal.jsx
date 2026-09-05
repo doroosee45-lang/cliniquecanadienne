@@ -6,11 +6,12 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   fetchPortalMe, fetchPortalAppointments, fetchPortalPrescriptions,
   fetchPortalLabResults, fetchPortalImaging, fetchPortalInvoices,
-  fetchPortalNotifications, markAllNotificationsRead,
+  fetchPortalNotifications, fetchPortalDashboard, markAllNotificationsRead,
   updatePortalProfile, changePortalPassword,
   selectPortalPatient, selectPortalStats, selectMustChangePassword,
   selectPortalAppointments, selectPortalPrescriptions, selectPortalLabResults,
   selectPortalImaging, selectPortalInvoices, selectPortalNotifications,
+  selectPortalConstantes, selectPortalConstantesHistorique,
   selectPortalLoading, selectPortalSaving, selectPortalError, clearPortalError,
 } from '../store/slices/portalSlice';
 import { User, Calendar, Pencil } from 'lucide-react';
@@ -330,11 +331,6 @@ const VACCINS = [
 // partout ailleurs sur cette page ("Fonctionnalité momentanément
 // indisponible").
 
-const CONSTANTES = [
-  { date: "2025-06-05", tension: "118/75", pouls: 68, poids: 62, imc: 22.1, glycemie: 4.8 },
-  { date: "2025-03-15", tension: "122/78", pouls: 72, poids: 63, imc: 22.4, glycemie: 5.0 },
-  { date: "2024-11-10", tension: "120/76", pouls: 70, poids: 62.5, imc: 22.2, glycemie: 4.9 },
-];
 
 // ─── Helpers mapping API → UI ────────────────────────────────
 const ageCalc = (dob) => {
@@ -360,6 +356,8 @@ export default function MonEspacePatient() {
   const reduxImaging       = useSelector(selectPortalImaging);
   const reduxInvoices      = useSelector(selectPortalInvoices);
   const reduxNotifications = useSelector(selectPortalNotifications);
+  const constantes         = useSelector(selectPortalConstantes);
+  const constantesHistorique = useSelector(selectPortalConstantesHistorique);
   const loading            = useSelector(selectPortalLoading);
   const saving             = useSelector(selectPortalSaving);
   const portalError        = useSelector(selectPortalError);
@@ -376,6 +374,7 @@ export default function MonEspacePatient() {
     dispatch(fetchPortalImaging());
     dispatch(fetchPortalInvoices());
     dispatch(fetchPortalNotifications());
+    dispatch(fetchPortalDashboard());
   }, [dispatch]);
   useEffect(() => { refreshPortal(); }, [refreshPortal]);
   useRealtimeRefresh(refreshPortal);
@@ -636,15 +635,23 @@ export default function MonEspacePatient() {
 
                 {/* Résumé santé + Notifs */}
                 <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                  {/* Dernières constantes */}
+                  {/* Sous-phase 5.1 (relecture du 6 sept. 2026) — remplace
+                      CONSTANTES codée en dur (3 lignes fixes, jamais liées au
+                      patient réel) par les vraies constantes de la dernière
+                      consultation réelle (portal.controller.js::getDashboard,
+                      signes_vitaux réellement saisis). État vide honnête si
+                      aucune constante réelle n'a encore été saisie. */}
                   <div className="ep-card fu">
-                    <div className="ep-card-hdr"><h3>❤️ Constantes récentes</h3><p>{fmtDate(CONSTANTES[0].date)}</p></div>
+                    <div className="ep-card-hdr"><h3>❤️ Constantes récentes</h3><p>{constantes.date ? fmtDate(constantes.date) : "Aucune donnée"}</p></div>
+                    {!constantes.date ? (
+                      <div style={{ padding:20, textAlign:"center", color:"var(--cm)", fontSize:12 }}>Aucune constante réelle enregistrée pour l'instant.</div>
+                    ) : (
                     <div className="ep-g11s" style={{ padding:16 }}>
                       {[
-                        { lbl:"Tension", val:CONSTANTES[0].tension, u:"mmHg" },
-                        { lbl:"Pouls",   val:CONSTANTES[0].pouls,   u:"bpm" },
-                        { lbl:"Poids",   val:CONSTANTES[0].poids,   u:"kg" },
-                        { lbl:"IMC",     val:CONSTANTES[0].imc,     u:"" },
+                        { lbl:"Tension", val:constantes.tension ?? "—", u:"mmHg" },
+                        { lbl:"Pouls",   val:constantes.fc ?? "—",      u:"bpm" },
+                        { lbl:"Poids",   val:constantes.poids ?? "—",   u:"kg" },
+                        { lbl:"IMC",     val:constantes.imc ?? "—",     u:"" },
                       ].map(s => (
                         <div key={s.lbl} className="ep-stat">
                           <div className="ep-stat-v">{s.val}</div>
@@ -653,6 +660,7 @@ export default function MonEspacePatient() {
                         </div>
                       ))}
                     </div>
+                    )}
                   </div>
 
                   {/* Notifications récentes */}
@@ -1136,16 +1144,24 @@ export default function MonEspacePatient() {
 
                 {/* Tableau santé */}
                 <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                  {/* Sous-phase 5.1 — même correctif que "Constantes
+                      récentes" ci-dessus : CONSTANTES (3 lignes fixes)
+                      remplacée par les vraies constantes + le vrai
+                      historique (jusqu'à 5 consultations réelles portant des
+                      signes_vitaux, portal.controller.js::getDashboard). */}
                   <div className="ep-card fu">
                     <div className="ep-card-hdr"><h3>📈 Tableau Santé Personnel</h3><p>Vos constantes</p></div>
                     <div style={{ padding:16 }}>
+                      {!constantes.date ? (
+                        <div style={{ textAlign:"center", color:"var(--cm)", fontSize:12, padding:16 }}>Aucune constante réelle enregistrée pour l'instant — elles apparaissent ici après une consultation où elles ont été saisies.</div>
+                      ) : (<>
                       <div className="ep-g11s" style={{ marginBottom:16 }}>
                         {[
-                          { lbl:"Tension", val:CONSTANTES[0].tension, u:"mmHg", ok:true },
-                          { lbl:"Pouls",   val:`${CONSTANTES[0].pouls}`, u:"bpm", ok:true },
-                          { lbl:"Poids",   val:`${CONSTANTES[0].poids}`, u:"kg", ok:true },
-                          { lbl:"IMC",     val:`${CONSTANTES[0].imc}`, u:"", ok:true },
-                          { lbl:"Glycémie",val:`${CONSTANTES[0].glycemie}`, u:"mmol/L", ok:true },
+                          { lbl:"Tension", val:constantes.tension ?? "—", u:"mmHg", ok:true },
+                          { lbl:"Pouls",   val:`${constantes.fc ?? "—"}`, u:"bpm", ok:true },
+                          { lbl:"Poids",   val:`${constantes.poids ?? "—"}`, u:"kg", ok:true },
+                          { lbl:"IMC",     val:`${constantes.imc ?? "—"}`, u:"", ok:true },
+                          { lbl:"Glycémie",val:`${constantes.glycemie ?? "—"}`, u:"mmol/L", ok:true },
                         ].map(s => (
                           <div key={s.lbl} className="ep-stat" style={{ gridColumn: s.lbl === "Glycémie" ? "1/-1" : "" }}>
                             <div className="ep-stat-v" style={{ color: s.ok ? "var(--cn)" : "var(--cr)" }}>{s.val}</div>
@@ -1157,16 +1173,17 @@ export default function MonEspacePatient() {
 
                       {/* Historique constantes */}
                       <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Historique</div>
-                      {CONSTANTES.map((c,i) => (
-                        <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom: i < CONSTANTES.length-1 ? "1px solid var(--cbr)" : "none", fontSize:12 }}>
+                      {constantesHistorique.map((c,i) => (
+                        <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom: i < constantesHistorique.length-1 ? "1px solid var(--cbr)" : "none", fontSize:12 }}>
                           <span style={{ color:"var(--cm)" }}>{fmtDate(c.date)}</span>
                           <div style={{ display:"flex", gap:10 }}>
-                            <span style={{ color:"var(--cn)" }}>🩺 {c.tension}</span>
-                            <span style={{ color:"var(--cn)" }}>❤️ {c.pouls}</span>
-                            <span style={{ color:"var(--cn)" }}>⚖️ {c.poids}kg</span>
+                            <span style={{ color:"var(--cn)" }}>🩺 {c.tension ?? "—"}</span>
+                            <span style={{ color:"var(--cn)" }}>❤️ {c.fc ?? "—"}</span>
+                            <span style={{ color:"var(--cn)" }}>⚖️ {c.poids ?? "—"}kg</span>
                           </div>
                         </div>
                       ))}
+                      </>)}
                     </div>
                   </div>
 
