@@ -1475,50 +1475,39 @@ export default function Chirurgie() {
                         </div>
                       ))}
                     </div>
+                    {/* Sous-phase 5.1 — "Facteurs de risque" affichait 6
+                        pourcentages de pondération entièrement fixes
+                        (72/58/40/65/48/35), présentés comme une décomposition
+                        réelle du score IA au-dessus (kpis.score_moyen, lui
+                        réellement calculé depuis ia_risque_score). Aucun
+                        modèle de pondération par facteur n'existe réellement
+                        dans ce système — DossierChirurgical ne stocke qu'un
+                        score global, jamais sa décomposition par facteur.
+                        Désactivé honnêtement plutôt que d'inventer une
+                        répartition. */}
                     <div style={{ fontSize:12, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>Facteurs de risque</div>
-                    {[
-                      ["Âge du patient",           72, "#1B4F9E"],
-                      ["Antécédents médicaux",      58, "#D97706"],
-                      ["Allergies connues",         40, "#DC2626"],
-                      ["Complications antérieures", 65, "#7C3AED"],
-                      ["Score ASA moyen",           48, "#059669"],
-                      ["IMC (données)",             35, "#0EA5A0"],
-                    ].map(([lbl,val,col]) => (
-                      <div key={lbl} style={{ marginBottom:8 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
-                          <span style={{ color:"var(--cm)" }}>{lbl}</span>
-                          <span style={{ fontWeight:700, color:"var(--cn)" }}>{val}%</span>
-                        </div>
-                        <Prog pct={val} color={col} />
-                      </div>
-                    ))}
+                    <div style={{ padding:"20px 4px", textAlign:"center", color:"var(--cm)" }}>
+                      <div style={{ fontSize:28, marginBottom:8, opacity:.4 }}>📊</div>
+                      <div style={{ fontSize:12.5 }}>🚧 Décomposition par facteur indisponible — seul le score global réel (ci-dessus) est calculé, aucune pondération par facteur n'est stockée.</div>
+                    </div>
                   </div>
                 </div>
+                {/* Sous-phase 5.1 — "Recommandations IA" affichait 5 cartes de
+                    texte générique fixe, jamais générées depuis les vraies
+                    données ("3 dossiers... bilans manquants" : un nombre
+                    inventé, jamais recalculé). Le bouton "Analyser maintenant"
+                    simulait un chargement (toast.loading 2.5s) suivi d'un faux
+                    succès, sans le moindre appel réseau — aucune génération de
+                    recommandation n'existe réellement dans ce système (seuls
+                    runDiagnosis()/checkInteractions() du module IA sont de
+                    vraies fonctionnalités IA, sans rapport avec ce widget).
+                    Désactivé honnêtement plutôt que de laisser cette
+                    simulation. */}
                 <div className="chir-card">
                   <div className="chir-card-hdr"><h3>🤖 Recommandations IA</h3></div>
-                  <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
-                    {[
-                      ["🔴","Priorité haute",     "Réviser les dossiers avec score IA > 70 avant intervention","#DC2626"],
-                      ["🟠","Bilan incomplet",    "3 dossiers préopératoires ont des bilans biologiques manquants","#D97706"],
-                      ["🟡","Suivi postop.",       "Vérifier les fiches de surveillance des patients opérés > 48h","#CA8A04"],
-                      ["🟢","Bonne pratique",      "Taux de complications dans la norme — Maintenir les protocoles","#059669"],
-                      ["🔵","Optimisation",        "Proposer évaluation gériatrique pour les patients > 70 ans","#1B4F9E"],
-                    ].map(([ico,titre,desc,col]) => (
-                      <div key={titre} style={{ display:"flex", alignItems:"flex-start", gap:10, background:"#F8FAFD", borderRadius:12, padding:"12px 14px", borderLeft:`3px solid ${col}` }}>
-                        <span style={{ fontSize:16, flexShrink:0 }}>{ico}</span>
-                        <div>
-                          <div style={{ fontWeight:700, fontSize:12.5, color:"var(--cn)" }}>{titre}</div>
-                          <div style={{ fontSize:11.5, color:"var(--cm)", marginTop:2 }}>{desc}</div>
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{ background:"linear-gradient(135deg,#0B1E3B,#1B4F9E)", borderRadius:14, padding:16, color:"#fff", marginTop:4 }}>
-                      <div style={{ fontSize:13, fontWeight:700, marginBottom:8 }}>🤖 Lancer une analyse IA complète</div>
-                      <div style={{ fontSize:11.5, color:"rgba(255,255,255,.7)", marginBottom:12 }}>Analyse approfondie des dossiers actifs, détection d'anomalies, prédiction des risques.</div>
-                      <button className="cbtn cbtn-teal cbtn-sm" onClick={() => { toast.loading("🤖 Analyse IA en cours...", { duration:2500 }); setTimeout(() => toast.success("✅ Analyse terminée — Recommandations mises à jour"), 2500); }}>
-                        {I.ia} Analyser maintenant
-                      </button>
-                    </div>
+                  <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                    <div style={{ fontSize:32, marginBottom:10, opacity:.4 }}>🤖</div>
+                    <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune génération réelle de recommandations n'existe dans ce système.</div>
                   </div>
                 </div>
               </div>
