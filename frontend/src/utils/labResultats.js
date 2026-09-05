@@ -31,11 +31,18 @@ export const REF_VALUES = {
 // l'étape "Résultats" — même source que hasCritique utilisé pour
 // l'affichage ailleurs dans Laboratory.jsx, pour qu'il n'existe jamais
 // deux versions divergentes de "ce résultat est-il critique ?".
+// Correction 1 (relecture du 6 sept. 2026) — r.exam_nom (ajouté par
+// Laboratory.jsx::saveResultats) prend le pas sur refValues quand présent :
+// depuis que examens_demandes référence le vrai catalogue ExamCatalogue
+// (ObjectId), refValues[r.exam_id] ne résout plus rien pour ces analyses —
+// exam_nom porte le vrai nom résolu côté page au moment de la saisie.
+// Rétrocompatible : les anciennes analyses (et ce test lui-même, qui ne
+// fournit pas exam_nom) continuent de résoudre via refValues comme avant.
 export function deriveCriticalPayload(resultats, refValues = REF_VALUES) {
   const critiques = (resultats || []).filter(r => r.statut_res === "critique");
   const est_critique = critiques.length > 0;
   const valeurs_critiques = critiques
-    .map(r => `${refValues[r.exam_id]?.label || r.exam_id} : ${r.valeur}${refValues[r.exam_id]?.unite ? ' ' + refValues[r.exam_id].unite : ''} (normale : ${r.ref || '—'})`)
+    .map(r => `${refValues[r.exam_id]?.label || r.exam_nom || r.exam_id} : ${r.valeur}${refValues[r.exam_id]?.unite ? ' ' + refValues[r.exam_id].unite : ''} (normale : ${r.ref || '—'})`)
     .join(' ; ');
   return { est_critique, valeurs_critiques };
 }

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef, useId } from "react";
+﻿import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -333,53 +333,10 @@ function BarChart({ labels, data, color = "#1B4F9E", height = 200 }) {
   return <canvas ref={ref} style={{ maxHeight: height }} />;
 }
 
-// ─── EXAM CATALOGUE ─────────────────────────────────────────
-const EXAM_CATALOGUE = {
-  hematologie: {
-    icon: "🩸", label: "Hématologie",
-    examens: [
-      { id: "nfs",       label: "NFS (Numération Formule Sanguine)", prix: 5000 },
-      { id: "groupe",    label: "Groupe sanguin",                    prix: 3000 },
-      { id: "hb",        label: "Taux d'hémoglobine",                prix: 2500 },
-      { id: "vs",        label: "Vitesse de sédimentation (VS)",     prix: 2000 },
-    ],
-  },
-  biochimie: {
-    icon: "⚗️", label: "Biochimie",
-    examens: [
-      { id: "glycemie",     label: "Glycémie",             prix: 2500 },
-      { id: "creatinine",   label: "Créatinine",           prix: 3000 },
-      { id: "uree",         label: "Urée",                 prix: 2500 },
-      { id: "cholesterol",  label: "Cholestérol total",    prix: 3500 },
-      { id: "triglycerides",label: "Triglycérides",        prix: 3500 },
-      { id: "transaminases",label: "Transaminases (ASAT/ALAT)", prix: 5000 },
-    ],
-  },
-  parasitologie: {
-    icon: "🦟", label: "Parasitologie",
-    examens: [
-      { id: "goutte_epaisse", label: "Goutte épaisse",         prix: 3500 },
-      { id: "test_palu",      label: "Test rapide paludisme",  prix: 4000 },
-      { id: "exam_selles",    label: "Examen des selles",      prix: 3000 },
-    ],
-  },
-  serologie: {
-    icon: "🧬", label: "Sérologie",
-    examens: [
-      { id: "vih",       label: "Dépistage VIH",   prix: 5000 },
-      { id: "hep_b",     label: "Hépatite B (AgHBs)", prix: 5000 },
-      { id: "hep_c",     label: "Hépatite C",       prix: 5500 },
-      { id: "syphilis",  label: "Syphilis (TPHA/VDRL)", prix: 4500 },
-    ],
-  },
-  urines: {
-    icon: "🧪", label: "Examens urinaires",
-    examens: [
-      { id: "ecbu",       label: "ECBU",               prix: 6000 },
-      { id: "bandelette", label: "Bandelette urinaire", prix: 2000 },
-    ],
-  },
-};
+// Correction 1 (relecture du 6 sept. 2026) — EXAM_CATALOGUE codé en dur
+// supprimé : remplacé partout par le vrai catalogue chargé depuis
+// GET /laboratory/catalogue (état `catalogue`, ci-dessous dans le
+// composant) — voir catalogueById/examLabel/examPrix/examRef/examUnite.
 
 // REF_VALUES et deriveCriticalPayload importés de ../utils/labResultats —
 // extraits pour être réellement testables côté backend (voir
@@ -454,6 +411,12 @@ export default function Laboratoire() {
   const [formValid, setFormValid] = useState(EMPTY_RESULTAT_FORM);
   const [formPrelev,setFormPrelev]= useState({ type_echantillon:"sang", preleveur:"", observations_prelevement:"" });
   const [patients, setPatients]   = useState([]);
+  // Correction 1 (relecture du 6 sept. 2026) — remplace EXAM_CATALOGUE codé
+  // en dur : vrai catalogue chargé depuis GET /laboratory/catalogue (déjà
+  // réel, déjà utilisé par la facturation branchée la session précédente).
+  // Les examens sélectionnés référencent désormais ce vrai _id, jamais un
+  // libellé texte inventé — la facturation cesse d'être inerte en pratique.
+  const [catalogue, setCatalogue] = useState([]);
 
   // Ré-ouverture de P6-1 : est_critique n'est plus une pure dérivation
   // silencieuse — la case à cocher est pré-cochée depuis la détection
@@ -503,6 +466,17 @@ export default function Laboratoire() {
     }
   }, []);
 
+  // Correction 1 — vrai catalogue d'examens (jamais de repli fabriqué : une
+  // liste vide honnête si l'appel échoue, pas des examens inventés).
+  const loadCatalogue = useCallback(async () => {
+    try {
+      const { data } = await api.get("/laboratory/catalogue");
+      setCatalogue(data.examens || []);
+    } catch {
+      setCatalogue([]);
+    }
+  }, []);
+
   const loadPatients = useCallback(async () => {
     try {
       const { data } = await api.get("/patients?limit=500");
@@ -515,7 +489,7 @@ export default function Laboratoire() {
     }
   }, []);
 
-  useEffect(() => { loadAnalyses(); loadStats(); loadPatients(); }, [loadAnalyses, loadStats, loadPatients]);
+  useEffect(() => { loadAnalyses(); loadStats(); loadPatients(); loadCatalogue(); }, [loadAnalyses, loadStats, loadPatients, loadCatalogue]);
   useRealtimeRefresh(loadAnalyses);
 
   // ── Open analyse ──────────────────────────────────────────
@@ -580,9 +554,13 @@ export default function Laboratoire() {
     e.preventDefault();
     setSaving(true);
     const resultats = (currentAnalyse.examens_demandes || []).map(eid => {
-      const ref = REF_VALUES[eid] || {};
       const valeur = formRes[eid] || "";
-      return { exam_id: eid, valeur, ref: ref.ref || "", unite: ref.unite || "", statut_res: formResStatut[eid] || "normal" };
+      // Correction 1 — exam_nom porte le vrai nom (catalogue réel ou
+      // libellé hérité) pour que le récapitulatif de résultat critique
+      // (deriveCriticalPayload, utils/labResultats.js) reste lisible même
+      // quand eid est un vrai ObjectId, sans dépendre de REF_VALUES qui ne
+      // connaît que les anciens ids texte.
+      return { exam_id: eid, exam_nom: examLabel(eid), valeur, ref: examRef(eid), unite: examUnite(eid), statut_res: formResStatut[eid] || "normal" };
     });
     try {
       const { data } = await api.put(`/laboratory/${currentAnalyse._id}/resultats`, { resultats });
@@ -662,16 +640,25 @@ export default function Laboratoire() {
     }));
   };
 
+  // Correction 1 — index du vrai catalogue par _id, pour résoudre nom/prix
+  // réels partout où un examen n'est identifié que par son id.
+  const catalogueById = useMemo(() => Object.fromEntries(catalogue.map(ex => [ex._id, ex])), [catalogue]);
+  // Nom réel si l'id référence le vrai catalogue ; sinon libellé humain
+  // hérité (analyses créées avant ce correctif, ids texte type "glycemie") ;
+  // jamais un nom inventé.
+  const examLabel = (eid) => catalogueById[eid]?.nom || REF_VALUES[eid]?.label || eid;
+  // Prix réel UNIQUEMENT si l'id référence le vrai catalogue — jamais de
+  // tarif inventé pour un ancien id texte (cohérent avec le filtre
+  // isObjectId déjà appliqué côté facturation, laboratory.controller.js).
+  const examPrix  = (eid) => Number(catalogueById[eid]?.prix) || 0;
+  // Valeur normale/unité : seules les anciennes analyses (REF_VALUES) en
+  // portent une aujourd'hui — le vrai catalogue n'a pas ce champ, "—" plutôt
+  // que d'inventer une plage de référence.
+  const examRef   = (eid) => REF_VALUES[eid]?.ref || "—";
+  const examUnite = (eid) => REF_VALUES[eid]?.unite || "";
+
   // ── Get prix total ────────────────────────────────────────
-  const getPrixTotal = (examens) => {
-    let total = 0;
-    Object.values(EXAM_CATALOGUE).forEach(cat => {
-      cat.examens.forEach(ex => {
-        if (examens.includes(ex.id)) total += ex.prix;
-      });
-    });
-    return total;
-  };
+  const getPrixTotal = (examens) => (examens || []).reduce((total, eid) => total + examPrix(eid), 0);
 
   const nbCritiques = kpis.critiques || 0;
 
@@ -1120,27 +1107,34 @@ export default function Laboratoire() {
                         <span style={{ fontSize:12, color:"var(--lm)" }}>{currentAnalyse.examens_demandes?.length || 0} examen(s)</span>
                       </div>
                       <div style={{ padding:20 }}>
-                        {Object.entries(EXAM_CATALOGUE).map(([catKey, cat]) => {
-                          const items = cat.examens.filter(ex => currentAnalyse.examens_demandes?.includes(ex.id));
-                          if (items.length === 0) return null;
-                          return (
-                            <div key={catKey} style={{ marginBottom:16 }}>
-                              <div className="cat-hdr">{cat.icon} {cat.label}</div>
-                              {items.map(ex => (
-                                <div key={ex.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px", background:"#F8FAFD", borderRadius:8, marginBottom:4 }}>
-                                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                    <div style={{ width:8, height:8, borderRadius:50, background:"var(--lt)" }} />
-                                    <span style={{ fontSize:13, color:"var(--ln)", fontWeight:500 }}>{ex.label}</span>
-                                  </div>
-                                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                                    <span style={{ fontSize:12, color:"var(--lm)" }}>{REF_VALUES[ex.id]?.ref || "—"}</span>
-                                    <span style={{ fontSize:12, fontWeight:700, color:"var(--lb)" }}>{ex.prix.toLocaleString("fr-FR")} CFA</span>
-                                  </div>
+                        {/* Correction 1 — groupé par la vraie catégorie du
+                            catalogue (ExamCatalogue.categorie) ; les analyses
+                            créées avant ce correctif (ids texte hérités, non
+                            présents dans le vrai catalogue) restent listées
+                            sous un groupe distinct, honnêtement nommé. */}
+                        {Object.entries(
+                          (currentAnalyse.examens_demandes || []).reduce((groups, eid) => {
+                            const cat = catalogueById[eid]?.categorie || "Analyses antérieures (catalogue historique)";
+                            (groups[cat] = groups[cat] || []).push(eid);
+                            return groups;
+                          }, {})
+                        ).map(([catLabel, ids]) => (
+                          <div key={catLabel} style={{ marginBottom:16 }}>
+                            <div className="cat-hdr">{catLabel}</div>
+                            {ids.map(eid => (
+                              <div key={eid} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px", background:"#F8FAFD", borderRadius:8, marginBottom:4 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                  <div style={{ width:8, height:8, borderRadius:50, background:"var(--lt)" }} />
+                                  <span style={{ fontSize:13, color:"var(--ln)", fontWeight:500 }}>{examLabel(eid)}</span>
                                 </div>
-                              ))}
-                            </div>
-                          );
-                        })}
+                                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                  <span style={{ fontSize:12, color:"var(--lm)" }}>{examRef(eid)}</span>
+                                  <span style={{ fontSize:12, fontWeight:700, color:"var(--lb)" }}>{examPrix(eid).toLocaleString("fr-FR")} CFA</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
                         {currentAnalyse.autres_examens && (
                           <div style={{ marginTop:10, padding:"10px 12px", background:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:10 }}>
                             <div style={{ fontSize:11, fontWeight:700, color:"var(--lo)", textTransform:"uppercase", marginBottom:4 }}>Autres examens spécifiques</div>
@@ -1234,17 +1228,16 @@ export default function Laboratoire() {
                             </thead>
                             <tbody>
                               {asArr(currentAnalyse.resultats).map(r => {
-                                const ref = REF_VALUES[r.exam_id] || {};
                                 const statut = getStatutRes(r);
                                 return (
                                   <tr key={r.exam_id} className={r.statut_res || "normal"}>
-                                    <td style={{ fontWeight:600, color:"var(--ln)" }}>{ref.label || r.exam_id}</td>
+                                    <td style={{ fontWeight:600, color:"var(--ln)" }}>{r.exam_nom || examLabel(r.exam_id)}</td>
                                     <td style={{ fontWeight:r.statut_res !== "normal" ? 700 : 400, color:r.statut_res === "critique" ? "#DC2626" : r.statut_res === "anormal" ? "#D97706" : "var(--ln)", fontSize:14 }}>
                                       {r.valeur || "—"}
                                       {r.statut_res === "critique" && " ⚡"}
                                     </td>
-                                    <td style={{ fontSize:12, color:"var(--lm)" }}>{r.ref || ref.ref || "—"}</td>
-                                    <td style={{ fontSize:12, color:"var(--lm)" }}>{r.unite || ref.unite || "—"}</td>
+                                    <td style={{ fontSize:12, color:"var(--lm)" }}>{r.ref || examRef(r.exam_id)}</td>
+                                    <td style={{ fontSize:12, color:"var(--lm)" }}>{r.unite || examUnite(r.exam_id)}</td>
                                     <td><Badge cls={statut.cls}>{statut.label}</Badge></td>
                                   </tr>
                                 );
@@ -1546,27 +1539,44 @@ export default function Laboratoire() {
               </div>
             </div>
 
-            {/* Catalogue d'examens */}
+            {/* Catalogue d'examens — Correction 1 (relecture du 6 sept. 2026) :
+                remplace EXAM_CATALOGUE codé en dur par le vrai catalogue
+                (GET /laboratory/catalogue, chargé au montage — loadCatalogue).
+                Chaque case coche désormais un vrai _id ExamCatalogue, jamais
+                un libellé texte inventé : la facturation automatique posée à
+                la validation (laboratory.controller.js) cesse d'être inerte. */}
             <div style={{ marginBottom:16 }}>
               <label className="llbl" style={{ fontSize:13, fontWeight:700, color:"var(--ln)", marginBottom:12, display:"block" }}>
                 Examens à prescrire * ({formNouv.examens_demandes.length} sélectionné(s))
               </label>
-              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
-                {Object.entries(EXAM_CATALOGUE).map(([catKey, cat]) => (
-                  <div key={catKey} style={{ background:"#F8FAFD", borderRadius:12, padding:"12px 14px", border:"1.5px solid var(--lbr)" }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:"var(--ln)", marginBottom:8 }}>{cat.icon} {cat.label}</div>
-                    <div className="chk-group">
-                      {cat.examens.map(ex => (
-                        <div key={ex.id} className="chk-item" onClick={() => toggleExamen(ex.id)}>
-                          <input type="checkbox" readOnly checked={formNouv.examens_demandes.includes(ex.id)} />
-                          <label style={{ flex:1 }}>{ex.label}</label>
-                          <span style={{ fontSize:11, color:"var(--lm)", fontWeight:600 }}>{ex.prix.toLocaleString("fr-FR")} CFA</span>
-                        </div>
-                      ))}
+              {catalogue.length === 0 ? (
+                <div style={{ padding:16, textAlign:"center", color:"var(--lm)", fontSize:13, background:"#F8FAFD", borderRadius:12 }}>
+                  Aucun examen disponible — le catalogue réel (ExamCatalogue) est vide ou n'a pas pu être chargé.
+                </div>
+              ) : (
+                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:16 }}>
+                  {Object.entries(
+                    catalogue.reduce((groups, ex) => {
+                      const cat = ex.categorie || "Autres";
+                      (groups[cat] = groups[cat] || []).push(ex);
+                      return groups;
+                    }, {})
+                  ).map(([catLabel, examens]) => (
+                    <div key={catLabel} style={{ background:"#F8FAFD", borderRadius:12, padding:"12px 14px", border:"1.5px solid var(--lbr)" }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:"var(--ln)", marginBottom:8 }}>{catLabel}</div>
+                      <div className="chk-group">
+                        {examens.map(ex => (
+                          <div key={ex._id} className="chk-item" onClick={() => toggleExamen(ex._id)}>
+                            <input type="checkbox" readOnly checked={formNouv.examens_demandes.includes(ex._id)} />
+                            <label style={{ flex:1 }}>{ex.nom}</label>
+                            <span style={{ fontSize:11, color:"var(--lm)", fontWeight:600 }}>{Number(ex.prix || 0).toLocaleString("fr-FR")} CFA</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div style={{ marginBottom:14 }}>
@@ -1638,11 +1648,10 @@ export default function Laboratoire() {
                     <thead><tr><th>Analyse</th><th>Résultat saisi</th><th>Valeurs normales</th><th>Unité</th><th>Statut</th></tr></thead>
                     <tbody>
                       {(currentAnalyse.examens_demandes || []).map(eid => {
-                        const ref = REF_VALUES[eid] || { label:eid, ref:"—", unite:"" };
                         const statutRes = formResStatut[eid] || "normal";
                         return (
                           <tr key={eid}>
-                            <td style={{ fontWeight:600, color:"var(--ln)", whiteSpace:"nowrap" }}>{ref.label}</td>
+                            <td style={{ fontWeight:600, color:"var(--ln)", whiteSpace:"nowrap" }}>{examLabel(eid)}</td>
                             <td>
                               <input
                                 className="linp"
@@ -1652,8 +1661,8 @@ export default function Laboratoire() {
                                 onChange={e => setFormRes(f => ({ ...f, [eid]:e.target.value }))}
                               />
                             </td>
-                            <td style={{ fontSize:12, color:"var(--lm)", whiteSpace:"nowrap" }}>{ref.ref}</td>
-                            <td style={{ fontSize:12, color:"var(--lm)" }}>{ref.unite}</td>
+                            <td style={{ fontSize:12, color:"var(--lm)", whiteSpace:"nowrap" }}>{examRef(eid)}</td>
+                            <td style={{ fontSize:12, color:"var(--lm)" }}>{examUnite(eid)}</td>
                             <td>
                               <select
                                 className="linp"
@@ -1701,7 +1710,7 @@ export default function Laboratoire() {
                   <div style={{ background:"#FEF2F2", border:"1px solid #FCA5A5", borderRadius:10, padding:"10px 14px", fontSize:12.5, color:"#991B1B" }}>
                     ⚡ <strong>{critiques.length} résultat(s) marqué(s) critique</strong> à l'étape de saisie :
                     <ul style={{ margin:"6px 0 0", paddingLeft:18 }}>
-                      {critiques.map(r => <li key={r.exam_id}>{REF_VALUES[r.exam_id]?.label || r.exam_id} : {r.valeur} {REF_VALUES[r.exam_id]?.unite || ""}</li>)}
+                      {critiques.map(r => <li key={r.exam_id}>{r.exam_nom || examLabel(r.exam_id)} : {r.valeur} {r.unite || examUnite(r.exam_id)}</li>)}
                     </ul>
                   </div>
                 );

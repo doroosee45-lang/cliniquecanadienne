@@ -184,7 +184,17 @@ exports.validate = async (req, res, next) => {
       req.params.id,
       { resultats, commentaires, est_critique, valeurs_critiques, statut: 'valide', validateur: req.user._id, date_validation: new Date() },
       { new: true }
-    ).populate('patient', 'nom prenom').populate('medecin_prescripteur', '_id');
+    // Découverte annexe (relecture du 6 sept. 2026, pendant la vérification
+    // bout-en-bout de la Correction 1) — .populate('medecin_prescripteur',
+    // '_id') transformait ce champ, normalement un ObjectId brut partout
+    // ailleurs (getAll l'aplatit explicitement), en objet {_id} dans la
+    // réponse JSON : Laboratory.jsx (ligne "Prescripteur") le rend
+    // directement en JSX, provoquant un vrai crash React ("Objects are not
+    // valid as a React child") après toute validation réelle depuis le vrai
+    // formulaire. Seul destinataire ci-dessous en avait besoin, et un
+    // ObjectId brut (déjà présent sur result.medecin_prescripteur) suffit —
+    // aucun besoin de populate ici.
+    ).populate('patient', 'nom prenom');
 
     if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
 
@@ -226,7 +236,7 @@ exports.validate = async (req, res, next) => {
 
     if (est_critique && result.medecin_prescripteur) {
       await createNotification({
-        destinataire: result.medecin_prescripteur._id,
+        destinataire: result.medecin_prescripteur,
         type: 'critical',
         titre: `🚨 Résultat critique — ${result.patient?.nom} ${result.patient?.prenom}`,
         message: valeurs_critiques || 'Valeurs critiques détectées.',
