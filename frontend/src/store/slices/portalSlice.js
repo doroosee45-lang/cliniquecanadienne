@@ -114,6 +114,22 @@ export const fetchPortalDashboard = createAsyncThunk(
   }
 );
 
+// Sous-phase 5.4 — expose les vraies vaccinations du patient
+// (Child.vaccinations[], portal.controller.js::getVaccinations) pour
+// remplacer VACCINS codée en dur (4 vaccins/dates inventés, identiques pour
+// tout patient) dans Portal.jsx.
+export const fetchPortalVaccinations = createAsyncThunk(
+  'portal/fetchVaccinations',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/portal/vaccinations');
+      return data.vaccinations;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur vaccinations');
+    }
+  }
+);
+
 export const updatePortalProfile = createAsyncThunk(
   'portal/updateProfile',
   async (body, { rejectWithValue }) => {
@@ -154,6 +170,7 @@ const portalSlice = createSlice({
     notifications:      [],
     constantes:         {},
     constantesHistorique: [],
+    vaccinations:       [],
     loading:            false,
     saving:             false,
     error:              null,
@@ -216,6 +233,10 @@ const portalSlice = createSlice({
         state.constantesHistorique = [];
       })
 
+      // vaccinations (réelles, Child.vaccinations[])
+      .addCase(fetchPortalVaccinations.fulfilled, (state, action) => { state.vaccinations = action.payload || []; })
+      .addCase(fetchPortalVaccinations.rejected,  (state) => { state.vaccinations = []; })
+
       // mark all read
       .addCase(markAllNotificationsRead.fulfilled, (state) => {
         state.notifications = state.notifications.map(n => ({ ...n, lu: true }));
@@ -247,6 +268,7 @@ export const selectPortalInvoices      = (s) => s.portal.invoices;
 export const selectPortalNotifications = (s) => s.portal.notifications;
 export const selectPortalConstantes    = (s) => s.portal.constantes;
 export const selectPortalConstantesHistorique = (s) => s.portal.constantesHistorique;
+export const selectPortalVaccinations  = (s) => s.portal.vaccinations;
 export const selectPortalLoading       = (s) => s.portal.loading;
 export const selectPortalSaving        = (s) => s.portal.saving;
 export const selectPortalError         = (s) => s.portal.error;

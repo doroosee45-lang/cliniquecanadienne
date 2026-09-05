@@ -6,6 +6,7 @@ const ImagingResult= require('../models/ImagingResult');
 const Invoice      = require('../models/Invoice');
 const Notification = require('../models/Notification');
 const Consultation = require('../models/Consultation');
+const Child        = require('../models/Child');
 const User         = require('../models/User');
 const { logAction, countUnreadConversations } = require('../utils/helpers');
 
@@ -135,6 +136,27 @@ exports.getInvoices = async (req, res, next) => {
       .sort('-date_facture')
       .lean();
     res.json({ success: true, invoices });
+  } catch (err) { next(err); }
+};
+
+// ── VACCINATIONS ──────────────────────────────────────────────────────────────
+// Sous-phase 5.4 — "Mon Carnet Vaccinal" (Portal.jsx) affichait VACCINS, une
+// constante 100% statique avec des vaccins et des dates entièrement inventés
+// (Grippe saisonnière, COVID-19, Tétanos, Hépatite B "en retard"), montrée
+// identique à TOUT patient connecté, quelle que soit sa réalité clinique.
+// Seule source réelle de vaccination dans ce système :
+// Child.vaccinations[] (module Pédiatrie — vaccin/date/rappel_prevu réels,
+// alimentés par pediatrie.controller.js::addVaccination). Un patient adulte
+// sans dossier pédiatrique lié n'a donc réellement aucune vaccination
+// enregistrée dans ce système — retourne un tableau vide plutôt que
+// d'inventer, jamais une simulation.
+exports.getVaccinations = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+
+    const child = await Child.findOne({ patient_id: patient._id }).select('vaccinations').lean();
+    res.json({ success: true, vaccinations: child?.vaccinations || [] });
   } catch (err) { next(err); }
 };
 

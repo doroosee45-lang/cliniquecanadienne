@@ -11,6 +11,7 @@ router.get('/prescriptions',         PATIENT, ROLE, pc.getPrescriptions);
 router.get('/lab-results',           PATIENT, ROLE, pc.getLabResults);
 router.get('/imaging',               PATIENT, ROLE, pc.getImaging);
 router.get('/invoices',              PATIENT, ROLE, pc.getInvoices);
+router.get('/vaccinations',          PATIENT, ROLE, pc.getVaccinations);
 router.get('/notifications',         PATIENT, ROLE, pc.getNotifications);
 router.put('/notifications/read-all',PATIENT, ROLE, pc.markNotificationsRead);
 router.put('/profile',               PATIENT, ROLE, pc.updateProfile);

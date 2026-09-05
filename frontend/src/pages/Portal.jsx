@@ -6,12 +6,12 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   fetchPortalMe, fetchPortalAppointments, fetchPortalPrescriptions,
   fetchPortalLabResults, fetchPortalImaging, fetchPortalInvoices,
-  fetchPortalNotifications, fetchPortalDashboard, markAllNotificationsRead,
+  fetchPortalNotifications, fetchPortalDashboard, fetchPortalVaccinations, markAllNotificationsRead,
   updatePortalProfile, changePortalPassword,
   selectPortalPatient, selectPortalStats, selectMustChangePassword,
   selectPortalAppointments, selectPortalPrescriptions, selectPortalLabResults,
   selectPortalImaging, selectPortalInvoices, selectPortalNotifications,
-  selectPortalConstantes, selectPortalConstantesHistorique,
+  selectPortalConstantes, selectPortalConstantesHistorique, selectPortalVaccinations,
   selectPortalLoading, selectPortalSaving, selectPortalError, clearPortalError,
 } from '../store/slices/portalSlice';
 import { User, Calendar, Pencil } from 'lucide-react';
@@ -310,13 +310,6 @@ function Modal({ open, onClose, title, children, maxWidth = 540 }) {
 // "Sophie Mercier") supprimées : servaient de repli silencieux dès que
 // la donnée réelle était vide, y compris pour un vrai patient sans
 // historique réel — voir le state gate plus bas dans le composant.
-const VACCINS = [
-  { nom: "Grippe saisonnière", date: "2024-10-15", prochaine: "2025-10-01", statut: "a_jour" },
-  { nom: "COVID-19 (rappel)", date: "2024-09-01", prochaine: "Non défini", statut: "a_jour" },
-  { nom: "Tétanos (DTP)", date: "2019-03-20", prochaine: "2029-03-20", statut: "a_jour" },
-  { nom: "Hépatite B", date: "2010-06-10", prochaine: "Contrôle sérologique", statut: "en_retard" },
-];
-
 // Correction 3 (relecture du 6 sept. 2026) — MESSAGES était une constante
 // statique (jamais fetchée depuis l'API), affichant à un vrai patient trois
 // conversations entièrement fabriquées (dont une facture et un message
@@ -358,6 +351,7 @@ export default function MonEspacePatient() {
   const reduxNotifications = useSelector(selectPortalNotifications);
   const constantes         = useSelector(selectPortalConstantes);
   const constantesHistorique = useSelector(selectPortalConstantesHistorique);
+  const vaccinations       = useSelector(selectPortalVaccinations);
   const loading            = useSelector(selectPortalLoading);
   const saving             = useSelector(selectPortalSaving);
   const portalError        = useSelector(selectPortalError);
@@ -375,6 +369,7 @@ export default function MonEspacePatient() {
     dispatch(fetchPortalInvoices());
     dispatch(fetchPortalNotifications());
     dispatch(fetchPortalDashboard());
+    dispatch(fetchPortalVaccinations());
   }, [dispatch]);
   useEffect(() => { refreshPortal(); }, [refreshPortal]);
   useRealtimeRefresh(refreshPortal);
@@ -966,10 +961,25 @@ export default function MonEspacePatient() {
           )}
 
           {/* ══ VACCINATIONS ══ */}
-          {tab === "vaccinations" && (
+          {/* Sous-phase 5.4 — affichait VACCINS, une constante 100% statique
+              (4 vaccins/dates inventés, identiques pour tout patient
+              connecté). Réel désormais : GET /portal/vaccinations
+              (Child.vaccinations[], seule source réelle de vaccination dans
+              ce système — un patient adulte sans dossier pédiatrique lié n'a
+              réellement aucune vaccination enregistrée, affiché
+              honnêtement comme tel plutôt que simulé). Statut dérivé
+              côté client du vrai rappel_prevu (passé = en retard), aucun
+              champ "statut" fictif renvoyé par le backend. */}
+          {tab === "vaccinations" && (() => {
+            const vacs = vaccinations.map(v => ({
+              nom: v.vaccin, date: v.date,
+              prochaine: v.rappel_prevu ? fmtDate(v.rappel_prevu) : "—",
+              statut: v.rappel_prevu && new Date(v.rappel_prevu) < new Date() ? "en_retard" : "a_jour",
+            }));
+            return (
             <div>
-              <div style={{ marginBottom:20 }}><div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Mon Carnet Vaccinal</div><div style={{ fontSize:12, color:"var(--cm)" }}>{VACCINS.length} vaccins enregistrés</div></div>
-              {VACCINS.some(v => v.statut === "en_retard") && (
+              <div style={{ marginBottom:20 }}><div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Mon Carnet Vaccinal</div><div style={{ fontSize:12, color:"var(--cm)" }}>{vacs.length} vaccin(s) enregistré(s)</div></div>
+              {vacs.some(v => v.statut === "en_retard") && (
                 <div className="al-warn fu" style={{ marginBottom:20, display:"flex", alignItems:"center", gap:12 }}>
                   <span style={{ fontSize:18 }}>⚠️</span>
                   <div><strong style={{ color:"#92400E" }}>Vaccin(s) en retard</strong><div style={{ fontSize:12, color:"#B45309", marginTop:2 }}>Veuillez consulter votre médecin pour une mise à jour vaccinale.</div></div>
@@ -980,7 +990,10 @@ export default function MonEspacePatient() {
                   <table className="ep-tbl">
                     <thead><tr><th>Vaccin</th><th>Date d'administration</th><th>Prochaine dose</th><th>Statut</th></tr></thead>
                     <tbody>
-                      {VACCINS.map((v,i) => (
+                      {vacs.length === 0 && (
+                        <tr><td colSpan={4} style={{ textAlign:"center", color:"var(--cm)", padding:24 }}>Aucune vaccination enregistrée dans votre dossier.</td></tr>
+                      )}
+                      {vacs.map((v,i) => (
                         <tr key={i} style={{ background: v.statut === "en_retard" ? "#FFF8F8" : "" }}>
                           <td style={{ fontWeight:700, color:"var(--cn)", display:"flex", alignItems:"center", gap:8 }}>
                             <span style={{ fontSize:16 }}>💉</span> {v.nom}
@@ -999,7 +1012,8 @@ export default function MonEspacePatient() {
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* ══ FACTURES ══ */}
           {tab === "factures" && (
