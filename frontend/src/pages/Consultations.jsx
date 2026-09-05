@@ -1730,9 +1730,21 @@ export default function Consultation() {
                   {form.decision==="hospitalisation" && (
                     <div className="al-warn">
                       <strong style={{ color:"#92400E", fontSize:13 }}>🛏 Ordre d'hospitalisation</strong>
-                      <div style={{ fontSize:12, color:"#B45309", marginTop:6, display:"flex", gap:10 }}>
-                        <button className="cbtn cbtn-orange cbtn-sm">{I.hospit} Générer bon d'hospitalisation</button>
-                        <button className="cbtn cbtn-ghost cbtn-sm">{I.send} Transmettre au service</button>
+                      {/* Sous-phase 5.2 — "Générer bon d'hospitalisation" et
+                          "Transmettre au service" n'avaient aucun onClick :
+                          aucune génération de document ni aucune notification
+                          réelle n'existe pour cette transition. Consultations
+                          ne crée jamais elle-même de Hospitalization
+                          (vérifié : consultations.controller.js ne référence
+                          ce modèle nulle part) — le module Hospitalisation
+                          dispose déjà d'un vrai formulaire d'admission,
+                          désormais lié ici plutôt que de laisser deux boutons
+                          muets. */}
+                      <div style={{ fontSize:12, color:"#B45309", marginTop:6 }}>
+                        Aucune génération automatique de bon d'hospitalisation n'existe dans ce système — admettez réellement le patient via le module Hospitalisation.
+                      </div>
+                      <div style={{ marginTop:8 }}>
+                        <button className="cbtn cbtn-orange cbtn-sm" onClick={() => navigate("/hospitalization")}>{I.hospit} Aller au module Hospitalisation</button>
                       </div>
                     </div>
                   )}
