@@ -485,6 +485,25 @@ export default function RessourcesHumaines() {
 
   useEffect(() => { loadEmployes(); }, [loadEmployes]);
 
+  // Sous-phase 5.4 — l'onglet "Audit RH" n'était jamais alimenté
+  // (auditLog=DEMO_AUDIT=[] pour toujours, aucun setAuditLog() réel nulle
+  // part). hr.controller.js journalise pourtant déjà réellement chaque
+  // action (logAction({module:'hr', ...}) — create/update/demande-congé/
+  // approbation-congé/planning) dans le vrai journal d'audit partagé (même
+  // source que Administration.jsx/Audit.jsx, GET /audit, jamais un nouveau
+  // modèle "audit RH" séparé) : filtré ici par module=hr plutôt que
+  // construit depuis rien.
+  const loadAuditLog = useCallback(async () => {
+    try {
+      const { data } = await api.get('/audit?module=hr&limit=30');
+      setAuditLog(data.events || []);
+    } catch (err) {
+      console.error('Erreur chargement journal d\'audit RH:', err);
+    }
+  }, []);
+
+  useEffect(() => { loadAuditLog(); }, [loadAuditLog]);
+
   // Staff.service est désormais une vraie référence Service (Module
   // Administration Point 3) — même route déjà réelle que celle utilisée par
   // Analytics.jsx pour son filtre service.
@@ -2351,16 +2370,25 @@ export default function RessourcesHumaines() {
                   <table className="rh-tbl">
                     <thead><tr><th>Action</th><th>Utilisateur</th><th>Date & heure</th><th>Détails</th></tr></thead>
                     <tbody>
+                      {auditLog.length === 0 && (
+                        <tr><td colSpan={4} style={{ textAlign:"center", color:"var(--rm)", padding:24 }}>Aucune action enregistrée</td></tr>
+                      )}
+                      {/* Sous-phase 5.4 — a.action/a.details ont été adaptés
+                          aux vrais champs renvoyés par GET /audit
+                          (formatLog(), audit.controller.js) : `action` est
+                          déjà la version normalisée réelle (creation/
+                          modification/leave approve/leave refuse/...),
+                          `description` est le vrai message (log.message). */}
                       {auditLog.map(a => (
                         <tr key={a._id}>
                           <td>
-                            <Badge cls={a.action.includes("Création") ? "teal" : a.action.includes("Paiement") ? "green" : a.action.includes("Sanction") ? "red" : "blue"}>
+                            <Badge cls={a.action === "creation" ? "teal" : a.action === "leave approve" ? "green" : a.action === "leave refuse" ? "red" : "blue"}>
                               {a.action}
                             </Badge>
                           </td>
                           <td style={{ fontSize:12, fontWeight:600, color:"var(--rn)" }}>{a.utilisateur}</td>
                           <td style={{ fontSize:12, color:"var(--rm)" }}>{new Date(a.date).toLocaleString("fr-FR")}</td>
-                          <td style={{ fontSize:12, color:"var(--rm)" }}>{a.details}</td>
+                          <td style={{ fontSize:12, color:"var(--rm)" }}>{a.description}</td>
                         </tr>
                       ))}
                     </tbody>
