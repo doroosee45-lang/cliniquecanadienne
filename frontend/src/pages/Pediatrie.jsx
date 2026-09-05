@@ -800,6 +800,46 @@ export default function Pediatrie() {
 
   const chroniqueEnfants = enfants.filter(e => e.statut === "chronique");
 
+  // Sous-phase 5.2 — "Exporter" (onglet Patients) affichait un faux succès
+  // (toast.success("📊 Export Excel généré")) sans générer le moindre
+  // fichier. Réel désormais : export xlsx des patients réellement affichés
+  // (enfantsFiltres), même mécanisme (import dynamique 'xlsx', writeFile)
+  // déjà utilisé ailleurs dans l'application (HR.jsx, Finance.jsx...).
+  const exportEnfantsExcel = async (liste, nomFichier) => {
+    if (!liste.length) { toast.error("Aucun patient à exporter."); return; }
+    const XLSX = await import('xlsx');
+    const rows = liste.map(e => ({
+      'N° Dossier': e.numero || e._id?.slice(-6) || '—',
+      'Nom': e.nom, 'Prénom': e.prenom || '',
+      'Âge': ageTexte(e.date_naissance),
+      'Sexe': e.sexe === 'F' ? 'Fille' : 'Garçon',
+      'Parent': e.parent_nom || '—', 'Téléphone parent': e.parent_tel || '—',
+      'Groupe sanguin': e.groupe_sanguin || '—',
+      'Statut': statutLabel(e.statut),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Patients');
+    XLSX.writeFile(wb, `${nomFichier}-${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Sous-phase 5.2 — même bug (toast.success("📊 Export Excel") sans fichier
+  // réel) pour "Exporter" sur l'onglet Consultations.
+  const exportConsultationsExcel = async () => {
+    if (!consultations.length) { toast.error("Aucune consultation à exporter."); return; }
+    const XLSX = await import('xlsx');
+    const rows = consultations.map(c => ({
+      'Date': fmtDate(c.date),
+      'Patient': c.patient_nom || (c.child_id ? `${c.child_id.prenom||""} ${c.child_id.nom}` : '—'),
+      'Médecin': c.medecin || '—', 'Motif': c.motif || '—',
+      'Diagnostic': c.diagnostic || '—', 'Gravité': graviteLabel(c.gravite),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Consultations');
+    XLSX.writeFile(wb, `consultations-pediatrie-${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const TABS = [
     { key:"dashboard",    icon:"📊", label:"Tableau de bord",         labelM:"Bord"      },
     { key:"patients",     icon:"🧒", label:"Patients pédiatriques",    labelM:"Patients"  },
@@ -972,7 +1012,7 @@ export default function Pediatrie() {
               <div className="ped-card fu">
                 <div className="ped-card-hdr">
                   <div><h3>🧒 Patients pédiatriques</h3><p>{enfantsFiltres.length} enfant{enfantsFiltres.length!==1?"s":""} affiché{enfantsFiltres.length!==1?"s":""}</p></div>
-                  <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📊 Export Excel généré")}>📊 Exporter</button>
+                  <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => exportEnfantsExcel(enfantsFiltres, 'patients-pediatrie')}>📊 Exporter</button>
                 </div>
                 {loading ? (
                   <div style={{ textAlign:"center", padding:40, color:"var(--pm)" }}>⏳ Chargement...</div>
@@ -1032,7 +1072,7 @@ export default function Pediatrie() {
               <div className="ped-card fu">
                 <div className="ped-card-hdr">
                   <div><h3>📋 Historique des consultations</h3></div>
-                  <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📊 Export Excel")}>📊 Exporter</button>
+                  <button className="pbtn pbtn-ghost pbtn-sm" onClick={exportConsultationsExcel}>📊 Exporter</button>
                 </div>
                 {loading ? (
                   <div style={{ textAlign:"center", padding:40, color:"var(--pm)" }}>⏳ Chargement...</div>
