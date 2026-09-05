@@ -1259,30 +1259,22 @@ export default function Administration() {
               )}
 
               {/* ── RESSOURCES ── */}
+              {/* Sous-phase 5.1 — cet onglet affichait un inventaire
+                  entièrement inventé (Ordinateurs 16/18, Lits hospitaliers
+                  38/40, Scanner 0/1...), une liste littérale codée en dur
+                  dans le JSX, jamais un état chargé depuis une API. Aucun
+                  modèle de données (équipement, inventaire, matériel) n'existe
+                  dans ce système — vérifié dans backend/models : aucun
+                  Equipment/Resource/Inventaire. Désactivé honnêtement plutôt
+                  que de laisser cet inventaire fictif. */}
               {section === "ressources" && (
                 <div>
                   <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Gestion des ressources & équipements</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:16 }}>
-                    {[
-                      { cat:"Informatique", icon:"🖥️", items:[{n:"Ordinateurs",v:18,ok:16},{n:"Imprimantes",v:6,ok:5},{n:"Serveurs",v:2,ok:2}] },
-                      { cat:"Équipements médicaux", icon:"🏥", items:[{n:"Lits hospitaliers",v:40,ok:38},{n:"Moniteurs cardiaques",v:8,ok:7},{n:"Défibrillateurs",v:3,ok:3}] },
-                      { cat:"Imagerie", icon:"🩻", items:[{n:"Échographes",v:2,ok:2},{n:"Radios",v:1,ok:1},{n:"Scanner",v:1,ok:0}] },
-                      { cat:"Transport", icon:"🚑", items:[{n:"Ambulances",v:2,ok:2},{n:"Véhicules admin.",v:1,ok:1}] },
-                    ].map(cat => (
-                      <div key={cat.cat} className="adm-card">
-                        <div className="adm-card-hdr"><h3>{cat.icon} {cat.cat}</h3></div>
-                        <div style={{ padding:16 }}>
-                          {cat.items.map(it => (
-                            <div key={it.n} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #F3F7FF" }}>
-                              <span style={{ fontSize:12, color:"var(--cm)" }}>{it.n}</span>
-                              <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                                <Badge cls={it.ok === it.v ? "green" : it.ok === 0 ? "red" : "orange"}>{it.ok}/{it.v}</Badge>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                  <div className="adm-card">
+                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🖥️</div>
+                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel d'inventaire/équipements n'existe dans ce système.</div>
+                    </div>
                   </div>
                 </div>
               )}
