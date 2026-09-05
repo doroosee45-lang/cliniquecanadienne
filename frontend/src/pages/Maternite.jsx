@@ -1240,7 +1240,13 @@ export default function Maternite() {
                       <div style={{background:"#F8FAFD",border:"2px dashed var(--abr)",borderRadius:12,padding:"20px",textAlign:"center",marginBottom:12}}>
                         <div style={{fontSize:32,marginBottom:6}}>🖼</div>
                         <div style={{fontSize:12,color:"var(--am)"}}>Image échographique</div>
-                        <button className="mbtn mbtn-ghost mbtn-sm" style={{marginTop:8}} onClick={()=>toast.success("📎 Image jointe")}>📎 Joindre image</button>
+                        {/* Sous-phase 5.7 — faux succès sans le moindre
+                            upload réel. Un champ réel existe pour stocker des
+                            images (Pregnancy.js EchoSchema.images), mais
+                            aucun mécanisme réel d'upload (multer, endpoint)
+                            n'existe encore pour l'alimenter. Désactivé
+                            honnêtement plutôt que de simuler un envoi. */}
+                        <button className="mbtn mbtn-ghost mbtn-sm" style={{marginTop:8}} disabled title="Fonctionnalité en cours de développement — aucun envoi réel d'image n'existe encore." onClick={()=>toast("🚧 Fonctionnalité en cours de développement.")}>📎 Joindre image</button>
                       </div>
                     </div>
                   </div>
@@ -1296,7 +1302,12 @@ export default function Maternite() {
                       </div>
                       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                         <button className="mbtn mbtn-pink mbtn-sm" onClick={()=>openModal("cpn",r)}>🩺 Consulter</button>
-                        <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>toast.success("📅 RDV urgent programmé")}>📅 RDV urgent</button>
+                        {/* Sous-phase 5.7 — faux succès sans création réelle
+                            de rendez-vous. La gestion des rendez-vous est un
+                            module distinct (Appointments.jsx) : redirige
+                            réellement vers ce module plutôt que de simuler
+                            une programmation. */}
+                        <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>navigate("/appointments")}>📅 RDV urgent</button>
                       </div>
                     </div>
                   </div>
@@ -1310,7 +1321,14 @@ export default function Maternite() {
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
                 <div className="sec-label">🏥 Salle de travail</div>
-                <button className="mbtn mbtn-pink" onClick={()=>toast.success("➕ Admission en salle de travail")}>➕ Admettre patiente</button>
+                {/* Sous-phase 5.7 — faux succès sans admission réelle. La
+                    vraie admission (dispatch(updateTravail), réel) n'est
+                    déclenchée que depuis le dossier d'une grossesse
+                    spécifique (openModal("travail", grossesseDossier)).
+                    Réutilise ce même mécanisme réel, même convention déjà
+                    en place pour "Nouvelle CPN"/"Déclarer accouchement"
+                    ci-dessus (grossesses[0]||null). */}
+                <button className="mbtn mbtn-pink" onClick={()=>openModal("travail", grossesses[0]||null)}>➕ Admettre patiente</button>
               </div>
 
               {enTravail.length===0 && !loading && (
@@ -1342,8 +1360,17 @@ export default function Maternite() {
                       </div>
                       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                         <button className="mbtn mbtn-pink mbtn-sm" onClick={()=>openModal("accouchement",p)}>🍼 Déclarer accouchement</button>
-                        <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>toast.success("📊 Partogramme mis à jour")}>📊 Mise à jour</button>
-                        <button className="mbtn mbtn-danger mbtn-sm" onClick={()=>toast.error("🚨 Alerte urgence déclenchée")}>🚨 Urgence</button>
+                        {/* Sous-phase 5.7 — "Mise à jour" affichait un faux
+                            succès sans rien persister : réutilise le vrai
+                            modal de salle de travail (dispatch(updateTravail),
+                            déjà réel, capture dilatation/contractions/RCF/
+                            membranes) pour CETTE patiente. "Urgence"
+                            affichait une fausse alerte déclenchée
+                            (toast.error) sans aucun mécanisme réel d'alerte
+                            — désactivé honnêtement plutôt que de laisser
+                            croire qu'une alerte a réellement été envoyée. */}
+                        <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>openModal("travail",p)}>📊 Mise à jour</button>
+                        <button className="mbtn mbtn-danger mbtn-sm" disabled title="Fonctionnalité en cours de développement — aucun mécanisme réel d'alerte n'existe encore." onClick={()=>toast("🚧 Fonctionnalité en cours de développement — aucune alerte réelle n'a été envoyée.")}>🚨 Urgence</button>
                       </div>
                     </div>
                   </div>
@@ -1393,9 +1420,15 @@ export default function Maternite() {
                             </td>
                             <td style={{fontSize:12,color:"var(--am)"}}>{a.obstetricien||"—"}</td>
                             <td>
+                              {/* Sous-phase 5.7 — "Certificat" affichait un
+                                  faux succès sans génération réelle : aucun
+                                  moteur de génération de certificat n'existe.
+                                  "🖨" câblé sur window.print(), même
+                                  mécanisme réel utilisé partout ailleurs dans
+                                  ce système pour l'impression. */}
                               <div style={{display:"flex",gap:4}}>
-                                <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>toast.success(`📄 Certificat — ${a.patient_nom}`)}>📄 Certificat</button>
-                                <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>toast.success("🖨 Impression")}>🖨</button>
+                                <button className="mbtn mbtn-ghost mbtn-sm" disabled title="Fonctionnalité en cours de développement — aucune génération réelle de certificat n'existe encore." onClick={()=>toast("🚧 Fonctionnalité en cours de développement.")}>📄 Certificat</button>
+                                <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>window.print()}>🖨</button>
                               </div>
                             </td>
                           </tr>
@@ -1459,7 +1492,9 @@ export default function Maternite() {
                         ) : (
                           <button className="mbtn mbtn-pink mbtn-sm" style={{flex:1}} onClick={()=>handleCreateChildDossier(n)} disabled={saving}>📋 Créer dossier pédiatrique</button>
                         )}
-                        <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>toast.success("📄 Certificat de naissance imprimé")}>📄 Certificat</button>
+                        {/* Sous-phase 5.7 — faux succès sans génération
+                            réelle de certificat de naissance. */}
+                        <button className="mbtn mbtn-ghost mbtn-sm" disabled title="Fonctionnalité en cours de développement — aucune génération réelle de certificat n'existe encore." onClick={()=>toast("🚧 Fonctionnalité en cours de développement.")}>📄 Certificat</button>
                       </div>
                     </div>
                   </div>
@@ -1473,7 +1508,13 @@ export default function Maternite() {
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
                 <div className="sec-label">💊 Suivi postnatal</div>
-                <button className="mbtn mbtn-pink" onClick={()=>toast.success("➕ Nouvelle consultation post-partum")}>➕ Nouvelle consultation</button>
+                {/* Sous-phase 5.7 — faux succès sans consultation créée. La
+                    vraie saisie postnatale (openModal("postnatal", ...), champ
+                    contraception réel inclus) n'est déclenchée que depuis un
+                    dossier de grossesse spécifique. Réutilise ce même
+                    mécanisme réel, même convention déjà en place pour
+                    "Nouvelle CPN"/"Admettre patiente" ci-dessus. */}
+                <button className="mbtn mbtn-pink" onClick={()=>openModal("postnatal", grossesses[0]||null)}>➕ Nouvelle consultation</button>
               </div>
 
               {/* Grossesses en post-natal */}
@@ -1514,9 +1555,20 @@ export default function Maternite() {
                                     ))}
                                   </div>
                                 )}
+                                {/* Sous-phase 5.7 — "Dossier" affichait un
+                                    faux succès sans rien ouvrir : câblé sur la
+                                    vraie navigation patient (même lien réel
+                                    que le nom ci-dessus). "Contraception"
+                                    affichait un faux succès sans rien
+                                    persister : un vrai champ existe
+                                    (Pregnancy.js PostnatalSchema.contraception,
+                                    déjà réellement saisi via le modal
+                                    postnatal ci-dessous) — réutilise ce même
+                                    modal réel pour cette patiente plutôt que
+                                    de simuler l'enregistrement. */}
                                 <div style={{display:"flex",gap:6,marginTop:10}}>
-                                  <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>toast.success(`📋 Dossier post-partum — ${m.patient_nom}`)}>Dossier</button>
-                                  <button className="mbtn mbtn-pink mbtn-sm" onClick={()=>toast.success("💉 Contraception enregistrée")}>Contraception</button>
+                                  <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>m.patient_id?._id&&navigate(`/patients/${m.patient_id._id}`)}>Dossier</button>
+                                  <button className="mbtn mbtn-pink mbtn-sm" onClick={()=>openModal("postnatal",m)}>Contraception</button>
                                 </div>
                               </div>
                             );
@@ -1552,18 +1604,23 @@ export default function Maternite() {
                 );
               })()}
 
+              {/* Sous-phase 5.7 — les 6 boutons ci-dessous affichaient chacun
+                  un faux succès (toast.success) sans la moindre génération
+                  réelle. Aucun moteur de génération de documents
+                  (carnet/rapport/certificat) ni d'envoi par e-mail n'existe
+                  dans ce système. Désactivés honnêtement. */}
               <div className="mat-card fu">
                 <div className="mat-card-hdr"><h3>📄 Documents & Rapports</h3></div>
                 <div style={{padding:20,display:"flex",gap:12,flexWrap:"wrap"}}>
                   {[
-                    {icon:"📗",label:"Carnet prénatal",      fn:()=>toast.success("📗 Carnet prénatal généré")},
-                    {icon:"📄",label:"Rapport d'échographie",fn:()=>toast.success("📄 Rapport échographie")},
-                    {icon:"🧪",label:"Résultats labo",       fn:()=>toast.success("🧪 Résultats laboratoire")},
-                    {icon:"📋",label:"Certificat d'accouchement",fn:()=>toast.success("📋 Certificat d'accouchement")},
-                    {icon:"🎂",label:"Certificat de naissance",fn:()=>toast.success("🎂 Certificat de naissance")},
-                    {icon:"📧",label:"Envoyer par e-mail",   fn:()=>toast.success("📧 Documents envoyés")},
+                    {icon:"📗",label:"Carnet prénatal"},
+                    {icon:"📄",label:"Rapport d'échographie"},
+                    {icon:"🧪",label:"Résultats labo"},
+                    {icon:"📋",label:"Certificat d'accouchement"},
+                    {icon:"🎂",label:"Certificat de naissance"},
+                    {icon:"📧",label:"Envoyer par e-mail"},
                   ].map((b,i)=>(
-                    <button key={i} className="mbtn mbtn-ghost" onClick={b.fn}>
+                    <button key={i} className="mbtn mbtn-ghost" disabled title="Fonctionnalité en cours de développement — aucune génération réelle n'existe encore." onClick={()=>toast("🚧 Fonctionnalité en cours de développement.")}>
                       {b.icon} {b.label}
                     </button>
                   ))}
