@@ -145,7 +145,11 @@ const articles = [
 const navLinks = ["À propos", "Services", "Médecins", "Départements", "Actualités", "Contact"];
 
 export default function ClinicLanding() {
-  const [lang, setLang] = useState("FR");
+  // Correction 10 (relecture du 6 sept. 2026, FE-BUG-012) — le sélecteur de
+  // langue FR/EN/AR a été retiré : il changeait ce state mais aucune
+  // traduction n'existe nulle part dans ce composant (texte 100% en dur en
+  // français). Un contrôle qui ne fait rien est plus trompeur qu'utile.
+  // Une vraie internationalisation reste un chantier séparé, hors périmètre ici.
   const [activeTestimonial, setActiveTestimonial] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -314,12 +318,6 @@ export default function ClinicLanding() {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <div style={{ display: "flex", gap: "2px", background: COLORS.accent, borderRadius: "20px", padding: "3px" }}>
-                  {["FR", "EN", "AR"].map(l => (
-                    <button key={l} onClick={() => setLang(l)} style={{ border: "none", borderRadius: "16px", padding: "3px 9px", fontSize: "11px", fontWeight: "700", background: lang === l ? COLORS.primary : "transparent", color: lang === l ? COLORS.white : COLORS.primary, cursor: "pointer", transition: "all 0.2s" }}>{l}</button>
-                  ))}
-                </div>
-
                 <a href="tel:+21600000000" style={{ color: COLORS.danger, fontSize: "13px", fontWeight: "700", textDecoration: "none", display: "flex", alignItems: "center", gap: "4px", padding: "8px 0" }}>
                   📞 Urgence
                 </a>
