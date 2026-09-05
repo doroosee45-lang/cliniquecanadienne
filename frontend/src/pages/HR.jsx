@@ -369,8 +369,6 @@ const DEMO_EMPLOYES = [];
 
 const DEMO_CANDIDATURES = [];
 
-const DEMO_POINTAGES = [];
-
 const DEMO_EVALUATIONS = [];
 
 const DEMO_FORMATIONS = [];
@@ -440,7 +438,6 @@ export default function RessourcesHumaines() {
   const [evaluations, setEvaluations]     = useState(DEMO_EVALUATIONS);
   const [formations, setFormations]       = useState(DEMO_FORMATIONS);
   const [sanctions, setSanctions]         = useState(DEMO_SANCTIONS);
-  const [pointages, setPointages]         = useState(DEMO_POINTAGES);
   const [auditLog, setAuditLog]           = useState(DEMO_AUDIT);
   const [currentEmp, setCurrentEmp]       = useState(null);
   const [search, setSearch]               = useState("");
@@ -457,7 +454,6 @@ export default function RessourcesHumaines() {
   const [modalEval,       setModalEval]        = useState(false);
   const [modalFormation,  setModalFormation]   = useState(false);
   const [modalSanction,   setModalSanction]    = useState(false);
-  const [modalPointage,   setModalPointage]    = useState(false);
   const [modalPlan,       setModalPlan]        = useState(false);
   const [publishingId,    setPublishingId]     = useState(null);
 
@@ -1967,6 +1963,19 @@ export default function RessourcesHumaines() {
           )}
 
           {/* ══ PRÉSENCES ══ */}
+          {/* Sous-phase 5.3 — au-delà de la modale "Saisir pointage" (champs
+              non contrôlés, faux succès sans persistance), cet onglet entier
+              n'a jamais eu la moindre donnée réelle : pointages n'est jamais
+              alimenté que par DEMO_POINTAGES=[] (aucun setPointages() réel
+              nulle part dans ce fichier), donc les KPI "Présents/Absents/
+              Retards/Heures sup." et le tableau affichaient toujours 0/vide.
+              Aucun modèle de données (pointage, présence) n'existe dans le
+              backend — vérifié : aucun modèle ni contrôleur "pointage" nulle
+              part. Construire un vrai suivi de présence (modèle + contrôleur
+              + agrégation des KPI) dépasse le périmètre de cette sous-phase
+              (câbler une saisie existante, pas créer un sous-système complet)
+              : désactivé honnêtement plutôt que de laisser cette simulation
+              vide. */}
           {tab === "presences" && (
             <div>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:12 }}>
@@ -1974,54 +1983,11 @@ export default function RessourcesHumaines() {
                   <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Présences & Pointage — Aujourd'hui</div>
                   <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{fmtDate(new Date().toISOString())}</div>
                 </div>
-                <button className="rbtn rbtn-primary" onClick={() => setModalPointage(true)}>
-                  {I.plus} Saisir pointage
-                </button>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
-                {[
-                  ["Présents", pointages.filter(p=>p.statut==="present").length, "var(--rg)", "✅"],
-                  ["Absents",  pointages.filter(p=>p.statut==="absent").length,  "var(--rr)", "❌"],
-                  ["Retards",  pointages.filter(p=>p.retard_min>0).length,        "var(--ro)", "⏱"],
-                  ["Heures sup.", pointages.reduce((s,p)=>s+(p.heures_sup||0),0).toFixed(1)+"h", "var(--rb)", "⌚"],
-                ].map(([lbl,val,col,icon]) => (
-                  <div key={lbl} style={{ background:"#fff", border:"1.5px solid var(--rbr)", borderRadius:14, padding:"14px 18px", textAlign:"center", boxShadow:"var(--sh)" }}>
-                    <div style={{ fontSize:22 }}>{icon}</div>
-                    <div style={{ fontSize:22, fontWeight:800, color:col, marginTop:6 }}>{val}</div>
-                    <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{lbl}</div>
-                  </div>
-                ))}
               </div>
               <div className="rh-card">
-                <div style={{ overflowX:"auto" }}>
-                  <table className="rh-tbl">
-                    <thead><tr><th>Employé</th><th>Poste</th><th>Heure entrée</th><th>Heure sortie</th><th>Retard</th><th>H. suppl.</th><th>Statut</th></tr></thead>
-                    <tbody>
-                      {pointages.map(p => {
-                        const emp = employes.find(e => e._id === p.employe_id);
-                        const pc = emp ? (POSTE_COLORS[emp.poste] || { cls:"gray" }) : { cls:"gray" };
-                        return (
-                          <tr key={p._id} style={{ background:p.statut==="absent"?"#FFF8F8":"" }}>
-                            <td style={{ fontWeight:600, color:"var(--rn)" }}>{p.employe_nom}</td>
-                            <td>{emp && <Badge cls={pc.cls}>{(POSTE_COLORS[emp.poste]||{}).label || emp.poste}</Badge>}</td>
-                            <td style={{ fontSize:12, fontWeight:600, color:"var(--rg)" }}>{p.heure_entree}</td>
-                            <td style={{ fontSize:12, color:"var(--rm)" }}>{p.heure_sortie}</td>
-                            <td>
-                              {p.retard_min > 0 ? <Badge cls="orange">⏱ {p.retard_min} min</Badge> : <span style={{ fontSize:12, color:"var(--rm)" }}>—</span>}
-                            </td>
-                            <td style={{ fontSize:12, color:p.heures_sup > 0 ? "var(--rb)" : "var(--rm)", fontWeight:p.heures_sup > 0 ? 700 : 400 }}>
-                              {p.heures_sup > 0 ? `+${p.heures_sup}h` : "—"}
-                            </td>
-                            <td>
-                              <Badge cls={p.statut === "present" ? "green" : "red"}>
-                                {p.statut === "present" ? "✅ Présent" : "❌ Absent"}
-                              </Badge>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>
+                  <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>⏱</div>
+                  <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel de présence/pointage n'existe encore dans ce système.</div>
                 </div>
               </div>
             </div>
@@ -2672,34 +2638,6 @@ export default function RessourcesHumaines() {
               </div>
             </div>
           </form>
-        </Modal>
-
-        {/* ═══ MODAL : POINTAGE MANUEL ═══ */}
-        <Modal open={modalPointage} onClose={() => setModalPointage(false)} title="⏱ Saisie pointage manuel" maxWidth={460}>
-          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-            <div><label className="rlbl">Employé</label>
-              <select className="rinp">
-                <option value="">— Sélectionner —</option>
-                {employes.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
-              </select>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
-              <div><label className="rlbl">Heure d'entrée</label><input type="time" className="rinp" defaultValue="08:00" /></div>
-              <div><label className="rlbl">Heure de sortie</label><input type="time" className="rinp" defaultValue="16:00" /></div>
-            </div>
-            <div><label className="rlbl">Méthode de pointage</label>
-              <select className="rinp">
-                <option value="manuel">✍️ Saisie manuelle</option>
-                <option value="badge">🏷️ Badge</option>
-                <option value="qr">📱 QR Code</option>
-                <option value="biometrie">👆 Empreinte digitale</option>
-              </select>
-            </div>
-            <div style={{ display:"flex", gap:10 }}>
-              <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalPointage(false)}>Annuler</button>
-              <button type="button" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }} onClick={() => { toast.success("✅ Pointage enregistré"); setModalPointage(false); }}>{I.save} Enregistrer</button>
-            </div>
-          </div>
         </Modal>
 
       </div>
