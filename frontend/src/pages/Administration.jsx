@@ -529,6 +529,24 @@ export default function Administration() {
   // AUDIT-0.2 : le succès n'est plus affiché qu'après confirmation réelle de
   // l'API — un échec (réseau, 403, 500) affiche une erreur explicite et ne
   // touche pas à l'état affiché, au lieu de simuler un succès inconditionnel.
+  // Sous-phase 5.2 — "Exporter" (Journal d'audit) n'avait aucun onClick.
+  // Le journal (audit) est réel et déjà chargé : câblé sur un vrai export
+  // xlsx (import dynamique 'xlsx'), même mécanisme déjà utilisé ailleurs
+  // dans l'application (HR.jsx, Finance.jsx).
+  const exportAuditExcel = async () => {
+    if (!audit.length) { toast.error("Aucune action à exporter."); return; }
+    const XLSX = await import('xlsx');
+    const rows = audit.map(a => ({
+      'Date': new Date(a.date).toLocaleString('fr-FR'),
+      'Type': a.type || '—', 'Action': a.action || '—',
+      'Utilisateur': a.utilisateur || '—', 'Détail': a.detail || '—',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Journal audit');
+    XLSX.writeFile(wb, `journal-audit-${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const toggleUserStatus = async (user) => {
     const newStatut = user.statut === "actif" ? "suspendu" : "actif";
     try {
@@ -1438,12 +1456,20 @@ export default function Administration() {
                       <div style={{ fontSize:28, marginBottom:12 }}>{r.icon}</div>
                       <div style={{ fontWeight:700, color:"var(--cn)", fontSize:14, marginBottom:6 }}>{r.titre}</div>
                       <div style={{ fontSize:12, color:"var(--cm)", marginBottom:16, lineHeight:1.5 }}>{r.desc}</div>
+                      {/* Sous-phase 5.2 — "Générer" affichait un faux
+                          succès (toast.loading puis rien) ; "PDF"/"Excel"
+                          n'avaient aucun onClick. Ces 8 rapports agrègent
+                          des données réelles issues de plusieurs modules
+                          (Consultations, Finance, RH, Pharmacie,
+                          Laboratoire...) sans qu'aucun moteur de génération
+                          cross-module n'existe dans ce système. Désactivés
+                          honnêtement plutôt que d'inventer une génération. */}
                       <div style={{ display:"flex", gap:8 }}>
-                        <button className="cbtn cbtn-primary cbtn-sm" onClick={() => toast.loading(`📊 Génération ${r.titre}...`, { duration:2000 })}>
+                        <button className="cbtn cbtn-primary cbtn-sm" disabled title="Fonctionnalité en cours de développement — aucune génération réelle de rapport n'existe encore." onClick={() => toast("🚧 Génération de rapport non disponible — fonctionnalité en cours de développement.")}>
                           {I.chart} Générer
                         </button>
-                        <button className="cbtn cbtn-ghost cbtn-sm">{I.dl} PDF</button>
-                        <button className="cbtn cbtn-ghost cbtn-sm">{I.dl} Excel</button>
+                        <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Fonctionnalité en cours de développement.">{I.dl} PDF</button>
+                        <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Fonctionnalité en cours de développement.">{I.dl} Excel</button>
                       </div>
                     </div>
                   </div>
@@ -1460,7 +1486,7 @@ export default function Administration() {
                   <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Journal d'audit</div>
                   <div style={{ fontSize:12, color:"var(--cm)" }}>{audit.length} action(s) enregistrée(s)</div>
                 </div>
-                <button className="cbtn cbtn-ghost cbtn-sm">{I.dl} Exporter</button>
+                <button className="cbtn cbtn-ghost cbtn-sm" onClick={exportAuditExcel}>{I.dl} Exporter</button>
               </div>
 
               <div className="adm-card">
