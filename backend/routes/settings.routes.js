@@ -22,7 +22,11 @@ router.post('/services',      protect, authorize(...ADMIN),   settingsC.createSe
 router.put('/services/:id',   protect, authorize(...ADMIN),   settingsC.updateService);
 
 // ── Salles ────────────────────────────────────────────────────
+// Correction 3 — POST/PUT manquants (audit du 4 sept. 2026) : Room n'était
+// peuplé que par utils/seed.js, aucune route de gestion n'existait.
 router.get('/rooms',          protect, authorize(...STAFF),   settingsC.getRooms);
+router.post('/rooms',         protect, authorize(...ADMIN),   settingsC.createRoom);
+router.put('/rooms/:id',      protect, authorize(...ADMIN),   settingsC.updateRoom);
 
 // ── KPIs administration ───────────────────────────────────────
 router.get('/kpis',           protect, authorize(...ADMIN),   settingsC.getKpis);

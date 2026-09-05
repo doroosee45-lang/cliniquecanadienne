@@ -267,6 +267,14 @@ const EMPTY_USER = { prenom:"", nom:"", email:"", telephone:"", role:"medecin", 
 const EMPTY_TASK = { titre:"", assignee:"", priorite:"normale", statut:"en_attente", echeance:"", categorie:"administratif", description:"" };
 const EMPTY_SUPPLIER = { nom:"", contact:"", telephone:"", email:"", adresse:"", produits:"" };
 const EMPTY_SERVICE = { nom:"", code:"", description:"", etage:"", couleur:"#2563eb" };
+// Correction 3 (relecture du 5 sept. 2026, découverte pendant la Correction A
+// / cout_total) — aucune UI ne permettait de créer/modifier une chambre, le
+// bouton "✏️" de la section Salles n'avait jamais d'onClick (facticité
+// déjà notée par l'audit). lits : liste de {numero, type, prix_par_jour} —
+// prix_par_jour est la vraie source de tarif branchée sur la facturation
+// réelle à la sortie d'hospitalisation (hospitalization.controller.js).
+const EMPTY_LIT  = { numero:"", type:"standard", prix_par_jour:"" };
+const EMPTY_ROOM = { numero:"", type:"commune", etage:"", capacite:1, statut:"actif", lits:[{ ...EMPTY_LIT }] };
 const EMPTY_PATIENT_QUICK = { nom:"", prenom:"", date_naissance:"", sexe:"", telephone:"", email:"" };
 
 // ─── Modal wrapper ───────────────────────────────────────────
@@ -399,7 +407,9 @@ export default function Administration() {
   const [modalSupplier, setModalSupplier] = useState(false);
   const [modalService, setModalService]   = useState(false);
   const [modalPatientQuick, setModalPatientQuick] = useState(false);
+  const [modalRoom, setModalRoom]         = useState(false);
   const [editUser, setEditUser]           = useState(null);
+  const [editRoom, setEditRoom]           = useState(null);
 
   // Forms
   const [formUser, setFormUser]           = useState(EMPTY_USER);
@@ -407,6 +417,7 @@ export default function Administration() {
   const [formService, setFormService]     = useState(EMPTY_SERVICE);
   const [formPatientQuick, setFormPatientQuick] = useState(EMPTY_PATIENT_QUICK);
   const [formSupplier, setFormSupplier]   = useState(EMPTY_SUPPLIER);
+  const [formRoom, setFormRoom]           = useState(EMPTY_ROOM);
 
   // Settings state
   const [settings, setSettings] = useState({
@@ -620,6 +631,53 @@ export default function Administration() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // ── Chambres & lits (Correction 3) ─────────────────────────
+  // Aucune donnée fabriquée sur échec : la liste n'est mise à jour que par
+  // la réponse réelle du serveur (chambre créée/modifiée), jamais un objet
+  // local. prix_par_jour vide reste "" côté formulaire (0 envoyé au
+  // serveur) plutôt que d'inventer une valeur par défaut différente de
+  // celle déjà posée par le schéma.
+  const saveRoom = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    const payload = {
+      numero: formRoom.numero,
+      type: formRoom.type,
+      etage: formRoom.etage !== "" ? Number(formRoom.etage) : undefined,
+      capacite: formRoom.capacite !== "" ? Number(formRoom.capacite) : undefined,
+      statut: formRoom.statut,
+      lits: formRoom.lits.filter(l => l.numero).map(l => ({
+        numero: l.numero, type: l.type, prix_par_jour: l.prix_par_jour === "" ? 0 : Number(l.prix_par_jour),
+      })),
+    };
+    try {
+      if (editRoom) {
+        const { data } = await api.put(`/admin/rooms/${editRoom._id}`, payload);
+        setRooms(prev => prev.map(r => r._id === data.room._id ? data.room : r));
+        toast.success(`✅ Chambre "${data.room.numero}" mise à jour`);
+      } else {
+        const { data } = await api.post("/admin/rooms", payload);
+        setRooms(prev => [...prev, data.room]);
+        toast.success(`✅ Chambre "${data.room.numero}" créée`);
+      }
+      setModalRoom(false); setFormRoom(EMPTY_ROOM); setEditRoom(null);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || (editRoom ? "❌ Échec de la mise à jour de la chambre." : "❌ Échec de la création de la chambre."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEditRoom = (r) => {
+    setEditRoom(r);
+    setFormRoom({
+      numero: r.numero || "", type: r.type || "commune", etage: r.etage ?? "", capacite: r.capacite ?? 1,
+      statut: r.statut || "actif",
+      lits: (r.lits?.length ? r.lits : [{ ...EMPTY_LIT }]).map(l => ({ numero: l.numero || "", type: l.type || "standard", prix_par_jour: l.prix_par_jour ?? "" })),
+    });
+    setModalRoom(true);
   };
 
   // ── Créer un dossier patient (Point 2 — chemin dédié) ──────
@@ -1099,7 +1157,12 @@ export default function Administration() {
               {/* ── SALLES ── */}
               {section === "salles" && (
                 <div>
-                  <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Salles & Infrastructures</div>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
+                    <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Salles & Infrastructures</div>
+                    <button className="cbtn cbtn-primary" onClick={() => { setEditRoom(null); setFormRoom(EMPTY_ROOM); setModalRoom(true); }}>
+                      {I.plus} Nouvelle chambre
+                    </button>
+                  </div>
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:14 }}>
                     {rooms.map((r) => {
                       const etatCfg = {
@@ -1119,7 +1182,9 @@ export default function Administration() {
                             <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>{r.responsable}</div>
                             <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, fontSize:11, color:"var(--cm)" }}>
                               <span>Capacité : <strong style={{ color:"var(--cn)" }}>{r.capacite}</strong></span>
-                              <button className="cbtn cbtn-ghost cbtn-sm" style={{ padding:"3px 8px", fontSize:10 }}>{I.edit}</button>
+                              {/* Correction 3 — ce bouton n'avait jamais d'onClick (facticité
+                                  notée par l'audit) : ouvre désormais réellement l'édition. */}
+                              <button className="cbtn cbtn-ghost cbtn-sm" style={{ padding:"3px 8px", fontSize:10 }} onClick={() => openEditRoom(r)}>{I.edit}</button>
                             </div>
                           </div>
                         </div>
@@ -1764,6 +1829,80 @@ export default function Administration() {
                 <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalService(false)}>Annuler</button>
                 <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
                   {I.save} {saving ? "..." : "Créer le service"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* Correction 3 — chambre/lits, remplace le bouton "Modifier" factice */}
+        <Modal open={modalRoom} onClose={() => { setModalRoom(false); setEditRoom(null); }} title={editRoom ? `✏️ Modifier — ${editRoom.numero}` : '➕ Nouvelle chambre'} maxWidth={560}>
+          <form onSubmit={saveRoom}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div>
+                  <label className="clbl">Numéro de chambre *</label>
+                  <input className="cinp" required value={formRoom.numero} onChange={e => setFormRoom(f=>({...f,numero:e.target.value}))} placeholder="Ex: CH-301" />
+                </div>
+                <div>
+                  <label className="clbl">Type</label>
+                  <select className="cinp" value={formRoom.type} onChange={e => setFormRoom(f=>({...f,type:e.target.value}))}>
+                    <option value="commune">Commune</option>
+                    <option value="privee">Privée</option>
+                    <option value="vip">VIP</option>
+                    <option value="reanimation">Réanimation</option>
+                    <option value="pediatrie">Pédiatrie</option>
+                    <option value="maternite">Maternité</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div>
+                  <label className="clbl">Étage</label>
+                  <input type="number" className="cinp" value={formRoom.etage} onChange={e => setFormRoom(f=>({...f,etage:e.target.value}))} placeholder="Ex: 3" />
+                </div>
+                <div>
+                  <label className="clbl">Statut</label>
+                  <select className="cinp" value={formRoom.statut} onChange={e => setFormRoom(f=>({...f,statut:e.target.value}))}>
+                    <option value="actif">Actif</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="ferme">Fermé</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="clbl">Lits de cette chambre — tarif réel (CFA/jour, facturé à la sortie d'hospitalisation)</label>
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {formRoom.lits.map((lit, i) => (
+                    <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:8, alignItems:"center" }}>
+                      <input className="cinp" placeholder="N° lit (ex: L-301-A)" value={lit.numero}
+                        onChange={e => setFormRoom(f => ({ ...f, lits: f.lits.map((l,j)=> j===i ? {...l, numero:e.target.value} : l) }))} />
+                      <select className="cinp" value={lit.type}
+                        onChange={e => setFormRoom(f => ({ ...f, lits: f.lits.map((l,j)=> j===i ? {...l, type:e.target.value} : l) }))}>
+                        <option value="standard">Standard</option>
+                        <option value="vip">VIP</option>
+                        <option value="reanimation">Réanimation</option>
+                        <option value="pediatrique">Pédiatrique</option>
+                        <option value="maternite">Maternité</option>
+                      </select>
+                      <input type="number" min={0} className="cinp" placeholder="Tarif/jour" value={lit.prix_par_jour}
+                        onChange={e => setFormRoom(f => ({ ...f, lits: f.lits.map((l,j)=> j===i ? {...l, prix_par_jour:e.target.value} : l) }))} />
+                      <button type="button" className="cbtn cbtn-ghost cbtn-sm" title="Retirer ce lit"
+                        onClick={() => setFormRoom(f => ({ ...f, lits: f.lits.filter((_,j)=> j!==i) }))}>✕</button>
+                    </div>
+                  ))}
+                  <button type="button" className="cbtn cbtn-ghost cbtn-sm" style={{ alignSelf:"flex-start" }}
+                    onClick={() => setFormRoom(f => ({ ...f, lits: [...f.lits, { ...EMPTY_LIT }] }))}>
+                    {I.plus} Ajouter un lit
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="cbtn cbtn-ghost" onClick={() => { setModalRoom(false); setEditRoom(null); }}>Annuler</button>
+                <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
+                  {I.save} {saving ? "..." : editRoom ? "Mettre à jour" : "Créer la chambre"}
                 </button>
               </div>
             </div>

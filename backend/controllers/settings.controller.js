@@ -251,6 +251,96 @@ exports.getRooms = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Correction 3 (relecture du 5 sept. 2026, découverte pendant la
+// Correction A / cout_total) — Room n'était peuplé que par utils/seed.js,
+// aucune route POST/PUT n'existait pour créer ou modifier une chambre/un
+// lit en production. Room.lits[].prix_par_jour est pourtant la vraie
+// source de tarif branchée sur la facturation réelle à la sortie
+// d'hospitalisation (hospitalization.controller.js::discharge) — sans UI
+// de gestion, seules les chambres du seed initial peuvent jamais exister.
+//
+// validerLits — un lit sans prix_par_jour numérique et non-négatif ne doit
+// jamais être accepté : c'est exactement le genre de donnée qui, si
+// laissée invalide, forcerait plus tard un contournement par une valeur
+// inventée côté facturation (le pattern déjà dénoncé par l'audit).
+function validerLits(lits) {
+  if (!Array.isArray(lits)) return 'Le champ lits doit être une liste.';
+  for (const l of lits) {
+    if (!l.numero || typeof l.numero !== 'string') return 'Chaque lit doit avoir un numéro.';
+    if (l.prix_par_jour === undefined || l.prix_par_jour === null) continue; // 0 par défaut au schéma, autorisé
+    const prix = Number(l.prix_par_jour);
+    if (!Number.isFinite(prix) || prix < 0) return `Tarif invalide pour le lit ${l.numero} : doit être un nombre réel positif ou nul.`;
+  }
+  return null;
+}
+
+exports.createRoom = async (req, res, next) => {
+  try {
+    const { numero, service, type, etage, capacite, statut, lits } = req.body;
+    if (!numero) return res.status(400).json({ success: false, message: 'Numéro de chambre obligatoire.' });
+    const erreurLits = validerLits(lits || []);
+    if (erreurLits) return res.status(400).json({ success: false, message: erreurLits });
+
+    const room = await Room.create({
+      numero, service: service || undefined, type, etage, capacite, statut,
+      lits: (lits || []).map(l => ({
+        numero: l.numero, type: l.type || 'standard', prix_par_jour: Number(l.prix_par_jour) || 0,
+        equipements: l.equipements || [],
+      })),
+    });
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'settings', entite_id: room._id, ip: req.ip, message: `Nouvelle chambre : ${room.numero}` });
+    res.status(201).json({ success: true, room });
+  } catch (err) { next(err); }
+};
+
+exports.updateRoom = async (req, res, next) => {
+  try {
+    const avant = await Room.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Chambre introuvable.' });
+
+    const { numero, service, type, etage, capacite, statut, lits } = req.body;
+    if (lits !== undefined) {
+      const erreurLits = validerLits(lits);
+      if (erreurLits) return res.status(400).json({ success: false, message: erreurLits });
+
+      // Un lit actuellement occupé par un vrai patient (attribution posée par
+      // le workflow d'admission atomique, AUDIT-P7-5) ne doit jamais pouvoir
+      // être retiré ou renuméroté silencieusement depuis ce formulaire de
+      // gestion des chambres : seule la sortie réelle du patient (discharge)
+      // libère un lit. Le tarif et les autres champs d'un lit occupé restent
+      // modifiables ; seuls son numéro et sa présence sont protégés.
+      const numerosSoumis = new Set(lits.map(l => l.numero));
+      for (const litAvant of (avant.lits || [])) {
+        if (litAvant.statut === 'occupe' && !numerosSoumis.has(litAvant.numero)) {
+          return res.status(409).json({ success: false, message: `Le lit ${litAvant.numero} est occupé par un patient réel — il ne peut pas être supprimé ou renuméroté depuis cette interface.` });
+        }
+      }
+    }
+
+    const data = { numero, service, type, etage, capacite, statut };
+    if (lits !== undefined) {
+      // Préserve statut/patient_actuel réels des lits déjà occupés — seuls
+      // numero/type/prix_par_jour/equipements sont réellement éditables ici.
+      const avantParNumero = Object.fromEntries((avant.lits || []).map(l => [l.numero, l]));
+      data.lits = lits.map(l => {
+        const existant = avantParNumero[l.numero];
+        return {
+          numero: l.numero,
+          type: l.type || existant?.type || 'standard',
+          prix_par_jour: Number(l.prix_par_jour) || 0,
+          equipements: l.equipements || existant?.equipements || [],
+          statut: existant?.statut || 'libre',
+          patient_actuel: existant?.patient_actuel,
+        };
+      });
+    }
+
+    const room = await Room.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'settings', entite_id: room._id, ip: req.ip, message: `Chambre modifiée : ${room.numero}`, avant, apres: room });
+    res.json({ success: true, room });
+  } catch (err) { next(err); }
+};
+
 exports.getInsurances = async (req, res, next) => {
   try {
     const insurances = await Insurance.find({ statut: 'actif' }).sort('nom');
