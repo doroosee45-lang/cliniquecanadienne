@@ -782,6 +782,24 @@ export default function Pediatrie() {
   };
 
   const openModal = (type, enfant = null) => { setSelectedEnfant(enfant); setModal(type); };
+
+  // Sous-phase 5.7 — "Rappel envoyé" (vaccination/maladie chronique)
+  // affichait un faux succès sans le moindre SMS réel. Réutilise le vrai
+  // envoi SMS déjà réel et déjà testé (POST /messages/patient-sms,
+  // utils/sms.js::sendSms via Twilio, déjà utilisé pour la messagerie
+  // patient) — jamais un faux succès si Twilio n'est pas configuré, le
+  // vrai indicateur "simulated" renvoyé par le backend est honnêtement
+  // reporté à l'utilisateur.
+  const envoyerRappelSms = async (enfant, contenu) => {
+    const patientId = enfant?.patient_id?._id || enfant?.patient_id;
+    if (!patientId) { toast.error("Aucun dossier patient lié — impossible d'envoyer un SMS."); return; }
+    try {
+      const { data } = await api.post('/messages/patient-sms', { patient: patientId, contenu });
+      toast.success(data.simulated ? "📨 Rappel simulé — SMS non configuré (Twilio)" : "📨 Rappel envoyé par SMS");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'envoi du rappel.");
+    }
+  };
   const closeModal = () => { setModal(null); setSelectedEnfant(null); };
   const openDossier = (e) => { setEnfantDossier(e); setTab("dossier"); };
 
@@ -1040,8 +1058,14 @@ export default function Pediatrie() {
                                 <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => openDossier(e)}>📂 Ouvrir</button>
                                 <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => openModal("consultation", e)}>🩺</button>
                                 <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => openModal("vaccination", e)}>💉</button>
-                                <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success(`📅 RDV programmé — ${e.prenom} ${e.nom}`)}>📅</button>
-                                <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("🖨 Dossier imprimé")}>🖨</button>
+                                {/* Sous-phase 5.7 — "📅" affichait un faux
+                                    succès sans création réelle de RDV :
+                                    redirige réellement vers le module dédié
+                                    (Appointments.jsx). "🖨" câblé sur
+                                    window.print(), même mécanisme réel utilisé
+                                    partout ailleurs dans ce système. */}
+                                <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => navigate("/appointments")}>📅</button>
+                                <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => window.print()}>🖨</button>
                               </div>
                             </td>
                           </tr>
@@ -1098,8 +1122,16 @@ export default function Pediatrie() {
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
                             <span style={{ fontSize:13, color:"var(--pn)", fontWeight:600 }}>🔬 {c.diagnostic}</span>
                             <div style={{ display:"flex", gap:6 }}>
-                              <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success(`📋 Dossier — ${nom}`)}>Dossier</button>
-                              <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📄 Ordonnance imprimée")}>📄 Ordonnance</button>
+                              {/* Sous-phase 5.7 — "Dossier" affichait un faux
+                                  succès sans rien ouvrir : câblé sur la vraie
+                                  navigation patient (même lien réel que le
+                                  nom ci-dessus). "Ordonnance imprimée"
+                                  affichait un faux succès sans document
+                                  réel : aucune génération d'ordonnance
+                                  formatée n'existe dans ce module.
+                                  Désactivé honnêtement. */}
+                              <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => child?.patient_id?._id && navigate(`/patients/${child.patient_id._id}`)}>Dossier</button>
+                              <button className="pbtn pbtn-ghost pbtn-sm" disabled title="Fonctionnalité en cours de développement — aucune génération réelle d'ordonnance n'existe ici." onClick={() => toast("🚧 Fonctionnalité en cours de développement.")}>📄 Ordonnance</button>
                             </div>
                           </div>
                         </div>
@@ -1211,7 +1243,9 @@ export default function Pediatrie() {
               <div className="ped-card fu" style={{ marginBottom:20 }}>
                 <div className="ped-card-hdr">
                   <div><h3>📅 Calendrier vaccinal numérique — PEV</h3></div>
-                  <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📄 Certificat vaccinal imprimé")}>📄 Certificat</button>
+                  {/* Sous-phase 5.7 — faux succès sans génération réelle de
+                      certificat vaccinal. */}
+                  <button className="pbtn pbtn-ghost pbtn-sm" disabled title="Fonctionnalité en cours de développement — aucune génération réelle de certificat n'existe encore." onClick={() => toast("🚧 Fonctionnalité en cours de développement.")}>📄 Certificat</button>
                 </div>
                 {loading ? (
                   <div style={{ textAlign:"center", padding:40, color:"var(--pm)" }}>⏳ Chargement...</div>
@@ -1269,7 +1303,7 @@ export default function Pediatrie() {
                             <div style={{ fontSize:11, color:"var(--pm)", marginTop:2 }}>📞 {e.parent_tel||"—"} — {e.parent_nom||"—"}</div>
                           </div>
                           <div style={{ display:"flex", gap:6 }}>
-                            <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success(`📨 Rappel envoyé — ${e.prenom} ${e.nom}`)}>📨 Rappel</button>
+                            <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => envoyerRappelSms(e, `Rappel : le calendrier vaccinal de ${e.prenom} ${e.nom} n'est pas à jour. Merci de prendre rendez-vous pour la vaccination.`)}>📨 Rappel</button>
                             <button className="pbtn pbtn-green pbtn-sm" onClick={() => openModal("vaccination", e)}>💉 Vacciner</button>
                           </div>
                         </div>
@@ -1435,8 +1469,15 @@ export default function Pediatrie() {
                           <div className="pmini"><div className="pmini-lbl">Médecin</div><div className="pmini-val" style={{ fontSize:13 }}>{u.medecin||"—"}</div></div>
                         </div>
                         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                          <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success(`📋 Fiche urgence — ${nom}`)}>📋 Fiche</button>
-                          <button className="pbtn pbtn-danger pbtn-sm" onClick={() => toast.error("🚨 Alerte urgence absolue !")}>🚨 Urgence absolue</button>
+                          {/* Sous-phase 5.7 — "Fiche" affichait un faux
+                              succès sans document réel. "Urgence absolue"
+                              affichait une fausse alerte déclenchée sans
+                              aucun mécanisme réel d'alerte — désactivés
+                              honnêtement plutôt que de laisser croire à une
+                              alerte réellement envoyée dans un contexte
+                              d'urgence pédiatrique. */}
+                          <button className="pbtn pbtn-ghost pbtn-sm" disabled title="Fonctionnalité en cours de développement — aucune génération réelle de fiche n'existe encore." onClick={() => toast("🚧 Fonctionnalité en cours de développement.")}>📋 Fiche</button>
+                          <button className="pbtn pbtn-danger pbtn-sm" disabled title="Fonctionnalité en cours de développement — aucun mécanisme réel d'alerte n'existe encore." onClick={() => toast("🚧 Fonctionnalité en cours de développement — aucune alerte réelle n'a été envoyée.")}>🚨 Urgence absolue</button>
                         </div>
                       </div>
                     </div>
@@ -1505,9 +1546,15 @@ export default function Pediatrie() {
                       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                         <button className="pbtn pbtn-green pbtn-sm" onClick={() => openModal("consultation", e)}>🩺 Consulter</button>
                         <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => openModal("maladieChron", e)}>➕ Ajouter maladie</button>
-                        <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success(`📅 RDV programmé — ${e.prenom} ${e.nom}`)}>📅 RDV</button>
-                        <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📄 Rapport de suivi imprimé")}>📄 Rapport</button>
-                        <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => toast.success("📨 Rappel envoyé aux parents")}>📨 Rappel parents</button>
+                        {/* Sous-phase 5.7 — "RDV" redirige réellement vers
+                            le module dédié. "Rapport" désactivé
+                            honnêtement (aucune génération réelle). "Rappel
+                            parents" câblé sur le vrai envoi SMS
+                            (envoyerRappelSms, même mécanisme réel que
+                            l'onglet Vaccinations ci-dessus). */}
+                        <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => navigate("/appointments")}>📅 RDV</button>
+                        <button className="pbtn pbtn-ghost pbtn-sm" disabled title="Fonctionnalité en cours de développement — aucune génération réelle de rapport n'existe encore." onClick={() => toast("🚧 Fonctionnalité en cours de développement.")}>📄 Rapport</button>
+                        <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => envoyerRappelSms(e, `Rappel de suivi pour ${e.prenom} ${e.nom} — merci de prendre rendez-vous pour la consultation de suivi de sa maladie chronique.`)}>📨 Rappel parents</button>
                       </div>
                     </div>
                   </div>
@@ -1523,9 +1570,20 @@ export default function Pediatrie() {
                     { col:"#7C3AED", ico:"💉", titre:"Alertes vaccinales IA",       desc:"Rappel intelligent basé sur le calendrier PEV. Aucune notification SMS automatique pour l'instant." },
                     { col:"#D97706", ico:"🔍", titre:"Suggestions diagnostiques",   desc:"Aide au diagnostic différentiel basé sur l'âge et les symptômes." },
                   ].map((r, i) => (
-                    <div key={i} style={{ background:"#F0FDF4", borderRadius:14, padding:"14px 16px", borderLeft:`3px solid ${r.col}`, cursor:"pointer" }}
-                      onClick={() => toast.success(`🤖 Module IA — ${r.titre}`)}>
-                      <div style={{ fontSize:22, marginBottom:6 }}>{r.ico}</div>
+                    // Sous-phase 5.7 — ces 4 cartes affichaient un faux
+                    // succès "Module IA — {titre}" au clic, alors qu'aucune
+                    // des 4 fonctionnalités décrites (calcul de doses,
+                    // analyse de courbes, alertes vaccinales IA, suggestions
+                    // diagnostiques) n'est réellement implémentée. Ce ne
+                    // sont que des descriptions de fonctionnalités prévues :
+                    // retirées du statut "cliquable" (plus de cursor:pointer
+                    // ni d'onClick simulant une activation), avec un badge
+                    // honnête plutôt qu'une fausse interaction.
+                    <div key={i} style={{ background:"#F0FDF4", borderRadius:14, padding:"14px 16px", borderLeft:`3px solid ${r.col}` }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                        <div style={{ fontSize:22, marginBottom:6 }}>{r.ico}</div>
+                        <span style={{ fontSize:10, fontWeight:700, color:"var(--pm)", background:"#fff", border:"1px solid var(--pbr)", borderRadius:99, padding:"2px 8px" }}>🚧 Prévu</span>
+                      </div>
                       <div style={{ fontSize:13, fontWeight:700, color:"var(--pn)", marginBottom:4 }}>{r.titre}</div>
                       <div style={{ fontSize:11, color:"var(--pm)", lineHeight:1.5 }}>{r.desc}</div>
                     </div>
