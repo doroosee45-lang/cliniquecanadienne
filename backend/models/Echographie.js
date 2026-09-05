@@ -9,8 +9,16 @@ const ImageSchema = new mongoose.Schema({
 const EchographieSchema = new mongoose.Schema({
   numero:           { type: String, unique: true, sparse: true },
 
-  patient:          { type: String, required: true },
-  patient_ref:      { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' },
+  // Correction 13 (relecture du 6 sept. 2026, DATA-001) — `patient` était une
+  // String libre (aucun populate() possible), et la vraie référence
+  // (patient_ref) était optionnelle : deux champs pour une seule notion,
+  // seul patient_ref réellement exploité ailleurs (saveRapport() lie déjà
+  // l'Invoice à demande.patient_ref, jamais à la String). Fusionnés en un
+  // seul champ de référence réelle, migration utils/migrate-echographie-
+  // patient-ref.js — le libellé texte (autrefois `patient`) est conservé
+  // sous `patient_nom`, jamais perdu.
+  patient:          { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
+  patient_nom:      { type: String },
   dossier:          { type: String },
   age:              { type: Number },
   sexe:             { type: String, enum: ['F', 'M', ''] },

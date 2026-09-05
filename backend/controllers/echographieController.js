@@ -1,6 +1,7 @@
 const Echographie = require('../models/Echographie');
 const ExamCatalogue = require('../models/ExamCatalogue');
 const Invoice = require('../models/Invoice');
+const Patient = require('../models/Patient');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction } = require('../utils/helpers');
 
@@ -114,7 +115,7 @@ exports.getAll = async (req, res, next) => {
     const filter = {};
     if (q) {
       const re = new RegExp(q, 'i');
-      filter.$or = [{ patient: re }, { numero: re }, { source: re }, { medecin_presc: re }];
+      filter.$or = [{ patient_nom: re }, { numero: re }, { source: re }, { medecin_presc: re }];
     }
     if (type)     filter.type     = type;
     if (statut)   filter.statut   = statut;
@@ -122,7 +123,7 @@ exports.getAll = async (req, res, next) => {
 
     const [demandes, total] = await Promise.all([
       Echographie.find(filter)
-        .populate('patient_ref', 'nom prenom numero_dossier')
+        .populate('patient', 'nom prenom numero_dossier')
         .sort({ createdAt: -1 })
         .skip((+page - 1) * +limit)
         .limit(+limit),
@@ -150,8 +151,18 @@ exports.create = async (req, res, next) => {
     // ObjectId ExamCatalogue, jamais fabriqué s'il est absent ou invalide
     // (même garde que radiology.controller.js::create).
     const examen = (req.body.examen && isObjectId(req.body.examen)) ? req.body.examen : undefined;
-    const demande = await Echographie.create({ ...req.body, examen });
-    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Nouvelle demande d'échographie ${demande.numero} — ${demande.patient || 'patient'}` });
+
+    // Correction 13 (DATA-001) — `patient` est désormais la vraie référence
+    // (ObjectId), jamais un texte libre : vérifiée réelle avant persistance,
+    // le libellé affiché (patient_nom) reste du texte libre indépendant.
+    if (!req.body.patient || !isObjectId(req.body.patient)) {
+      return res.status(400).json({ success: false, message: 'Patient réel obligatoire (aucune saisie libre).' });
+    }
+    const patientDoc = await Patient.findById(req.body.patient).select('_id').lean();
+    if (!patientDoc) return res.status(400).json({ success: false, message: 'Patient introuvable.' });
+
+    const demande = await Echographie.create({ ...req.body, examen, patient: patientDoc._id });
+    await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Nouvelle demande d'échographie ${demande.numero} — ${demande.patient_nom || 'patient'}` });
     emitDashboardUpdate();
     res.status(201).json({ success: true, demande });
   } catch (err) { next(err); }
@@ -169,7 +180,7 @@ exports.create = async (req, res, next) => {
 // (update générique bloque statut/date_validation/signature, /cr /rapport
 // /validation réservés au rôle radiologue).
 const ECHO_BLOCKED_FIELDS = [
-  'numero', 'patient', 'patient_ref',
+  'numero', 'patient', 'patient_nom',
   'statut', 'rapport_statut', 'rapport_radiologue',
   'rapport_texte', 'conclusion', 'recommandations',
 ];
@@ -231,8 +242,8 @@ exports.saveRapport = async (req, res, next) => {
       const prix = Number(cat?.prix) || 0;
       if (prix > 0) {
         factureGeneree = await Invoice.create({
-          patient: demande.patient_ref || undefined,
-          patient_nom: demande.patient,
+          patient: demande.patient || undefined,
+          patient_nom: demande.patient_nom,
           service_label: 'Échographie',
           source_module: 'echographie',
           source_id: demande._id,

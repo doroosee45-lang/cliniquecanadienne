@@ -120,7 +120,7 @@ test('AUDIT-M-D8 — round-trip réel : uploadImages persiste, serveUpload sert 
   const stamp = Date.now();
   const agent = await User.create({ email: `_d8-rt-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Agent', prenom: 'RT', role: 'radiologue', statut: 'actif' });
   const demande = await Echographie.create({
-    patient: `Patiente D8 ${stamp}`, dossier: 'DOS-D8-0001', age: 28, sexe: 'F',
+    patient: new mongoose.Types.ObjectId(), patient_nom: `Patiente D8 ${stamp}`, dossier: 'DOS-D8-0001', age: 28, sexe: 'F',
     source: 'Maternité', medecin_presc: 'Dr. Test', type: 'Obstétricale', sous_type: 'Morphologique',
     motif: 'Contrôle', priorite: 'normale', statut: 'realisee',
   });

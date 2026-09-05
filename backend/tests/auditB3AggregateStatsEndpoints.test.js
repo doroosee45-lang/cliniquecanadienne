@@ -72,9 +72,9 @@ test('B3 — 4 endpoints de stats convertis en agrégation (base réelle)', { sk
     });
 
     await t.test('echographieController.getStats — kpis, typeMap et graphique 6 mois corrects', async () => {
-      const e1 = await Echographie.create({ patient: `B3 Patient ${stamp}`, type: 'abdominale', priorite: 'urgente', statut: 'realisee' });
-      const e2 = await Echographie.create({ patient: `B3 Patient2 ${stamp}`, type: 'abdominale', priorite: 'normale', statut: 'validee' });
-      const eAnnulee = await Echographie.create({ patient: `B3 Annulee ${stamp}`, type: 'abdominale', statut: 'annulee' });
+      const e1 = await Echographie.create({ patient: new mongoose.Types.ObjectId(), patient_nom: `B3 Patient ${stamp}`, type: 'abdominale', priorite: 'urgente', statut: 'realisee' });
+      const e2 = await Echographie.create({ patient: new mongoose.Types.ObjectId(), patient_nom: `B3 Patient2 ${stamp}`, type: 'abdominale', priorite: 'normale', statut: 'validee' });
+      const eAnnulee = await Echographie.create({ patient: new mongoose.Types.ObjectId(), patient_nom: `B3 Annulee ${stamp}`, type: 'abdominale', statut: 'annulee' });
       cleanup.push(() => Echographie.findByIdAndDelete(e1._id));
       cleanup.push(() => Echographie.findByIdAndDelete(e2._id));
       cleanup.push(() => Echographie.findByIdAndDelete(eAnnulee._id));

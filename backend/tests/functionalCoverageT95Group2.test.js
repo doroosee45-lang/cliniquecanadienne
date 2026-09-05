@@ -38,7 +38,7 @@ test('couverture fonctionnelle — échographie, maternité, pédiatrie (base r�
 
   try {
     await t.test('echographieController.create persiste une nouvelle demande avec numéro généré', async () => {
-      const { status, body } = await call(echoC.create, { body: { patient: 'T95G2 P', motif: 'Suivi grossesse' }, user });
+      const { status, body } = await call(echoC.create, { body: { patient: patient._id.toString(), patient_nom: 'T95G2 P', motif: 'Suivi grossesse' }, user });
       assert.equal(status, 201);
       cleanup.push(() => Echographie.findByIdAndDelete(body.demande._id));
       assert.ok(body.demande.numero, 'un numéro doit être généré');

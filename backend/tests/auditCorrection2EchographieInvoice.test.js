@@ -48,7 +48,7 @@ test('Correction 2 (Echographie) — saveRapport() génère une vraie Invoice de
       created.patients.push(patient._id);
 
       const { status: sCreate, body: bCreate } = await call(echoC.create, {
-        body: { patient: 'Test Correction2', patient_ref: patient._id.toString(), examen: examECH._id.toString(), type: 'Abdominale', sous_type: 'Foie', motif: 'Test Correction2' },
+        body: { patient: patient._id.toString(), patient_nom: 'Test Correction2', examen: examECH._id.toString(), type: 'Abdominale', sous_type: 'Foie', motif: 'Test Correction2' },
         user: medecin, ip: '127.0.0.1',
       });
       assert.equal(sCreate, 201, JSON.stringify(bCreate));
@@ -81,7 +81,7 @@ test('Correction 2 (Echographie) — saveRapport() génère une vraie Invoice de
       created.patients.push(patient._id);
 
       const { status: sCreate, body: bCreate } = await call(echoC.create, {
-        body: { patient: 'Test Correction2 Legacy', patient_ref: patient._id.toString(), type: 'Doppler', sous_type: 'Artériel', motif: 'Doppler sans équivalent catalogue' },
+        body: { patient: patient._id.toString(), patient_nom: 'Test Correction2 Legacy', type: 'Doppler', sous_type: 'Artériel', motif: 'Doppler sans équivalent catalogue' },
         user: medecin, ip: '127.0.0.1',
       });
       assert.equal(sCreate, 201);

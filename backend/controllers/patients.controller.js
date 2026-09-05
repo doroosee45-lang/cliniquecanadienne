@@ -455,7 +455,9 @@ exports.remove = async (req, res, next) => {
       { model: require('../models/AIPrediction'),    refField: 'patient' },
       { model: require('../models/Child'),           refField: 'patient_id' },
       { model: require('../models/Document'),        refField: 'patient' },
-      { model: require('../models/Echographie'),     refField: 'patient_ref' },
+      // Correction 13 (DATA-001) — patient_ref fusionné dans patient (devenu
+      // la vraie référence ObjectId, plus une String libre).
+      { model: require('../models/Echographie'),     refField: 'patient' },
       { model: require('../models/Newborn'),         refField: 'patient_id' },
       ...CASCADE_TARGETS,
     ];

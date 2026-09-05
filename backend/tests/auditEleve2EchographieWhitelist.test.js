@@ -30,7 +30,7 @@ test('Audit élevé 2 — liste blanche Echographie (base réelle)', { skip: !pr
 
   try {
     await t.test('update() — les champs de validation de rapport sont désormais bloqués, même pour un rôle autorisé sur la route générique', async () => {
-      const demande = await Echographie.create({ patient: `T-ELEVE2-${stamp}`, motif: 'Motif initial' });
+      const demande = await Echographie.create({ patient: new mongoose.Types.ObjectId(), patient_nom: `T-ELEVE2-${stamp}`, motif: 'Motif initial' });
       cleanup.push(() => Echographie.findByIdAndDelete(demande._id));
 
       const { status, body } = await call(echoC.update, {
@@ -58,19 +58,21 @@ test('Audit élevé 2 — liste blanche Echographie (base réelle)', { skip: !pr
       assert.equal(fresh.recommandations, undefined);
     });
 
-    await t.test('update() — patient/patient_ref/numero (identité) restent aussi protégés', async () => {
-      const demande = await Echographie.create({ patient: `T-ELEVE2B-${stamp}`, numero: `ECH-TEST-${stamp}` });
+    await t.test('update() — patient/patient_nom/numero (identité) restent aussi protégés', async () => {
+      const realPatientId = new mongoose.Types.ObjectId();
+      const demande = await Echographie.create({ patient: realPatientId, patient_nom: `T-ELEVE2B-${stamp}`, numero: `ECH-TEST-${stamp}` });
       cleanup.push(() => Echographie.findByIdAndDelete(demande._id));
       const numeroAvant = demande.numero;
 
       await call(echoC.update, {
         params: { id: demande._id },
-        body: { patient: 'Nom usurpé', numero: 'ECH-USURPE-0000' },
+        body: { patient: new mongoose.Types.ObjectId().toString(), patient_nom: 'Nom usurpé', numero: 'ECH-USURPE-0000' },
         user: infirmier, ip: '127.0.0.1',
       });
 
       const fresh = await Echographie.findById(demande._id).lean();
-      assert.equal(fresh.patient, `T-ELEVE2B-${stamp}`, 'patient (identité) ne doit pas être modifiable via update()');
+      assert.equal(String(fresh.patient), String(realPatientId), 'patient (identité, référence réelle) ne doit pas être modifiable via update()');
+      assert.equal(fresh.patient_nom, `T-ELEVE2B-${stamp}`, 'patient_nom (identité) ne doit pas non plus être modifiable via update()');
       assert.equal(fresh.numero, numeroAvant, 'numero ne doit pas être modifiable via update()');
     });
   } finally {
@@ -107,7 +109,7 @@ test('Audit élevé 2 — PUT /:id/rapport restreint à radiologue/superadmin (s
 
     for (const role of ['infirmier', 'sage_femme', 'medecin', 'adminclinique']) {
       await t.test(`PUT /echographie/:id/rapport — ${role} refusé (403)`, async () => {
-        const demande = await Echographie.create({ patient: `T-ELEVE2-ROUTE-${stamp}-${role}` });
+        const demande = await Echographie.create({ patient: new mongoose.Types.ObjectId(), patient_nom: `T-ELEVE2-ROUTE-${stamp}-${role}` });
         const res = await fetch(`${server.baseUrl}/echographie/${demande._id}/rapport`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookies[role] },
           body: JSON.stringify({ rapport_statut: 'valide' }),
@@ -119,7 +121,7 @@ test('Audit élevé 2 — PUT /:id/rapport restreint à radiologue/superadmin (s
 
     for (const role of ['radiologue', 'superadmin']) {
       await t.test(`PUT /echographie/:id/rapport — ${role} continue de fonctionner normalement (non-régression)`, async () => {
-        const demande = await Echographie.create({ patient: `T-ELEVE2-ROUTE-OK-${stamp}-${role}` });
+        const demande = await Echographie.create({ patient: new mongoose.Types.ObjectId(), patient_nom: `T-ELEVE2-ROUTE-OK-${stamp}-${role}` });
         const res = await fetch(`${server.baseUrl}/echographie/${demande._id}/rapport`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookies[role] },
           body: JSON.stringify({ rapport_statut: 'valide', conclusion: 'Conclusion réelle' }),

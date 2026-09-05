@@ -33,7 +33,7 @@ test('echographieController.uploadImages — persistance réelle des images (bas
 
   try {
     const demande = await Echographie.create({
-      patient: `Patiente Img ${stamp}`, dossier: 'DOS-IMG-0001', age: 30, sexe: 'F',
+      patient: new mongoose.Types.ObjectId(), patient_nom: `Patiente Img ${stamp}`, dossier: 'DOS-IMG-0001', age: 30, sexe: 'F',
       source: 'Maternité', medecin_presc: 'Dr. Test', type: 'Obstétricale', sous_type: 'Morphologique',
       motif: 'Contrôle', priorite: 'normale', statut: 'realisee',
     });

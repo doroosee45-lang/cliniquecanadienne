@@ -88,7 +88,7 @@ test('T9.5 — fonctions avant/apres du T9.3 jamais exercées par un test (base 
     });
 
     await t.test('echographieController.saveRapport journalise avant/apres sans planter', async () => {
-      const demande = await Echographie.create({ patient: 'T95 P', statut: 'planifiee' });
+      const demande = await Echographie.create({ patient: patient._id, patient_nom: 'T95 P', statut: 'planifiee' });
       cleanup.push(() => Echographie.findByIdAndDelete(demande._id));
 
       const { status } = await call(echoC.saveRapport, { params: { id: demande._id }, body: { conclusion: 'RAS', rapport_statut: 'valide' }, user, ip: '127.0.0.1' });

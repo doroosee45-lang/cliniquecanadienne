@@ -575,7 +575,7 @@ function Dashboard({ demandes }) {
                 return (
                   <tr key={d.id}>
                     <td style={{ fontFamily:"monospace", fontSize:12, fontWeight:700, color:"var(--cb)" }}>{d.numero}</td>
-                    <td><div style={{ fontWeight:600, color:"var(--cn)", cursor:d.patient_ref?._id?"pointer":"default", textDecoration:d.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient_ref?._id&&navigate(`/patients/${d.patient_ref._id}`)}>{d.patient}</div>{d.dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,display:"inline-block",marginTop:2}}>{d.dossier}</span>}</td>
+                    <td><div style={{ fontWeight:600, color:"var(--cn)", cursor:d.patient?._id?"pointer":"default", textDecoration:d.patient?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient?._id&&navigate(`/patients/${d.patient._id}`)}>{d.patient_nom}</div>{d.dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,display:"inline-block",marginTop:2}}>{d.dossier}</span>}</td>
                     <td>
                       {(() => { const t=TYPES_ECHO.find(t=>t.label===d.type); return t ? <span style={{ color:t.color, fontWeight:600, fontSize:12 }}>{t.icon} {d.type}</span> : d.type; })()}
                     </td>
@@ -611,7 +611,7 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
 
   const filtered = demandes.filter(d => {
     const matchFiltre = filtre==="tous" || d.statut===filtre || d.priorite===filtre;
-    const matchSearch = !search || `${d.patient} ${d.numero} ${d.type} ${d.source}`.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = !search || `${d.patient_nom} ${d.numero} ${d.type} ${d.source}`.toLowerCase().includes(search.toLowerCase());
     return matchFiltre && matchSearch;
   });
 
@@ -664,7 +664,7 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
                   <tr key={d.id}>
                     <td style={{ fontFamily:"monospace", fontSize:12, fontWeight:700, color:"var(--cb)" }}>{d.numero}</td>
                     <td>
-                      <div style={{ fontWeight:700, color:"var(--cn)", fontSize:13, cursor:d.patient_ref?._id?"pointer":"default", textDecoration:d.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient_ref?._id&&navigate(`/patients/${d.patient_ref._id}`)}>{d.patient}</div>
+                      <div style={{ fontWeight:700, color:"var(--cn)", fontSize:13, cursor:d.patient?._id?"pointer":"default", textDecoration:d.patient?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient?._id&&navigate(`/patients/${d.patient._id}`)}>{d.patient_nom}</div>
                       <div style={{ fontSize:11, color:"var(--cm)" }}>{d.age} ans · {d.sexe==="F"?"👩":"👨"}{d.dossier&&<span style={{fontFamily:"monospace",fontWeight:700,color:"#1B4F9E",marginLeft:6}}>· {d.dossier}</span>}</div>
                     </td>
                     <td>
@@ -767,7 +767,7 @@ function PlanifierModal({ open, onClose, candidats, saving }) {
           <select className="cinp" required value={demandeId} onChange={e=>setDemandeId(e.target.value)}>
             {candidats.length===0 && <option value="">— Aucune demande en attente —</option>}
             {candidats.map(d=>(
-              <option key={d._id} value={d._id}>{d.numero} — {d.patient} — {d.type}</option>
+              <option key={d._id} value={d._id}>{d.numero} — {d.patient_nom} — {d.type}</option>
             ))}
           </select>
         </div>
@@ -1039,7 +1039,7 @@ function Realisation({ demandes }) {
                     style={{ border:`2px solid ${selectedDemande?.id===d.id?"var(--ct)":"var(--cbr)"}`, background:selectedDemande?.id===d.id?"#F0FDFC":"#FAFBFF", borderRadius:14, padding:"14px 16px", cursor:"pointer", transition:"all .2s", display:"flex", alignItems:"center", gap:14 }}>
                     <div style={{ width:46, height:46, borderRadius:12, background:te2?.bg||"#EFF6FF", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>{te2?.icon||"🩺"}</div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:700, color:"var(--cn)", fontSize:14 }}>{d.patient} <span style={{ fontSize:11, color:"var(--cm)", fontWeight:400 }}>· {d.age} ans</span></div>
+                      <div style={{ fontWeight:700, color:"var(--cn)", fontSize:14 }}>{d.patient_nom} <span style={{ fontSize:11, color:"var(--cm)", fontWeight:400 }}>· {d.age} ans</span></div>
                       <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>{d.type} — {d.sous_type} · {d.source}</div>
                       <div style={{ fontSize:11, color:"var(--cm)", marginTop:2, fontStyle:"italic" }}>{d.motif}</div>
                     </div>
@@ -1069,7 +1069,7 @@ function Realisation({ demandes }) {
               {selDem.sexe==="F"?"👩":"👨"}
             </div>
             <div style={{ flex:1, position:"relative" }}>
-              <div style={{ fontSize:20, fontWeight:800, color:"#fff", cursor:selDem.patient_ref?._id?"pointer":"default", textDecoration:selDem.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:3 }} onClick={()=>selDem.patient_ref?._id&&navigate(`/patients/${selDem.patient_ref._id}`)}>{selDem.patient}</div>
+              <div style={{ fontSize:20, fontWeight:800, color:"#fff", cursor:selDem.patient?._id?"pointer":"default", textDecoration:selDem.patient?._id?"underline dotted":"none", textUnderlineOffset:3 }} onClick={()=>selDem.patient?._id&&navigate(`/patients/${selDem.patient._id}`)}>{selDem.patient_nom}</div>
               <div style={{ fontSize:12, color:"rgba(255,255,255,.65)", marginTop:4, display:"flex", gap:16, flexWrap:"wrap" }}>
                 <span>🎂 {selDem.age} ans</span>
                 <span>📋 {selDem.dossier}</span>
@@ -1419,7 +1419,7 @@ function Realisation({ demandes }) {
             <button
               className="cbtn cbtn-ghost"
               disabled={sendingEmail || !selDem}
-              title={!selDem?.patient_ref ? "Ce dossier n'est lié à aucun patient réel — impossible d'envoyer l'email." : undefined}
+              title={!selDem?.patient ? "Ce dossier n'est lié à aucun patient réel — impossible d'envoyer l'email." : undefined}
               onClick={async () => { if (!selDem) return; setSendingEmail(true); await sendEchoReportEmail(selDem); setSendingEmail(false); }}
             >{sendingEmail ? "⏳ Envoi..." : "📧 Envoyer par email"}</button>
           </div>
@@ -1669,10 +1669,10 @@ const computeAge = (dob) => {
 // taper dans rapport_texte). Seuls les champs bruts sont envoyés ci-dessous.
 // Réutilise le pattern d'envoi email patient réel (POST /messages/patient-
 // email, construit en Phase D du module Messages) — jamais de faux succès :
-// si le dossier n'est pas lié à un patient réel (patient_ref), l'envoi est
+// si le dossier n'est pas lié à un patient réel (patient), l'envoi est
 // refusé plutôt que d'envoyer au hasard ou de rester silencieux.
 const sendEchoReportEmail = async (d) => {
-  const patientRefId = typeof d.patient_ref === "object" ? d.patient_ref?._id : d.patient_ref;
+  const patientRefId = typeof d.patient === "object" ? d.patient?._id : d.patient;
   if (!patientRefId) { toast.error("Ce dossier n'est lié à aucun patient réel — impossible d'envoyer l'email."); return false; }
   try {
     const { data } = await api.post("/messages/patient-email", {
@@ -1691,10 +1691,13 @@ const sendEchoReportEmail = async (d) => {
 // AUDIT-ECHOGRAPHIE-PATIENT — le patient était saisi en texte libre (aucun
 // patient_ref jamais renseigné à la création), rendant morts les liens
 // "cliquer le nom → ouvrir le dossier" déjà présents ailleurs dans ce
-// fichier (conditionnés sur d.patient_ref?._id). Remplacé par le même
-// sélecteur réel que Pédiatrie/Maternité (recherche débouncée sur
+// fichier (conditionnés sur d.patient_ref?._id à l'époque). Remplacé par le
+// même sélecteur réel que Pédiatrie/Maternité (recherche débouncée sur
 // GET /patients/search, sélection, champs dérivés en lecture seule),
-// patient_ref réel envoyé à la création.
+// référence réelle envoyée à la création. Correction 13 (DATA-001,
+// relecture du 6 sept. 2026) — patient_ref a depuis été fusionné dans
+// `patient` (devenu la vraie référence, required), le libellé texte vit
+// désormais sous `patient_nom`.
 // ─── COMPOSANT NOUVELLE DEMANDE (Modal) ───────────────────────
 function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
   const [form, setForm] = useState({
@@ -1746,8 +1749,8 @@ function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
     if (!selectedPatient) { toast.error("Sélectionnez un patient existant avant de créer la demande."); return; }
     if (!form.source) { toast.error("Sélectionnez le service prescripteur."); return; }
     onAdd({
-      patient: `${selectedPatient.prenom} ${selectedPatient.nom}`.trim(),
-      patient_ref: selectedPatient._id,
+      patient: selectedPatient._id,
+      patient_nom: `${selectedPatient.prenom} ${selectedPatient.nom}`.trim(),
       dossier: form.dossier||genNum("DOS"),
       age: computeAge(selectedPatient.date_naissance) ?? 25,
       sexe: selectedPatient.sexe || "F",
@@ -1977,7 +1980,7 @@ export default function Echographie() {
               <div style={{ display:"flex", flexWrap:"wrap", gap:10, justifyContent:"center" }}>
                 {demandes.filter(d=>d.rapport_statut==="valide").map(d=>(
                   <div key={d.id} style={{ background:"#F0FDFC", border:"1.5px solid #99F6E4", borderRadius:14, padding:"14px 18px", minWidth:220, textAlign:"left" }}>
-                    <div style={{ fontWeight:700, color:"var(--cn)", cursor:d.patient_ref?._id?"pointer":"default", textDecoration:d.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient_ref?._id&&navigate(`/patients/${d.patient_ref._id}`)}>{d.patient}</div>
+                    <div style={{ fontWeight:700, color:"var(--cn)", cursor:d.patient?._id?"pointer":"default", textDecoration:d.patient?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient?._id&&navigate(`/patients/${d.patient._id}`)}>{d.patient_nom}</div>
                     {d.dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,display:"inline-block",marginBottom:4}}>{d.dossier}</span>}
                     <div style={{ fontSize:12, color:"var(--cm)", margin:"4px 0" }}>{TYPES_ECHO.find(t=>t.label===d.type)?.icon} {d.type}</div>
                     <span className="cbdg green">✅ Validé</span>
@@ -1986,7 +1989,7 @@ export default function Echographie() {
                       <button
                         className="cbtn cbtn-ghost cbtn-sm"
                         disabled={!!sendingEmailIds[d.id]}
-                        title={!d.patient_ref ? "Ce dossier n'est lié à aucun patient réel — impossible d'envoyer l'email." : undefined}
+                        title={!d.patient ? "Ce dossier n'est lié à aucun patient réel — impossible d'envoyer l'email." : undefined}
                         onClick={async () => {
                           setSendingEmailIds(p=>({...p,[d.id]:true}));
                           await sendEchoReportEmail(d);

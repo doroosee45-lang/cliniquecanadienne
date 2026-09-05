@@ -33,7 +33,7 @@ test('donnees_avant/donnees_apres — échographie, maternité, pédiatrie (base
 
   try {
     await t.test('echographieController — update, planifier, saveRapport, annuler journalisent avant/apres', async () => {
-      const demande = await Echographie.create({ patient: `T93G2 P ${stamp}`, motif: 'Suivi' });
+      const demande = await Echographie.create({ patient: patient._id, patient_nom: `T93G2 P ${stamp}`, motif: 'Suivi' });
       cleanup.push(() => Echographie.findByIdAndDelete(demande._id));
 
       await call(echoC.update, { params: { id: demande._id }, body: { motif: 'Motif révisé' }, user });

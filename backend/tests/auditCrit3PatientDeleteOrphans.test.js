@@ -1,7 +1,7 @@
 // Audit critique 3/4 — patients.controller.js::remove() ne vérifiait que 12
 // modèles avant d'autoriser une suppression physique ; 6 modèles référençant
 // réellement Patient étaient absents (AIPrediction, Child, Document,
-// Echographie via patient_ref, Newborn, Room.lits.patient_actuel). Un patient
+// Echographie via patient, Newborn, Room.lits.patient_actuel). Un patient
 // dont la seule trace clinique était l'un de ceux-ci pouvait être supprimé
 // physiquement, laissant une référence orpheline — le pire cas étant un lit
 // qui resterait indéfiniment marqué occupé par un patient qui n'existe plus.
@@ -50,7 +50,7 @@ test('Audit critique 3 — références fantômes à la suppression patient (bas
       { label: 'AIPrediction', create: async (p) => AIPrediction.create({ type: 'diagnostic', patient: p._id }), model: AIPrediction },
       { label: 'Child',        create: async (p) => Child.create({ patient_id: p._id, nom: 'EnfantTest', prenom: 'X', date_naissance: '2020-01-01', sexe: 'M' }), model: Child },
       { label: 'Document',     create: async (p) => Document.create({ nom: 'doc-test.pdf', patient: p._id }), model: Document },
-      { label: 'Echographie',  create: async (p) => Echographie.create({ patient: 'Nom Affichage', patient_ref: p._id }), model: Echographie },
+      { label: 'Echographie',  create: async (p) => Echographie.create({ patient: p._id, patient_nom: 'Nom Affichage' }), model: Echographie },
       { label: 'Newborn',      create: async (p) => Newborn.create({ patient_id: p._id, mere_nom: 'Mere Test', prenom: 'Bebe' }), model: Newborn },
     ];
 
@@ -88,11 +88,11 @@ test('Audit critique 3 — références fantômes à la suppression patient (bas
       assert.equal(fresh.statut, 'actif', 'ne doit PAS être désactivé — refus complet, pas une simple désactivation');
     });
 
-    await t.test('anonymizePatient() scrube désormais Child.nom/prenom/parent_nom/parent_tel (conserve date_naissance/sexe), Echographie.patient, Newborn.mere_nom — laisse les références ObjectId intactes', async () => {
+    await t.test('anonymizePatient() scrube désormais Child.nom/prenom/parent_nom/parent_tel (conserve date_naissance/sexe), Echographie.patient_nom, Newborn.mere_nom — laisse les références ObjectId intactes', async () => {
       const p = await mkPatient('Anonym');
       const child = await Child.create({ patient_id: p._id, nom: 'ScrubMoi', prenom: 'Y', date_naissance: '2019-06-01', sexe: 'F' });
       cleanup.push(() => Child.findByIdAndDelete(child._id));
-      const echo = await Echographie.create({ patient: 'ScrubMoiAussi', patient_ref: p._id });
+      const echo = await Echographie.create({ patient: p._id, patient_nom: 'ScrubMoiAussi' });
       cleanup.push(() => Echographie.findByIdAndDelete(echo._id));
       const newborn = await Newborn.create({ patient_id: p._id, mere_nom: 'ScrubLaMere', prenom: 'Bebe2' });
       cleanup.push(() => Newborn.findByIdAndDelete(newborn._id));
@@ -116,8 +116,8 @@ test('Audit critique 3 — références fantômes à la suppression patient (bas
       assert.equal(freshChild.patient_id.toString(), p._id.toString(), 'la référence ObjectId ne doit jamais être retirée');
 
       const freshEcho = await Echographie.findById(echo._id).lean();
-      assert.equal(freshEcho.patient, undefined, 'Echographie.patient (nom affiché) doit être scrubé');
-      assert.equal(freshEcho.patient_ref.toString(), p._id.toString(), 'patient_ref ne doit jamais être retiré');
+      assert.equal(freshEcho.patient_nom, undefined, 'Echographie.patient_nom (nom affiché) doit être scrubé');
+      assert.equal(freshEcho.patient.toString(), p._id.toString(), 'patient (référence réelle) ne doit jamais être retiré');
 
       const freshNewborn = await Newborn.findById(newborn._id).lean();
       assert.equal(freshNewborn.mere_nom, undefined, 'mere_nom doit être scrubé');

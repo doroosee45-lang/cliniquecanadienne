@@ -91,7 +91,10 @@ const CASCADE_TARGETS = [
   { model: require('../models/AIPrediction'),          refField: 'patient',              piiFields: [] },
   { model: require('../models/Child'),                 refField: 'patient_id',           piiFields: ['nom', 'prenom', 'parent_nom', 'parent_tel'], requiredFields: ['nom'] },
   { model: require('../models/Document'),              refField: 'patient',              piiFields: [] },
-  { model: require('../models/Echographie'),           refField: 'patient_ref',           piiFields: ['patient'] },
+  // Correction 13 (DATA-001) — patient_ref fusionné dans patient (référence
+  // ObjectId réelle, jamais scrubée) ; le libellé affiché vit désormais dans
+  // patient_nom (autrefois `patient`, une String libre).
+  { model: require('../models/Echographie'),           refField: 'patient',               piiFields: ['patient_nom'] },
   { model: require('../models/Newborn'),               refField: 'patient_id',           piiFields: ['mere_nom'] },
   { model: require('../models/Room'),                  refField: 'lits.patient_actuel',   piiFields: [] },
 ];
