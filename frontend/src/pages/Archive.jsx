@@ -214,8 +214,6 @@ const DEMO_ARCHIVES = [];
 
 const DEMO_LOGS = [];
 
-const DEMO_RESTAURATIONS = [];
-
 const CAT_CONFIG = {
   patient:        { icon:"👤", label:"Patient",         color:"#1B4F9E", bg:"#EFF6FF", border:"#BFDBFE" },
   consultation:   { icon:"🩺", label:"Consultation",    color:"#0EA5A0", bg:"#F0FDFC", border:"#99F6E4" },
@@ -236,6 +234,14 @@ const NAV_ITEMS = [
     { key:"dashboard",      label:"Tableau de bord",          icon:I.dashboard,  badge:"" },
     { key:"recherche",      label:"Recherche avancée",        icon:I.search },
   ]},
+  // Sous-phase 5.1 — "Urgences archivées"/"Pédiatrie archivée"/
+  // "Maternité archivée"/"Échographies archivées" retirés : leur clé
+  // (urgences/pediatrie/maternite/echographies) ne correspond à AUCUNE
+  // valeur réelle de ArchiveEntry.categorie (enum réel : patient/
+  // consultation/laboratoire/imagerie/hospitalisation/chirurgie/
+  // financier/document, backend/models/ArchiveEntry.js) — ces 4 pages
+  // étaient donc structurellement vides, pour toujours, quelle que soit
+  // la réalité de la base.
   { group:"Archives par catégorie", items:[
     { key:"patients",        label:"Patients archivés",       icon:I.patient,    badgeCls:"teal" },
     { key:"consultations",   label:"Consultations archivées", icon:I.consult,    badgeCls:"teal" },
@@ -243,10 +249,6 @@ const NAV_ITEMS = [
     { key:"imagerie",        label:"Imagerie archivée",       icon:I.scan,       badgeCls:"teal" },
     { key:"hospitalisations",label:"Hospitalisations arch.",  icon:I.bed,        badgeCls:"teal" },
     { key:"chirurgies",      label:"Chirurgies archivées",    icon:I.surgery,    badgeCls:"teal" },
-    { key:"urgences",        label:"Urgences archivées",      icon:"🚨",         badgeCls:"teal" },
-    { key:"pediatrie",       label:"Pédiatrie archivée",      icon:"👶",         badgeCls:"teal" },
-    { key:"maternite",       label:"Maternité archivée",      icon:"🤱",         badgeCls:"teal" },
-    { key:"echographies",    label:"Échographies archivées",  icon:"📡",         badgeCls:"teal" },
     { key:"documents",       label:"Documents archivés",      icon:I.file,       badgeCls:"teal" },
     { key:"financier",       label:"Archives financières",    icon:I.money,      badgeCls:"teal" },
   ]},
@@ -419,6 +421,12 @@ export default function Archivage() {
   const [active, setActive]       = useState("dashboard");
   const [archives, setArchives]   = useState([]);
   const [total, setTotal]         = useState(0);
+  // Sous-phase 5.1 — l'onglet "Restaurations" affichait DEMO_RESTAURATIONS
+  // (toujours vide) au lieu des vraies archives statut:'restauré', déjà
+  // persistées réellement par restoreOne()/restoreBulk() mais jamais
+  // chargées ici.
+  const [restaurations, setRestaurations] = useState([]);
+  const [loadingRestaurations, setLoadingRestaurations] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
   const [loading, setLoading]     = useState(true);
@@ -516,20 +524,38 @@ export default function Archivage() {
     } catch { /* garde les kpis existants (zéros si DB vide) */ }
   }, [dispatch]);
 
+  const loadRestaurations = useCallback(async () => {
+    setLoadingRestaurations(true);
+    try {
+      const p = new URLSearchParams({ statut: "restauré", limit: 200 });
+      const { data } = await api.get(`/archives?${p}`);
+      setRestaurations(data.archives || []);
+    } catch (err) {
+      console.error("Erreur chargement restaurations:", err);
+      setRestaurations([]);
+    } finally { setLoadingRestaurations(false); }
+  }, []);
+
   useEffect(() => { loadArchives(); loadStats(); }, [loadArchives, loadStats]);
+  useEffect(() => { if (active === "restaurations") loadRestaurations(); }, [active, loadRestaurations]);
   // Correction 4 (relecture du 6 sept. 2026, FE-BUG-006) — relit la vraie
   // configuration persistée (PUT /archives/config l'écrivait déjà, mais rien
   // ne la relisait au chargement de la page).
   useEffect(() => { dispatch(fetchAutoConfig()); }, [dispatch]);
 
   // Filter by nav category
+  // Sous-phase 5.1 — documents:"documents" (pluriel) ne correspondait
+  // jamais à la vraie valeur d'enum "document" (singulier,
+  // ArchiveEntry.categorie) : ce dead-wiring cachait silencieusement les
+  // vraies archives "document" existantes derrière un filtre qui ne
+  // matchait jamais rien.
   const catForNav = {
     patients:"patient", consultations:"consultation", laboratoire:"laboratoire",
     imagerie:"imagerie", hospitalisations:"hospitalisation", chirurgies:"chirurgie",
-    urgences:"urgences", pediatrie:"pediatrie", maternite:"maternite", echographies:"echographie",
-    financier:"financier", documents:"documents",
+    financier:"financier", documents:"document",
   };
-  const filteredByNav = ["patients","consultations","laboratoire","imagerie","hospitalisations","chirurgies","urgences","pediatrie","maternite","echographies","financier","documents"].includes(active)
+  const NAV_CATEGORIE_KEYS = ["patients","consultations","laboratoire","imagerie","hospitalisations","chirurgies","financier","documents"];
+  const filteredByNav = NAV_CATEGORIE_KEYS.includes(active)
     ? archives.filter(a => a.categorie === catForNav[active])
     : archives;
 
@@ -904,6 +930,18 @@ export default function Archivage() {
               <Badge cls="blue">{kpis.taille_totale} total</Badge>
             </div>
             <div className="arc-card-body">
+              {/* Sous-phase 5.1 — "Urgences"/"Pédiatrie"/"Maternité"/
+                  "Échographie" ne correspondent à AUCUNE valeur réelle de
+                  l'enum ArchiveEntry.categorie (patient/consultation/
+                  laboratoire/imagerie/hospitalisation/chirurgie/financier/
+                  document, cf. backend/models/ArchiveEntry.js) : ces 4
+                  lignes affichaient donc structurellement "0 archives" pour
+                  toujours, quelle que soit la réalité de la base — pas de
+                  simple zéro provisoire, mais une catégorie qui ne peut
+                  jamais être alimentée. Retirées, et remplacées par la vraie
+                  catégorie "Documents" (kpis.documents), déjà réellement
+                  calculée côté backend (archive.controller.js::getStats)
+                  mais jamais affichée ici jusqu'à présent. */}
               {[
                 ["👤 Patients",          kpis.patients,          "#1B4F9E"],
                 ["🩺 Consultations",     kpis.consultations,     "#0EA5A0"],
@@ -911,11 +949,8 @@ export default function Archivage() {
                 ["🔬 Examens labo",      kpis.labo,              "#059669"],
                 ["🩻 Imagerie",          kpis.imagerie,          "#7C3AED"],
                 ["🔪 Chirurgies",        kpis.chirurgies,        "#DC2626"],
-                ["🚨 Urgences",          kpis.urgences,          "#EF4444"],
-                ["👶 Pédiatrie",         kpis.pediatrie,         "#0EA5A0"],
-                ["🤱 Maternité",         kpis.maternite,         "#EC4899"],
-                ["📡 Échographie",       kpis.echographie,       "#6366F1"],
                 ["💰 Financier",         kpis.financier,         "#0EA5A0"],
+                ["📄 Documents",         kpis.documents,         "#6366F1"],
               ].map(([lbl, val, col]) => (
                 <div key={lbl} style={{ marginBottom:12 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
@@ -931,18 +966,20 @@ export default function Archivage() {
             <div className="arc-card">
               <div className="arc-card-hdr"><h3>💾 Espace de stockage</h3></div>
               <div className="arc-card-body">
+                {/* Sous-phase 5.1 — "Total : 2 Go", les 4 segments de couleur
+                    à largeur fixe (4%/2%/52%/1%) et "4.4% utilisé · 95.6%
+                    disponible" étaient entièrement fixes, sans aucun rapport
+                    avec kpis.taille_totale (réel, ci-dessous) : aucun quota de
+                    stockage n'est configuré ni suivi nulle part dans ce
+                    système (vérifié : aucune valeur "quota"/capacité réelle
+                    en base ou en configuration). Seule la taille réellement
+                    estimée est conservée ; la jauge de quota fictive est
+                    retirée plutôt que de laisser un pourcentage inventé. */}
                 <div className="arc-storage">
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:6 }}>
-                    <span style={{ fontWeight:600, color:"var(--an)" }}>Utilisé : {kpis.taille_totale}</span>
-                    <span style={{ color:"var(--am)" }}>Total : 2 Go</span>
+                    <span style={{ fontWeight:600, color:"var(--an)" }}>Utilisé (estimé) : {kpis.taille_totale}</span>
                   </div>
-                  <div className="arc-storage-bar">
-                    <div className="arc-storage-seg" style={{ width:"4%", background:"#1B4F9E" }} />
-                    <div className="arc-storage-seg" style={{ width:"2%", background:"#0EA5A0" }} />
-                    <div className="arc-storage-seg" style={{ width:"52%", background:"#7C3AED" }} />
-                    <div className="arc-storage-seg" style={{ width:"1%", background:"#059669" }} />
-                  </div>
-                  <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>4.4% utilisé · 95.6% disponible</div>
+                  <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>🚧 Aucun quota de stockage n'est configuré dans ce système — seule la taille estimée des archives est calculée.</div>
                 </div>
               </div>
             </div>
@@ -1084,7 +1121,7 @@ export default function Archivage() {
     );
 
     // ── Category views ─────────────────────────────────────
-    if (["patients","consultations","laboratoire","imagerie","hospitalisations","chirurgies","urgences","pediatrie","maternite","echographies","financier","documents"].includes(active)) {
+    if (NAV_CATEGORIE_KEYS.includes(active)) {
       const cat = catForNav[active];
       const catConf = CAT_CONFIG[cat] || CAT_CONFIG.documents;
       const navItem = NAV_ITEMS.flatMap(g=>g.items).find(i=>i.key===active);
@@ -1135,12 +1172,17 @@ export default function Archivage() {
     }
 
     // ── Restaurations ─────────────────────────────────────
+    // Sous-phase 5.1 — affichait DEMO_RESTAURATIONS (toujours vide) ; charge
+    // désormais réellement les archives statut:'restauré' (loadRestaurations,
+    // GET /archives?statut=restauré, restaure_par/restaure_at/
+    // motif_restauration réels, déjà persistés par restoreOne()/
+    // restoreBulk() mais jamais affichés jusqu'ici).
     if (active === "restaurations") return (
       <div className="arfu">
         <div className="arc-section-top">
           <div>
             <div className="arc-section-title">{I.restore} Historique des restaurations</div>
-            <div className="arc-section-sub">{DEMO_RESTAURATIONS.length} restauration(s) effectuée(s)</div>
+            <div className="arc-section-sub">{restaurations.length} restauration(s) effectuée(s)</div>
           </div>
           <button className="abtn abtn-ghost abtn-sm" onClick={() => handleExport("pdf")}>{I.export} Exporter</button>
         </div>
@@ -1156,13 +1198,19 @@ export default function Archivage() {
                 <tr><th>Référence</th><th>Patient</th><th>Date restauration</th><th>Utilisateur</th><th>Motif</th><th>Statut</th></tr>
               </thead>
               <tbody>
-                {DEMO_RESTAURATIONS.map((r, i) => (
-                  <tr key={i}>
-                    <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--ab)", fontSize:12 }}>{r.reference}</span></td>
-                    <td style={{ fontWeight:600, color:"var(--an)" }}>{r.patient}</td>
-                    <td style={{ fontSize:12, color:"var(--am)" }}>{fmtDate(r.date_rest)}</td>
-                    <td style={{ fontSize:12, color:"var(--am)" }}>{r.user}</td>
-                    <td style={{ fontSize:12, color:"var(--am)" }}>{r.motif}</td>
+                {loadingRestaurations && (
+                  <tr><td colSpan={6} style={{ textAlign:"center", color:"var(--am)", padding:20 }}>Chargement...</td></tr>
+                )}
+                {!loadingRestaurations && restaurations.length === 0 && (
+                  <tr><td colSpan={6} style={{ textAlign:"center", color:"var(--am)", padding:20 }}>Aucune restauration effectuée.</td></tr>
+                )}
+                {restaurations.map((r) => (
+                  <tr key={r._id}>
+                    <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--ab)", fontSize:12 }}>{r.titre || "—"}</span></td>
+                    <td style={{ fontWeight:600, color:"var(--an)" }}>{r.patient_nom || "—"}</td>
+                    <td style={{ fontSize:12, color:"var(--am)" }}>{r.restaure_at ? fmtDate(r.restaure_at) : "—"}</td>
+                    <td style={{ fontSize:12, color:"var(--am)" }}>{r.restaure_par ? `${r.restaure_par.prenom || ""} ${r.restaure_par.nom || ""}`.trim() : "—"}</td>
+                    <td style={{ fontSize:12, color:"var(--am)" }}>{r.motif_restauration || "—"}</td>
                     <td><Badge cls="green">✅ {r.statut}</Badge></td>
                   </tr>
                 ))}
@@ -1385,12 +1433,12 @@ export default function Archivage() {
                     imagerie:         kpis.imagerie         || 0,
                     hospitalisations: kpis.hospitalisations || 0,
                     chirurgies:       kpis.chirurgies       || 0,
-                    urgences:         kpis.urgences         || 0,
-                    pediatrie:        kpis.pediatrie        || 0,
-                    maternite:        kpis.maternite        || 0,
-                    echographies:     kpis.echographie      || 0,
                     documents:        kpis.documents        || 0,
                     financier:        kpis.financier        || 0,
+                    // Sous-phase 5.1 — jamais renvoyé par getStats() avant
+                    // cette correction (toujours undefined||0 = 0, badge
+                    // invisible pour toujours) ; réellement calculé
+                    // désormais (archive.controller.js::getStats).
                     restaurations:    kpis.restaurations    || 0,
                   };
                   const badgeVal = kpiMap[item.key];

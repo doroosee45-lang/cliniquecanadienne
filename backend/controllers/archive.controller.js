@@ -177,11 +177,18 @@ exports.getStats = async (req, res, next) => {
   try {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [catCounts, archivesMois, derniere, total] = await Promise.all([
+    const [catCounts, archivesMois, derniere, total, restaurations] = await Promise.all([
       ArchiveEntry.aggregate([{ $group: { _id: '$categorie', count: { $sum: 1 } } }]),
       ArchiveEntry.countDocuments({ date_archivage: { $gte: startOfMonth } }),
       ArchiveEntry.findOne().sort('-date_archivage').select('date_archivage').lean(),
       ArchiveEntry.countDocuments(),
+      // Sous-phase 5.1 — Archive.jsx affichait un badge "Restaurations"
+      // (kpis.restaurations) jamais renvoyé par ce endpoint, et un onglet
+      // "Historique des restaurations" listant DEMO_RESTAURATIONS (toujours
+      // vide) au lieu des vraies archives statut:'restauré' (restaure_par/
+      // restaure_at/motif_restauration, réels, alimentés par
+      // restoreOne()/restoreBulk() mais jamais affichés jusqu'ici).
+      ArchiveEntry.countDocuments({ statut: 'restauré' }),
     ]);
 
     const cats = {};
@@ -205,6 +212,7 @@ exports.getStats = async (req, res, next) => {
         chirurgies:       cats['chirurgie']       || 0,
         financier:        cats['financier']       || 0,
         documents:        cats['document']        || 0,
+        restaurations,
       },
     });
   } catch (err) { next(err); }
@@ -236,9 +244,13 @@ exports.getAll = async (req, res, next) => {
     const skip  = (parseInt(page) - 1) * parseInt(limit);
     const total = await ArchiveEntry.countDocuments(filter);
     const archives = await ArchiveEntry.find(filter)
-      .sort('-date_archivage')
+      // Sous-phase 5.1 — l'onglet "Restaurations" (Archive.jsx) triait par
+      // date de restauration, pas d'archivage : trie désormais par
+      // restaure_at quand ce filtre est utilisé.
+      .sort(statut === 'restauré' ? '-restaure_at' : '-date_archivage')
       .skip(skip)
       .limit(parseInt(limit))
+      .populate('restaure_par', 'nom prenom')
       .lean();
 
     res.json({ success: true, archives, total });
