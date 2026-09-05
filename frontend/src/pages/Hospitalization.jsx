@@ -227,6 +227,17 @@ const TYPE_CHAMBRE = {
   vip:      "VIP",
 };
 
+// Sous-phase 5.1 (relecture du 6 sept. 2026) — mêmes valeurs que l'enum réel
+// Hospitalization.etat_patient (models/Hospitalization.js), pour l'onglet
+// Statistiques ("Statuts de sortie").
+const ETAT_SORTIE_CFG = {
+  gueri:     { label:"Guéri",     icon:"✅", color:"var(--hg)" },
+  ameliore:  { label:"Amélioré",  icon:"⬆️", color:"var(--ht)" },
+  stable:    { label:"Stable",    icon:"➡️", color:"var(--hb)" },
+  transfere: { label:"Transféré", icon:"🚑", color:"var(--hp)" },
+  deces:     { label:"Décédé",    icon:"💔", color:"var(--hr)" },
+};
+
 // AUDIT-P7-4 — 'nettoyage' n'existe pas dans l'enum réel Room.lits.statut
 // (backend/models/Room.js : libre/occupe/maintenance/reserve) ; ce n'était
 // jamais visible tant que /chambres (route morte) ne renvoyait aucune donnée
@@ -510,7 +521,14 @@ export default function Hospitalisation() {
   const loadStats = useCallback(async () => {
     try {
       const { data } = await api.get("/hospitalization/stats");
-      if (data.kpis) setKpis(prev => ({ ...prev, ...data.kpis }));
+      // Sous-phase 5.1 (relecture du 6 sept. 2026) — bug de câblage
+      // découvert en corrigeant l'onglet Statistiques : cette fonction
+      // vérifiait `data.kpis`, un champ qui n'a jamais existé dans la
+      // réponse réelle de GET /hospitalization/stats (toujours `data.stats`,
+      // vérifié dans hospitalization.controller.js::getStats) — le taux
+      // d'occupation réel (et désormais durée moyenne/réadmission/recettes/
+      // répartitions) n'était donc JAMAIS appliqué, silencieusement.
+      if (data.stats) setKpis(prev => ({ ...prev, ...data.stats }));
     } catch {
       // les KPIs locaux calculés depuis loadHosps suffisent
     }
@@ -929,17 +947,30 @@ export default function Hospitalisation() {
                 <KpiCard color="teal"   icon={I.room}     value={`${kpis.taux_occ}%`} label="Taux occupation"  sub="chambres & lits"          onClick={() => setTab("lits")} />
               </div>
 
+              {/* Sous-phase 5.1 (relecture du 6 sept. 2026) — même correctif
+                  que l'onglet Statistiques : ce dashboard avait sa PROPRE
+                  copie du même graphique fabriqué. Réutilise désormais les
+                  mêmes champs réels (kpis.admissions_par_mois/
+                  repartition_services, GET /hospitalization/stats). */}
               <div className="ho-g2" style={{ marginBottom:24 }}>
                 <div className="ho-card hofu">
                   <div className="ho-card-hdr"><div><h3>{I.trend} Admissions — 12 derniers mois</h3><p>Volume mensuel d'hospitalisations</p></div></div>
                   <div style={{ padding:20 }}>
-                    <BarChart labels={["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"]} data={[18,22,19,25,28,24,20,16,21,23,19,26]} color="#1A5276" />
+                    <BarChart labels={kpis.admissions_par_mois?.labels || []} data={kpis.admissions_par_mois?.data || []} color="#1A5276" />
                   </div>
                 </div>
                 <div className="ho-card hofu">
                   <div className="ho-card-hdr"><div><h3>Par service</h3><p>Répartition des hospitalisations</p></div></div>
                   <div style={{ padding:20 }}>
-                    <DoughnutChart labels={["Chirurgie","Médecine","Gynécologie","Cardiologie","Pédiatrie"]} data={[35,25,18,12,10]} colors={["#1A5276","#17A589","#D68910","#6C3483","#117A65"]} />
+                    {(kpis.repartition_services || []).length === 0 ? (
+                      <div style={{ textAlign:"center", color:"var(--hm)", fontSize:12, padding:20 }}>Aucune hospitalisation réelle rattachée à un service pour l'instant.</div>
+                    ) : (
+                      <DoughnutChart
+                        labels={kpis.repartition_services.map(s => s.nom)}
+                        data={kpis.repartition_services.map(s => s.pct)}
+                        colors={["#1A5276","#17A589","#D68910","#6C3483","#117A65","#B03A2E","#2E86C1"]}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -1816,14 +1847,22 @@ export default function Hospitalisation() {
           {tab === "stats" && (
             <div>
               <div style={{ fontSize:16, fontWeight:700, color:"var(--hn)", marginBottom:20 }}>Statistiques — Hospitalisation</div>
+              {/* Sous-phase 5.1 (relecture du 6 sept. 2026) — onglet
+                  Statistiques entièrement fabriqué (4 des 6 KPIs, les 2
+                  graphiques et les 2 répartitions). Réécrit depuis
+                  GET /hospitalization/stats, réellement calculé
+                  (hospitalization.controller.js::getStats étendu) — la
+                  correction a aussi révélé et corrigé un bug de câblage
+                  (loadStats() lisait data.kpis, un champ qui n'existait
+                  jamais dans la réponse réelle : data.stats) qui empêchait
+                  même le taux d'occupation réel de s'appliquer. */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:24 }}>
                 {[
                   { color:"blue",   val:kpis.total,        lbl:"Admissions/mois",     sub:"total enregistré" },
                   { color:"teal",   val:`${kpis.taux_occ}%`, lbl:"Taux d'occupation", sub:"toutes chambres" },
-                  { color:"green",  val:"4.8 j",           lbl:"Durée moyenne",        sub:"par hospitalisation" },
-                  { color:"orange", val:"3.2%",            lbl:"Taux de réadmission",  sub:"sur 30 jours" },
-                  { color:"purple", val:"92%",             lbl:"Taux de satisfaction", sub:"sorties enquêtées" },
-                  { color:"blue",   val:"2.4M CFA",        lbl:"Recettes/mois",        sub:"hébergement + soins" },
+                  { color:"green",  val:kpis.duree_moyenne_jours != null ? `${kpis.duree_moyenne_jours} j` : "—", lbl:"Durée moyenne", sub:"par hospitalisation" },
+                  { color:"orange", val:kpis.taux_readmission != null ? `${kpis.taux_readmission}%` : "—", lbl:"Taux de réadmission",  sub:"sur 30 jours" },
+                  { color:"blue",   val:kpis.recettes_mois != null ? `${kpis.recettes_mois.toLocaleString("fr-FR")} CFA` : "—", lbl:"Recettes/mois", sub:"séjours clôturés ce mois-ci" },
                 ].map((k,i) => (
                   <div key={i} className={`ho-kpi ${k.color} hofu`}>
                     <div className="kpi-val-ho">{k.val}</div>
@@ -1831,28 +1870,46 @@ export default function Hospitalisation() {
                     <div className="kpi-sub-ho">{k.sub}</div>
                   </div>
                 ))}
+                {/* "Taux de satisfaction" retiré — LIMITE DOCUMENTÉE : aucune
+                    enquête de sortie n'est réellement enregistrée nulle part
+                    dans ce système ; afficher "92%" était entièrement
+                    fabriqué, et construire un module d'enquête patient
+                    dépasse le périmètre d'une correction de bug. */}
               </div>
               <div className="ho-g32" style={{ marginBottom:20 }}>
                 <div className="ho-card">
                   <div className="ho-card-hdr"><h3>{I.trend} Admissions par mois</h3></div>
-                  <div style={{ padding:20 }}><BarChart labels={["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"]} data={[18,22,19,25,28,24,20,16,21,23,19,26]} color="#1A5276" /></div>
+                  <div style={{ padding:20 }}><BarChart labels={kpis.admissions_par_mois?.labels || []} data={kpis.admissions_par_mois?.data || []} color="#1A5276" /></div>
                 </div>
                 <div className="ho-card">
                   <div className="ho-card-hdr"><h3>Répartition services</h3></div>
-                  <div style={{ padding:20 }}><DoughnutChart labels={["Chirurgie","Médecine","Gynéco","Cardio","Pédiatrie"]} data={[35,25,18,12,10]} colors={["#1A5276","#17A589","#D68910","#6C3483","#117A65"]} /></div>
+                  <div style={{ padding:20 }}>
+                    {(kpis.repartition_services || []).length === 0 ? (
+                      <div style={{ textAlign:"center", color:"var(--hm)", fontSize:12, padding:20 }}>Aucune hospitalisation réelle rattachée à un service pour l'instant.</div>
+                    ) : (
+                      <DoughnutChart
+                        labels={kpis.repartition_services.map(s => s.nom)}
+                        data={kpis.repartition_services.map(s => s.pct)}
+                        colors={["#1A5276","#17A589","#D68910","#6C3483","#117A65","#B03A2E","#2E86C1"]}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="ho-g11">
                 <div className="ho-card">
                   <div className="ho-card-hdr"><h3>📊 Taux d'occupation par service</h3></div>
                   <div style={{ padding:16 }}>
-                    {[["Chirurgie générale",85,"var(--hb)"],["Médecine interne",72,"var(--ht)"],["Gynécologie",68,"var(--hg)"],["Cardiologie",90,"var(--hr)"],["Pédiatrie",55,"var(--hp)"]].map(([lbl,pct,col]) => (
-                      <div key={lbl} style={{ marginBottom:12 }}>
+                    {(kpis.occupation_par_service || []).length === 0 && (
+                      <div style={{ textAlign:"center", color:"var(--hm)", fontSize:12, padding:12 }}>Aucune chambre réelle n'est rattachée à un service pour l'instant.</div>
+                    )}
+                    {(kpis.occupation_par_service || []).map(s => (
+                      <div key={s.nom} style={{ marginBottom:12 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:4 }}>
-                          <span style={{ color:"var(--cm)" }}>{lbl}</span>
-                          <strong style={{ color:"var(--hn)" }}>{pct}%</strong>
+                          <span style={{ color:"var(--cm)" }}>{s.nom}</span>
+                          <strong style={{ color:"var(--hn)" }}>{s.pct}%</strong>
                         </div>
-                        <Prog pct={pct} color={col} />
+                        <Prog pct={s.pct} color="var(--hb)" />
                       </div>
                     ))}
                   </div>
@@ -1860,14 +1917,20 @@ export default function Hospitalisation() {
                 <div className="ho-card">
                   <div className="ho-card-hdr"><h3>🚪 Statuts de sortie</h3></div>
                   <div style={{ padding:16 }}>
-                    {[["Guéri","✅",52,"var(--hg)"],["Amélioré","⬆️",28,"var(--ht)"],["Stable","➡️",12,"var(--hb)"],["Transféré","🚑",5,"var(--hp)"],["Décédé","💔",3,"var(--hr)"]].map(([lbl,ico,pct,col]) => (
-                      <div key={lbl} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:"1px solid #EAF4FB" }}>
-                        <span style={{ fontSize:14 }}>{ico}</span>
-                        <span style={{ fontSize:12, color:"var(--cm)", flex:1 }}>{lbl}</span>
-                        <div style={{ width:100 }}><Prog pct={pct} color={col} /></div>
-                        <strong style={{ fontSize:13, color:"var(--hn)", minWidth:36, textAlign:"right" }}>{pct}%</strong>
-                      </div>
-                    ))}
+                    {(kpis.statuts_sortie || []).length === 0 && (
+                      <div style={{ textAlign:"center", color:"var(--hm)", fontSize:12, padding:12 }}>Aucune sortie avec état renseigné pour l'instant.</div>
+                    )}
+                    {(kpis.statuts_sortie || []).map(s => {
+                      const cfg = ETAT_SORTIE_CFG[s.etat] || { label:s.etat, icon:"•", color:"var(--hb)" };
+                      return (
+                        <div key={s.etat} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:"1px solid #EAF4FB" }}>
+                          <span style={{ fontSize:14 }}>{cfg.icon}</span>
+                          <span style={{ fontSize:12, color:"var(--cm)", flex:1 }}>{cfg.label}</span>
+                          <div style={{ width:100 }}><Prog pct={s.pct} color={cfg.color} /></div>
+                          <strong style={{ fontSize:13, color:"var(--hn)", minWidth:36, textAlign:"right" }}>{s.pct}%</strong>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

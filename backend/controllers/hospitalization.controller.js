@@ -23,7 +23,7 @@ exports.getStats = async (req, res, next) => {
       Hospitalization.countDocuments({ statut: 'decede' }),
     ]);
     // Taux d'occupation (lits occupés / total lits)
-    const rooms = await Room.find();
+    const rooms = await Room.find().populate('service', 'nom');
     const totalLits    = rooms.reduce((s, r) => s + (r.lits?.length || 0), 0);
     const litsOccupes  = rooms.reduce((s, r) => s + (r.lits?.filter(l => l.statut === 'occupe').length || 0), 0);
     const litsLibres   = totalLits - litsOccupes;
@@ -34,7 +34,100 @@ exports.getStats = async (req, res, next) => {
     const fin   = new Date(); fin.setHours(23,59,59,999);
     const aujourd_hui = await Hospitalization.countDocuments({ date_entree: { $gte: debut, $lte: fin } });
 
-    res.json({ success: true, stats: { total, en_cours, sortis, transferes, decedes, taux_occ, totalLits, litsOccupes, litsLibres, aujourd_hui } });
+    // Sous-phase 5.1 (relecture du 6 sept. 2026) — l'onglet Statistiques
+    // (Hospitalization.jsx) affichait "Durée moyenne" (4.8 j), "Taux de
+    // réadmission" (3.2%), "Recettes/mois" (2.4M CFA), le graphique
+    // "Admissions par mois", "Répartition services", "Taux d'occupation par
+    // service" et "Statuts de sortie" TOUS codés en dur. Calculés ici
+    // réellement, dans le même endpoit déjà réel (taux_occ ci-dessus).
+    const all = await Hospitalization.find()
+      .select('patient date_entree date_sortie statut etat_patient service service_nom cout_total')
+      .populate('service', 'nom')
+      .lean();
+
+    // Durée moyenne réelle des séjours terminés (date_sortie réellement posée).
+    const termines = all.filter(h => h.date_sortie);
+    const duree_moyenne_jours = termines.length
+      ? parseFloat((termines.reduce((s, h) => s + (new Date(h.date_sortie) - new Date(h.date_entree)) / 86400000, 0) / termines.length).toFixed(1))
+      : null;
+
+    // Taux de réadmission réel sur 30 jours : pour chaque patient ayant
+    // plusieurs séjours, un séjour est une "réadmission" si son
+    // date_entree suit de <= 30 jours le date_sortie du séjour précédent du
+    // même patient. Jamais un taux inventé — null si aucun patient n'a plus
+    // d'un séjour terminé (rien à comparer).
+    const parPatient = {};
+    all.forEach(h => { if (h.patient) (parPatient[h.patient] ||= []).push(h); });
+    let readmissions = 0, eligibles = 0;
+    Object.values(parPatient).forEach(sejours => {
+      sejours.sort((a, b) => new Date(a.date_entree) - new Date(b.date_entree));
+      for (let i = 1; i < sejours.length; i++) {
+        if (!sejours[i - 1].date_sortie) continue; // séjour précédent encore en cours, pas comparable
+        eligibles++;
+        const ecartJours = (new Date(sejours[i].date_entree) - new Date(sejours[i - 1].date_sortie)) / 86400000;
+        if (ecartJours >= 0 && ecartJours <= 30) readmissions++;
+      }
+    });
+    const taux_readmission = eligibles > 0 ? Math.round((readmissions / eligibles) * 1000) / 10 : null;
+
+    // Recettes réelles du mois — cout_total réellement finalisé (posé à la
+    // sortie, discharge()) pour les séjours sortis ce mois-ci.
+    const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
+    const recettes_mois = all
+      .filter(h => h.date_sortie && new Date(h.date_sortie) >= debutMois && (h.cout_total || 0) > 0)
+      .reduce((s, h) => s + h.cout_total, 0);
+
+    // Admissions par mois (12 derniers mois réels, par date_entree).
+    const now = new Date();
+    const moisLabels = [], admissions_par_mois = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      moisLabels.push(d.toLocaleString('fr-FR', { month: 'short' }));
+      admissions_par_mois.push(all.filter(h => {
+        const de = new Date(h.date_entree);
+        return de.getFullYear() === d.getFullYear() && de.getMonth() === d.getMonth();
+      }).length);
+    }
+
+    // Répartition par service (toutes hospitalisations réelles, nom réel du
+    // service — ref peuplée en priorité, sinon le texte libre déjà saisi).
+    const parService = {};
+    all.forEach(h => {
+      const nom = h.service?.nom || h.service_nom;
+      if (!nom) return;
+      parService[nom] = (parService[nom] || 0) + 1;
+    });
+    const totalAvecService = Object.values(parService).reduce((s, n) => s + n, 0);
+    const repartition_services = Object.entries(parService)
+      .sort((a, b) => b[1] - a[1])
+      .map(([nom, n]) => ({ nom, pct: totalAvecService ? Math.round((n / totalAvecService) * 100) : 0 }));
+
+    // Taux d'occupation par service réel (Room.service réel, lits réels).
+    const occParService = {};
+    rooms.forEach(r => {
+      const nom = r.service?.nom;
+      if (!nom) return;
+      occParService[nom] ||= { total: 0, occupes: 0 };
+      occParService[nom].total += (r.lits?.length || 0);
+      occParService[nom].occupes += (r.lits?.filter(l => l.statut === 'occupe').length || 0);
+    });
+    const occupation_par_service = Object.entries(occParService)
+      .filter(([, v]) => v.total > 0)
+      .map(([nom, v]) => ({ nom, pct: Math.round((v.occupes / v.total) * 100) }))
+      .sort((a, b) => b.pct - a.pct);
+
+    // Statuts de sortie réels (etat_patient réellement saisi à la sortie).
+    const parEtat = {};
+    all.forEach(h => { if (h.etat_patient) parEtat[h.etat_patient] = (parEtat[h.etat_patient] || 0) + 1; });
+    const totalAvecEtat = Object.values(parEtat).reduce((s, n) => s + n, 0);
+    const statuts_sortie = Object.entries(parEtat).map(([etat, n]) => ({ etat, pct: totalAvecEtat ? Math.round((n / totalAvecEtat) * 100) : 0 }));
+
+    res.json({ success: true, stats: {
+      total, en_cours, sortis, transferes, decedes, taux_occ, totalLits, litsOccupes, litsLibres, aujourd_hui,
+      duree_moyenne_jours, taux_readmission, recettes_mois,
+      admissions_par_mois: { labels: moisLabels, data: admissions_par_mois },
+      repartition_services, occupation_par_service, statuts_sortie,
+    } });
   } catch (err) { next(err); }
 };
 
