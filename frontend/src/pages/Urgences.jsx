@@ -1621,7 +1621,11 @@ export default function Urgences() {
                           <div style={{ fontSize: 24 }}>{ico}</div>
                           <div style={{ fontWeight: 700, color: "var(--un)", fontSize: 13 }}>{title}</div>
                           <div style={{ fontSize: 11, color: "var(--ucm)" }}>{desc}</div>
-                          <button className="ubtn ubtn-ghost ubtn-sm" style={{ marginTop: "auto" }} onClick={() => toast.success(`📄 ${title} en cours de génération...`)}>{I.dl} Générer</button>
+                          {/* Sous-phase 5.2 — faux succès (toast.success)
+                              sans génération réelle. Aucun moteur de
+                              génération de documents n'existe pour ces
+                              types dans ce système. */}
+                          <button className="ubtn ubtn-ghost ubtn-sm" style={{ marginTop: "auto" }} disabled title="Fonctionnalité en cours de développement — aucune génération réelle de document n'existe pour ce type." onClick={() => toast("🚧 Génération de documents non disponible — fonctionnalité en cours de développement.")}>{I.dl} Générer</button>
                         </div>
                       ))}
                     </div>
