@@ -1044,7 +1044,17 @@ export default function Imagerie() {
                       <table className="img-tbl">
                         <thead><tr><th>N°</th><th>Examen</th><th>Date</th><th>Statut</th><th>Radiologue</th></tr></thead>
                         <tbody>
-                          {DEMO_EXAMENS.filter(x=>x.patient_nom===currentExamen.patient_nom).map(x => {
+                          {/* Sous-phase 5.1 (relecture du 6 sept. 2026) —
+                              filtrait autrefois DEMO_EXAMENS, toujours vide :
+                              cet historique n'affichait jamais rien, quel que
+                              soit le patient réel. Filtre désormais les vrais
+                              examens déjà chargés (examens), par référence
+                              patient réelle quand disponible sur les deux
+                              documents, sinon par nom affiché (repli honnête,
+                              pas une invention). */}
+                          {examens.filter(x => x._id !== currentExamen._id && (
+                            (x.patient && currentExamen.patient) ? x.patient === currentExamen.patient : x.patient_nom === currentExamen.patient_nom
+                          )).map(x => {
                             const sc = STATUT_CFG[x.statut]||{cls:"gray",label:x.statut};
                             return (
                               <tr key={x._id}>
