@@ -383,7 +383,7 @@ export default function Ordonnances() {
   const [currentOrd, setCurrent]  = useState(null);
   const [patients, setPatients]   = useState([]);
   const [saving, setSaving]       = useState(false);
-  const [kpis, setKpis]           = useState({ total:0, actives:0, expirees:0, renouvellements:0, chroniques:0, interactions:0, aujourd_hui:0 });
+  const [kpis, setKpis]           = useState({ total:0, actives:0, expirees:0, renouvellements:0, chroniques:0, interactions:0, aujourd_hui:0, dispensees:0, annulees:0, mois:0, renouvellements_effectues:0, repartition_specialite:[] });
   const chartData = useMemo(() => buildOrdonnancesParMois(ordonnances), [ordonnances]);
 
   // Modals
@@ -459,6 +459,18 @@ export default function Ordonnances() {
         aujourd_hui:    s.aujourd_hui    ?? prev.aujourd_hui,
         brouillons:     s.brouillons     ?? 0,
         publiees:       s.publiees       ?? 0,
+        // Sous-phase 5.1 (relecture du 6 sept. 2026) — dispensees/annulees
+        // étaient déjà renvoyés par ce même endpoint mais jamais récupérés
+        // ici ; renouvellements/interactions existaient dans l'état initial
+        // sans jamais être alimentés (l'alerte sécurité "interactions
+        // médicamenteuses potentielles" restait donc toujours à 0).
+        dispensees:     s.dispensees     ?? 0,
+        annulees:       s.annulees       ?? 0,
+        mois:           s.mois           ?? 0,
+        interactions:   s.interactions   ?? 0,
+        renouvellements_effectues: s.renouvellements_effectues ?? 0,
+        renouvellements: s.renouvellements_a_bientot ?? 0,
+        repartition_specialite: s.repartition_specialite || [],
       }));
     } catch {}
   }, []);
@@ -1658,16 +1670,25 @@ export default function Ordonnances() {
                   <div className="ord-card-hdr"><div><h3>{I.trend} Ordonnances par mois</h3><p>Volume annuel des prescriptions</p></div></div>
                   <div style={{ padding:20 }}><BarChart labels={chartData.labels} data={chartData.data} color="#1B4F9E" /></div>
                 </div>
+                {/* Sous-phase 5.1 (relecture du 6 sept. 2026) — "par service"
+                    n'a aucune donnée réelle sur Prescription elle-même
+                    (formOrd.specialite est saisi mais jamais persisté —
+                    annexe signalée, hors périmètre 5.1, relève de 5.3) ;
+                    substitué par la vraie spécialité du médecin prescripteur
+                    réel (User.specialite, déjà peuplé), un axe réel proche
+                    dans l'esprit plutôt qu'une catégorisation fabriquée. */}
                 <div className="ord-card">
-                  <div className="ord-card-hdr"><div><h3>📊 Ordonnances par service</h3></div></div>
+                  <div className="ord-card-hdr"><div><h3>📊 Ordonnances par spécialité du prescripteur</h3></div></div>
                   <div style={{ padding:20 }}>
-                    {[["Chirurgie",35,"var(--accent)"],["Médecine générale",28,"var(--primary)"],["Gynécologie",18,"var(--tertiary)"],["Médecine interne",12,"var(--success)"],["Urgences",7,"var(--danger)"]].map(([svc,pct,col])=>(
-                      <div key={svc} style={{ marginBottom:12 }}>
+                    {kpis.repartition_specialite.length === 0 ? (
+                      <div style={{ textAlign:"center", color:"var(--muted)", fontSize:12, padding:12 }}>Aucun médecin prescripteur avec spécialité réelle renseignée pour l'instant.</div>
+                    ) : kpis.repartition_specialite.map(({ specialite, pct }) => (
+                      <div key={specialite} style={{ marginBottom:12 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, fontSize:12 }}>
-                          <span style={{ color:"var(--muted)" }}>{svc}</span>
+                          <span style={{ color:"var(--muted)" }}>{specialite}</span>
                           <span style={{ fontWeight:700, color:"var(--ink)" }}>{pct}%</span>
                         </div>
-                        <Prog pct={pct} color={col} />
+                        <Prog pct={pct} color="var(--primary)" />
                       </div>
                     ))}
                   </div>
@@ -1677,6 +1698,10 @@ export default function Ordonnances() {
               <div className="ord-card">
                 <div className="ord-card-hdr">
                   <div><h3>📋 Rapport détaillé</h3><p>Statistiques des prescriptions</p></div>
+                  {/* Boutons PDF/Excel/CSV — annexe signalée : aucun export
+                      réel (toast.success sans génération), hors périmètre
+                      5.1 (relève de la Sous-phase 5.2, "boutons Générer/
+                      Exporter sans handler"). */}
                   <div style={{ display:"flex", gap:8 }}>
                     <button className="obtn obtn-ghost obtn-sm" onClick={() => toast.success("📄 PDF exporté")}>{I.dl} PDF</button>
                     <button className="obtn obtn-ghost obtn-sm" onClick={() => toast.success("📊 Excel exporté")}>📊 Excel</button>
@@ -1685,12 +1710,12 @@ export default function Ordonnances() {
                 </div>
                 <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:16 }}>
                   {[
-                    ["Total prescriptions ce mois","74","var(--primary)"],
-                    ["Ordonnances chroniques","18","var(--tertiary)"],
-                    ["Interactions détectées par IA","3","var(--danger)"],
-                    ["Ordonnances délivrées","61","var(--success)"],
-                    ["Renouvellements effectués","12","var(--accent)"],
-                    ["Ordonnances annulées","2","var(--muted)"],
+                    ["Total prescriptions ce mois",kpis.mois,"var(--primary)"],
+                    ["Ordonnances chroniques",kpis.chroniques,"var(--tertiary)"],
+                    ["Interactions détectées par IA",kpis.interactions,"var(--danger)"],
+                    ["Ordonnances délivrées",kpis.dispensees,"var(--success)"],
+                    ["Renouvellements effectués",kpis.renouvellements_effectues,"var(--accent)"],
+                    ["Ordonnances annulées",kpis.annulees,"var(--muted)"],
                   ].map(([lbl,val,col])=>(
                     <div key={lbl} style={{ background:"var(--surface)", border:"1.5px solid var(--border)", borderRadius:12, padding:"16px 18px", textAlign:"center" }}>
                       <div style={{ fontSize:28, fontWeight:800, color:col, letterSpacing:-1 }}>{val}</div>

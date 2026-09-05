@@ -247,6 +247,36 @@ exports.getStats = async (req, res, next) => {
     const fin   = new Date(); fin.setHours(23,59,59,999);
     const aujourd_hui = await Prescription.countDocuments({ createdAt: { $gte: debut, $lte: fin } });
 
-    res.json({ success: true, stats: { total, actives, publiees, dispensees, expirees, annulees, brouillons, aujourd_hui } });
+    // Sous-phase 5.1 (relecture du 6 sept. 2026) — onglet Rapports
+    // (Prescriptions.jsx) affichait "Total prescriptions ce mois"/
+    // "Interactions détectées par IA"/"Renouvellements effectués" et
+    // "Ordonnances par service" tous codés en dur, alors que dispensees/
+    // annulees (déjà réels ci-dessus) n'étaient même pas récupérés côté
+    // frontend, et que kpis.renouvellements/interactions existaient déjà
+    // côté état local (jamais alimentés — restés à 0 en permanence, y
+    // compris l'alerte sécurité "N ordonnance(s) présentent des
+    // interactions médicamenteuses potentielles").
+    const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
+    const dansSeptJours = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const [mois, interactions, renouvellements_effectues, renouvellements_a_bientot, specialiteAgg] = await Promise.all([
+      Prescription.countDocuments({ date_prescription: { $gte: debutMois } }),
+      Prescription.countDocuments({ 'interactions_detectees.0': { $exists: true } }),
+      Prescription.countDocuments({ note_renouvellement: { $exists: true, $ne: null } }),
+      Prescription.countDocuments({ statut: { $in: ['active', 'publiee'] }, date_expiration: { $ne: null, $lte: dansSeptJours } }),
+      Prescription.aggregate([
+        { $lookup: { from: 'users', localField: 'medecin', foreignField: '_id', as: 'medecinDoc' } },
+        { $unwind: { path: '$medecinDoc', preserveNullAndEmptyArrays: false } },
+        { $match: { 'medecinDoc.specialite': { $ne: null, $ne: '' } } },
+        { $group: { _id: '$medecinDoc.specialite', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]),
+    ]);
+    const totalAvecSpecialite = specialiteAgg.reduce((s, x) => s + x.count, 0);
+    const repartition_specialite = specialiteAgg.map(x => ({ specialite: x._id, pct: totalAvecSpecialite ? Math.round((x.count / totalAvecSpecialite) * 100) : 0 }));
+
+    res.json({ success: true, stats: {
+      total, actives, publiees, dispensees, expirees, annulees, brouillons, aujourd_hui,
+      mois, interactions, renouvellements_effectues, renouvellements_a_bientot, repartition_specialite,
+    } });
   } catch (err) { next(err); }
 };
