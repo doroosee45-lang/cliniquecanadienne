@@ -6,6 +6,8 @@ const { uploadEchographieImages } = require('../middleware/upload');
 const CAN = ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'radiologue', 'sage_femme'];
 
 router.get('/stats',         protect, authorize(...CAN), c.getStats);
+router.get('/catalogue',     protect, authorize(...CAN), c.getCatalogue);
+router.get('/factures',      protect, authorize(...CAN), c.getFactures);
 router.get('/',              protect, authorize(...CAN), c.getAll);
 router.post('/',             protect, authorize(...CAN), c.create);
 router.get('/:id',           protect, authorize(...CAN), c.getOne);

@@ -1430,99 +1430,113 @@ function Realisation({ demandes }) {
 }
 
 // ─── FACTURATION ECHOGRAPHIE ──────────────────────────────────
+// Correction 2 (module 3/6, relecture du 6 sept. 2026) — cet onglet
+// calculait un total depuis ACTES (grille tarifaire codée en dur, sans
+// rapport avec le vrai catalogue), et marquait "✅ Payé" toute demande
+// réalisée/validée sans qu'aucune Invoice n'existe jamais réellement en
+// base — même écart que Laboratoire/Radiology (Correction 1/2), en pire
+// puisqu'aucune facture réelle n'était même générée en coulisses.
+// Affiche désormais les vraies factures (Invoice, source_module:
+// 'echographie') créées par echographieController.saveRapport() à la
+// validation du rapport, jamais un calcul recomposé côté client.
 function Facturation({ demandes }) {
   const navigate = useNavigate();
-  const ACTES = [
-    { id:"simple",    label:"Échographie simple",    prix:15000, count: demandes.filter(d=>!["Doppler","Cardiaque"].includes(d.type)).length },
-    { id:"specialise",label:"Échographie spécialisée",prix:25000, count: demandes.filter(d=>d.type==="Gynécologique"||d.type==="Obstétricale").length },
-    { id:"doppler",   label:"Doppler",               prix:35000, count: demandes.filter(d=>d.type==="Doppler").length },
-    { id:"cardio",    label:"Échocardiographie",     prix:50000, count: demandes.filter(d=>d.type==="Cardiaque").length },
-  ];
-  const total = ACTES.reduce((s,a)=>s+a.prix*a.count,0);
+  const [invoices, setInvoices] = useState([]);
+  const [loadingInv, setLoadingInv] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get('/echographie/factures');
+        setInvoices(data.invoices || []);
+      } catch { setInvoices([]); }
+      finally { setLoadingInv(false); }
+    })();
+  }, []);
+
+  const total = invoices.reduce((s, inv) => s + (inv.montant_ttc || 0), 0);
+
+  const parActe = {};
+  invoices.forEach(inv => {
+    (inv.lignes || []).forEach(l => {
+      const key = l.libelle || 'Autre';
+      if (!parActe[key]) parActe[key] = { prix: l.prix_unitaire || 0, count: 0, total: 0 };
+      parActe[key].count += l.quantite || 1;
+      parActe[key].total += l.montant || 0;
+    });
+  });
+
+  const demandesFacturables = demandes.filter(d => ["realisee","validee"].includes(d.statut) || d.rapport_statut === "valide");
+  const demandesSansFactureReelle = demandesFacturables.filter(d => !invoices.some(i => String(i.source_id) === String(d._id || d.id)));
 
   return (
     <div className="fu">
       <div className="echo-g2" style={{ marginBottom:16 }}>
         <div className="echo-card">
-          <div className="echo-card-hdr"><h3>💰 Actes et tarifs</h3></div>
+          <div className="echo-card-hdr"><h3>💰 Actes et tarifs réels facturés</h3></div>
           <div style={{ padding:20 }}>
-            <table className="echo-tbl">
-              <thead><tr><th>Acte</th><th style={{ textAlign:"right" }}>Tarif</th><th style={{ textAlign:"right" }}>Nb</th><th style={{ textAlign:"right" }}>Total</th></tr></thead>
-              <tbody>
-                {ACTES.map(a=>(
-                  <tr key={a.id}>
-                    <td style={{ fontWeight:600, color:"var(--cn)" }}>{a.label}</td>
-                    <td style={{ textAlign:"right", color:"var(--cm)" }}>{a.prix.toLocaleString("fr-FR")} F</td>
-                    <td style={{ textAlign:"right" }}><span className="cbdg blue">{a.count}</span></td>
-                    <td style={{ textAlign:"right", fontWeight:700, color:"var(--cn)" }}>{(a.prix*a.count).toLocaleString("fr-FR")} F</td>
+            {Object.keys(parActe).length === 0 ? (
+              <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:13 }}>
+                {loadingInv ? "Chargement…" : "Aucune facture réelle générée pour l'instant."}
+              </div>
+            ) : (
+              <table className="echo-tbl">
+                <thead><tr><th>Acte (réel, ExamCatalogue)</th><th style={{ textAlign:"right" }}>Tarif</th><th style={{ textAlign:"right" }}>Nb</th><th style={{ textAlign:"right" }}>Total</th></tr></thead>
+                <tbody>
+                  {Object.entries(parActe).map(([label,a])=>(
+                    <tr key={label}>
+                      <td style={{ fontWeight:600, color:"var(--cn)" }}>{label}</td>
+                      <td style={{ textAlign:"right", color:"var(--cm)" }}>{a.prix.toLocaleString("fr-FR")} F</td>
+                      <td style={{ textAlign:"right" }}><span className="cbdg blue">{a.count}</span></td>
+                      <td style={{ textAlign:"right", fontWeight:700, color:"var(--cn)" }}>{a.total.toLocaleString("fr-FR")} F</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)" }}>
+                    <td colSpan={3} style={{ padding:"14px", fontWeight:800, color:"var(--cn)" }}>TOTAL RÉEL</td>
+                    <td style={{ textAlign:"right", fontWeight:800, fontSize:18, color:"var(--cb)", padding:"14px" }}>{total.toLocaleString("fr-FR")} <span style={{ fontSize:12 }}>CFA</span></td>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)" }}>
-                  <td colSpan={3} style={{ padding:"14px", fontWeight:800, color:"var(--cn)" }}>TOTAL</td>
-                  <td style={{ textAlign:"right", fontWeight:800, fontSize:18, color:"var(--cb)", padding:"14px" }}>{total.toLocaleString("fr-FR")} <span style={{ fontSize:12 }}>CFA</span></td>
-                </tr>
-              </tfoot>
-            </table>
+                </tfoot>
+              </table>
+            )}
           </div>
         </div>
         <div className="echo-card">
-          <div className="echo-card-hdr"><h3>🏥 Gestion assurance</h3></div>
-          <div style={{ padding:20, display:"flex", flexDirection:"column", gap:14 }}>
-            <div>
-              <label className="clbl">Mode de facturation</label>
-              <select className="cinp">
-                <option>💵 Paiement direct</option>
-                <option>🏥 Assurance maladie</option>
-                <option>🆓 Exonéré</option>
-                <option>🤝 Tiers payant</option>
-              </select>
+          <div className="echo-card-hdr"><h3>ℹ️ Facturation automatique</h3></div>
+          <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+            <div style={{ fontSize:12, color:"var(--cm)", lineHeight:1.6 }}>
+              Une vraie facture (module Finance) est générée automatiquement à la validation du rapport, uniquement quand la demande référence un examen réel du catalogue.
             </div>
-            <div>
-              <label className="clbl">Compagnie d'assurance</label>
-              <input className="cinp" placeholder="Nom de la compagnie..." />
-            </div>
-            <div>
-              <label className="clbl">Numéro de police</label>
-              <input className="cinp" placeholder="N° police d'assurance..." />
-            </div>
-            <div style={{ display:"flex", gap:8, marginTop:8 }}>
-              <button className="cbtn cbtn-teal">📄 Générer la facture</button>
-              <button className="cbtn cbtn-ghost">🖨️ Imprimer le reçu</button>
-            </div>
+            {demandesSansFactureReelle.length > 0 && (
+              <div style={{ background:"#FFF7ED", border:"1.5px solid #FED7AA", borderRadius:10, padding:"10px 12px", fontSize:12, color:"#92400E" }}>
+                ⚠️ {demandesSansFactureReelle.length} demande(s) réalisée(s)/validée(s) sans facture réelle — absence de référence au catalogue (saisie antérieure à ce correctif, ou type sans équivalent réel aujourd'hui : Doppler, Mammaire, etc.).
+              </div>
+            )}
+            <button className="cbtn cbtn-ghost" onClick={() => window.print()}>🖨️ Imprimer ce récapitulatif</button>
           </div>
         </div>
       </div>
 
       {/* Table de facturation */}
       <div className="echo-card">
-        <div className="echo-card-hdr">
-          <h3>📋 Historique des factures</h3>
-          <button className="cbtn cbtn-ghost cbtn-sm">📊 Exporter</button>
-        </div>
+        <div className="echo-card-hdr"><h3>📋 Historique des factures réelles</h3></div>
         <div style={{ overflowX:"auto" }}>
           <table className="echo-tbl">
-            <thead><tr><th>Patient</th><th>Type</th><th>Acte</th><th>Montant</th><th>Paiement</th><th>Actions</th></tr></thead>
+            <thead><tr><th>N° facture</th><th>Patient</th><th>Acte</th><th>Montant</th><th>Paiement</th></tr></thead>
             <tbody>
-              {demandes.filter(d=>d.statut==="realisee"||d.statut==="validee"||d.rapport_statut==="valide").map(d=>{
-                const acte = d.type==="Cardiaque"?ACTES[3]:d.type==="Doppler"?ACTES[2]:(d.type==="Gynécologique"||d.type==="Obstétricale")?ACTES[1]:ACTES[0];
-                return (
-                  <tr key={d.id}>
-                    <td><div style={{ fontWeight:600, color:"var(--cn)", cursor:d.patient_ref?._id?"pointer":"default", textDecoration:d.patient_ref?._id?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>d.patient_ref?._id&&navigate(`/patients/${d.patient_ref._id}`)}>{d.patient}</div>{d.dossier&&<span style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:"#1B4F9E",background:"#EFF6FF",padding:"1px 5px",borderRadius:4,display:"inline-block",marginTop:2}}>{d.dossier}</span>}</td>
-                    <td><span style={{ fontSize:12 }}>{TYPES_ECHO.find(t=>t.label===d.type)?.icon} {d.type}</span></td>
-                    <td style={{ fontSize:12, color:"var(--cm)" }}>{acte.label}</td>
-                    <td style={{ fontWeight:700, color:"var(--cb)" }}>{acte.prix.toLocaleString("fr-FR")} F</td>
-                    <td><span className="cbdg green">✅ Payé</span></td>
-                    <td>
-                      <div style={{ display:"flex", gap:6 }}>
-                        <button className="cbtn cbtn-ghost cbtn-sm">🖨️ Reçu</button>
-                        <button className="cbtn cbtn-ghost cbtn-sm">📧 Envoyer</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {invoices.length === 0 && (
+                <tr><td colSpan={5} style={{ textAlign:"center", padding:20, color:"var(--cm)" }}>{loadingInv ? "Chargement…" : "Aucune facture réelle pour l'instant."}</td></tr>
+              )}
+              {invoices.map(inv => (
+                <tr key={inv._id}>
+                  <td style={{ fontFamily:"monospace", fontSize:12, fontWeight:700, color:"var(--cb)" }}>{inv.numero_facture}</td>
+                  <td><div style={{ fontWeight:600, color:"var(--cn)", cursor:inv.patient?"pointer":"default", textDecoration:inv.patient?"underline dotted":"none", textUnderlineOffset:2 }} onClick={()=>inv.patient&&navigate(`/patients/${inv.patient}`)}>{inv.patient_nom || "—"}</div></td>
+                  <td style={{ fontSize:12, color:"var(--cm)" }}>{(inv.lignes||[]).map(l=>l.libelle).join(", ")}</td>
+                  <td style={{ fontWeight:700, color:"var(--cb)" }}>{Number(inv.montant_ttc||0).toLocaleString("fr-FR")} F</td>
+                  <td><span className={`cbdg ${inv.statut==="payee"?"green":"orange"}`}>{inv.statut==="payee"?"✅ Payée":"⏳ En attente — voir Finance"}</span></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -1686,13 +1700,32 @@ function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
   const [form, setForm] = useState({
     dossier:"",
     source:"", medecin_presc:ECHOGRAPHISTES[0],
-    type:"obstet", sous_type:"",
+    type:"obstet", sous_type:"", examen:"",
     motif:"", priorite:"normale",
   });
   const [patientQuery, setPatientQuery] = useState("");
   const [patientResults, setPatientResults] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const te = TYPES_ECHO.find(t=>t.id===form.type);
+
+  // Correction 2 (module 3/6, relecture du 6 sept. 2026) — remplace le calcul
+  // agrégé de l'onglet Facturation (ACTES codé en dur) : vrai catalogue
+  // chargé depuis GET /echographie/catalogue (ExamCatalogue.type:'imagerie',
+  // entrées "Échographie ..."), poussant un vrai ObjectId dans form.examen —
+  // jamais un libellé texte inventé. Optionnel : les types cliniques sans
+  // équivalent réel au catalogue aujourd'hui (Doppler, Mammaire, Pédiatrique...)
+  // restent utilisables cliniquement mais ne génèreront aucune facture réelle
+  // (documenté, jamais simulé) tant qu'aucune entrée réelle n'existe pour eux.
+  const [catalogue, setCatalogue] = useState([]);
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      try {
+        const { data } = await api.get('/echographie/catalogue');
+        setCatalogue(data.examens || []);
+      } catch { setCatalogue([]); }
+    })();
+  }, [open]);
 
   useEffect(() => {
     if (selectedPatient || patientQuery.trim().length < 2) { setPatientResults([]); return; }
@@ -1723,6 +1756,7 @@ function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
       date_prescription: new Date().toISOString().split("T")[0],
       type: te?.label||"Abdominale",
       sous_type: form.sous_type||te?.subtypes[0]||"",
+      examen: form.examen || undefined,
       motif: form.motif,
       priorite: form.priorite,
       statut: "en_attente",
@@ -1800,6 +1834,16 @@ function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
               <option value="">— Sélectionner —</option>
               {(te?.subtypes||[]).map(s=><option key={s}>{s}</option>)}
             </select>
+          </div>
+          <div style={{ gridColumn:"1/-1" }}>
+            <label className="clbl">Examen facturé (tarif réel du catalogue)</label>
+            <select className="cinp" value={form.examen} onChange={e=>setForm(f=>({...f,examen:e.target.value}))}>
+              <option value="">— Aucun (pas de facture réelle générée) —</option>
+              {catalogue.map(ex => <option key={ex._id} value={ex._id}>{ex.nom} — {Number(ex.prix||0).toLocaleString("fr-FR")} CFA</option>)}
+            </select>
+            {catalogue.length === 0 && (
+              <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>Aucun examen d'échographie disponible dans le catalogue réel (ExamCatalogue) pour l'instant.</div>
+            )}
           </div>
           <div>
             <label className="clbl req">Priorité</label>

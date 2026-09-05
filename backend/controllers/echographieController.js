@@ -1,6 +1,41 @@
 const Echographie = require('../models/Echographie');
+const ExamCatalogue = require('../models/ExamCatalogue');
+const Invoice = require('../models/Invoice');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction } = require('../utils/helpers');
+
+const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
+// Correction 2 (module 3/6) — même source de tarif réelle que Radiology
+// (ExamCatalogue.type:'imagerie'), déjà réellement peuplée avec des entrées
+// d'échographie (utils/seed.js : ECH-ABD/ECH-OB/ECH-CAR). ExamCatalogue ne
+// porte pas de champ categorie persistant (lacune déjà documentée en
+// Correction 1/2 — categorie est envoyé par seed.js mais absent du schéma,
+// donc silencieusement perdu par Mongoose) : filtrer par le nom réel
+// ("Échographie ...") est la seule façon non arbitraire de ne proposer ici
+// que les entrées effectivement pertinentes, sans inventer de nouvelle
+// valeur d'enum ni de nouveau champ.
+// ── GET /echographie/catalogue
+exports.getCatalogue = async (req, res, next) => {
+  try {
+    const examens = await ExamCatalogue.find({ type: 'imagerie', statut: 'actif', nom: /^Échographie/i }).sort('nom');
+    res.json({ success: true, examens });
+  } catch (err) { next(err); }
+};
+
+// Correction 2 (module 3/6) — expose les vraies factures liées au module,
+// jamais la collection Invoice entière (GET /finance reste réservé à
+// superadmin/adminclinique/comptable) : même principe que
+// laboratory.controller.js/radiology.controller.js::getOne, généralisé ici
+// à une liste car l'onglet Facturation d'Echographie.jsx est un tableau de
+// bord agrégé sur toutes les demandes, pas une seule fiche.
+// ── GET /echographie/factures
+exports.getFactures = async (req, res, next) => {
+  try {
+    const invoices = await Invoice.find({ source_module: 'echographie' }).sort('-date_facture').limit(200);
+    res.json({ success: true, invoices });
+  } catch (err) { next(err); }
+};
 
 // AUDIT-B3 — chargeait toute la collection (hors annulées) en mémoire pour
 // compter/bucketer en JS, y compris le graphique 6 mois. Remplacé par des
@@ -103,14 +138,19 @@ exports.getOne = async (req, res, next) => {
   try {
     const demande = await Echographie.findById(req.params.id);
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
-    res.json({ success: true, demande });
+    const invoice = await Invoice.findOne({ source_module: 'echographie', source_id: demande._id });
+    res.json({ success: true, demande, invoice });
   } catch (err) { next(err); }
 };
 
 // ── POST /echographie
 exports.create = async (req, res, next) => {
   try {
-    const demande = await Echographie.create(req.body);
+    // Correction 2 (module 3/6) — n'accepte `examen` que si c'est un vrai
+    // ObjectId ExamCatalogue, jamais fabriqué s'il est absent ou invalide
+    // (même garde que radiology.controller.js::create).
+    const examen = (req.body.examen && isObjectId(req.body.examen)) ? req.body.examen : undefined;
+    const demande = await Echographie.create({ ...req.body, examen });
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Nouvelle demande d'échographie ${demande.numero} — ${demande.patient || 'patient'}` });
     emitDashboardUpdate();
     res.status(201).json({ success: true, demande });
@@ -178,8 +218,35 @@ exports.saveRapport = async (req, res, next) => {
     const avant = await Echographie.findById(req.params.id).lean();
     const demande = await Echographie.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
+
+    // Correction 2 (module 3/6) — facture réelle générée uniquement à la
+    // validation du rapport (même moment du cycle de vie que
+    // radiology.controller.js::validation), uniquement si la demande
+    // référence un vrai ExamCatalogue — jamais de tarif inventé pour un
+    // type/sous_type en texte libre (ancien format, ou catégorie sans
+    // équivalent réel dans le catalogue aujourd'hui, ex: Doppler/Mammaire).
+    let factureGeneree = null;
+    if (rapport_statut === 'valide' && demande.examen && isObjectId(String(demande.examen))) {
+      const cat = await ExamCatalogue.findById(demande.examen);
+      const prix = Number(cat?.prix) || 0;
+      if (prix > 0) {
+        factureGeneree = await Invoice.create({
+          patient: demande.patient_ref || undefined,
+          patient_nom: demande.patient,
+          service_label: 'Échographie',
+          source_module: 'echographie',
+          source_id: demande._id,
+          created_by: req.user._id,
+          lignes: [{ libelle: cat.nom, categorie: 'imagerie', prix_unitaire: prix, quantite: 1, montant: prix }],
+          montant_ht: prix,
+          montant_ttc: prix,
+        });
+        await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: factureGeneree._id, ip: req.ip, message: `Facture ${factureGeneree.numero_facture} générée automatiquement depuis la validation du rapport d'échographie ${demande.numero}` });
+      }
+    }
+
     await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Rapport d'échographie ${demande.numero} enregistré${rapport_statut === 'valide' ? ' et validé' : ''}`, avant, apres: demande });
-    res.json({ success: true, demande });
+    res.json({ success: true, demande, invoice: factureGeneree });
   } catch (err) { next(err); }
 };
 

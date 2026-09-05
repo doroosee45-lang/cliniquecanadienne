@@ -22,6 +22,12 @@ const EchographieSchema = new mongoose.Schema({
   type:             { type: String },
   sous_type:        { type: String },
   motif:            { type: String },
+  // Correction 2 (module 3/6, relecture du 6 sept. 2026) — même pattern
+  // que ImagingResult.examen (radiology) : référence réelle et optionnelle
+  // vers ExamCatalogue, jamais fabriquée si absente. Permet de facturer
+  // réellement au moment de la validation du rapport (saveRapport) au lieu
+  // du calcul agrégé côté client fondé sur des tarifs codés en dur.
+  examen:           { type: mongoose.Schema.Types.ObjectId, ref: 'ExamCatalogue' },
   priorite: {
     type: String,
     enum: ['normale', 'semi_urgent', 'urgente'],
