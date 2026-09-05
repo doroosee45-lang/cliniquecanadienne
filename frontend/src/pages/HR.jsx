@@ -380,8 +380,6 @@ const DEMO_SANCTIONS = [];
 const DEMO_AUDIT = [];
 
 const MOIS_LABELS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
-const DEMO_EFFECTIF_MOIS = [];
-const DEMO_ABSENCE_MOIS  = [];
 
 const PLAN_LABEL = { travail:"Travail", garde:"Garde", conge:"Congé", repos:"Repos", absence:"Absent", astreinte:"Astreinte" };
 
@@ -476,7 +474,13 @@ export default function RessourcesHumaines() {
   // Charger les employés depuis l'API
   const loadEmployes = useCallback(async () => {
     try {
-      const { data } = await api.get('/hr');
+      // Sous-phase 5.1 (relecture du 6 sept. 2026) — GET /hr sans limite
+      // explicite se limite à 20 employés (défaut backend), faussant tout
+      // KPI/graphique agrégé sur l'effectif réel dès qu'une clinique dépasse
+      // ce seuil (aucune pagination client-side n'exploitait ce champ de
+      // toute façon — `page` restait un state mort). limit=1000 couvre tout
+      // effectif réaliste pour un seul établissement.
+      const { data } = await api.get('/hr?limit=1000');
       setEmployes((data.staff || []).map(normalizeEmp));
     } catch (err) {
       console.error('Erreur chargement employés:', err);
@@ -568,6 +572,53 @@ export default function RessourcesHumaines() {
     employes.forEach(e => { (map[e.poste] ||= []).push(e); });
     return map;
   }, [employes]);
+
+  // Sous-phase 5.1 (relecture du 6 sept. 2026) — "Effectif & Absences — 12
+  // mois" affichait DEMO_EFFECTIF_MOIS/DEMO_ABSENCE_MOIS, deux tableaux
+  // toujours vides. Effectif = nombre réel d'employés (tous statuts,
+  // dossier toujours en base — même principe de conservation que Patient)
+  // déjà embauchés (date_embauche réelle) à la fin de chaque mois civil de
+  // l'année en cours ; LIMITE réelle documentée : aucune date de départ
+  // n'est jamais enregistrée sur ce modèle (seul le statut actuel existe),
+  // donc ce cumul ne peut pas retirer un employé parti avant aujourd'hui —
+  // c'est un vrai décompte cumulé des embauches, pas un effectif "à
+  // l'instant T dans le passé" parfaitement reconstitué.
+  const effectifParMois = useMemo(() => {
+    const year = new Date().getFullYear();
+    return MOIS_LABELS.map((_, i) => {
+      const finMois = new Date(year, i + 1, 0, 23, 59, 59);
+      return employes.filter(e => e.date_embauche && new Date(e.date_embauche) <= finMois).length;
+    });
+  }, [employes]);
+  // Absences = vrais jours de congé approuvés (Staff.conges, déjà chargés
+  // en intégralité via GET /hr/leaves — jamais paginés), sommés par mois
+  // civil réel de début de congé.
+  const absencesParMois = useMemo(() => {
+    const year = new Date().getFullYear();
+    const totaux = new Array(12).fill(0);
+    conges.forEach(c => {
+      if (c.statut !== 'approuve' || !c.date_debut) return;
+      const d = new Date(c.date_debut);
+      if (d.getFullYear() !== year) return;
+      totaux[d.getMonth()] += (c.nb_jours || 0);
+    });
+    return totaux;
+  }, [conges]);
+
+  // Sous-phase 5.1 (relecture du 6 sept. 2026) — l'Organigramme affichait 4
+  // noms de responsables de département entièrement fabriqués (André
+  // Makosso, Paul Nkomo, Jacques Bongo, Fatima Diallo), sans aucun lien avec
+  // un vrai employé. Service.chef_service (ObjectId réel, déjà peuplé par
+  // GET /settings/services -> servicesReels) donne le vrai responsable
+  // quand il est assigné ; recherche par nom de service (insensible à la
+  // casse) puisque l'organigramme regroupe par libellé de département, pas
+  // par _id de Service. Honnête si non assigné ou service introuvable —
+  // jamais un nom inventé en repli.
+  const chefDuService = useCallback((nomDepartement) => {
+    const svc = servicesReels.find(s => (s.nom || '').toLowerCase().includes(nomDepartement.toLowerCase()));
+    const chef = svc?.chef_service;
+    return chef ? `${chef.prenom} ${chef.nom}` : "Non assigné";
+  }, [servicesReels]);
 
   // Pivot des créneaux plats (schedules) en grille employé × jour de la
   // semaine courante, pour le rendu du planning hebdomadaire.
@@ -1250,7 +1301,7 @@ export default function RessourcesHumaines() {
                     <div><h3>{I.trend} Effectif & Absences — 12 mois</h3><p>Évolution mensuelle</p></div>
                   </div>
                   <div style={{ padding:20 }}>
-                    <BarChart labels={MOIS_LABELS} data={DEMO_EFFECTIF_MOIS} color="#1B4F9E" />
+                    <BarChart labels={MOIS_LABELS} data={effectifParMois} color="#1B4F9E" />
                   </div>
                 </div>
                 <div className="rh-card fu">
@@ -1811,12 +1862,12 @@ export default function RessourcesHumaines() {
                   {/* Niveau 2 */}
                   <div style={{ display:"flex", gap:0, alignItems:"flex-start", width:"100%", justifyContent:"center" }}>
                     {[
-                      { icon:"💊",  label:"Administration", sub:"André Makosso", color:"var(--rm)", w:140 },
+                      { icon:"💊",  label:"Administration", sub:chefDuService("Administration"), color:"var(--rm)", w:140 },
                       { icon:"🩺",  label:"Médecins",       sub:`${medecins} médecins`, color:"var(--rb)", w:140 },
                       { icon:"💉",  label:"Infirmiers",     sub:`${infirmiers} infirmiers`, color:"var(--rt)", w:140 },
-                      { icon:"🔬",  label:"Laboratoire",    sub:"Paul Nkomo",   color:"var(--rp)", w:130 },
-                      { icon:"🩻",  label:"Imagerie",       sub:"Jacques Bongo",color:"var(--ro)", w:130 },
-                      { icon:"💊",  label:"Pharmacie",      sub:"Fatima Diallo",color:"var(--rg)", w:130 },
+                      { icon:"🔬",  label:"Laboratoire",    sub:chefDuService("Laboratoire"),   color:"var(--rp)", w:130 },
+                      { icon:"🩻",  label:"Imagerie",       sub:chefDuService("Imagerie"),color:"var(--ro)", w:130 },
+                      { icon:"💊",  label:"Pharmacie",      sub:chefDuService("Pharmacie"),color:"var(--rg)", w:130 },
                     ].map((dep, i, arr) => (
                       <div key={dep.label} style={{ display:"flex", flexDirection:"column", alignItems:"center" }}>
                         <div className="org-hline" style={{ width: i === 0 ? "50%" : i === arr.length-1 ? "50%" : "100%", alignSelf:i===0?"flex-end":i===arr.length-1?"flex-start":"center" }} />
@@ -2375,7 +2426,7 @@ export default function RessourcesHumaines() {
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20 }}>
                 <div className="rh-card fu">
                   <div className="rh-card-hdr"><div><h3>{I.trend} Évolution des absences — 12 mois</h3></div></div>
-                  <div style={{ padding:20 }}><BarChart labels={MOIS_LABELS} data={DEMO_ABSENCE_MOIS} color="#DC2626" /></div>
+                  <div style={{ padding:20 }}><BarChart labels={MOIS_LABELS} data={absencesParMois} color="#DC2626" /></div>
                 </div>
                 <div className="rh-card fu">
                   <div className="rh-card-hdr"><div><h3>Résumé mensuel</h3><p>Juin 2025</p></div></div>
