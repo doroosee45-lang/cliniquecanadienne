@@ -17,6 +17,7 @@ router.post('/',               protect, authorize(...BLOC_MANAGE), boC.createInt
 router.put('/:id',             protect, authorize(...BLOC_MANAGE), boC.updateIntervention);
 
 // Sous-ressources
+router.get('/:id/facture',     protect, authorize(...BLOC_ROLES),  boC.getFacture);
 router.post('/:id/cr',         protect, authorize(...BLOC_MANAGE), boC.saveCR);
 router.post('/:id/reveil',     protect, authorize(...BLOC_MANAGE), boC.saveReveil);
 // AUDIT-ANALYTICS-P5 — occupation réelle de salle

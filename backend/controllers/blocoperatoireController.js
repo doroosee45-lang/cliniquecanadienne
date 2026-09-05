@@ -1,9 +1,29 @@
 const DossierChirurgical = require('../models/DossierChirurgical');
 const Patient = require('../models/Patient');
 const User    = require('../models/User');
+const Invoice = require('../models/Invoice');
 const { logAction, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
+
+// Correction 2 (module 6/6, relecture du 6 sept. 2026) — LIMITE DOCUMENTÉE,
+// même constat que Chirurgie (Correction 2/5) : aucun catalogue tarifaire
+// réel n'existe dans ce système pour les actes de bloc opératoire (salle,
+// honoraires, consommables, anesthésie) — DossierChirurgical ne porte aucun
+// champ tarifaire réel, seulement du texte libre. Génère automatiquement
+// une facture ici obligerait à inventer un prix, exclu par ce chantier.
+// Expose uniquement une Invoice réelle si le personnel de facturation en a
+// créé une manuellement via le module Finance, en la liant à cette
+// intervention (source_module:'blocoperatoire' — distinct de 'chirurgie'
+// pour permettre de facturer séparément le volet bloc opératoire du volet
+// consultation/suivi chirurgical du même dossier).
+// GET /blocoperatoire/:id/facture
+exports.getFacture = async (req, res, next) => {
+  try {
+    const invoice = await Invoice.findOne({ source_module: 'blocoperatoire', source_id: req.params.id });
+    res.json({ success: true, invoice });
+  } catch (err) { next(err); }
+};
 
 // Salles du bloc opératoire (configuration statique)
 const SALLES_BLOC = [

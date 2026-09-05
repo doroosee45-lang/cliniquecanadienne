@@ -454,6 +454,17 @@ export default function BlocOperatoire() {
   const [search, setSearch]     = useState("");
   const [filterStatut, setFilter] = useState("");
   const [currentInterv, setCurrentInterv] = useState(null);
+  // Correction 2 (module 6/6, relecture du 6 sept. 2026) — vraie Invoice
+  // liée à cette intervention (blocoperatoireController.js::getFacture),
+  // jamais un calcul recomposé côté client. null tant qu'aucune facture
+  // réelle n'a été créée manuellement (module Finance) — aucun catalogue
+  // tarifaire réel n'existe pour les actes de bloc opératoire dans ce
+  // système (limite documentée, pas simulée — même constat que Chirurgie).
+  const [currentInvoice, setCurrentInvoice] = useState(null);
+  const loadInvoiceBloc = async (id) => {
+    try { const { data } = await api.get(`/blocoperatoire/${id}/facture`); setCurrentInvoice(data.invoice || null); }
+    catch { setCurrentInvoice(null); }
+  };
   const [saving, setSaving]     = useState(false);
   const [checklist, setChecklist] = useState({});
   const [consommables, setConsommables] = useState(DEMO_CONSO);
@@ -530,6 +541,7 @@ export default function BlocOperatoire() {
     setChecklist(CHECKLIST_ITEMS.reduce((acc, item) => ({ ...acc, [item.id]: d.checklist_done }), {}));
     setSection("general");
     setTab("dossier");
+    loadInvoiceBloc(d._id);
   };
 
   // ── Create intervention ────────────────────────────────────
@@ -1629,54 +1641,61 @@ export default function BlocOperatoire() {
               )}
 
               {/* ── FACTURATION ── */}
+              {/* Correction 2 (module 6/6, relecture du 6 sept. 2026) —
+                  calculait un montant entièrement inventé (Salle 150000,
+                  Honoraires chirurgien 200000, Honoraires anesthésiste
+                  100000, Consommables quantite*2000, Médicaments 45000,
+                  Stérilisation 20000) avec un "payé = 60%" arbitraire et
+                  trois boutons sans handler. LIMITE DOCUMENTÉE, pas
+                  simulée : même constat que Chirurgie — aucun catalogue
+                  tarifaire réel n'existe pour les actes de bloc opératoire
+                  (DossierChirurgical ne porte aucun champ tarifaire réel).
+                  Affiche la vraie Invoice si le personnel de facturation
+                  en a créé une manuellement via le module Finance en la
+                  liant à cette intervention, sinon un état honnête. */}
               {section === "facturation" && (
                 <div style={{ marginTop:20 }}>
                   <div className="bo-card">
                     <div className="bo-card-hdr"><h3>💰 Facturation du bloc opératoire</h3></div>
                     <div style={{ padding:20 }}>
-                      {(() => {
-                        const actes = [
-                          ["Utilisation de la salle d'opération", 150000],
-                          [`Honoraires chirurgien — ${currentInterv.chirurgien || "—"}`, 200000],
-                          [`Honoraires anesthésiste — ${currentInterv.anesthesiste || "—"}`, 100000],
-                          ["Consommables médicaux utilisés", consommables.reduce((s,c)=>s+(c.quantite*2000),0)],
-                          ["Médicaments anesthésiques", 45000],
-                          ["Frais de stérilisation & nettoyage", 20000],
-                        ];
-                        const total = actes.reduce((s,[,v])=>s+v,0);
-                        const paye = Math.round(total * 0.6);
-                        const reste = total - paye;
-                        return (
-                          <>
-                            <table className="bo-tbl" style={{ marginBottom:20 }}>
-                              <thead><tr><th>Prestation</th><th style={{textAlign:"right"}}>Montant (CFA)</th></tr></thead>
-                              <tbody>{actes.map(([lbl,val]) => <tr key={lbl}><td>{lbl}</td><td style={{textAlign:"right",fontWeight:600}}>{val.toLocaleString("fr-FR")}</td></tr>)}</tbody>
-                            </table>
-                            <div style={{ background:"#F4F9FD", borderRadius:14, padding:16 }}>
-                              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:12 }}>
-                                <div style={{ background:"#EBF5FB", borderRadius:10, padding:14, textAlign:"center" }}>
-                                  <div style={{ fontSize:18, fontWeight:800, color:"var(--bb)" }}>{total.toLocaleString("fr-FR")}</div>
-                                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>TOTAL (CFA)</div>
-                                </div>
-                                <div style={{ background:"#EAFAF1", borderRadius:10, padding:14, textAlign:"center" }}>
-                                  <div style={{ fontSize:18, fontWeight:800, color:"var(--bg)" }}>{paye.toLocaleString("fr-FR")}</div>
-                                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>PAYÉ (CFA)</div>
-                                </div>
-                                <div style={{ background:"#FDEDEC", borderRadius:10, padding:14, textAlign:"center" }}>
-                                  <div style={{ fontSize:18, fontWeight:800, color:"var(--br)" }}>{reste.toLocaleString("fr-FR")}</div>
-                                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>RESTE À PAYER</div>
-                                </div>
+                      {currentInvoice ? (
+                        <>
+                          <table className="bo-tbl" style={{ marginBottom:20 }}>
+                            <thead><tr><th>Prestation</th><th style={{textAlign:"right"}}>Montant (CFA)</th></tr></thead>
+                            <tbody>{currentInvoice.lignes.map((l,i) => <tr key={i}><td>{l.libelle}</td><td style={{textAlign:"right",fontWeight:600}}>{Number(l.montant||0).toLocaleString("fr-FR")}</td></tr>)}</tbody>
+                          </table>
+                          <div style={{ background:"#F4F9FD", borderRadius:14, padding:16 }}>
+                            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:12 }}>
+                              <div style={{ background:"#EBF5FB", borderRadius:10, padding:14, textAlign:"center" }}>
+                                <div style={{ fontSize:18, fontWeight:800, color:"var(--bb)" }}>{Number(currentInvoice.montant_ttc||0).toLocaleString("fr-FR")}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>TOTAL (CFA)</div>
                               </div>
-                              <Prog pct={Math.round(paye/total*100)} color="var(--bg)" />
+                              <div style={{ background:"#EAFAF1", borderRadius:10, padding:14, textAlign:"center" }}>
+                                <div style={{ fontSize:18, fontWeight:800, color:"var(--bg)" }}>{Number(currentInvoice.montant_paye||0).toLocaleString("fr-FR")}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>PAYÉ (CFA)</div>
+                              </div>
+                              <div style={{ background:"#FDEDEC", borderRadius:10, padding:14, textAlign:"center" }}>
+                                <div style={{ fontSize:18, fontWeight:800, color:"var(--br)" }}>{Number(currentInvoice.montant_restant||0).toLocaleString("fr-FR")}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>RESTE À PAYER</div>
+                              </div>
                             </div>
-                            <div style={{ display:"flex", gap:10, marginTop:16, flexWrap:"wrap" }}>
-                              <button className="bbtn bbtn-teal">{I.dl} Générer facture</button>
-                              <button className="bbtn bbtn-ghost">{I.print} Imprimer devis</button>
-                              <button className="bbtn bbtn-ghost">{I.link} Envoyer à la facturation</button>
-                            </div>
-                          </>
-                        );
-                      })()}
+                            {currentInvoice.montant_ttc > 0 && (
+                              <Prog pct={Math.round((currentInvoice.montant_paye / currentInvoice.montant_ttc) * 100)} color="var(--bg)" />
+                            )}
+                          </div>
+                          <div style={{ fontSize:11, color:"var(--cm)", marginTop:12 }}>N° {currentInvoice.numero_facture} — voir le module Finance pour encaisser.</div>
+                          <div style={{ display:"flex", gap:10, marginTop:16, flexWrap:"wrap" }}>
+                            <button className="bbtn bbtn-ghost" onClick={() => window.print()}>{I.print} Imprimer</button>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ padding:"20px 4px", color:"var(--cm)", fontSize:13, lineHeight:1.6 }}>
+                          Aucune facture réelle n'existe pour cette intervention. Ce système ne dispose d'aucun catalogue tarifaire réel pour les actes de bloc opératoire — établissez une facture manuelle via le module Finance, en la liant à cette intervention.
+                          <div style={{ marginTop:12 }}>
+                            <button className="bbtn bbtn-teal" onClick={() => navigate("/finance")}>{I.link} Aller au module Finance</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
