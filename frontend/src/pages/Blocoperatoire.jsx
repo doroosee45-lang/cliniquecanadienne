@@ -1389,7 +1389,10 @@ export default function BlocOperatoire() {
                           <input type="checkbox" checked={currentInterv.consentement_signe || false} onChange={e => setCurrentInterv(d => ({ ...d, consentement_signe:e.target.checked }))} style={{ width:16, height:16, accentColor:"var(--bg)" }} />
                           <span style={{ fontSize:13, fontWeight:600, color:"var(--bn)" }}>✅ Consentement éclairé signé</span>
                         </label>
-                        <button className="bbtn bbtn-ghost bbtn-sm">{I.dl} Générer le formulaire</button>
+                        {/* Sous-phase 5.2 — aucun onClick. Aucun moteur de
+                            génération de formulaire de consentement n'existe
+                            dans ce système. */}
+                        <button className="bbtn bbtn-ghost bbtn-sm" disabled title="Fonctionnalité en cours de développement — aucune génération réelle de formulaire n'existe encore." onClick={() => toast("🚧 Génération de formulaire non disponible — fonctionnalité en cours de développement.")}>{I.dl} Générer le formulaire</button>
                       </div>
                     </div>
                   </div>
@@ -1735,7 +1738,11 @@ export default function BlocOperatoire() {
                           <div style={{ fontSize:24 }}>{icon}</div>
                           <div style={{ fontWeight:700, color:"var(--bn)", fontSize:13 }}>{title}</div>
                           <div style={{ fontSize:11, color:"var(--cm)" }}>{desc}</div>
-                          <button className="bbtn bbtn-ghost bbtn-sm" style={{ marginTop:"auto" }} onClick={() => toast.success(`📄 Génération : ${title}...`)}>
+                          {/* Sous-phase 5.2 — faux succès (toast.success)
+                              sans génération réelle. Aucun moteur de
+                              génération de documents n'existe pour ces
+                              types dans ce système. */}
+                          <button className="bbtn bbtn-ghost bbtn-sm" style={{ marginTop:"auto" }} disabled title="Fonctionnalité en cours de développement — aucune génération réelle de document n'existe pour ce type." onClick={() => toast("🚧 Génération de documents non disponible — fonctionnalité en cours de développement.")}>
                             {I.dl} Générer
                           </button>
                         </div>
