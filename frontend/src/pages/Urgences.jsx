@@ -26,6 +26,9 @@ import {
   saisirResultatExamen,
   selectUrgencesKpis,
   selectUrgencesChart,
+  selectUrgencesIssues,
+  selectUrgencesRepartitionMotifs,
+  selectUrgencesFluxHoraire,
   selectUrgencesList,
   selectUrgencesTotal,
   selectUrgencesPage,
@@ -294,6 +297,15 @@ const TRIAGE_NIVEAUX = {
   vert:   { cls:"vert",   label:"Peu urgent",      icon:"🟢", color:"var(--triage-vert)",   desc:"Prise en charge < 2h" },
   bleu:   { cls:"bleu",   label:"Non urgent",      icon:"🔵", color:"var(--triage-bleu)",   desc:"Prise en charge < 4h" },
 };
+// Sous-phase 5.1 (relecture du 6 sept. 2026) — mêmes valeurs que l'enum réel
+// Urgence.decision (models/Urgence.js), pour l'onglet Statistiques
+// ("Issues des passages").
+const DECISION_CFG = {
+  retour_domicile: { label:"Retour domicile", icon:"✅", color:"var(--ug)" },
+  hospitalisation:  { label:"Hospitalisé",     icon:"🛏", color:"var(--ub)" },
+  transfert:        { label:"Transféré",       icon:"🚑", color:"var(--up)" },
+  deces:            { label:"Décédé",          icon:"💔", color:"var(--ur)" },
+};
 const STATUT_URG = {
   attente:       { cls:"orange", label:"En attente",       icon:"⏳" },
   triage:        { cls:"yellow", label:"En triage",        icon:"🔍" },
@@ -485,6 +497,9 @@ export default function Urgences() {
 
   // ── Redux state ────────────────────────────────────────────
   const kpis          = useSelector(selectUrgencesKpis);
+  const issues        = useSelector(selectUrgencesIssues);
+  const repartitionMotifs = useSelector(selectUrgencesRepartitionMotifs);
+  const fluxHoraire   = useSelector(selectUrgencesFluxHoraire);
   const urgences      = useSelector(selectUrgencesList);
   const total         = useSelector(selectUrgencesTotal);
   const currentPage   = useSelector(selectUrgencesPage);
@@ -1620,14 +1635,18 @@ export default function Urgences() {
           {tab === "stats" && (
             <div>
               <div style={{ fontSize: 16, fontWeight: 700, color: "var(--un)", marginBottom: 20 }}>Statistiques — Urgences</div>
+              {/* Sous-phase 5.1 (relecture du 6 sept. 2026) — onglet
+                  entièrement réécrit depuis GET /urgences/stats, réellement
+                  calculé (urgencesController.js::getStats étendu). Le "temps
+                  d'attente moy." et le graphique 6 mois étaient déjà réels
+                  et déjà chargés (fetchUrgencesStats), mais jamais câblés
+                  ici (selectUrgencesChart resté importé sans être utilisé
+                  nulle part dans ce fichier). */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 14, marginBottom: 24 }}>
                 {[
                   { color: "red",    val: kpis?.admissions_jour ?? "—",  lbl: "Admissions/jour",       sub: "toutes priorités" },
-                  { color: "orange", val: "28 min",              lbl: "Temps d'attente moy.",  sub: "tous niveaux" },
-                  { color: "blue",   val: "3h12",                lbl: "Durée moy. séjour",     sub: "passage complet" },
-                  { color: "green",  val: "78%",                 lbl: "Retours domicile",      sub: "sans hospitalisation" },
-                  { color: "teal",   val: "18%",                 lbl: "Hospitalisés",          sub: "depuis urgences" },
-                  { color: "purple", val: "4%",                  lbl: "Transférés",            sub: "vers autre établ." },
+                  { color: "orange", val: kpis?.temps_attente_moy != null ? `${kpis.temps_attente_moy} min` : "—", lbl: "Temps d'attente moy.", sub: "patients encore en attente" },
+                  { color: "blue",   val: kpis?.duree_moy_min != null ? `${Math.floor(kpis.duree_moy_min/60)}h${String(kpis.duree_moy_min%60).padStart(2,'0')}` : "—", lbl: "Durée moy. séjour", sub: "passage complet" },
                 ].map((k, i) => (
                   <div key={i} className={`urg-kpi ${k.color} urgfu`}>
                     <div className="kpi-val-urg">{k.val}</div>
@@ -1635,47 +1654,69 @@ export default function Urgences() {
                     <div className="kpi-sub-urg">{k.sub}</div>
                   </div>
                 ))}
+                {issues.map(({ decision, pct }) => {
+                  const cfg = DECISION_CFG[decision] || { label:decision };
+                  return (
+                    <div key={decision} className="urg-kpi green urgfu">
+                      <div className="kpi-val-urg">{pct}%</div>
+                      <div className="kpi-lbl-urg">{cfg.label}</div>
+                      <div className="kpi-sub-urg">des passages clôturés</div>
+                    </div>
+                  );
+                })}
               </div>
               <div className="urg-g32" style={{ marginBottom: 20 }}>
                 <div className="urg-card">
                   <div className="urg-card-hdr"><h3>{I.trend} Flux horaire des urgences</h3></div>
                   <div style={{ padding: 20 }}>
-                    <BarChart labels={["00","02","04","06","08","10","12","14","16","18","20","22"]} data={[3,2,1,4,8,14,18,15,19,16,12,7]} color="var(--ur)" />
+                    <BarChart labels={fluxHoraire.labels} data={fluxHoraire.data} color="var(--ur)" />
                   </div>
                 </div>
                 <div className="urg-card">
-                  <div className="urg-card-hdr"><h3>Répartition motifs</h3></div>
+                  <div className="urg-card-hdr"><h3>Répartition motifs</h3><p>Motifs réels les plus fréquents</p></div>
                   <div style={{ padding: 20 }}>
-                    <DoughnutChart labels={["Trauma","Doul. abdominale","Resp.","Cardio","Fièvre","Autre"]} data={[28,20,16,12,14,10]} colors={["var(--ur)","var(--uo)","var(--ub)","var(--up)","var(--ut)","#9CA3AF"]} />
+                    {repartitionMotifs.length === 0 ? (
+                      <div style={{ textAlign:"center", color:"var(--ucm)", fontSize:12, padding:20 }}>Aucun motif réel enregistré pour l'instant.</div>
+                    ) : (
+                      <DoughnutChart
+                        labels={repartitionMotifs.map(m => m.motif)}
+                        data={repartitionMotifs.map(m => m.pct)}
+                        colors={["var(--ur)","var(--uo)","var(--ub)","var(--up)","var(--ut)","#9CA3AF"]}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
               <div className="urg-g11">
+                {/* Sous-phase 5.1 — LIMITE DOCUMENTÉE : aucune zone/salle
+                    d'urgences n'est réellement modélisée avec une capacité
+                    de lits dans ce système (contrairement à
+                    Hospitalization/Room) — "Taux d'occupation par zone" est
+                    désactivé honnêtement plutôt que de fabriquer des taux. */}
                 <div className="urg-card">
                   <div className="urg-card-hdr"><h3>📊 Taux d'occupation par zone</h3></div>
-                  <div style={{ padding: 16 }}>
-                    {[["Salle d'attente",75,"var(--uo)"],["Salle de soins",88,"var(--ur)"],["Observation",60,"var(--ub)"],["Réanimation",50,"var(--ur)"],["Soins intensifs",100,"var(--ur)"]].map(([lbl,pct,col]) => (
-                      <div key={lbl} style={{ marginBottom: 12 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                          <span style={{ color: "var(--ucm)" }}>{lbl}</span>
-                          <strong style={{ color: pct >= 90 ? "var(--ur)" : "var(--un)" }}>{pct}%</strong>
-                        </div>
-                        <Prog pct={pct} color={pct >= 90 ? "var(--ur)" : col} />
-                      </div>
-                    ))}
+                  <div style={{ padding:32, textAlign:"center", color:"var(--ucm)" }}>
+                    <div style={{ fontSize:32, marginBottom:10, opacity:.4 }}>📊</div>
+                    <div style={{ fontSize:12 }}>🚧 Indicateur non disponible — aucune zone/salle d'urgences réelle n'est modélisée avec une capacité dans ce système.</div>
                   </div>
                 </div>
                 <div className="urg-card">
                   <div className="urg-card-hdr"><h3>🚪 Issues des passages</h3></div>
                   <div style={{ padding: 16 }}>
-                    {[["Retour domicile","✅",78,"var(--ug)"],["Hospitalisé","🛏",18,"var(--ub)"],["Transféré","🚑",4,"var(--up)"]].map(([lbl,ico,pct,col]) => (
-                      <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #EAF4FB" }}>
-                        <span style={{ fontSize: 14 }}>{ico}</span>
-                        <span style={{ fontSize: 12, color: "var(--ucm)", flex: 1 }}>{lbl}</span>
-                        <div style={{ width: 100 }}><Prog pct={pct} color={col} /></div>
-                        <strong style={{ fontSize: 13, color: "var(--un)", minWidth: 36, textAlign: "right" }}>{pct}%</strong>
-                      </div>
-                    ))}
+                    {issues.length === 0 && (
+                      <div style={{ textAlign:"center", color:"var(--ucm)", fontSize:12, padding:12 }}>Aucun passage clôturé avec décision renseignée pour l'instant.</div>
+                    )}
+                    {issues.map(({ decision, pct }) => {
+                      const cfg = DECISION_CFG[decision] || { label:decision, icon:"•", color:"var(--ub)" };
+                      return (
+                        <div key={decision} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #EAF4FB" }}>
+                          <span style={{ fontSize: 14 }}>{cfg.icon}</span>
+                          <span style={{ fontSize: 12, color: "var(--ucm)", flex: 1 }}>{cfg.label}</span>
+                          <div style={{ width: 100 }}><Prog pct={pct} color={cfg.color} /></div>
+                          <strong style={{ fontSize: 13, color: "var(--un)", minWidth: 36, textAlign: "right" }}>{pct}%</strong>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

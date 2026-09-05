@@ -170,9 +170,14 @@ export const retourAmbulance = createAsyncThunk(
 const urgencesSlice = createSlice({
   name: 'urgences',
   initialState: {
-    kpis:       { actives:0, attente:0, consultation:0, observation:0, critique:0, admissions_jour:0, sorties_jour:0, temps_attente_moy:0 },
+    kpis:       { actives:0, attente:0, consultation:0, observation:0, critique:0, admissions_jour:0, sorties_jour:0, temps_attente_moy:0, duree_moy_min:null },
     triageMap:  {},
     chart:      { labels:[], data:[] },
+    // Sous-phase 5.1 (relecture du 6 sept. 2026) — issues réelles des
+    // passages, motifs réels les plus fréquents, flux horaire réel.
+    issues:              [],
+    repartitionMotifs:   [],
+    fluxHoraire:         { labels:[], data:[] },
 
     urgences:   [],
     total:      0,
@@ -210,6 +215,9 @@ const urgencesSlice = createSlice({
         state.kpis      = action.payload.kpis      || state.kpis;
         state.triageMap = action.payload.triageMap || {};
         state.chart     = action.payload.chart     || state.chart;
+        state.issues            = action.payload.issues            || [];
+        state.repartitionMotifs = action.payload.repartition_motifs || [];
+        state.fluxHoraire       = action.payload.flux_horaire       || state.fluxHoraire;
       });
 
     // Urgences list
@@ -319,6 +327,9 @@ export const { setCurrentUrg, clearCurrentUrg, patchCurrentUrg, setFilters, setP
 export const selectUrgencesKpis        = (state) => state.urgences.kpis;
 export const selectUrgencesTriageMap   = (state) => state.urgences.triageMap;
 export const selectUrgencesChart       = (state) => state.urgences.chart;
+export const selectUrgencesIssues      = (state) => state.urgences.issues;
+export const selectUrgencesRepartitionMotifs = (state) => state.urgences.repartitionMotifs;
+export const selectUrgencesFluxHoraire = (state) => state.urgences.fluxHoraire;
 export const selectUrgencesList        = (state) => state.urgences.urgences;
 export const selectUrgencesTotal       = (state) => state.urgences.total;
 export const selectUrgencesPage        = (state) => state.urgences.page;

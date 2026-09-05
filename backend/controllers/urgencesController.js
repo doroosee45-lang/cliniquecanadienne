@@ -89,6 +89,65 @@ exports.getStats = async (req, res, next) => {
       chartValues.push(entry ? entry.count : 0);
     }
 
+    // Sous-phase 5.1 (relecture du 6 sept. 2026) — l'onglet Statistiques
+    // (Urgences.jsx) affichait "Durée moy. séjour" (3h12), "Retours
+    // domicile"/"Hospitalisés"/"Transférés" (78%/18%/4%), "Flux horaire" et
+    // "Répartition motifs" TOUS codés en dur — alors que ce même endpoint
+    // calcule déjà réellement temps_attente_moy et chart (6 mois), jamais
+    // câblés côté frontend (import selectUrgencesChart resté mort). Complété
+    // ici, même endpoint réel prolongé plutôt que dupliqué.
+    const [dureeAgg, decisionAgg, motifAgg, fluxHoraireAgg] = await Promise.all([
+      // Durée moyenne réelle des passages terminés (date_sortie réellement
+      // posée). $expr: date_sortie > date_arrivee exclut les documents dont
+      // les dates sont incohérentes (donnée corrompue/de test résiduelle) —
+      // une durée de passage négative ou nulle n'est jamais une vraie
+      // mesure, jamais moyennée avec les mesures réelles.
+      Urgence.aggregate([
+        { $match: { date_sortie: { $ne: null }, $expr: { $gt: ['$date_sortie', '$date_arrivee'] } } },
+        { $project: { dureeMin: { $divide: [{ $subtract: ['$date_sortie', '$date_arrivee'] }, 60000] } } },
+        { $group: { _id: null, sum: { $sum: '$dureeMin' }, count: { $sum: 1 } } },
+      ]),
+      // Issues réelles des passages (Urgence.decision, jamais deviné).
+      Urgence.aggregate([
+        { $match: { decision: { $ne: '' } } },
+        { $group: { _id: '$decision', count: { $sum: 1 } } },
+      ]),
+      // Motifs réels les plus fréquents (texte exact — aucune taxonomie de
+      // catégorie clinique n'existe réellement sur ce modèle, contrairement
+      // à niveau_triage/decision qui sont de vrais enums).
+      Urgence.aggregate([
+        { $match: { motif: { $ne: null, $ne: '' } } },
+        { $group: { _id: '$motif', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 6 },
+      ]),
+      // Flux horaire réel (arrivées par heure de la journée, tous jours confondus).
+      Urgence.aggregate([
+        { $group: { _id: { $hour: '$date_arrivee' }, count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const d = dureeAgg[0];
+    const duree_moy_min = d && d.count > 0 ? Math.round(d.sum / d.count) : null;
+
+    const decisionMap = {};
+    decisionAgg.forEach(x => { decisionMap[x._id] = x.count; });
+    const totalDecisions = Object.values(decisionMap).reduce((sum, n) => sum + n, 0);
+    const issues = ['retour_domicile', 'hospitalisation', 'transfert', 'deces']
+      .filter(k => decisionMap[k])
+      .map(k => ({ decision: k, pct: totalDecisions ? Math.round((decisionMap[k] / totalDecisions) * 100) : 0 }));
+
+    const totalMotifs = motifAgg.reduce((sum, m) => sum + m.count, 0);
+    const repartition_motifs = motifAgg.map(m => ({ motif: m._id, pct: totalMotifs ? Math.round((m.count / totalMotifs) * 100) : 0 }));
+
+    const fluxParHeure = {};
+    fluxHoraireAgg.forEach(h => { fluxParHeure[h._id] = h.count; });
+    const flux_horaire = { labels: [], data: [] };
+    for (let h = 0; h < 24; h += 2) {
+      flux_horaire.labels.push(String(h).padStart(2, '0'));
+      flux_horaire.data.push((fluxParHeure[h] || 0) + (fluxParHeure[h + 1] || 0));
+    }
+
     // AUDIT-M-C7 (Groupe C, Point 7) — ce contrôleur ne renvoyait jamais
     // `success` (0/21 réponses) — seul du fichier avec ambulances.controller.js
     // et chirurgieController.js à s'écarter du format standard {success,...}
@@ -99,9 +158,10 @@ exports.getStats = async (req, res, next) => {
     // jamais data.success).
     res.json({
       success: true,
-      kpis: { actives, attente, consultation, observation, critique, admissions_jour: admissionsJour, sorties_jour: sortiesJour, temps_attente_moy },
+      kpis: { actives, attente, consultation, observation, critique, admissions_jour: admissionsJour, sorties_jour: sortiesJour, temps_attente_moy, duree_moy_min },
       triageMap,
       chart: { labels, data: chartValues },
+      issues, repartition_motifs, flux_horaire,
     });
   } catch (err) { next(err); }
 };
