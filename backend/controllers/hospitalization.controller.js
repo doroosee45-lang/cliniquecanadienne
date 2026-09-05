@@ -240,7 +240,7 @@ exports.addNote = async (req, res, next) => {
 // singular/plural : clés de la réponse JSON (POST retourne { [singular]: item },
 //   GET retourne { [plural]: [...] }) — alignées sur ce que le frontend lit déjà
 //   (data.constante/data.constantes, data.traitement/data.traitements, etc.)
-function makeSubResource(field, singular, plural, { withAuteur = false } = {}) {
+function makeSubResource(field, singular, plural, { withAuteur = false, updatableFields = null } = {}) {
   return {
     get: async (req, res, next) => {
       try {
@@ -263,12 +263,33 @@ function makeSubResource(field, singular, plural, { withAuteur = false } = {}) {
         res.status(201).json({ success: true, [singular]: created });
       } catch (err) { next(err); }
     },
+    // Correction 3 (relecture du 6 sept. 2026, FE-BUG-005) — "Valider
+    // traitement"/"Saisir résultat examen" (Hospitalization.jsx) ne
+    // mettaient à jour que l'état React local (setTraitements/setExamens) :
+    // aucune route ne permettait de modifier un élément déjà ajouté, la
+    // saisie était donc perdue au rechargement. updatableFields limite
+    // explicitement ce qu'un client peut réassigner sur un sous-document
+    // déjà créé (jamais `date`/`personnel` a posteriori, par exemple).
+    update: updatableFields ? async (req, res, next) => {
+      try {
+        const hosp = await Hospitalization.findById(req.params.id);
+        if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
+        const item = hosp[field].id(req.params.sid);
+        if (!item) return res.status(404).json({ success: false, message: `${singular.charAt(0).toUpperCase()}${singular.slice(1)} introuvable.` });
+        for (const k of updatableFields) {
+          if (Object.prototype.hasOwnProperty.call(req.body || {}, k)) item[k] = req.body[k];
+        }
+        await hosp.save();
+        await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip, message: `${singular} mis à jour dans le dossier de séjour` });
+        res.json({ success: true, [singular]: item });
+      } catch (err) { next(err); }
+    } : undefined,
   };
 }
 
 const constanteRes    = makeSubResource('constantes', 'constante', 'constantes', { withAuteur: true });
-const traitementRes   = makeSubResource('traitements', 'traitement', 'traitements');
-const examenRes       = makeSubResource('examens', 'examen', 'examens');
+const traitementRes   = makeSubResource('traitements', 'traitement', 'traitements', { updatableFields: ['statut'] });
+const examenRes       = makeSubResource('examens', 'examen', 'examens', { updatableFields: ['statut', 'resultat'] });
 const visiteRes       = makeSubResource('visites', 'visite', 'visites');
 const prescriptionRes = makeSubResource('prescriptions_sejour', 'prescription', 'prescriptions');
 
@@ -276,8 +297,10 @@ exports.getConstantes          = constanteRes.get;
 exports.addConstante           = constanteRes.add;
 exports.getTraitements         = traitementRes.get;
 exports.addTraitement          = traitementRes.add;
+exports.updateTraitement       = traitementRes.update;
 exports.getExamens             = examenRes.get;
 exports.addExamen              = examenRes.add;
+exports.updateExamen           = examenRes.update;
 exports.getVisites             = visiteRes.get;
 exports.addVisite              = visiteRes.add;
 exports.getPrescriptionsSejour = prescriptionRes.get;

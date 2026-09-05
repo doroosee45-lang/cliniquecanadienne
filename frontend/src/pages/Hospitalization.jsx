@@ -727,6 +727,40 @@ export default function Hospitalisation() {
     }
   };
 
+  // ── SAISIR RÉSULTAT EXAMEN (Correction 3, FE-BUG-005) — auparavant
+  // window.prompt() + setExamens local uniquement : le résultat ne
+  // survivait pas au rechargement, aucune route ne le recevait jamais.
+  const saisirResultatExamen = async (exam) => {
+    const r = prompt("Saisir le résultat :");
+    if (!r) return;
+    const id = exam._id || exam.id;
+    const toastId = toast.loading("💾 Enregistrement du résultat...");
+    try {
+      const { data } = await api.put(`/hospitalization/${currentHosp._id}/examens/${id}`, { resultat: r, statut: "resultat" });
+      const maj = data.examen || { ...exam, resultat: r, statut: "resultat" };
+      setExamens(prev => prev.map(x => (x._id||x.id) === id ? maj : x));
+      toast.success("✅ Résultat enregistré", { id: toastId });
+    } catch {
+      toast.error("❌ Échec de l'enregistrement", { id: toastId });
+    }
+  };
+
+  // ── VALIDER TRAITEMENT (Correction 3, FE-BUG-005) — auparavant
+  // setTraitements local uniquement : la validation ne survivait pas au
+  // rechargement, aucune route ne recevait jamais cette mise à jour.
+  const validerTraitement = async (t) => {
+    const id = t._id || t.id;
+    const toastId = toast.loading("💾 Validation du traitement...");
+    try {
+      const { data } = await api.put(`/hospitalization/${currentHosp._id}/traitements/${id}`, { statut: "administre" });
+      const maj = data.traitement || { ...t, statut: "administre" };
+      setTraitements(prev => prev.map(x => (x._id||x.id) === id ? maj : x));
+      toast.success("✅ Traitement validé", { id: toastId });
+    } catch {
+      toast.error("❌ Échec de la validation", { id: toastId });
+    }
+  };
+
   // ── AJOUTER EXAMEN ────────────────────────────────────────
   const addExamen = async (e) => {
     e.preventDefault();
@@ -1497,7 +1531,7 @@ export default function Hospitalisation() {
                           </div>
                           <Badge cls={t.statut === "administre" ? "green" : "blue"}>{t.statut === "administre" ? "✅ Administré" : "📋 Planifié"}</Badge>
                           {t.statut === "planifie" && (
-                            <button className="hbtn hbtn-success hbtn-sm" onClick={() => setTraitements(prev => prev.map(x => (x._id||x.id) === (t._id||t.id) ? { ...x, statut:"administre" } : x))}>
+                            <button className="hbtn hbtn-success hbtn-sm" onClick={() => validerTraitement(t)}>
                               Valider
                             </button>
                           )}
@@ -1586,7 +1620,7 @@ export default function Hospitalisation() {
                                       {e.resultat ? (
                                         <span style={{ background:"#EAFAF1", borderRadius:6, padding:"3px 8px", fontSize:11 }}>{e.resultat}</span>
                                       ) : (
-                                        <button className="hbtn hbtn-ghost hbtn-sm" onClick={() => { const r = prompt("Saisir le résultat :"); if (r) setExamens(prev => prev.map(x => (x._id||x.id) === (e._id||e.id) ? { ...x, resultat:r, statut:"resultat" } : x)); }}>Saisir résultat</button>
+                                        <button className="hbtn hbtn-ghost hbtn-sm" onClick={() => saisirResultatExamen(e)}>Saisir résultat</button>
                                       )}
                                     </td>
                                   </tr>

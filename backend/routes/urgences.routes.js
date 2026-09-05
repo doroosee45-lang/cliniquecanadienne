@@ -20,6 +20,9 @@ router.get('/:id/prescriptions',            protect, authorize(...CAN), c.getPre
 router.post('/:id/prescriptions',           protect, authorize(...CAN), c.addPrescription);
 router.get('/:id/examens',                  protect, authorize(...CAN), c.getExamens);
 router.post('/:id/examens',                 protect, authorize(...CAN), c.addExamen);
+// Correction 3 (relecture du 6 sept. 2026, FE-BUG-005) — "Saisir résultat"
+// n'avait aucune route à appeler, seul un reducer Redux local existait.
+router.put('/:id/examens/:sid',             protect, authorize(...CAN), c.updateExamen);
 router.get('/:id/timeline',                 protect, authorize(...CAN), c.getTimeline);
 
 module.exports = router;

@@ -23,7 +23,7 @@ import {
   patchCurrentUrg,
   setFilters,
   setPage,
-  setExamenResultat,
+  saisirResultatExamen,
   selectUrgencesKpis,
   selectUrgencesChart,
   selectUrgencesList,
@@ -1480,7 +1480,14 @@ export default function Urgences() {
                                       {e.resultat ? (
                                         <span style={{ background: "#EAFAF1", borderRadius: 6, padding: "3px 8px", fontSize: 11 }}>{e.resultat}</span>
                                       ) : (
-                                        <button className="ubtn ubtn-ghost ubtn-sm" onClick={() => { const r = window.prompt("Saisir le résultat :"); if (r) dispatch(setExamenResultat({ examenId: e._id || e.id, resultat: r })); }}>Saisir</button>
+                                        <button className="ubtn ubtn-ghost ubtn-sm" onClick={async () => {
+                                          const r = window.prompt("Saisir le résultat :");
+                                          if (!r) return;
+                                          const toastId = toast.loading("💾 Enregistrement du résultat...");
+                                          const result = await dispatch(saisirResultatExamen({ id: currentUrg._id, examenId: e._id || e.id, resultat: r }));
+                                          if (saisirResultatExamen.fulfilled.match(result)) toast.success("✅ Résultat enregistré", { id: toastId });
+                                          else toast.error(`❌ ${result.payload || "Échec de l'enregistrement"}`, { id: toastId });
+                                        }}>Saisir</button>
                                       )}
                                     </td>
                                   </tr>

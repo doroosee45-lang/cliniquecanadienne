@@ -348,6 +348,26 @@ exports.addExamen = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Correction 3 (relecture du 6 sept. 2026, FE-BUG-005) — "Saisir résultat"
+// (Urgences.jsx) ne faisait que dispatch(setExamenResultat(...)), un reducer
+// local (urgencesSlice.js) sans aucun appel réseau : le résultat saisi était
+// perdu au rechargement, et de toute façon systématiquement écrasé par le
+// polling temps réel (30s) qui recharge l'examen depuis le serveur.
+// PUT /urgences/:id/examens/:sid
+exports.updateExamen = async (req, res, next) => {
+  try {
+    const u = await Urgence.findById(req.params.id);
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
+    const exam = u.examens.id(req.params.sid);
+    if (!exam) return res.status(404).json({ success: false, message: 'Examen introuvable' });
+    if (Object.prototype.hasOwnProperty.call(req.body, 'resultat')) exam.resultat = req.body.resultat;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'statut')) exam.statut = req.body.statut;
+    await u.save();
+    await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Résultat saisi pour l'examen (${exam.designation || '—'}) — dossier urgences ${u.numero}` });
+    res.json({ success: true, examen: exam });
+  } catch (err) { next(err); }
+};
+
 // GET /urgences/:id/timeline
 exports.getTimeline = async (req, res, next) => {
   try {

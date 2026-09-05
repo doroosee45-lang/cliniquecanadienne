@@ -113,6 +113,22 @@ export const addExamen = createAsyncThunk(
   }
 );
 
+// Correction 3 (relecture du 6 sept. 2026, FE-BUG-005) — remplace
+// setExamenResultat, un reducer purement local sans aucun appel réseau : le
+// résultat saisi était perdu au rechargement et écrasé par le polling
+// temps réel (30s) qui recharge l'examen depuis le serveur.
+export const saisirResultatExamen = createAsyncThunk(
+  'urgences/saisirResultatExamen',
+  async ({ id, examenId, resultat }, { rejectWithValue }) => {
+    try {
+      const { data } = await api.put(`/urgences/${id}/examens/${examenId}`, { resultat, statut: 'resultat' });
+      return data.examen;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur enregistrement résultat');
+    }
+  }
+);
+
 export const fetchAmbulances = createAsyncThunk(
   'urgences/fetchAmbulances',
   async (_, { rejectWithValue }) => {
@@ -185,12 +201,6 @@ const urgencesSlice = createSlice({
     setFilters(state, action)     { state.filters     = { ...state.filters, ...action.payload }; state.page = 1; },
     setPage(state, action)        { state.page        = action.payload; },
     clearError(state)             { state.error       = null; },
-    // mise à jour locale résultat examen
-    setExamenResultat(state, action) {
-      const { examenId, resultat } = action.payload;
-      const idx = state.examens.findIndex(e => (e._id || e.id) === examenId);
-      if (idx !== -1) { state.examens[idx].resultat = resultat; state.examens[idx].statut = 'resultat'; }
-    },
   },
 
   extraReducers: (builder) => {
@@ -277,6 +287,17 @@ const urgencesSlice = createSlice({
       })
       .addCase(addExamen.rejected,  (state, action) => { state.saving = false; state.error = action.payload; });
 
+    // Résultat d'examen (Correction 3, FE-BUG-005)
+    builder
+      .addCase(saisirResultatExamen.pending,   (state) => { state.saving = true; })
+      .addCase(saisirResultatExamen.fulfilled, (state, action) => {
+        state.saving = false;
+        if (!action.payload) return;
+        const idx = state.examens.findIndex(e => (e._id || e.id) === (action.payload._id || action.payload.id));
+        if (idx !== -1) state.examens[idx] = action.payload;
+      })
+      .addCase(saisirResultatExamen.rejected,  (state, action) => { state.saving = false; state.error = action.payload; });
+
     // Ambulances
     builder
       .addCase(fetchAmbulances.fulfilled, (state, action) => { state.ambulances = action.payload; })
@@ -292,7 +313,7 @@ const urgencesSlice = createSlice({
   },
 });
 
-export const { setCurrentUrg, clearCurrentUrg, patchCurrentUrg, setFilters, setPage, clearError, setExamenResultat } = urgencesSlice.actions;
+export const { setCurrentUrg, clearCurrentUrg, patchCurrentUrg, setFilters, setPage, clearError } = urgencesSlice.actions;
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
 export const selectUrgencesKpis        = (state) => state.urgences.kpis;
