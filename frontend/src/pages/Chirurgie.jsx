@@ -1441,7 +1441,11 @@ export default function Chirurgie() {
                           <div style={{ fontSize:24 }}>{icon}</div>
                           <div style={{ fontWeight:700, color:"var(--cn)", fontSize:13 }}>{title}</div>
                           <div style={{ fontSize:11, color:"var(--cm)" }}>{desc}</div>
-                          <button className="cbtn cbtn-ghost cbtn-sm" style={{ marginTop:"auto" }} onClick={() => toast.success(`📄 Génération : ${title}...`)}>
+                          {/* Sous-phase 5.2 — faux succès (toast.success)
+                              sans génération réelle. Aucun moteur de
+                              génération de documents chirurgicaux n'existe
+                              dans ce système. */}
+                          <button className="cbtn cbtn-ghost cbtn-sm" style={{ marginTop:"auto" }} disabled title="Fonctionnalité en cours de développement — aucune génération réelle de document n'existe pour ce type." onClick={() => toast("🚧 Génération de documents non disponible — fonctionnalité en cours de développement.")}>
                             {I.dl} Générer
                           </button>
                         </div>
