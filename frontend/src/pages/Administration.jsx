@@ -464,7 +464,16 @@ export default function Administration() {
         api.get("/admin/rooms"),
         api.get("/admin/suppliers"),
         api.get("/admin/tasks"),
-        api.get("/admin/audit?limit=20"),
+        // Sous-phase 5.4 — /admin/audit ne correspond à AUCUNE route réelle
+        // (/admin est un alias de settings.routes.js, qui n'a pas de
+        // sous-route /audit ; le vrai journal d'audit est monté à la racine,
+        // /audit, cf. routes/index.js et routes/audit.routes.js) : cet appel
+        // échouait silencieusement (404 → Promise.allSettled 'rejected' →
+        // repli DEMO_AUDIT) depuis la correction Sous-phase 5.2 qui avait câblé
+        // l'export/le rendu sur `audit` en le croyant réel sans vérifier le
+        // chargement lui-même. Corrigé ici, découvert en investiguant la
+        // même vraie source pour Sous-phase 5.4 (HR.jsx, Audit RH).
+        api.get("/audit?limit=20"),
         api.get("/finance/depenses?limit=10"),
         api.get("/settings"),
       ]);
@@ -479,7 +488,7 @@ export default function Administration() {
       setRooms(rRes.status === "fulfilled"  ? toArr(rRes.value.data.rooms  || rRes.value.data, DEMO_ROOMS)     : DEMO_ROOMS);
       setSuppliers(sRes.status === "fulfilled" ? toArr(sRes.value.data.suppliers || sRes.value.data, DEMO_SUPPLIERS) : DEMO_SUPPLIERS);
       setTasks(tRes.status === "fulfilled"  ? toArr(tRes.value.data.tasks  || tRes.value.data, DEMO_TASKS)     : DEMO_TASKS);
-      setAudit(aRes.status === "fulfilled"  ? toArr(aRes.value.data.logs   || aRes.value.data, DEMO_AUDIT)     : DEMO_AUDIT);
+      setAudit(aRes.status === "fulfilled"  ? toArr(aRes.value.data.events || aRes.value.data, DEMO_AUDIT)     : DEMO_AUDIT);
       // AUDIT-GLOBAL — "Transactions récentes" affichait 5 lignes fabriquées ;
       // charge maintenant les vraies dépenses (GET /finance/depenses, déjà réel).
       setDepenses(depRes.status === "fulfilled" ? toArr(depRes.value.data.depenses || depRes.value.data, []) : []);
@@ -538,8 +547,8 @@ export default function Administration() {
     const XLSX = await import('xlsx');
     const rows = audit.map(a => ({
       'Date': new Date(a.date).toLocaleString('fr-FR'),
-      'Type': a.type || '—', 'Action': a.action || '—',
-      'Utilisateur': a.utilisateur || '—', 'Détail': a.detail || '—',
+      'Module': a.module || '—', 'Action': a.action || '—',
+      'Utilisateur': a.utilisateur || '—', 'Détail': a.description || '—',
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -1491,16 +1500,23 @@ export default function Administration() {
 
               <div className="adm-card">
                 <div style={{ padding:"8px 0" }}>
+                  {/* Sous-phase 5.4 — a.type/a.detail ne correspondaient à
+                      aucun champ réel renvoyé par GET /audit (formatLog(),
+                      audit.controller.js) : le vrai champ de catégorisation
+                      est `action` (normalizeAction(), ex. creation/
+                      modification/suppression/validation/exportation/
+                      changement_mdp/changement_perms), et le vrai texte est
+                      `description` (log.message réel), pas `detail`. */}
                   {audit.map((a, i) => {
                     const typeCfg = {
                       creation:     { bg:"#ECFDF5", icon:"➕", col:"#059669" },
                       modification: { bg:"#EFF6FF", icon:"✏️", col:"#1B4F9E" },
                       validation:   { bg:"#F0FDFC", icon:"✅", col:"#0EA5A0" },
                       suppression:  { bg:"#FEF2F2", icon:"🗑️", col:"#DC2626" },
-                      securite:     { bg:"#FFF7ED", icon:"🔑", col:"#D97706" },
-                      document:     { bg:"#F5F3FF", icon:"📄", col:"#7C3AED" },
-                      export:       { bg:"#EEF2FF", icon:"📤", col:"#4F46E5" },
-                    }[a.type] || { bg:"#F8FAFD", icon:"⚙️", col:"#6B7280" };
+                      changement_mdp:   { bg:"#FFF7ED", icon:"🔑", col:"#D97706" },
+                      changement_perms: { bg:"#FFF7ED", icon:"🔑", col:"#D97706" },
+                      exportation:  { bg:"#EEF2FF", icon:"📤", col:"#4F46E5" },
+                    }[a.action] || { bg:"#F8FAFD", icon:"⚙️", col:"#6B7280" };
                     return (
                       <div key={a._id} className="audit-row" style={{ padding:"12px 20px", borderBottom: i < audit.length - 1 ? "1px solid #F3F7FF" : "" }}>
                         <div className="audit-dot" style={{ background:typeCfg.bg }}>
@@ -1511,7 +1527,7 @@ export default function Administration() {
                             <span style={{ fontWeight:700, color:"var(--cn)", fontSize:13 }}>{a.action}</span>
                             <Badge cls="gray" style={{ fontSize:10 }}>{a.utilisateur}</Badge>
                           </div>
-                          <div style={{ fontSize:12, color:"var(--cm)", marginTop:3 }}>{a.detail}</div>
+                          <div style={{ fontSize:12, color:"var(--cm)", marginTop:3 }}>{a.description}</div>
                         </div>
                         <div style={{ fontSize:11, color:"#9CA3AF", whiteSpace:"nowrap" }}>
                           {new Date(a.date).toLocaleString("fr-FR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" })}
