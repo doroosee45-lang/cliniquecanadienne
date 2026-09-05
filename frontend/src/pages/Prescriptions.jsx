@@ -376,6 +376,11 @@ export default function Ordonnances() {
 
   // Form
   const [formOrd, setFormOrd]       = useState(EMPTY_ORD);
+  // Correction 2 (relecture du 6 sept. 2026, FE-BUG-004) — champs des
+  // modales Renouvellement/Annulation, jusqu'ici saisis sans jamais être
+  // transmis (renewOrd/cancelOrd postaient sans body utile).
+  const [renewForm, setRenewForm]   = useState({ date_expiration: "", note: "" });
+  const [annulMotif, setAnnulMotif] = useState("");
 
   // Médicaments dynamiques
   const addMed   = () => setFormOrd(f => ({ ...f, medicaments:[...f.medicaments,{ ...EMPTY_MED, id:Date.now() }] }));
@@ -497,11 +502,13 @@ export default function Ordonnances() {
   // ── Renouveler ─────────────────────────────────────────────
   const renewOrd = async () => {
     if (!currentOrd) return;
+    if (!renewForm.date_expiration) { toast.error("Renseignez la nouvelle date d'expiration."); return; }
     setSaving(true);
     try {
-      await api.post(`/prescriptions/${currentOrd._id}/renouveler`);
+      await api.post(`/prescriptions/${currentOrd._id}/renouveler`, { date_expiration: renewForm.date_expiration, note: renewForm.note });
       toast.success("🔄 Ordonnance renouvelée — un brouillon a été créé.");
       setModalRenew(false);
+      setRenewForm({ date_expiration: "", note: "" });
       loadOrds();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erreur renouvellement.");
@@ -531,13 +538,21 @@ export default function Ordonnances() {
   // ── Annuler ────────────────────────────────────────────────
   const cancelOrd = async () => {
     if (!currentOrd) return;
+    if (!annulMotif.trim()) { toast.error("Indiquez le motif d'annulation."); return; }
     setSaving(true);
     try {
-      await api.put(`/prescriptions/${currentOrd._id}/cancel`, {});
+      // AUDIT-ELEVE-3 (relecture du 6 sept. 2026) — le catch ci-dessous
+      // marquait l'ordonnance "annulee" côté état local même si l'appel
+      // réseau échouait réellement (même famille que FE-BUG-002 relevé
+      // ailleurs) : hors périmètre de la Correction 2 (qui porte
+      // uniquement sur le motif jamais transmis), documenté ici sans être
+      // corrigé — le comportement du catch n'a pas été modifié.
+      await api.put(`/prescriptions/${currentOrd._id}/cancel`, { motif: annulMotif });
       toast.success("🚫 Ordonnance annulée");
-      setCurrent(prev => ({ ...prev, statut:"annulee" }));
+      setCurrent(prev => ({ ...prev, statut:"annulee", motif_annulation: annulMotif }));
       setOrds(prev => prev.map(o => o._id === currentOrd._id ? { ...o, statut:"annulee" } : o));
       setModalAnnul(false);
+      setAnnulMotif("");
     } catch {
       setCurrent(prev => ({ ...prev, statut:"annulee" }));
       setModalAnnul(false);
@@ -928,7 +943,7 @@ export default function Ordonnances() {
 
                                 {/* Renouveler */}
                                 {!["annulee"].includes(ord.statut) && (
-                                  <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrent(ord); setModalRenew(true); }} title="Renouveler">{I.refresh}</button>
+                                  <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrent(ord); setRenewForm({ date_expiration: "", note: "" }); setModalRenew(true); }} title="Renouveler">{I.refresh}</button>
                                 )}
                               </div>
                             </td>
@@ -1305,8 +1320,8 @@ export default function Ordonnances() {
                         <button className="obtn obtn-teal" disabled={saving} onClick={() => updateOrd({ medecin:currentOrd.medecin, specialite:currentOrd.specialite, date_prescription:currentOrd.date_prescription, date_expiration:currentOrd.date_expiration, signature:currentOrd.signature, note_confidentielle:currentOrd.note_confidentielle })}>
                           {I.check} {saving?"...":"Valider et signer"}
                         </button>
-                        <button className="obtn obtn-danger obtn-sm" onClick={() => setModalAnnul(true)}>🚫 Annuler l'ordonnance</button>
-                        <button className="obtn obtn-ghost" onClick={() => setModalRenew(true)}>{I.refresh} Renouveler</button>
+                        <button className="obtn obtn-danger obtn-sm" onClick={() => { setAnnulMotif(""); setModalAnnul(true); }}>🚫 Annuler l'ordonnance</button>
+                        <button className="obtn obtn-ghost" onClick={() => { setRenewForm({ date_expiration: "", note: "" }); setModalRenew(true); }}>{I.refresh} Renouveler</button>
                       </div>
                     </div>
                   </div>
@@ -1580,7 +1595,7 @@ export default function Ordonnances() {
                                 <td>
                                   <div style={{ display:"flex", gap:4 }}>
                                     <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:10 }} onClick={() => { openOrd(ord); setSection("impression"); }} title="Voir">👁 Voir</button>
-                                    <button className="obtn obtn-teal obtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrent(ord); setModalRenew(true); }} title="Renouveler">{I.refresh}</button>
+                                    <button className="obtn obtn-teal obtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrent(ord); setRenewForm({ date_expiration: "", note: "" }); setModalRenew(true); }} title="Renouveler">{I.refresh}</button>
                                   </div>
                                 </td>
                               </tr>
@@ -1802,11 +1817,11 @@ export default function Ordonnances() {
             </div>
             <div>
               <label className="olbl">Nouvelle date d'expiration *</label>
-              <input type="date" className="oinp" min={new Date().toISOString().substring(0,10)} />
+              <input type="date" className="oinp" min={new Date().toISOString().substring(0,10)} value={renewForm.date_expiration} onChange={e => setRenewForm(f => ({ ...f, date_expiration: e.target.value }))} />
             </div>
             <div>
               <label className="olbl">Note de renouvellement</label>
-              <textarea className="oinp" rows={2} placeholder="Raison du renouvellement, modifications éventuelles..." />
+              <textarea className="oinp" rows={2} placeholder="Raison du renouvellement, modifications éventuelles..." value={renewForm.note} onChange={e => setRenewForm(f => ({ ...f, note: e.target.value }))} />
             </div>
             <div className="al-ia" style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
               <span>🤖</span>
@@ -1839,7 +1854,7 @@ export default function Ordonnances() {
             </div>
             <div>
               <label className="olbl">Motif d'annulation *</label>
-              <textarea className="oinp" rows={3} placeholder="Ex: Erreur de prescription, changement de traitement, contre-indication découverte..." />
+              <textarea className="oinp" rows={3} placeholder="Ex: Erreur de prescription, changement de traitement, contre-indication découverte..." value={annulMotif} onChange={e => setAnnulMotif(e.target.value)} />
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="obtn obtn-ghost" onClick={() => setModalAnnul(false)}>Retour</button>

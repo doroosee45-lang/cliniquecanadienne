@@ -90,14 +90,18 @@ exports.update = async (req, res, next) => {
 
 exports.cancel = async (req, res, next) => {
   try {
+    // Correction 2 (relecture du 6 sept. 2026, FE-BUG-004) — le motif saisi
+    // dans la modale d'annulation (Prescriptions.jsx) n'était jamais transmis
+    // ni persisté ; ce contrôleur ignorait tout req.body.
+    const { motif } = req.body || {};
     const avant = await Prescription.findById(req.params.id);
     const prescription = await Prescription.findByIdAndUpdate(
       req.params.id,
-      { statut: 'annulee' },
+      { statut: 'annulee', motif_annulation: motif || undefined },
       { new: true }
     );
     if (!prescription) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'CANCEL', module: 'prescriptions', entite_id: prescription._id, ip: req.ip, avant, apres: prescription });
+    await logAction({ utilisateur: req.user._id, action: 'CANCEL', module: 'prescriptions', entite_id: prescription._id, ip: req.ip, message: motif ? `Ordonnance ${prescription.numero_rx} annulée — motif : ${motif}` : `Ordonnance ${prescription.numero_rx} annulée`, avant, apres: prescription });
     res.json({ success: true, prescription });
   } catch (err) { next(err); }
 };
@@ -199,6 +203,12 @@ exports.publier = async (req, res, next) => {
 // ── RENOUVELER ────────────────────────────────────────────────────────────────
 exports.renouveler = async (req, res, next) => {
   try {
+    // Correction 2 (relecture du 6 sept. 2026, FE-BUG-004) — la nouvelle
+    // date d'expiration et la note saisies dans la modale de renouvellement
+    // (Prescriptions.jsx) n'étaient jamais transmises ; ce contrôleur
+    // ignorait tout req.body et laissait le hook pre('save') imposer +30
+    // jours dans tous les cas.
+    const { date_expiration, note } = req.body || {};
     const original = await Prescription.findById(req.params.id)
       .populate('patient', 'nom prenom email')
       .populate('medecin', 'nom prenom');
@@ -211,6 +221,8 @@ exports.renouveler = async (req, res, next) => {
       diagnostic: original.diagnostic,
       statut:     'brouillon',
       interactions_detectees: original.interactions_detectees,
+      date_expiration: date_expiration ? new Date(date_expiration) : undefined,
+      note_renouvellement: note || undefined,
     });
     await logAction({ utilisateur: req.user._id, action: 'RENEW', module: 'prescriptions', entite_id: renouvellement._id, ip: req.ip, message: `Renouvellement de ${original.numero_rx}` });
     emitActivity({ module: 'prescriptions', action: 'Renouvellement ordonnance', detail: `Depuis ${original.numero_rx}`, icon: '🔄', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });

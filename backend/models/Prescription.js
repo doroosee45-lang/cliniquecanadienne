@@ -25,6 +25,12 @@ const PrescriptionSchema = new Schema({
   publie_par:       { type: Schema.Types.ObjectId, ref: 'User' },
   email_patient_envoye: { type: Boolean, default: false },
   notif_patient_envoyee: { type: Boolean, default: false },
+  // Correction 2 (relecture du 6 sept. 2026, FE-BUG-004) — "Note de
+  // renouvellement" et "Motif d'annulation" (Prescriptions.jsx) étaient
+  // saisis puis jamais envoyés au serveur (renewOrd/cancelOrd postaient
+  // sans body utile) : aucun champ n'existait même ici pour les recevoir.
+  note_renouvellement: String,
+  motif_annulation:    String,
 }, { timestamps: true });
 
 PrescriptionSchema.pre('save', async function(next) {
@@ -33,7 +39,12 @@ PrescriptionSchema.pre('save', async function(next) {
     const year = new Date().getFullYear();
     const seq = await nextSequence(`prescription-${year}`);
     this.numero_rx = `RX-${year}-${String(seq).padStart(5, '0')}`;
-    this.date_expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    // Correction 2 (relecture du 6 sept. 2026) — écrasait inconditionnellement
+    // date_expiration, y compris quand renouveler() la posait déjà depuis la
+    // "Nouvelle date d'expiration" choisie par l'utilisateur (même bug déjà
+    // corrigé sur Invoice.date_echeance, balayage T5.2) : +30 jours reste le
+    // défaut légitime quand rien n'est fourni, mais seulement dans ce cas.
+    if (!this.date_expiration) this.date_expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   }
   next();
 });
