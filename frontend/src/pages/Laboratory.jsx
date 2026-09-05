@@ -433,6 +433,11 @@ export default function Laboratoire() {
   const [search, setSearch]       = useState("");
   const [filterStatut, setFilter] = useState("");
   const [currentAnalyse, setCurrentAnalyse] = useState(null);
+  // Correction 5 (relecture du 5 sept. 2026) — vraie facture liée à cette
+  // analyse (laboratory.controller.js::validate, créée depuis le vrai
+  // catalogue ExamCatalogue), jamais un recalcul côté client. null tant que
+  // l'analyse n'est pas validée ou n'a donné lieu à aucune facture réelle.
+  const [currentInvoice, setCurrentInvoice] = useState(null);
   const [saving, setSaving]       = useState(false);
   const [kpis, setKpis]           = useState({ total: 0, en_attente: 0, en_cours: 0, termines: 0, valides: 0, critiques: 0 });
 
@@ -516,6 +521,12 @@ export default function Laboratoire() {
   // ── Open analyse ──────────────────────────────────────────
   const openAnalyse = (a) => {
     setCurrentAnalyse(a);
+    setCurrentInvoice(null);
+    // Correction 5 — charge la vraie facture liée (si l'analyse est déjà
+    // validée), jamais un calcul recomposé côté client.
+    api.get(`/laboratory/${a._id}`)
+      .then(({ data }) => setCurrentInvoice(data.invoice || null))
+      .catch(() => setCurrentInvoice(null));
     setSection("patient");
     setTab("dossier");
     // Init résultats form
@@ -615,6 +626,7 @@ export default function Laboratoire() {
       const { data } = await api.put(`/laboratory/${currentAnalyse._id}/validate`, payload);
       toast.success(est_critique ? "🏷️ Analyse validée — résultat critique, médecin notifié" : "🏷️ Analyse validée avec succès");
       setCurrentAnalyse(prev => ({ ...prev, ...payload, ...(data.result || {}) }));
+      setCurrentInvoice(data.invoice || null);
       setAnalyses(prev => prev.map(a => a._id === currentAnalyse._id ? { ...a, statut: "valide" } : a));
       setModalValider(false);
       loadStats();
@@ -1331,50 +1343,53 @@ export default function Laboratoire() {
                 )}
 
                 {/* ── FACTURATION ── */}
+                {/* Correction 5 (relecture du 5 sept. 2026) — affichait un
+                    calcul recomposé côté client depuis EXAM_CATALOGUE (tarifs
+                    fixes codés en dur), sans aucun lien réel avec le module
+                    Finance — le pattern déjà dénoncé par l'audit (FLOW-002,
+                    Phase 0). Affiche désormais la VRAIE facture (créée par
+                    laboratory.controller.js::validate à partir du vrai
+                    catalogue ExamCatalogue), ou un état honnête d'absence de
+                    facture — jamais un montant recalculé localement. */}
                 {section === "facturation" && (
                   <div style={{ marginTop:20 }}>
                     <div className="lab-card">
                       <div className="lab-card-hdr"><h3>💰 Facturation des analyses</h3></div>
                       <div style={{ padding:20 }}>
-                        <table className="lab-tbl" style={{ marginBottom:20 }}>
-                          <thead>
-                            <tr><th>Analyse</th><th>Prix unitaire (CFA)</th></tr>
-                          </thead>
-                          <tbody>
-                            {(currentAnalyse.examens_demandes || []).map(eid => {
-                              let prix = 0, label = eid;
-                              Object.values(EXAM_CATALOGUE).forEach(cat => {
-                                const ex = cat.examens.find(e => e.id === eid);
-                                if (ex) { prix = ex.prix; label = ex.label; }
-                              });
-                              return (
-                                <tr key={eid}>
-                                  <td>{label}</td>
-                                  <td style={{ fontWeight:600 }}>{prix.toLocaleString("fr-FR")}</td>
+                        {currentInvoice ? (
+                          <>
+                            <table className="lab-tbl" style={{ marginBottom:20 }}>
+                              <thead>
+                                <tr><th>Analyse</th><th>Prix unitaire (CFA)</th></tr>
+                              </thead>
+                              <tbody>
+                                {currentInvoice.lignes.map((l, i) => (
+                                  <tr key={i}>
+                                    <td>{l.libelle}</td>
+                                    <td style={{ fontWeight:600 }}>{l.montant.toLocaleString("fr-FR")}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot>
+                                <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)" }}>
+                                  <td style={{ fontWeight:800, fontSize:15, color:"var(--ln)" }}>TOTAL — {currentInvoice.numero_facture}</td>
+                                  <td style={{ fontWeight:800, fontSize:16, color:"var(--lb)" }}>
+                                    {currentInvoice.montant_ttc.toLocaleString("fr-FR")} CFA
+                                  </td>
                                 </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot>
-                            <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)" }}>
-                              <td style={{ fontWeight:800, fontSize:15, color:"var(--ln)" }}>TOTAL</td>
-                              <td style={{ fontWeight:800, fontSize:16, color:"var(--lb)" }}>
-                                {getPrixTotal(currentAnalyse.examens_demandes || []).toLocaleString("fr-FR")} CFA
-                              </td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
-                          <div style={{ display:"flex", gap:8 }}>
-                            <Badge cls={currentAnalyse.paye ? "green" : "orange"}>
-                              {currentAnalyse.paye ? "✅ Payé" : "⏳ En attente de paiement"}
+                              </tfoot>
+                            </table>
+                            <Badge cls={currentInvoice.statut === "payee" ? "green" : "orange"}>
+                              {currentInvoice.statut === "payee" ? "✅ Payée" : "⏳ En attente de paiement"} — voir module Finance pour encaisser
                             </Badge>
+                          </>
+                        ) : (
+                          <div style={{ padding:"24px 4px", color:"var(--lm)", fontSize:13, lineHeight:1.6 }}>
+                            {currentAnalyse.statut === "valide"
+                              ? "Aucune facture réelle n'a été générée pour cette analyse : les examens demandés ne référencent pas d'entrée réelle du catalogue (saisie antérieure à ce correctif, ou examens en texte libre)."
+                              : "Aucune facture pour l'instant — une vraie facture est générée automatiquement, à partir du catalogue réel des examens, au moment de la validation de l'analyse."}
                           </div>
-                          <div style={{ display:"flex", gap:8 }}>
-                            <button className="lbtn lbtn-teal lbtn-sm">{I.dl} Générer facture</button>
-                            <button className="lbtn lbtn-ghost lbtn-sm">{I.link} Envoyer à la facturation</button>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                   </div>

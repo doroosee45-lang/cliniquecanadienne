@@ -1,7 +1,10 @@
 const LabResult = require('../models/LabResult');
 const ExamCatalogue = require('../models/ExamCatalogue');
+const Invoice = require('../models/Invoice');
 const { logAction, createNotification, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+
+const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
 exports.getStats = async (req, res, next) => {
   try {
@@ -72,7 +75,12 @@ exports.getOne = async (req, res, next) => {
       .populate('medecin_prescripteur', 'nom prenom')
       .populate('examen');
     if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
-    res.json({ success: true, result });
+    // Correction 5 — vraie facture liée (créée par validate() ci-dessous),
+    // jamais un calcul recomposé côté frontend à partir d'un catalogue
+    // fictif. null si l'analyse n'est pas encore validée ou n'a donné lieu
+    // à aucune facture réelle (cf. limite documentée dans validate()).
+    const invoice = await Invoice.findOne({ source_module: 'laboratoire', source_id: result._id });
+    res.json({ success: true, result, invoice });
   } catch (err) { next(err); }
 };
 
@@ -81,8 +89,6 @@ exports.create = async (req, res, next) => {
     // ── Normalisation des champs du formulaire ──────────────────
     const patient = req.body.patient || req.body.patient_id;
     if (!patient) return res.status(400).json({ success: false, message: 'Patient obligatoire.' });
-
-    const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v));
 
     // medecin_prescripteur : ObjectId ou texte libre
     let medecin_prescripteur = null;
@@ -182,6 +188,42 @@ exports.validate = async (req, res, next) => {
 
     if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
 
+    // Correction 5 (relecture du 5 sept. 2026) — l'onglet "Facturation" de
+    // Laboratory.jsx calculait un montant côté client depuis un catalogue
+    // d'examens codé en dur (tarifs fixes arbitraires), sans lien réel avec
+    // le module Finance — le pattern déjà dénoncé par l'audit pour
+    // Consultations/Hospitalisation (FLOW-002, Phase 0). Source de tarif
+    // réelle déjà existante et vérifiée avant d'en inventer une :
+    // ExamCatalogue.prix (type:'laboratoire'), déjà exposé par
+    // GET /laboratory/catalogue et réellement peuplé (utils/seed.js).
+    // examens_demandes ne contient un vrai ObjectId ExamCatalogue que si le
+    // frontend l'a réellement sélectionné depuis ce catalogue (voir
+    // Laboratory.jsx) — une entrée en texte libre / ancien format ne
+    // contribue jamais au montant, jamais de tarif inventé pour compenser.
+    const idsReels = (result.examens_demandes || []).filter(isObjectId);
+    let factureGeneree = null;
+    if (idsReels.length > 0) {
+      const examensCatalogue = await ExamCatalogue.find({ _id: { $in: idsReels } });
+      const lignes = examensCatalogue
+        .filter(ex => Number(ex.prix) > 0)
+        .map(ex => ({ libelle: ex.nom, categorie: 'laboratoire', prix_unitaire: ex.prix, quantite: 1, montant: ex.prix }));
+      const total = lignes.reduce((s, l) => s + l.montant, 0);
+      if (total > 0) {
+        factureGeneree = await Invoice.create({
+          patient: result.patient?._id,
+          patient_nom: result.patient ? `${result.patient.prenom || ''} ${result.patient.nom || ''}`.trim() : result.patient_nom,
+          service_label: 'Laboratoire',
+          source_module: 'laboratoire',
+          source_id: result._id,
+          created_by: req.user._id,
+          lignes,
+          montant_ht: total,
+          montant_ttc: total,
+        });
+        await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: factureGeneree._id, ip: req.ip, message: `Facture ${factureGeneree.numero_facture} générée automatiquement depuis la validation de l'analyse ${result.numero}` });
+      }
+    }
+
     if (est_critique && result.medecin_prescripteur) {
       await createNotification({
         destinataire: result.medecin_prescripteur._id,
@@ -207,7 +249,7 @@ exports.validate = async (req, res, next) => {
       userName: `${req.user.prenom} ${req.user.nom}`,
     });
     emitDashboardUpdate();
-    res.json({ success: true, result });
+    res.json({ success: true, result, invoice: factureGeneree });
   } catch (err) { next(err); }
 };
 

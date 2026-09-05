@@ -24,6 +24,13 @@ const InvoiceSchema = new Schema({
   // consultation/un séjour, et réciproquement.
   consultation:    { type: Schema.Types.ObjectId, ref: 'Consultation' },
   hospitalisation: { type: Schema.Types.ObjectId, ref: 'Hospitalization' },
+  // Correction 5 (relecture du 5 sept. 2026) — même principe que
+  // consultation/hospitalisation ci-dessus, généralisé plutôt que d'ajouter
+  // un champ ObjectId dédié par module (laboratoire, imagerie, échographie,
+  // urgences, chirurgie, bloc opératoire) : ce pattern scale correctement
+  // au nombre de modules réellement concernés par ce chantier.
+  source_module:   { type: String, enum: ['laboratoire','imagerie','echographie','urgences','chirurgie','blocoperatoire'] },
+  source_id:       { type: Schema.Types.ObjectId },
   created_by:     { type: Schema.Types.ObjectId, ref: 'User' },
   date_facture: { type: Date, default: Date.now },
   date_echeance: Date,
@@ -71,5 +78,6 @@ InvoiceSchema.pre('save', async function(next) {
 
 InvoiceSchema.index({ patient: 1, date_facture: -1 });
 InvoiceSchema.index({ statut: 1 });
+InvoiceSchema.index({ source_module: 1, source_id: 1 });
 
 module.exports = mongoose.model('Invoice', InvoiceSchema);

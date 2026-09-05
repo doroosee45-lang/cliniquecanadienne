@@ -32,11 +32,16 @@ function normalizeInvoice(inv) {
 
 exports.getAll = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, statut, patient } = req.query;
+    const { page = 1, limit = 20, statut, patient, source_module, source_id } = req.query;
     const filter = {};
     const statutRevMap = { non_paye:'emise', paye:'payee', partiellement_paye:'partiellement_payee', annule:'annulee' };
     if (statut) filter.statut = statutRevMap[statut] || statut;
     if (patient) filter.$or = [{ patient }, { patient_nom: { $regex: escapeRegex(patient), $options: 'i' } }];
+    // Correction 5 — permet aux onglets "Facturation" cliniques (laboratoire,
+    // imagerie, échographie, urgences, chirurgie, bloc opératoire) de charger
+    // la vraie facture liée à un acte précis, au lieu d'un calcul factice.
+    if (source_module) filter.source_module = source_module;
+    if (source_id)     filter.source_id     = source_id;
     const total = await Invoice.countDocuments(filter);
     const raw = await paginate(
       Invoice.find(filter)
