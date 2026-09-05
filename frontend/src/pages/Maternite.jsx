@@ -867,6 +867,42 @@ export default function Maternite() {
     setSelectedGrossesse(grossesse);
     setModal(type);
   };
+
+  // Sous-phase 5.2 — "Exporter" (CPN par dossier, Liste des accouchements)
+  // affichait un faux succès (toast.success) sans générer le moindre
+  // fichier. Réels désormais : export xlsx des données réellement chargées
+  // (grossesses/cpns, accouchements), même mécanisme déjà utilisé ailleurs
+  // dans l'application (HR.jsx, Finance.jsx — import dynamique 'xlsx').
+  const exportCpnExcel = async () => {
+    const rows = grossesses.flatMap(g => (g.cpns || []).map((cpn, j) => ({
+      'Patiente': patientLabel(g), 'N° CPN': j + 1,
+      'Date': fmtDate(cpn.date), 'Médecin': cpn.medecin || g.medecin_responsable || '—',
+      'TA': cpn.tension_sys && cpn.tension_dia ? `${cpn.tension_sys}/${cpn.tension_dia}` : '—',
+      'Poids (kg)': cpn.poids || '—', 'HU (cm)': cpn.hauteur_uterine || '—',
+      'BCF (bpm)': cpn.bcf || '—', 'Hb (g/dL)': cpn.hemoglobine || '—', 'VIH': cpn.vih || '—',
+    })));
+    if (!rows.length) { toast.error("Aucune CPN à exporter."); return; }
+    const XLSX = await import('xlsx');
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'CPN');
+    XLSX.writeFile(wb, `cpn-maternite-${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const exportAccouchementsExcel = async () => {
+    if (!accouchements.length) { toast.error("Aucun accouchement à exporter."); return; }
+    const XLSX = await import('xlsx');
+    const rows = accouchements.map(a => ({
+      'N°': a.numero || a._id?.slice(-6) || '—', 'Patiente': patientLabel(a),
+      'Date': fmtDate(a.date_heure),
+      'Type': a.type_accouchement === 'voie_basse' ? 'Voie basse' : a.type_accouchement === 'cesarienne' ? 'Césarienne' : (a.type_accouchement || '—'),
+      'Médecin': a.obstetricien || '—',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Accouchements');
+    XLSX.writeFile(wb, `accouchements-${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
   const closeModal = () => { setModal(null); setSelectedGrossesse(null); };
   const openDossier = (g) => { setGrossesseDossier(g); setTab("dossier"); };
 
@@ -1128,7 +1164,7 @@ export default function Maternite() {
               </div>
 
               <div className="mat-card fu">
-                <div className="mat-card-hdr"><h3>📋 CPN par dossier</h3><button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>toast.success("📊 Export Excel")}>📊 Exporter</button></div>
+                <div className="mat-card-hdr"><h3>📋 CPN par dossier</h3><button className="mbtn mbtn-ghost mbtn-sm" onClick={exportCpnExcel}>📊 Exporter</button></div>
                 <div style={{padding:16,display:"flex",flexDirection:"column",gap:12}}>
                   {loading && <div style={{textAlign:"center",color:"var(--am)"}}>⏳ Chargement...</div>}
                   {grossesses.filter(g=>(g.cpns?.length||0)>0).slice(0,10).map((g,i)=>(
@@ -1334,7 +1370,7 @@ export default function Maternite() {
               <div className="mat-card fu">
                 <div className="mat-card-hdr">
                   <div><h3>📋 Liste des accouchements</h3><p>{accouchements.length} accouchement{accouchements.length!==1?"s":""}</p></div>
-                  <button className="mbtn mbtn-ghost mbtn-sm" onClick={()=>toast.success("📊 Export")}>📊 Exporter</button>
+                  <button className="mbtn mbtn-ghost mbtn-sm" onClick={exportAccouchementsExcel}>📊 Exporter</button>
                 </div>
                 {loading ? (
                   <div style={{textAlign:"center",padding:40,color:"var(--am)"}}>⏳ Chargement...</div>
