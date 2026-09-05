@@ -1,5 +1,6 @@
 const ImagingResult = require('../models/ImagingResult');
 const ExamCatalogue = require('../models/ExamCatalogue');
+const Invoice = require('../models/Invoice');
 const { logAction, createNotification, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
@@ -81,7 +82,12 @@ exports.getOne = async (req, res, next) => {
       .populate('radiologue',          'nom prenom')
       .lean();
     if (!raw) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
-    res.json({ success: true, examen: normalize(raw) });
+    // Correction 2 — vraie facture liée (créée par validation() plus bas),
+    // jamais un recalcul côté frontend à partir de TARIFS fictif. null si
+    // l'examen n'est pas encore validé ou ne référence aucun vrai examen du
+    // catalogue (limite documentée dans validation()).
+    const invoice = await Invoice.findOne({ source_module: 'imagerie', source_id: raw._id });
+    res.json({ success: true, examen: normalize(raw), invoice });
   } catch (err) { next(err); }
 };
 
@@ -105,10 +111,20 @@ exports.create = async (req, res, next) => {
     const count  = await ImagingResult.countDocuments();
     const numero = `IMG-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 
+    // Correction 2 (relecture du 6 sept. 2026) — examen (ObjectId réel
+    // ExamCatalogue) n'était jamais accepté ici, seul type_examen (texte
+    // libre) l'était : la facturation ajoutée ci-dessous (validation())
+    // n'avait donc aucune référence réelle à exploiter. Radiology.jsx
+    // envoie désormais ce champ quand l'examen est sélectionné depuis le
+    // vrai catalogue (GET /radiology/catalogue) — jamais fabriqué ici si
+    // absent ou invalide.
+    const examen = (req.body.examen && isObjectId(req.body.examen)) ? req.body.examen : null;
+
     const payload = {
       patient,
       medecin_prescripteur,
       medecin_prescripteur_nom,
+      examen,
       patient_nom:     req.body.patient_nom,
       patient_dob:     req.body.patient_dob || req.body.date_naissance,
       patient_dossier: req.body.patient_dossier,
@@ -188,6 +204,35 @@ exports.validation = async (req, res, next) => {
     ).lean();
     if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
 
+    // Correction 2 (relecture du 6 sept. 2026) — l'onglet "Facturation" de
+    // Radiology.jsx calculait un montant côté client depuis TARIFS, une
+    // grille tarifaire codée en dur — le même pattern déjà corrigé pour
+    // Laboratoire (Correction 1/5). Source de tarif réelle déjà existante
+    // et vérifiée avant d'en inventer une : ExamCatalogue.prix
+    // (type:'imagerie'), déjà exposé par GET /radiology/catalogue et
+    // réellement peuplé (utils/seed.js, 4 examens réels). Facture générée
+    // uniquement si examen référence un vrai ObjectId du catalogue — jamais
+    // de tarif inventé pour un examen en texte libre (ancien format).
+    let factureGeneree = null;
+    if (examen.examen && isObjectId(String(examen.examen))) {
+      const cat = await ExamCatalogue.findById(examen.examen);
+      const prix = Number(cat?.prix) || 0;
+      if (prix > 0) {
+        factureGeneree = await Invoice.create({
+          patient: examen.patient,
+          patient_nom: examen.patient_nom,
+          service_label: 'Imagerie',
+          source_module: 'imagerie',
+          source_id: examen._id,
+          created_by: req.user._id,
+          lignes: [{ libelle: cat.nom, categorie: 'imagerie', prix_unitaire: prix, quantite: 1, montant: prix }],
+          montant_ht: prix,
+          montant_ttc: prix,
+        });
+        await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: factureGeneree._id, ip: req.ip, message: `Facture ${factureGeneree.numero_facture} générée automatiquement depuis la validation de l'examen ${examen.numero}` });
+      }
+    }
+
     // AUDIT-A-5 — laboratory.controller.js::validate notifie le médecin
     // prescripteur sur résultat critique (est_critique) ; radiology n'avait
     // aucune notification équivalente à la validation, malgré
@@ -206,7 +251,7 @@ exports.validation = async (req, res, next) => {
 
     await logAction({ utilisateur: req.user._id, action: 'VALIDATE', module: 'radiology', entite_id: examen._id, ip: req.ip, message: `Validation examen${examen.anomalie_detectee ? ' ANOMALIE' : ''}`, avant, apres: examen });
     emitDashboardUpdate();
-    res.json({ success: true, examen: normalize(examen) });
+    res.json({ success: true, examen: normalize(examen), invoice: factureGeneree });
   } catch (err) { next(err); }
 };
 

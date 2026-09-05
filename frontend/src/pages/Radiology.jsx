@@ -1,7 +1,7 @@
 ﻿
 
 
-import { useState, useEffect, useCallback, useRef, useId } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -201,14 +201,10 @@ const TYPE_EXAMENS = {
   },
 };
 
-const TARIFS = {
-  "Échographie abdominale": 20000, "Échographie pelvienne": 20000, "Échographie obstétricale": 22000,
-  "Échographie rénale": 20000, "Échographie cardiaque": 25000, "Échographie thyroïdienne": 20000,
-  "Radio thorax": 15000, "Radio crâne": 15000, "Radio bassin": 15000,
-  "Radio membre supérieur": 12000, "Radio membre inférieur": 12000, "Radio colonne vertébrale": 18000,
-  "Scanner cérébral": 80000, "Scanner thoracique": 85000, "Scanner abdominal": 85000, "Scanner pelvien": 80000,
-  "IRM cérébrale": 120000, "IRM rachidienne": 120000, "IRM articulaire": 110000, "IRM abdominale": 120000,
-};
+// Correction 2 (relecture du 6 sept. 2026) — TARIFS codé en dur supprimé :
+// remplacé partout par le vrai catalogue chargé depuis
+// GET /radiology/catalogue (state `catalogue`) — voir
+// catalogueById/getPrix/getTotal, plus loin dans le composant.
 
 // ─── SVG Icons ─────────────────────────────────────────────
 const I = {
@@ -337,7 +333,7 @@ const DEMO_DATA  = [];
 
 const EMPTY_EXAMEN = {
   patient_id:"", medecin_prescripteur:"", service_demandeur:"", priorite:"normale",
-  motif:"", type_categorie:"echographie", type_examen:"", date_rdv:"", heure_rdv:"",
+  motif:"", type_categorie:"echographie", type_examen:"", examen:"", date_rdv:"", heure_rdv:"",
   salle:"", operateur:"", statut:"programme",
 };
 const EMPTY_CR = {
@@ -369,6 +365,14 @@ export default function Imagerie() {
   const [filterType, setFilterType] = useState("");
   const [currentExamen, setCurrent] = useState(null);
   const [patients, setPatients]     = useState([]);
+  // Correction 2 (relecture du 6 sept. 2026) — remplace TARIFS codé en dur :
+  // vrai catalogue chargé depuis GET /radiology/catalogue (déjà réel, déjà
+  // utilisé par la facturation branchée en Correction 2 backend).
+  const [catalogue, setCatalogue]   = useState([]);
+  // Correction 2 — vraie facture liée (radiology.controller.js::validation),
+  // jamais un calcul recomposé côté client. null tant que l'examen n'est
+  // pas validé ou n'a donné lieu à aucune facture réelle.
+  const [currentInvoice, setCurrentInvoice] = useState(null);
   const [saving, setSaving]         = useState(false);
   const [kpis, setKpis]             = useState({ total:0, programme:0, en_attente:0, realise:0, valide:0, tres_urgents:0 });
   const [chartData, setChartData]   = useState({ labels:DEMO_MOIS, data:DEMO_DATA });
@@ -429,8 +433,10 @@ export default function Imagerie() {
     try {
       const { data } = await api.get(`/radiology/${id}`);
       setCurrent(data.examen || data);
+      setCurrentInvoice(data.invoice || null);
     } catch {
       setCurrent(DEMO_EXAMENS.find(x=>x._id===id) || null);
+      setCurrentInvoice(null);
     }
   }, []);
 
@@ -446,7 +452,16 @@ export default function Imagerie() {
     }
   }, []);
 
-  useEffect(() => { loadExamens(); loadStats(); loadPatients(); }, [loadExamens, loadStats, loadPatients]);
+  const loadCatalogue = useCallback(async () => {
+    try {
+      const { data } = await api.get("/radiology/catalogue");
+      setCatalogue(data.examens || []);
+    } catch {
+      setCatalogue([]);
+    }
+  }, []);
+
+  useEffect(() => { loadExamens(); loadStats(); loadPatients(); loadCatalogue(); }, [loadExamens, loadStats, loadPatients, loadCatalogue]);
   useRealtimeRefresh(loadExamens);
 
   const openExamen = (e) => {
@@ -521,9 +536,10 @@ export default function Imagerie() {
     if (!currentExamen) return;
     setSaving(true);
     try {
-      await api.put(`/radiology/${currentExamen._id}/validation`, formValid);
+      const { data } = await api.put(`/radiology/${currentExamen._id}/validation`, formValid);
       toast.success("🏅 Examen validé par le radiologue");
       setCurrent(prev => ({ ...prev, ...formValid, statut:"valide" }));
+      setCurrentInvoice(data.invoice || null);
       setModalValid(false);
       loadExamens();
     } catch (err) {
@@ -552,8 +568,11 @@ export default function Imagerie() {
 
   const urgents = kpis.tres_urgents || 0;
 
-  // Facturation helpers
-  const getPrix = (ex) => TARIFS[ex?.type_examen] || 0;
+  // Correction 2 — vrai prix résolu depuis le vrai catalogue (ex.examen,
+  // ObjectId réel ExamCatalogue) ; 0 pour un examen en texte libre hérité,
+  // jamais une valeur de TARIFS inventée.
+  const catalogueById = useMemo(() => Object.fromEntries(catalogue.map(ex => [ex._id, ex])), [catalogue]);
+  const getPrix = (ex) => Number(catalogueById[ex?.examen]?.prix) || 0;
   const getTotal = (ex) => {
     if (!ex) return 0;
     return Math.max(0, getPrix(ex) - (ex.reduction || 0) - (ex.assurance || 0));
@@ -1299,66 +1318,55 @@ export default function Imagerie() {
               )}
 
               {/* ── FACTURATION ── */}
+              {/* Correction 2 (relecture du 6 sept. 2026) — affichait un
+                  calcul recomposé côté client (TARIFS codé en dur) AVEC des
+                  champs "Réduction"/"Assurance" qui ne correspondaient à
+                  aucun champ réel du schéma ImagingResult (silencieusement
+                  perdus par Mongoose à l'enregistrement) et des boutons
+                  "Générer facture"/"Transmettre à la caisse" qui n'appelaient
+                  RIEN — un simple toast.success sans action réelle
+                  (exactement le pattern FE-BUG-001 dénoncé par l'audit).
+                  Affiche désormais la VRAIE facture (créée par
+                  radiology.controller.js::validation) ou un état honnête
+                  d'absence de facture. */}
               {section === "facturation" && (
                 <div style={{ marginTop:20 }}>
                   <div className="img-card">
                     <div className="img-card-hdr"><h3>💰 Facturation de l'examen</h3></div>
                     <div style={{ padding:20 }}>
-                      <table className="img-tbl" style={{ marginBottom:20 }}>
-                        <thead><tr><th>Prestation</th><th style={{textAlign:"right"}}>Prix (CFA)</th></tr></thead>
-                        <tbody>
-                          <tr>
-                            <td style={{ fontWeight:600 }}>{currentExamen.type_examen}</td>
-                            <td style={{ textAlign:"right", fontWeight:700 }}>{getPrix(currentExamen).toLocaleString("fr-FR")}</td>
-                          </tr>
-                        </tbody>
-                        <tfoot>
-                          <tr style={{ background:"#F8FAFD" }}>
-                            <td style={{ color:"var(--cm)", fontSize:13 }}>Réduction</td>
-                            <td style={{ textAlign:"right" }}>
-                              <input type="number" className="iinp" style={{ width:120, textAlign:"right", marginLeft:"auto" }} value={currentExamen.reduction||0} min={0} onChange={e => setCurrent(d=>({...d,reduction:Number(e.target.value)}))} />
-                            </td>
-                          </tr>
-                          <tr style={{ background:"#F8FAFD" }}>
-                            <td style={{ color:"var(--cm)", fontSize:13 }}>Prise en charge assurance</td>
-                            <td style={{ textAlign:"right" }}>
-                              <input type="number" className="iinp" style={{ width:120, textAlign:"right", marginLeft:"auto" }} value={currentExamen.assurance||0} min={0} onChange={e => setCurrent(d=>({...d,assurance:Number(e.target.value)}))} />
-                            </td>
-                          </tr>
-                          <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)" }}>
-                            <td style={{ fontWeight:800, fontSize:15, color:"var(--cn)" }}>Montant à payer</td>
-                            <td style={{ textAlign:"right", fontWeight:800, fontSize:18, color:"var(--cb)" }}>{getTotal(currentExamen).toLocaleString("fr-FR")} CFA</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                        <button className="ibtn ibtn-teal" disabled={saving} onClick={() => updateExamen({ reduction:currentExamen.reduction, assurance:currentExamen.assurance })}>
-                          {I.save} Enregistrer
-                        </button>
-                        <button className="ibtn ibtn-ghost" onClick={() => toast.success("📄 Facture générée")}>{I.dl} Générer facture</button>
-                        <button className="ibtn ibtn-ghost" onClick={() => window.print()}>{I.print} Imprimer</button>
-                        <button className="ibtn ibtn-ghost" onClick={() => toast.success("💰 Transmis à la caisse")}>{I.link} Transmettre à la caisse</button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Tarifs de référence */}
-                  <div className="img-card" style={{ marginTop:16 }}>
-                    <div className="img-card-hdr"><h3>📋 Tarifs de référence</h3></div>
-                    <div style={{ overflowX:"auto" }}>
-                      <table className="img-tbl">
-                        <thead><tr><th>Examen</th><th style={{textAlign:"right"}}>Prix (CFA)</th></tr></thead>
-                        <tbody>
-                          {Object.entries(TARIFS).map(([ex,prix]) => (
-                            <tr key={ex} style={{ background: ex===currentExamen.type_examen ? "#EEF4FF" : "" }}>
-                              <td style={{ fontWeight: ex===currentExamen.type_examen ? 700 : 400, color: ex===currentExamen.type_examen ? "var(--cb)" : "var(--cn)" }}>
-                                {ex===currentExamen.type_examen && "→ "}{ex}
-                              </td>
-                              <td style={{ textAlign:"right", fontWeight:600 }}>{prix.toLocaleString("fr-FR")}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      {currentInvoice ? (
+                        <>
+                          <table className="img-tbl" style={{ marginBottom:20 }}>
+                            <thead><tr><th>Prestation</th><th style={{textAlign:"right"}}>Prix (CFA)</th></tr></thead>
+                            <tbody>
+                              {currentInvoice.lignes.map((l, i) => (
+                                <tr key={i}>
+                                  <td style={{ fontWeight:600 }}>{l.libelle}</td>
+                                  <td style={{ textAlign:"right", fontWeight:700 }}>{l.montant.toLocaleString("fr-FR")}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)" }}>
+                                <td style={{ fontWeight:800, fontSize:15, color:"var(--cn)" }}>TOTAL — {currentInvoice.numero_facture}</td>
+                                <td style={{ textAlign:"right", fontWeight:800, fontSize:18, color:"var(--cb)" }}>{currentInvoice.montant_ttc.toLocaleString("fr-FR")} CFA</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
+                            <Badge cls={currentInvoice.statut === "payee" ? "green" : "orange"}>
+                              {currentInvoice.statut === "payee" ? "✅ Payée" : "⏳ En attente de paiement"} — voir module Finance pour encaisser
+                            </Badge>
+                            <button className="ibtn ibtn-ghost" onClick={() => window.print()}>{I.print} Imprimer</button>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ padding:"24px 4px", color:"var(--cm)", fontSize:13, lineHeight:1.6 }}>
+                          {currentExamen.statut === "valide"
+                            ? "Aucune facture réelle n'a été générée pour cet examen : il ne référence pas d'entrée réelle du catalogue (saisie antérieure à ce correctif, ou examen en texte libre)."
+                            : "Aucune facture pour l'instant — une vraie facture est générée automatiquement, à partir du vrai catalogue d'examens, au moment de la validation par le radiologue."}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1440,16 +1448,32 @@ export default function Imagerie() {
                 </select>
               </div>
               <div>
+                {/* Correction 2 (relecture du 6 sept. 2026) — remplace le
+                    sous_types codé en dur (TYPE_EXAMENS) par le vrai
+                    catalogue (state `catalogue`, GET /radiology/catalogue) :
+                    chaque option pousse un vrai _id ExamCatalogue dans
+                    formExamen.examen, jamais un libellé texte inventé — la
+                    facturation automatique à la validation
+                    (radiology.controller.js) cesse d'être inerte. La
+                    catégorie ci-dessus reste indicative (le vrai catalogue
+                    ne porte pas de catégorie exploitable), le choix se fait
+                    ici sur l'ensemble des examens réels du catalogue. */}
                 <label className="ilbl">Type d'examen *</label>
-                <select className="iinp" required value={formExamen.type_examen} onChange={e => setFormExamen(f=>({...f,type_examen:e.target.value}))}>
+                <select className="iinp" required value={formExamen.examen} onChange={e => {
+                  const ex = catalogue.find(c => c._id === e.target.value);
+                  setFormExamen(f => ({ ...f, examen: e.target.value, type_examen: ex?.nom || "" }));
+                }}>
                   <option value="">— Sélectionner —</option>
-                  {TYPE_EXAMENS[formExamen.type_categorie]?.sous_types.map(s=><option key={s} value={s}>{s}</option>)}
+                  {catalogue.map(ex => <option key={ex._id} value={ex._id}>{ex.nom}</option>)}
                 </select>
+                {catalogue.length === 0 && (
+                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>Aucun examen disponible — le catalogue réel (ExamCatalogue) est vide ou n'a pas pu être chargé.</div>
+                )}
               </div>
-              {formExamen.type_examen && (
+              {formExamen.examen && (
                 <div style={{ gridColumn:"1/-1", background:"#EEF4FF", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between" }}>
                   <span style={{ fontSize:12, color:"var(--cm)" }}>Tarif de référence</span>
-                  <span style={{ fontWeight:700, fontSize:14, color:"var(--cb)" }}>{(TARIFS[formExamen.type_examen]||0).toLocaleString("fr-FR")} CFA</span>
+                  <span style={{ fontWeight:700, fontSize:14, color:"var(--cb)" }}>{(Number(catalogueById[formExamen.examen]?.prix) || 0).toLocaleString("fr-FR")} CFA</span>
                 </div>
               )}
               <div>
