@@ -419,11 +419,34 @@ export default function Administration() {
     pwd_min_length: 8, two_fa: false, backup_auto: true,
   });
 
+  // Correction 4 (relecture du 5 sept. 2026, découverte pendant FE-BUG-001) —
+  // ce panneau "Paramètres" n'était jamais réellement chargé ni enregistré :
+  // settings partait toujours des valeurs codées en dur ci-dessus, et
+  // saveSettings appelait PUT /admin/settings, une route qui n'a jamais
+  // existé (404 systématique, confirmé lors du correctif FE-BUG-001).
+  // Plutôt que de créer une nouvelle route/un nouveau modèle, réutilise le
+  // mécanisme clé-valeur Setting déjà réel et déjà utilisé ailleurs
+  // (settings.controller.js::getAll/upsert, GET/POST /settings — le même
+  // que Settings.jsx pour, par ex., les tarifs d'hospitalisation).
+  const SETTINGS_FIELDS = [
+    ['nom_clinique',   'string',  'clinique'],
+    ['telephone',      'string',  'clinique'],
+    ['email',          'string',  'clinique'],
+    ['adresse',        'string',  'clinique'],
+    ['horaire_debut',  'string',  'clinique'],
+    ['horaire_fin',    'string',  'clinique'],
+    ['devise',         'string',  'general'],
+    ['langue',         'string',  'general'],
+    ['pwd_min_length', 'number',  'general'],
+    ['two_fa',         'boolean', 'general'],
+    ['backup_auto',    'boolean', 'general'],
+  ];
+
   // ── Load ──────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [kRes, uRes, svcRes, rRes, sRes, tRes, aRes, depRes] = await Promise.allSettled([
+      const [kRes, uRes, svcRes, rRes, sRes, tRes, aRes, depRes, setRes] = await Promise.allSettled([
         api.get("/admin/kpis"),
         api.get("/admin/users"),
         api.get("/settings/services"),
@@ -432,6 +455,7 @@ export default function Administration() {
         api.get("/admin/tasks"),
         api.get("/admin/audit?limit=20"),
         api.get("/finance/depenses?limit=10"),
+        api.get("/settings"),
       ]);
       const toArr = (v, fallback) => Array.isArray(v) ? v : fallback;
       if (kRes.status === "fulfilled" && kRes.value.data) {
@@ -448,6 +472,14 @@ export default function Administration() {
       // AUDIT-GLOBAL — "Transactions récentes" affichait 5 lignes fabriquées ;
       // charge maintenant les vraies dépenses (GET /finance/depenses, déjà réel).
       setDepenses(depRes.status === "fulfilled" ? toArr(depRes.value.data.depenses || depRes.value.data, []) : []);
+      if (setRes.status === "fulfilled") {
+        const parKey = Object.fromEntries((setRes.value.data.settings || []).map(s => [s.cle, s.valeur]));
+        setSettings(prev => {
+          const next = { ...prev };
+          for (const [cle] of SETTINGS_FIELDS) if (parKey[cle] !== undefined) next[cle] = parKey[cle];
+          return next;
+        });
+      }
     } catch {
       setUsers(DEMO_USERS); setServices([]); setRooms(DEMO_ROOMS);
       setSuppliers(DEMO_SUPPLIERS); setTasks(DEMO_TASKS); setAudit(DEMO_AUDIT);
@@ -629,14 +661,22 @@ export default function Administration() {
   };
 
   // ── Save settings ─────────────────────────────────────────
-  // FE-BUG-001 (audit du 4 sept. 2026) — un échec réel de PUT /admin/settings
-  // affichait quand même "Paramètres enregistrés (local)" : rien n'indiquait
-  // à l'utilisateur que les paramètres n'avaient pas été persistés côté
-  // serveur.
+  // FE-BUG-001 (audit du 4 sept. 2026) — un échec réel affichait quand même
+  // "Paramètres enregistrés (local)" : rien n'indiquait à l'utilisateur que
+  // les paramètres n'avaient pas été persistés côté serveur.
+  // Correction 4 — PUT /admin/settings n'a jamais existé (404 systématique).
+  // Remplacé par le vrai mécanisme clé-valeur (POST /settings, un appel par
+  // champ, comme Settings.jsx::saveGroup) : chaque champ devient une vraie
+  // entrée Setting persistée et relue au chargement suivant (loadAll
+  // ci-dessus). Promise.all (pas allSettled) : un seul échec fait échouer
+  // l'ensemble et affiche une vraie erreur, plutôt qu'un succès partiel
+  // silencieux.
   const saveSettings = async () => {
     setSaving(true);
     try {
-      await api.put("/admin/settings", settings);
+      await Promise.all(SETTINGS_FIELDS.map(([cle, type, groupe]) =>
+        api.post("/settings", { cle, valeur: settings[cle], type, groupe })
+      ));
       toast.success("✅ Paramètres enregistrés");
     } catch (err) {
       toast.error(err?.response?.data?.message || "❌ Échec de l'enregistrement des paramètres.");
