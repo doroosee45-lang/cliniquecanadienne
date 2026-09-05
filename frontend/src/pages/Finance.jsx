@@ -722,6 +722,26 @@ export default function Finance() {
   // AUDIT-F4 — datasets du LineChart "Revenus & Dépenses — 12 mois",
   // jusqu'ici un littéral inline recréé à chaque rendu (cf. commentaire au
   // point d'appel).
+  // Sous-phase 5.1 (relecture du 6 sept. 2026) — les KPI "Revenus du mois"/
+  // "Dépenses du mois"/"Bénéfice net" affichaient un badge de tendance
+  // ("+12% vs mois préc.", "+3%", "+18%") codé en dur, sans rapport avec les
+  // vraies séries mensuelles déjà calculées ci-dessus (revByMonth/
+  // depByMonth/benefByMonth). Calculé réellement : mois courant vs mois
+  // précédent sur ces mêmes séries ; `null` si l'historique est insuffisant
+  // ou si le mois précédent est à 0 (variation non représentable en %),
+  // jamais un pourcentage fabriqué dans ces cas.
+  const pctChange = (arr) => {
+    const n = arr.length;
+    if (n < 2) return null;
+    const prev = arr[n - 2], curr = arr[n - 1];
+    if (!prev) return null;
+    return Math.round(((curr - prev) / Math.abs(prev)) * 100);
+  };
+  const trendRevenus  = useMemo(() => pctChange(revByMonth),  [revByMonth]);
+  const trendDepenses = useMemo(() => pctChange(depByMonth),  [depByMonth]);
+  const trendBenefice = useMemo(() => pctChange(benefByMonth),[benefByMonth]);
+  const fmtTrend = (pct) => (pct === null ? undefined : `${pct >= 0 ? '+' : ''}${pct}% vs mois préc.`);
+
   const revDepChartDatasets = useMemo(() => [
     { label:"Revenus", data:revByMonth, borderColor:"#059669", pointBackgroundColor:"#059669" },
     { label:"Dépenses", data:depByMonth, borderColor:"#DC2626", pointBackgroundColor:"#DC2626" },
@@ -1147,9 +1167,9 @@ export default function Finance() {
 
               {/* KPIs */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))", gap:14, marginBottom:24 }}>
-                <KpiCard color="green"  icon={I.trend}  value={fmtMontant(totalRevenus).split(" CFA")[0]}  label="Revenus du mois"    sub="CFA"  trend="+12% vs mois préc." trendUp={true}  onClick={() => setTab("revenus")} />
-                <KpiCard color="red"    icon={I.trendD} value={fmtMontant(totalDepenses).split(" CFA")[0]} label="Dépenses du mois"   sub="CFA"  trend="+3% vs mois préc."  trendUp={false} onClick={() => setTab("depenses")} />
-                <KpiCard color="blue"   icon={I.chart}  value={fmtMontant(beneficeNet).split(" CFA")[0]}   label="Bénéfice net"       sub="CFA"  trend="+18% vs mois préc." trendUp={beneficeNet >= 0} onClick={() => setTab("rapports")} />
+                <KpiCard color="green"  icon={I.trend}  value={fmtMontant(totalRevenus).split(" CFA")[0]}  label="Revenus du mois"    sub="CFA"  trend={fmtTrend(trendRevenus)} trendUp={trendRevenus >= 0}  onClick={() => setTab("revenus")} />
+                <KpiCard color="red"    icon={I.trendD} value={fmtMontant(totalDepenses).split(" CFA")[0]} label="Dépenses du mois"   sub="CFA"  trend={fmtTrend(trendDepenses)} trendUp={trendDepenses <= 0} onClick={() => setTab("depenses")} />
+                <KpiCard color="blue"   icon={I.chart}  value={fmtMontant(beneficeNet).split(" CFA")[0]}   label="Bénéfice net"       sub="CFA"  trend={fmtTrend(trendBenefice)} trendUp={trendBenefice >= 0} onClick={() => setTab("rapports")} />
                 <KpiCard color="orange" icon={I.file}   value={facturesImpayees.length}                    label="Factures impayées"  sub={fmtMontant(montantImpaye)} urgent={facturesImpayees.length > 0} onClick={() => { setFilterStatutFact("non_paye"); setTab("facturation"); }} />
                 <KpiCard color="purple" icon={I.shield} value={fmtMontant(creanceAssur).split(" CFA")[0]}  label="Créances assurances" sub="CFA — en attente" onClick={() => setTab("assurances")} />
                 <KpiCard color="teal"   icon={I.cash}   value={fmtMontant(soldeCaisse).split(" CFA")[0]}   label="Trésorerie caisse"  sub="CFA — solde actuel" onClick={() => setTab("caisse")} />
@@ -1931,31 +1951,21 @@ export default function Finance() {
                     ))}
                   </div>
                 </div>
-                {/* AUDIT-FINANCE-BUDGET — carte "Objectifs financiers" toujours
-                    fabriquée (cibles 900000/95/100 codées en dur, "actuel" 87
-                    inventé pour la 3e ligne) : hors périmètre de cet audit
-                    (portait uniquement sur les 5 indicateurs de suivi
-                    budgétaire ci-dessus), chacune de ces 3 cibles nécessite sa
-                    propre décision de source — signalé, pas traité. */}
+                {/* Sous-phase 5.1 (relecture du 6 sept. 2026) — reprise de
+                    AUDIT-FINANCE-BUDGET (pass précédente, hors périmètre
+                    alors) : les 3 cibles (900000/95/100) ET le "actuel" 87 de
+                    la 3e ligne sont fabriqués — aucune cible financière n'est
+                    configurable nulle part dans ce système (vérifié : aucun
+                    champ réel sur Setting ni ailleurs). Fixer un objectif
+                    chiffré est une décision métier/produit (à qui revient ce
+                    choix ? sur quelle base ?), pas une correction de bug —
+                    désactivé honnêtement plutôt que d'inventer une valeur ou
+                    de construire un mécanisme de configuration non demandé. */}
                 <div className="fin-card ffu">
                   <div className="fin-card-hdr"><h3>🎯 Objectifs financiers</h3></div>
-                  <div style={{ padding:16 }}>
-                    {[
-                      ["Revenus mensuels cible", 900000, totalRevenus],
-                      ["Taux recouvrement cible", 95, tauxRecouvrement],
-                      ["Réduction charges (vs N-1)", 100, 87],
-                    ].map(([lbl, cible, actuel]) => {
-                      const pct = Math.min(100, Math.round(actuel / cible * 100));
-                      return (
-                        <div key={lbl} style={{ marginBottom:12 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:4 }}>
-                            <span style={{ color:"var(--cm)" }}>{lbl}</span>
-                            <span style={{ fontWeight:700, color: pct >= 90 ? "var(--fg)" : "var(--fo)" }}>{pct}%</span>
-                          </div>
-                          <Prog pct={pct} color={pct >= 90 ? "#059669" : "#D97706"} />
-                        </div>
-                      );
-                    })}
+                  <div style={{ padding:32, textAlign:"center", color:"var(--cm)" }}>
+                    <div style={{ fontSize:32, marginBottom:10, opacity:.4 }}>🎯</div>
+                    <div style={{ fontSize:12 }}>🚧 Indicateur non disponible — aucun objectif financier réel n'est configuré dans ce système.</div>
                   </div>
                 </div>
               </div>
@@ -1969,9 +1979,9 @@ export default function Finance() {
 
               {/* KPIs synthèse */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:24 }}>
-                <KpiCard color="green"  icon={I.trend}  value={fmtMontant(totalRevenus).split(" CFA")[0]}  label="CA mensuel"     sub="CFA" trend="+12%" trendUp={true} />
-                <KpiCard color="red"    icon={I.trendD} value={fmtMontant(totalDepenses).split(" CFA")[0]} label="Charges totales" sub="CFA" />
-                <KpiCard color="blue"   icon={I.chart}  value={fmtMontant(beneficeNet).split(" CFA")[0]}   label="Bénéfice net"    sub="CFA" trend="+18%" trendUp={true} />
+                <KpiCard color="green"  icon={I.trend}  value={fmtMontant(totalRevenus).split(" CFA")[0]}  label="CA mensuel"     sub="CFA" trend={fmtTrend(trendRevenus)} trendUp={trendRevenus >= 0} />
+                <KpiCard color="red"    icon={I.trendD} value={fmtMontant(totalDepenses).split(" CFA")[0]} label="Charges totales" sub="CFA" trend={fmtTrend(trendDepenses)} trendUp={trendDepenses <= 0} />
+                <KpiCard color="blue"   icon={I.chart}  value={fmtMontant(beneficeNet).split(" CFA")[0]}   label="Bénéfice net"    sub="CFA" trend={fmtTrend(trendBenefice)} trendUp={trendBenefice >= 0} />
                 <KpiCard color="teal"   icon={I.pay}    value={`${tauxRecouvrement}%`}                     label="Recouvrement"    sub="taux global" />
                 <KpiCard color="orange" icon={I.budget} value={`${Math.round(totalRevenus/(totalDepenses||1)*100)}%`} label="Marge bénéficiaire" sub="ratio rev./dép." />
               </div>
