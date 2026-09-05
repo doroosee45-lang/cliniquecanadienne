@@ -861,8 +861,11 @@ export default function MonEspacePatient() {
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                         <Badge cls={st === "active" ? "green" : "gray"}>{st === "active" ? "✓ Active" : "Expirée"}</Badge>
                         <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Télécharger</button>
-                        {/* "Imprimer" — même classe de bug (toast/action sans effet), hors périmètre W1, non traité ici. */}
-                        <button className="ebtn ebtn-ghost ebtn-sm">{I.print} Imprimer</button>
+                        {/* Sous-phase 5.2 — n'avait aucun onClick (bouton
+                            muet, ni désactivé ni fonctionnel). Câblé sur
+                            window.print(), même mécanisme réel utilisé
+                            partout ailleurs dans ce système pour "Imprimer". */}
+                        <button className="ebtn ebtn-ghost ebtn-sm" onClick={() => window.print()}>{I.print} Imprimer</button>
                       </div>
                     </div>
                     <div style={{ background:"#F8FAFD", borderRadius:10, padding:14 }}>
