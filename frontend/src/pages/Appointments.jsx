@@ -1740,7 +1740,11 @@ export default function RendezVous() {
                           <div style={{ fontSize:12.5, fontWeight:600, color:"var(--cn)" }}>{titre}</div>
                           <div style={{ fontSize:11, color:"var(--cm)" }}>{fmt}</div>
                         </div>
-                        <button className="cbtn cbtn-ghost cbtn-sm">{I.print} Exporter</button>
+                        {/* Sous-phase 5.2 — aucun onClick : aucun moteur
+                            d'export Excel/PDF n'existe dans ce fichier pour
+                            ces 5 rapports. Désactivé honnêtement plutôt que
+                            d'inventer un export. */}
+                        <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Fonctionnalité en cours de développement — aucun export réel n'existe encore pour ce rapport." onClick={() => toast("🚧 Export non disponible — fonctionnalité en cours de développement.")}>{I.print} Exporter</button>
                       </div>
                     ))}
                   </div>
