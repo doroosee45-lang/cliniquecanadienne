@@ -353,6 +353,39 @@ const calcIMC = (poids, taille) => {
   return { imc, ...cat };
 };
 
+// Sous-phase 5.7 (traite le point signalé en 5.4) — "Examens complémentaires"
+// facturait chaque examen à un prix fixe par TYPE (biologie 5000, imagerie
+// 25000, scanner 75000, autre 15000 CFA), entièrement inventé, quel que soit
+// l'examen réellement demandé. Remplacé par le vrai tarif du catalogue
+// (ExamCatalogue.prix, GET /laboratory/catalogue + GET /radiology/catalogue,
+// même source réelle déjà utilisée par Laboratory.jsx/Radiology.jsx) quand
+// une correspondance fiable existe. Correspondance exacte et vérifiée
+// manuellement contre le catalogue réellement seedé (utils/seed.js) — jamais
+// une correspondance floue par sous-chaîne, qui risquerait de lier un examen
+// à un tarif qui n'est pas le sien. Seuls les 9 libellés rapides ci-dessous
+// ont un tarif catalogue réel ; "Ionogramme sanguin", "Groupage sanguin",
+// "ECG", "Scanner thoracique", "IRM cérébrale" et tout texte libre saisi
+// n'ont AUCUNE correspondance dans ce catalogue (qui ne couvre que
+// laboratoire/imagerie, pas le scanner/IRM/ECG) : leur prix est honnêtement
+// affiché comme non disponible, jamais estimé arbitrairement.
+const LIBELLE_VERS_CATALOGUE = {
+  'nfs complète':          'numération formule sanguine',
+  'glycémie à jeun':       'glycémie à jeun',
+  'créatinémie':           'créatinine',
+  'bilan lipidique':       'bilan lipidique',
+  'ge/tdr paludisme':      'goutte épaisse / test rapide',
+  'ecbu':                  'ecbu (examen cyto-bacteriologique urinaire)',
+  'crp':                   'crp (protéine c réactive)',
+  'radiographie thorax':   'radiographie thoracique',
+  'échographie abdominale':'échographie abdominale',
+};
+function prixExamenCatalogue(libelle, examCatalogue) {
+  const cibleNom = LIBELLE_VERS_CATALOGUE[(libelle || '').trim().toLowerCase()];
+  if (!cibleNom) return null;
+  const match = (examCatalogue || []).find(c => (c.nom || '').trim().toLowerCase() === cibleNom);
+  return match ? match.prix : null;
+}
+
 // ─── DETAIL SECTIONS CONFIG ───────────────────────────────────
 const DETAIL_SECTIONS = [
   { id: "all",          label: "Vue complète",  icon: "📄" },
@@ -368,7 +401,7 @@ const DETAIL_SECTIONS = [
 ];
 
 // ─── CONSULTATION DETAIL VIEW ─────────────────────────────────
-function ConsultationDetail({ c, isMobile, onBack }) {
+function ConsultationDetail({ c, isMobile, onBack, examCatalogue }) {
   const [detailSec, setDetailSec] = useState("all");
 
   // Calculs
@@ -381,9 +414,11 @@ function ConsultationDetail({ c, isMobile, onBack }) {
   const paiementLabel = { non_paye: "❌ Non payé", partiel: "⚠ Partiellement payé", paye: "✅ Payé", assurance: "🏥 Assurance", exonere: "🆓 Exonéré" };
   const graviteLabel = { leger: { text: "🟢 Légère", cls: "green" }, modere: { text: "🟡 Modérée", cls: "yellow" }, grave: { text: "🟠 Grave", cls: "orange" }, critique: { text: "🔴 Critique", cls: "red" } };
 
-  // Calcul facturation
-  const examens = c.examens_complementaires || [];
-  const totalExamens = examens.reduce((s, x) => s + (x.type === "biologie" ? 5000 : x.type === "imagerie" ? 25000 : x.type === "scanner" ? 75000 : 15000), 0);
+  // Calcul facturation — prix des examens résolus depuis le vrai catalogue
+  // (prixExamenCatalogue), jamais un prix fixe par type inventé.
+  const examens = (c.examens_complementaires || []).map(x => ({ ...x, prix: prixExamenCatalogue(x.libelle, examCatalogue) }));
+  const totalExamens = examens.reduce((s, x) => s + (x.prix || 0), 0);
+  const nbExamensNonChiffres = examens.filter(x => x.prix == null).length;
   const fraisCons = c.frais_consultation || 15000;
   const totalFacture = fraisCons + totalExamens;
 
@@ -733,15 +768,15 @@ function ConsultationDetail({ c, isMobile, onBack }) {
                     </td>
                   </tr>
                   {(() => {
-                    const list = examens.length > 0 ? examens : (c.examens || []);
+                    const list = examens.length > 0 ? examens : (c.examens || []).map(x => ({ ...x, prix: prixExamenCatalogue(x.libelle, examCatalogue) }));
                     return list.map((x, i) => (
                       <tr key={i} style={{ borderBottom: "1px solid #F3F7FF" }}>
                         <td style={{ padding: "10px 14px" }}>
                           <div style={{ fontWeight: 600, fontSize: 13, color: "var(--cn)" }}>{x.libelle}</div>
                           <div style={{ fontSize: 11, color: "var(--cm)" }}>{x.type === "biologie" ? "Analyses biologiques" : x.type === "imagerie" ? "Imagerie" : x.type === "scanner" ? "Scanner/IRM" : "Examen"}</div>
                         </td>
-                        <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: "var(--cn)" }}>
-                          {(x.type === "biologie" ? 5000 : x.type === "imagerie" ? 25000 : x.type === "scanner" ? 75000 : 15000).toLocaleString("fr-FR")}
+                        <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: x.prix == null ? "var(--cm)" : "var(--cn)" }}>
+                          {x.prix != null ? x.prix.toLocaleString("fr-FR") : "tarif non disponible"}
                         </td>
                       </tr>
                     ));
@@ -749,7 +784,16 @@ function ConsultationDetail({ c, isMobile, onBack }) {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: "linear-gradient(to right,#EEF4FF,#DBEAFE)" }}>
-                    <td style={{ padding: "14px 14px", fontWeight: 800, fontSize: 15, color: "var(--cn)" }}>TOTAL</td>
+                    <td style={{ padding: "14px 14px", fontWeight: 800, fontSize: 15, color: "var(--cn)" }}>
+                      TOTAL
+                      {/* Sous-phase 5.7 — jamais un tarif inventé pour les
+                          examens sans correspondance catalogue réelle :
+                          exclus du total, signalés honnêtement ici plutôt
+                          que masqués. */}
+                      {nbExamensNonChiffres > 0 && (
+                        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--cm)", marginTop:2 }}>({nbExamensNonChiffres} examen(s) sans tarif catalogue réel, non inclus)</div>
+                      )}
+                    </td>
                     <td style={{ padding: "14px 14px", textAlign: "right", fontWeight: 800, fontSize: 18, color: "var(--cb)" }}>
                       {totalFacture.toLocaleString("fr-FR")} <span style={{ fontSize: 12 }}>CFA</span>
                     </td>
@@ -912,6 +956,21 @@ export default function Consultation() {
     return m ? `Dr. ${m.prenom || ''} ${m.nom || ''}`.trim() : "";
   };
 
+  // Sous-phase 5.7 — vrai catalogue d'examens (laboratoire + imagerie),
+  // même source réelle que Laboratory.jsx/Radiology.jsx, pour remplacer les
+  // prix fixes par type inventés dans le calcul de facturation.
+  const [examCatalogue, setExamCatalogue] = useState([]);
+  useEffect(() => {
+    Promise.allSettled([
+      api.get('/laboratory/catalogue'),
+      api.get('/radiology/catalogue'),
+    ]).then(([labRes, radioRes]) => {
+      const labExams = labRes.status === 'fulfilled' ? (labRes.value.data.examens || []) : [];
+      const radioExams = radioRes.status === 'fulfilled' ? (radioRes.value.data.examens || []) : [];
+      setExamCatalogue([...labExams, ...radioExams]);
+    });
+  }, []);
+
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const age = ageCalc(form.patient_ddn);
@@ -1031,8 +1090,12 @@ export default function Consultation() {
     }
   };
 
+  // Sous-phase 5.7 — prix résolus depuis le vrai catalogue
+  // (prixExamenCatalogue), jamais un prix fixe par type inventé.
+  const examensAvecPrix = form.examens.map(x => ({ ...x, prix: prixExamenCatalogue(x.libelle, examCatalogue) }));
+  const nbExamensNonChiffresForm = examensAvecPrix.filter(x => x.prix == null).length;
   const totalFacture = form.frais_consultation
-    + form.examens.reduce((s, x) => s + (x.type === "biologie" ? 5000 : x.type === "imagerie" ? 25000 : x.type === "scanner" ? 75000 : 15000), 0);
+    + examensAvecPrix.reduce((s, x) => s + (x.prix || 0), 0);
 
   const vitalWarning = (key, val) => {
     if (!val || val === "") return "";
@@ -1268,6 +1331,7 @@ export default function Consultation() {
             c={selectedConsult}
             isMobile={isMobile}
             onBack={() => setMainView('list')}
+            examCatalogue={examCatalogue}
           />
         )}
 
@@ -1784,19 +1848,24 @@ export default function Consultation() {
                           <input type="number" className="cinp" value={form.frais_consultation} onChange={e => setF("frais_consultation", parseInt(e.target.value)||0)} style={{ width:140, textAlign:"right" }} />
                         </td>
                       </tr>
-                      {form.examens.map(x => (
+                      {examensAvecPrix.map(x => (
                         <tr key={x.id}>
                           <td>
                             <div style={{ fontWeight:600 }}>{x.libelle}</div>
                             <div style={{ fontSize:11, color:"var(--cm)" }}>{x.type==="biologie"?"Analyses biologiques":x.type==="imagerie"?"Imagerie":x.type==="scanner"?"Scanner/IRM":"Examen"}</div>
                           </td>
-                          <td style={{ textAlign:"right", fontWeight:600 }}>{(x.type==="biologie"?5000:x.type==="imagerie"?25000:x.type==="scanner"?75000:15000).toLocaleString("fr-FR")}</td>
+                          <td style={{ textAlign:"right", fontWeight:600, color: x.prix == null ? "var(--cm)" : undefined }}>{x.prix != null ? x.prix.toLocaleString("fr-FR") : "tarif non disponible"}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)" }}>
-                        <td style={{ fontWeight:800, fontSize:15, color:"var(--cn)", padding:"14px" }}>TOTAL À PAYER</td>
+                        <td style={{ fontWeight:800, fontSize:15, color:"var(--cn)", padding:"14px" }}>
+                          TOTAL À PAYER
+                          {nbExamensNonChiffresForm > 0 && (
+                            <div style={{ fontSize:11, fontWeight:500, color:"var(--cm)", marginTop:2 }}>({nbExamensNonChiffresForm} examen(s) sans tarif catalogue réel, non inclus)</div>
+                          )}
+                        </td>
                         <td style={{ textAlign:"right", fontWeight:800, fontSize:18, color:"var(--cb)", padding:"14px" }}>{totalFacture.toLocaleString("fr-FR")} <span style={{ fontSize:12 }}>CFA</span></td>
                       </tr>
                     </tfoot>
