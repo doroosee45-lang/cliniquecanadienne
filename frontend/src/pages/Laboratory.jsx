@@ -1120,10 +1120,20 @@ export default function Laboratoire() {
                       🏷️ Valider les résultats
                     </button>
                   )}
-                  <button className="lbtn lbtn-ghost" onClick={() => toast.success("📄 Génération du bulletin...")}>{I.print} Imprimer bulletin</button>
-                  <button className="lbtn lbtn-ghost" onClick={() => toast.success("📤 PDF généré...")}>{I.dl} Télécharger PDF</button>
-                  <button className="lbtn lbtn-ghost" onClick={() => toast.success("📨 Envoyé au médecin...")}>{I.send} Envoyer médecin</button>
-                  <button className="lbtn lbtn-ghost" onClick={() => toast.success("📱 Envoyé au patient...")}>{I.send} Envoyer patient</button>
+                  {/* Sous-phase 5.2 — les 4 boutons ci-dessous affichaient
+                      chacun un faux succès (toast.success) sans la moindre
+                      action réelle. "Imprimer bulletin" câblé sur
+                      window.print(), même mécanisme réel déjà utilisé
+                      ailleurs dans ce fichier (hero, "Imprimer rapport").
+                      "Télécharger PDF" (aucun moteur de génération PDF
+                      distinct de l'impression) et "Envoyer médecin"/
+                      "Envoyer patient" (aucun mécanisme réel de
+                      notification/envoi de résultat n'existe dans
+                      laboratory.controller.js) désactivés honnêtement. */}
+                  <button className="lbtn lbtn-ghost" onClick={() => window.print()}>{I.print} Imprimer bulletin</button>
+                  <button className="lbtn lbtn-ghost" disabled title="Fonctionnalité en cours de développement — utilisez « Imprimer bulletin » (impression/export PDF via le navigateur)." onClick={() => toast("🚧 Téléchargement PDF non disponible — utilisez « Imprimer bulletin ».")}>{I.dl} Télécharger PDF</button>
+                  <button className="lbtn lbtn-ghost" disabled title="Fonctionnalité en cours de développement — aucun envoi réel au médecin n'existe dans ce système." onClick={() => toast("🚧 Envoi non disponible — fonctionnalité en cours de développement.")}>{I.send} Envoyer médecin</button>
+                  <button className="lbtn lbtn-ghost" disabled title="Fonctionnalité en cours de développement — aucun envoi réel au patient n'existe dans ce système." onClick={() => toast("🚧 Envoi non disponible — fonctionnalité en cours de développement.")}>{I.send} Envoyer patient</button>
                 </div>
 
                 {/* Section nav */}
@@ -1504,7 +1514,11 @@ export default function Laboratoire() {
                             <div style={{ fontSize:24 }}>{icon}</div>
                             <div style={{ fontWeight:700, color:"var(--ln)", fontSize:13 }}>{title}</div>
                             <div style={{ fontSize:11, color:"var(--lm)" }}>{desc}</div>
-                            <button className="lbtn lbtn-ghost lbtn-sm" style={{ marginTop:"auto" }} onClick={() => toast.success(`📄 Génération : ${title}...`)}>
+                            {/* Sous-phase 5.2 — faux succès (toast.success)
+                                sans génération réelle. Aucun moteur de
+                                génération de documents n'existe pour ces
+                                types dans ce système. */}
+                            <button className="lbtn lbtn-ghost lbtn-sm" style={{ marginTop:"auto" }} disabled title="Fonctionnalité en cours de développement — aucune génération réelle de document n'existe pour ce type." onClick={() => toast("🚧 Génération de documents non disponible — fonctionnalité en cours de développement.")}>
                               {I.dl} Générer
                             </button>
                           </div>
