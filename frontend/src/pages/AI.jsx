@@ -916,55 +916,20 @@ export default function IntelligenceArtificielle() {
                 )}
 
                 {/* ─ ANALYSE PATIENT ─ */}
+                {/* Sous-phase 5.6 (module IA, relecture du 6 sept. 2026) — cette
+                    section affichait un patient/dossier/risques entièrement
+                    fabriqués (Jean Dupont, scores de risque inventés, résumé
+                    médical inventé), présentés comme un vrai résumé IA. Aucun
+                    moteur de règles réel n'existe pour ce sous-module (en
+                    construire un est explicitement hors périmètre de cette
+                    correction — décision produit distincte). Désactivé
+                    honnêtement, même pattern que Chat IA (ligne ~1290) :
+                    aucune donnée fabriquée ne peut plus s'afficher ici. */}
                 {section === "patient" && (
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
-                    <div className="ia-card fu">
-                      <div className="ia-card-hdr"><h3>👤 Sélectionner un patient</h3></div>
-                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
-                        <select className="iinp">
-                          <option>Jean Dupont — PAT-2025-0001</option>
-                          <option>Marie Paul — PAT-2025-0002</option>
-                          <option>Paul Nguema — PAT-2025-0003</option>
-                          <option>André Mboula — PAT-2025-0005</option>
-                        </select>
-                        <button className="ibtn ibtn-teal">{I.iaS} Analyser le dossier</button>
-                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                          {[["Risque cardiovasculaire",78,"#DC2626"],["Risque diabétique",62,"#D97706"],["Risque infectieux",35,"#CA8A04"],["Risque obstétrical",12,"#059669"]].map(([lbl,val,col]) => (
-                            <div key={lbl}>
-                              <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:4 }}>
-                                <span style={{ color:"var(--cm)" }}>{lbl}</span>
-                                <span style={{ fontWeight:700, color:col }}>{val}/100</span>
-                              </div>
-                              <Prog pct={val} color={col} />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="ia-card fu">
-                      <div className="ia-card-hdr"><h3>📋 Résumé automatique IA</h3></div>
-                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
-                        {[
-                          { icon:"🩺", label:"Historique médical",  value:"HTA depuis 2018 · Diabète T2 depuis 2020" },
-                          { icon:"💊", label:"Traitements en cours", value:"Metformine 500mg · Amlodipine 5mg" },
-                          { icon:"⚠️", label:"Allergies",            value:"Pénicilline — ALERTE ACTIVE", warn:true },
-                          { icon:"📅", label:"Dernière consultation", value:"28/05/2025 · Dr. Leblanc" },
-                          { icon:"🔬", label:"Résultat labo récent", value:"Glycémie 7.8 mmol/L — Anormal" },
-                          { icon:"🏥", label:"Hospitalisations",     value:"1 séjour · Service Chirurgie" },
-                        ].map(r => (
-                          <div key={r.label} style={{ display:"flex", gap:10, background:r.warn?"#FEF2F2":"#F8FAFD", border:`1.5px solid ${r.warn?"#FECACA":"var(--cbr)"}`, borderRadius:10, padding:"10px 12px" }}>
-                            <span style={{ fontSize:16, flexShrink:0 }}>{r.icon}</span>
-                            <div>
-                              <div style={{ fontSize:10, fontWeight:700, color:r.warn?"#B91C1C":"var(--cm)", textTransform:"uppercase" }}>{r.label}</div>
-                              <div style={{ fontSize:12, color:r.warn?"#DC2626":"var(--cn)", marginTop:2, fontWeight:r.warn?700:400 }}>{r.value}</div>
-                            </div>
-                          </div>
-                        ))}
-                        <div style={{ display:"flex", gap:8 }}>
-                          <button className="ibtn ibtn-ghost ibtn-sm">{I.dl} Télécharger résumé</button>
-                          <button className="ibtn ibtn-teal ibtn-sm">{I.file} Générer rapport</button>
-                        </div>
-                      </div>
+                  <div className="ia-card fu">
+                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>👤</div>
+                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
                     </div>
                   </div>
                 )}
@@ -1040,175 +1005,71 @@ export default function IntelligenceArtificielle() {
                   </div>
                 )}
 
-                {/* ─ LABORATOIRE IA ─ */}
+                {/* Sous-phase 5.6 (module IA, relecture du 6 sept. 2026) —
+                    interprétations biologiques et tendance entièrement
+                    fabriquées (valeurs et diagnostics inventés). Désactivé
+                    honnêtement — voir commentaire détaillé sur la section
+                    "patient" ci-dessus, même principe et même décision. */}
                 {section === "laboratoire" && (
-                  <div>
-                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
-                      <div className="ia-card fu">
-                        <div className="ia-card-hdr"><h3>🔬 Interprétation automatique</h3></div>
-                        <div style={{ padding:20 }}>
-                          {[
-                            { exam:"Numération sanguine (NFS)", val:"Hb 10.2 g/dL · GB 14 200/µL", interp:"Anémie légère + hyperleucocytose → suspect infectieux", cls:"orange" },
-                            { exam:"Glycémie à jeun",           val:"7.8 mmol/L",                    interp:"Hyperglycémie — Diabète non équilibré (seuil > 7 mmol/L)", cls:"red" },
-                            { exam:"Fonction rénale",           val:"Créatinine 145 µmol/L",         interp:"Insuffisance rénale légère (N < 97 µmol/L)", cls:"orange" },
-                            { exam:"Bilan hépatique (ALAT)",    val:"28 UI/L",                       interp:"Normal — Pas d'atteinte hépatique", cls:"green" },
-                          ].map(r => (
-                            <div key={r.exam} style={{ marginBottom:12, background:"#F8FAFD", borderRadius:12, padding:"12px 14px", border:"1.5px solid var(--cbr)" }}>
-                              <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{r.exam}</div>
-                              <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>{r.val}</div>
-                              <div style={{ marginTop:6, display:"flex", alignItems:"center", gap:8 }}>
-                                <Badge cls={r.cls}>{r.interp}</Badge>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="ia-card fu">
-                        <div className="ia-card-hdr"><h3>📈 Comparaison historique</h3><p>Évolution sur 6 mois</p></div>
-                        <div style={{ padding:20 }}>
-                          <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", marginBottom:8 }}>GLYCÉMIE (mmol/L) — 6 derniers mois</div>
-                          <LineChart labels={["Jan","Fév","Mar","Avr","Mai","Jun"]} data={[6.8,7.1,7.4,7.2,7.8,7.6]} color="#DC2626" />
-                          <div className="al-warn" style={{ marginTop:12 }}>
-                            <div style={{ fontSize:12, color:"#92400E" }}>📈 Tendance à la hausse — réévaluation du traitement recommandée</div>
-                          </div>
-                        </div>
-                      </div>
+                  <div className="ia-card fu">
+                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🔬</div>
+                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
                     </div>
                   </div>
                 )}
 
-                {/* ─ IMAGERIE IA ─ */}
+                {/* Sous-phase 5.6 — POINT LE PLUS SENSIBLE DE L'AUDIT : cette
+                    section affichait un contenu clinique entièrement inventé
+                    et présenté comme un résultat réel ("Appendicite aiguë
+                    confirmée"), sur un examen fictif. Désactivé en priorité
+                    absolue — aucun contenu médical fabriqué ne doit plus
+                    pouvoir s'afficher ici. */}
                 {section === "imagerie" && (
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
-                    {[
-                      { type:"Échographie abdominale", date:"28/05/2025", anomalie:true,  resume:"Appendice mesurant 9mm non compressible — Appendicite aiguë confirmée. Épanchement péri-appendiculaire localisé.", comparaison:"Examen initial — pas de référence antérieure." },
-                      { type:"Radiographie thorax",    date:"14/02/2025", anomalie:false, resume:"Pas d'opacité parenchymateuse. Sinus costophréniques libres. Silhouette cardiaque normale.", comparaison:"Stable par rapport à l'examen de 2023." },
-                    ].map(ex => (
-                      <div key={ex.type} className="ia-card fu">
-                        <div className="ia-card-hdr">
-                          <h3>🩻 {ex.type}</h3>
-                          <Badge cls={ex.anomalie ? "red":"green"}>{ex.anomalie ? "Anomalie détectée":"Normal"}</Badge>
-                        </div>
-                        <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
-                          <div style={{ background:ex.anomalie?"#FEF2F2":"#ECFDF5", border:`1.5px solid ${ex.anomalie?"#FECACA":"#A7F3D0"}`, borderRadius:12, padding:14 }}>
-                            <div style={{ fontSize:11, fontWeight:700, color:ex.anomalie?"#B91C1C":"#065F46", marginBottom:6 }}>🤖 RÉSUMÉ IA</div>
-                            <div style={{ fontSize:12, color:"var(--cn)" }}>{ex.resume}</div>
-                          </div>
-                          <div style={{ background:"#F8FAFD", borderRadius:12, padding:14 }}>
-                            <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", marginBottom:4 }}>📊 COMPARAISON</div>
-                            <div style={{ fontSize:12, color:"var(--cn)" }}>{ex.comparaison}</div>
-                          </div>
-                          <div style={{ fontSize:11, color:"var(--cm)", fontStyle:"italic" }}>📅 {ex.date} · Analyse IA préliminaire — à valider par un radiologue.</div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="ia-card fu">
+                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🩻</div>
+                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
+                    </div>
                   </div>
                 )}
 
-                {/* ─ RENDEZ-VOUS IA ─ */}
+                {/* Sous-phase 5.6 (module IA) — prévisions d'affluence et
+                    charge par médecin entièrement fabriquées (aucun modèle
+                    prédictif réel). Désactivé honnêtement. */}
                 {section === "rdv" && (
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
-                    <div className="ia-card fu">
-                      <div className="ia-card-hdr"><h3>📅 Optimisation des RDV</h3></div>
-                      <div style={{ padding:20 }}>
-                        <div style={{ marginBottom:16 }}>
-                          <div style={{ fontSize:12, fontWeight:700, color:"var(--cm)", textTransform:"uppercase", marginBottom:10 }}>Prévision affluence — cette semaine</div>
-                          <BarChart labels={["Lun","Mar","Mer","Jeu","Ven","Sam"]} data={[14,18,12,22,16,8]} color="#0EA5A0" height={140} />
-                        </div>
-                        <div className="al-warn">
-                          <div style={{ fontSize:12, color:"#92400E" }}>⚠ Surcharge prévue jeudi — 22 patients · Répartition recommandée</div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="ia-card fu">
-                      <div className="ia-card-hdr"><h3>👨‍⚕️ Charge par médecin</h3></div>
-                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
-                        {[
-                          { med:"Dr. Leblanc",        nb:24, cap:20, col:"#DC2626" },
-                          { med:"Dr. Sophie Pierre",  nb:16, cap:20, col:"#0EA5A0" },
-                          { med:"Dr. Médecin 3",      nb:11, cap:20, col:"#059669" },
-                        ].map(m => (
-                          <div key={m.med} style={{ background:"#F8FAFD", borderRadius:12, padding:"12px 14px" }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                              <span style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{m.med}</span>
-                              <Badge cls={m.nb > m.cap ? "red" : "green"}>{m.nb}/{m.cap} RDV</Badge>
-                            </div>
-                            <Prog pct={Math.min(100, Math.round(m.nb/m.cap*100))} color={m.col} />
-                          </div>
-                        ))}
-                        <div className="al-ia" style={{ marginTop:4 }}>
-                          <div style={{ fontSize:12, color:"#1E40AF" }}>💡 Suggestion : Transférer 4 RDV du Dr. Leblanc vers Dr. Médecin 3 cette semaine.</div>
-                        </div>
-                      </div>
+                  <div className="ia-card fu">
+                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>📅</div>
+                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
                     </div>
                   </div>
                 )}
 
-                {/* ─ ADMINISTRATIF IA ─ */}
+                {/* Sous-phase 5.6 — boutons "Générer" purement décoratifs
+                    (aucun onClick, aucune génération réelle). Désactivé
+                    honnêtement plutôt que de laisser un bouton qui ne fait
+                    rien. */}
                 {section === "administratif" && (
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:16 }}>
-                    {[
-                      { icon:"📋", titre:"Compte rendu consultation", desc:"Génération automatique à partir des notes du médecin" },
-                      { icon:"🏥", titre:"Rapport d'hospitalisation", desc:"Résumé complet du séjour avec traitements et observations" },
-                      { icon:"🔪", titre:"Compte rendu opératoire", desc:"Rapport structuré de l'intervention chirurgicale" },
-                      { icon:"📄", titre:"Certificat médical", desc:"Certificat de repos ou d'aptitude médicale" },
-                      { icon:"✉️", titre:"Courrier de liaison", desc:"Lettre au médecin traitant ou spécialiste" },
-                      { icon:"📊", titre:"Rapport mensuel clinique", desc:"Statistiques, KPIs et analyses de la période" },
-                      { icon:"💰", titre:"Rapport financier IA", desc:"Revenus, dépenses et projections automatiques" },
-                      { icon:"🩺", titre:"Résumé de consultation", desc:"Synthèse structurée de la consultation médicale" },
-                    ].map(doc => (
-                      <div key={doc.titre} className="ia-card fu" style={{ cursor:"pointer" }}>
-                        <div style={{ padding:18, display:"flex", flexDirection:"column", gap:8 }}>
-                          <div style={{ fontSize:28 }}>{doc.icon}</div>
-                          <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{doc.titre}</div>
-                          <div style={{ fontSize:11, color:"var(--cm)" }}>{doc.desc}</div>
-                          <button className="ibtn ibtn-teal ibtn-sm" style={{ marginTop:4 }}>
-                            {I.iaS} Générer
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="ia-card fu">
+                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>📋</div>
+                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
+                    </div>
                   </div>
                 )}
 
-                {/* ─ FINANCE IA ─ */}
+                {/* Sous-phase 5.6 — prévisions financières et détection
+                    d'anomalies entièrement fabriquées (aucun calcul réel sur
+                    les vraies factures/dépenses). Désactivé honnêtement —
+                    les vrais chiffres financiers existent déjà et sont
+                    exposés ailleurs (Finance.jsx), pas ici sous forme
+                    inventée. */}
                 {section === "finance" && (
-                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
-                    <div className="ia-card fu">
-                      <div className="ia-card-hdr"><h3>💰 Prévisions financières</h3><p>Modèle IA — 30 jours</p></div>
-                      <div style={{ padding:20 }}>
-                        <LineChart labels={["S1","S2","S3","S4","S5","S6","S7","S8"]} data={[820,950,880,1100,970,1050,1200,1150]} color="#059669" />
-                        <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:10, marginTop:16 }}>
-                          {[["CA prévu","4 850 000","green"],["Dépenses","2 340 000","orange"],["Solde prévu","2 510 000","blue"]].map(([lbl,val,col]) => (
-                            <div key={lbl} style={{ background:"#F8FAFD", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
-                              <div style={{ fontSize:11, color:"var(--cm)", fontWeight:600 }}>{lbl}</div>
-                              <div style={{ fontSize:13, fontWeight:800, color:`var(--c${col[0]})`, marginTop:4 }}>{val}</div>
-                              <div style={{ fontSize:10, color:"#9CA3AF" }}>CFA</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="ia-card fu">
-                      <div className="ia-card-hdr"><h3>🔍 Détection d'anomalies</h3></div>
-                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
-                        {[
-                          { icon:"💸", titre:"Factures impayées > 30j", val:"510 000 CFA · 3 dossiers", cls:"red" },
-                          { icon:"📉", titre:"Baisse CA Laboratoire", val:"-18% vs mois précédent", cls:"orange" },
-                          { icon:"⚠️", titre:"Dépense inhabituelle", val:"Matériel médical +45% mars", cls:"yellow" },
-                          { icon:"✅", titre:"Recettes chirurgie", val:"+22% — tendance positive", cls:"green" },
-                        ].map(a => (
-                          <div key={a.titre} style={{ display:"flex", alignItems:"center", gap:10, background:"#F8FAFD", borderRadius:12, padding:"10px 14px", border:"1.5px solid var(--cbr)" }}>
-                            <span style={{ fontSize:18 }}>{a.icon}</span>
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>{a.titre}</div>
-                              <div style={{ fontSize:11, color:"var(--cm)" }}>{a.val}</div>
-                            </div>
-                            <Badge cls={a.cls}>{a.cls === "red" || a.cls === "orange" ? "Alerte" : a.cls === "yellow" ? "Attention" : "OK"}</Badge>
-                          </div>
-                        ))}
-                        <button className="ibtn ibtn-teal ibtn-sm" style={{ marginTop:4 }}>{I.dl} Rapport financier IA complet</button>
-                      </div>
+                  <div className="ia-card fu">
+                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>💰</div>
+                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
                     </div>
                   </div>
                 )}
@@ -1414,41 +1275,16 @@ export default function IntelligenceArtificielle() {
           )}
 
           {/* ══ BASE DE CONNAISSANCES ══ */}
+          {/* Sous-phase 5.6 (module IA, relecture du 6 sept. 2026) — les
+              articles affichés (kbFiltered) sont des données fabriquées ;
+              "Consulter"/"Résumé IA" n'ont aucun handler réel. Aucune vraie
+              base de connaissances médicale n'existe dans ce système.
+              Désactivé honnêtement, même pattern que Chat IA. */}
           {tab === "knowledge" && (
-            <div>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
-                <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>📚 Base de connaissances médicale</div>
-                <div style={{ position:"relative" }}>
-                  <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.iaS}</span>
-                  <input className="iinp" style={{ paddingLeft:32, width:260 }} placeholder="Recherche intelligente…" aria-label="Recherche intelligente" value={kbSearch} onChange={e => setKbSearch(e.target.value)} />
-                </div>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>
-                {kbFiltered.map(k => (
-                  <div key={k.id} className="ia-card fu" style={{ cursor:"pointer" }}>
-                    <div style={{ padding:18 }}>
-                      <div style={{ display:"flex", alignItems:"flex-start", gap:10, marginBottom:12 }}>
-                        <div style={{ width:36, height:36, background:"#EEF4FF", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>📖</div>
-                        <div>
-                          <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{k.titre}</div>
-                          <Badge cls="blue" style={{ marginTop:4 }}>{k.categorie}</Badge>
-                        </div>
-                      </div>
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
-                        {k.tags.map(t => <span key={t} className="chip" style={{ fontSize:10, padding:"2px 8px" }}>#{t}</span>)}
-                      </div>
-                      <div style={{ display:"flex", gap:6, marginTop:12 }}>
-                        <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:10 }}>👁 Consulter</button>
-                        <button className="ibtn ibtn-teal ibtn-sm" style={{ fontSize:10 }}>{I.iaS} Résumé IA</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {kbFiltered.length === 0 && (
-                  <div style={{ gridColumn:"1/-1", padding:40, textAlign:"center", color:"var(--cm)" }}>
-                    Aucun résultat pour « {kbSearch} »
-                  </div>
-                )}
+            <div className="ia-card fu">
+              <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>📚</div>
+                <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
               </div>
             </div>
           )}
