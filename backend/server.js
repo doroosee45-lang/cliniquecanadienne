@@ -115,6 +115,18 @@ setIO(io);
 
 // ── Express middleware ────────────────────────────────────────────────────────
 
+// Correction 2 (relecture du 5 sept. 2026, découverte pendant SEC-007) —
+// connectSrc contenait ws://localhost:5000 / wss://localhost:5000 codés en
+// dur : une URL de développement qui ne correspondrait à aucune origine
+// réelle en production. frontend/src/contexts/SocketContext.jsx se connecte
+// toujours à `window.location.origin` (jamais une URL différente selon
+// l'environnement), qui — en développement comme en production — est
+// exactement l'une des origines déjà listées dans env.CLIENT_URL (c'est là
+// sa définition : les origines sur lesquelles le frontend tourne, déjà
+// utilisée ci-dessus pour CORS/Socket.IO). Dérivée ici plutôt qu'une
+// nouvelle variable : mêmes origines, schéma http→ws / https→wss.
+const wsOrigins = allowedOrigins.map(o => o.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:'));
+
 // Security headers
 app.use(helmet({
   contentSecurityPolicy: {
@@ -137,7 +149,7 @@ app.use(helmet({
       styleSrc:   ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc:    ["'self'", "https://fonts.gstatic.com", "data:"],
       imgSrc:     ["'self'", "data:", "https:", "blob:"],
-      connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", "ws://localhost:5000", "wss://localhost:5000"],
+      connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", ...wsOrigins],
       frameSrc:   ["https://accounts.google.com"],
       workerSrc:  ["'self'", "blob:"],
     },
