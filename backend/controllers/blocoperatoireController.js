@@ -33,8 +33,23 @@ const SALLES_BLOC = [
 ];
 
 // Mapping statut frontend → modèle
+// Sous-phase 5.1 (relecture du 6 sept. 2026) — 'terminee' pointait vers
+// 'opere', exactement comme 'en_cours' : sélectionner "Terminée" dans
+// Blocoperatoire.jsx ne produisait donc jamais d'état réellement distinct
+// d'"En cours" en base, ce qui obligeait getPlanning() à figer
+// stats.terminees à 0 (aucune requête ne pouvait jamais la calculer,
+// l'enum réel du modèle n'ayant que 'cloture' comme état final distinct,
+// jusqu'ici jamais utilisé par ce mapping). 'preparation' n'a quant à lui
+// jamais eu d'entrée ici : sélectionné dans le formulaire (STATUT_BO),
+// il retombait sur l'identité 'preparation', une valeur absente de l'enum
+// du modèle — runValidators (findByIdAndUpdate) rejetait alors la
+// sauvegarde en erreur 500. Fixé en le faisant pointer vers 'preoperatoire'
+// (aucun signal réel ne distingue "en préparation" de "programmée" dans ce
+// schéma ; l'option a été retirée des menus déroulants côté frontend
+// plutôt que de laisser un état fictif "en préparation" qui n'existerait
+// jamais réellement en base).
 function toModelStatut(s) {
-  const map = { programmee:'preoperatoire', en_cours:'opere', terminee:'opere', reveil:'suivi_postop', annulee:'consultation' };
+  const map = { programmee:'preoperatoire', preparation:'preoperatoire', en_cours:'opere', terminee:'cloture', reveil:'suivi_postop', annulee:'consultation' };
   return map[s] || s;
 }
 
@@ -107,10 +122,60 @@ exports.getPlanning = async (req, res, next) => {
     // Stats rapides
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const demain = new Date(today); demain.setDate(demain.getDate() + 1);
-    const [auj, urgences] = await Promise.all([
+    const il3Mois = new Date(today); il3Mois.setMonth(il3Mois.getMonth() - 3);
+    const il12Mois = new Date(today); il12Mois.setMonth(il12Mois.getMonth() - 11); il12Mois.setDate(1); il12Mois.setHours(0,0,0,0);
+
+    const [
+      auj, urgences,
+      // Sous-phase 5.1 — "Terminées" (KPI + strip de statut) était figé à 0,
+      // faute de tout état modèle réellement distinct pour ce concept avant
+      // la correction de toModelStatut() ci-dessus. Réellement compté ici
+      // maintenant que 'terminee' (UI) persiste bien 'cloture' (modèle).
+      terminees,
+      interventionsSur3Mois,
+      operes,
+      operesAvecComplications,
+      cloturesAvecEtat,
+      cloturesReussies,
+      dureeAgg,
+      volumeBrut,
+    ] = await Promise.all([
       DossierChirurgical.countDocuments({ date_intervention_prev: { $gte: today, $lt: demain }, statut: { $in: ['preoperatoire','opere'] } }),
       DossierChirurgical.countDocuments({ niveau_urgence: { $in: ['urgent','urgence_absolue'] }, statut: 'preoperatoire' }),
+      DossierChirurgical.countDocuments({ statut: 'cloture', updated_at: { $gte: today, $lt: demain } }),
+      DossierChirurgical.countDocuments({ date_intervention_prev: { $gte: il3Mois, $lt: demain } }),
+      DossierChirurgical.countDocuments({ statut: { $in: ['opere', 'suivi_postop', 'cloture'] } }),
+      DossierChirurgical.countDocuments({ statut: { $in: ['opere', 'suivi_postop', 'cloture'] }, nb_complications: { $gt: 0 } }),
+      DossierChirurgical.countDocuments({ statut: 'cloture', etat_sortie: { $exists: true, $ne: null } }),
+      DossierChirurgical.countDocuments({ statut: 'cloture', etat_sortie: { $in: ['guerison', 'amelioration'] } }),
+      DossierChirurgical.aggregate([
+        { $match: { salle_entree_at: { $ne: null }, salle_sortie_at: { $ne: null }, $expr: { $gt: ['$salle_sortie_at', '$salle_entree_at'] } } },
+        { $group: { _id: null, moyenneMs: { $avg: { $subtract: ['$salle_sortie_at', '$salle_entree_at'] } } } },
+      ]),
+      // AUDIT-ANALYTICS (Sous-phase 5.1) — "Volume opératoire — 12 mois"
+      // (Dashboard ET onglet Stats) était un chartData=[3,5,4,7,...] codé en
+      // dur. type_intervention étant renseigné dès la création (créée ou
+      // programmée au bloc), on compte réellement toute intervention ayant
+      // atteint le bloc (date_intervention_prev renseignée), tous statuts
+      // confondus (y compris annulée/clôturée), sur les 12 derniers mois.
+      DossierChirurgical.find({ date_intervention_prev: { $gte: il12Mois } }).select('date_intervention_prev').lean(),
     ]);
+
+    const dureeMoyenneMin = dureeAgg[0] ? Math.round(dureeAgg[0].moyenneMs / 60000) : 0;
+    const tauxComplications = operes > 0 ? Math.round((operesAvecComplications / operes) * 1000) / 10 : 0;
+    const tauxSucces = cloturesAvecEtat > 0 ? Math.round((cloturesReussies / cloturesAvecEtat) * 100) : 0;
+
+    const volumeLabels = [];
+    const volumeData = new Array(12).fill(0);
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      volumeLabels.push(d.toLocaleDateString('fr-FR', { month: 'short' }));
+    }
+    volumeBrut.forEach(d => {
+      const diffMois = (today.getFullYear() - d.date_intervention_prev.getFullYear()) * 12 + (today.getMonth() - d.date_intervention_prev.getMonth());
+      const idx = 11 - diffMois;
+      if (idx >= 0 && idx < 12) volumeData[idx]++;
+    });
 
     res.json({
       success: true,
@@ -123,8 +188,13 @@ exports.getPlanning = async (req, res, next) => {
         total,
         programmees:  planning.filter(p => p.statut === 'preoperatoire').length,
         en_cours:     planning.filter(p => p.statut === 'opere').length,
-        terminees:    0,
+        terminees,
         reveil:       planning.filter(p => p.statut === 'suivi_postop').length,
+        interventions_mois_moy: Math.round((interventionsSur3Mois / 3) * 10) / 10,
+        taux_complications: tauxComplications,
+        taux_succes: tauxSucces,
+        duree_moyenne_min: dureeMoyenneMin,
+        volume_12_mois: { labels: volumeLabels, data: volumeData },
       },
     });
   } catch (err) { next(err); }

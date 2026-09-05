@@ -259,8 +259,6 @@ const CHECKLIST_ITEMS = [
   { id:"timeout",        label:"Time-out équipe réalisé avant incision" },
 ];
 
-const DEMO_CONSO = [];
-
 const EMPTY_INTERV = {
   patient:"", chirurgien:"", assistant:"", anesthesiste:"", infirmier_instru:"", infirmier_circu:"",
   type_intervention:"", specialite:"chirurgie_generale", niveau_urgence:"programmee",
@@ -467,7 +465,6 @@ export default function BlocOperatoire() {
   };
   const [saving, setSaving]     = useState(false);
   const [checklist, setChecklist] = useState({});
-  const [consommables, setConsommables] = useState(DEMO_CONSO);
   const [patients, setPatients] = useState([]);
 
   // Modals
@@ -487,8 +484,13 @@ export default function BlocOperatoire() {
   // AUDIT-ANALYTICS-P5 — occupation réelle des 3 salles (GET /blocoperatoire/salles),
   // remplace DEMO_SALLES=[] jamais alimenté jusqu'ici.
   const [salles, setSalles] = useState([]);
-  const [chartMois, setChartMois]   = useState(["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"]);
-  const [chartData, setChartData]   = useState([3, 5, 4, 7, 8, 6, 5, 3, 4, 6, 5, 7]);
+  // Sous-phase 5.1 — "Volume opératoire — 12 mois" était un couple
+  // chartMois/chartData codé en dur ([3,5,4,7,...]), jamais recalculé.
+  // Dérivé maintenant en lecture directe de kpis.volume_12_mois, réellement
+  // agrégé par blocoperatoireController.js::getPlanning et fusionné dans
+  // kpis via loadInterventions() (aucun état séparé nécessaire).
+  const chartMois = kpis.volume_12_mois?.labels || [];
+  const chartData = kpis.volume_12_mois?.data || [];
 
   // ── Load interventions ─────────────────────────────────────
   const loadInterventions = useCallback(async () => {
@@ -527,8 +529,15 @@ export default function BlocOperatoire() {
     try {
       const { data } = await api.get("/patients?limit=500");
       setPatients(data.patients || data.data || []);
-    } catch {
-      setPatients([{ _id:"p1", prenom:"Jean", nom:"Dupont", numero_dossier:"PAT-001" }]);
+    } catch (err) {
+      // Sous-phase 5.1 — repli silencieux vers un patient fictif "Jean
+      // Dupont" en cas d'échec réseau, qui aurait permis de programmer une
+      // véritable intervention chirurgicale sur un patient inexistant sans
+      // aucun avertissement (même classe de bug que Chirurgie.jsx,
+      // corrigée plus tôt dans ce chantier).
+      console.error("Erreur chargement patients:", err);
+      setPatients([]);
+      toast.error("Impossible de charger la liste des patients.");
     }
   }, []);
 
@@ -730,16 +739,22 @@ export default function BlocOperatoire() {
                     <BarChart labels={chartMois} data={chartData} color="#1A5276" />
                   </div>
                 </div>
+                {/* Sous-phase 5.1 — "Par spécialité" affichait une répartition
+                    fixe [40,22,15,10,8,5] jamais recalculée. Aucun champ
+                    "specialite" n'existe sur DossierChirurgical : le formulaire
+                    (formInterv.specialite) le capture côté client mais
+                    createIntervention()/updateIntervention() (backend) ne le
+                    persistent nulle part (même limite que Prescriptions.jsx,
+                    formOrd.specialite — annexe non corrigée ici, hors
+                    périmètre de cette correction). Désactivé honnêtement
+                    plutôt que d'afficher une répartition inventée. */}
                 <div className="bo-card bofu">
                   <div className="bo-card-hdr">
                     <div><h3>Par spécialité</h3><p>Répartition des interventions</p></div>
                   </div>
-                  <div style={{ padding:20 }}>
-                    <DoughnutChart
-                      labels={["Chir. Générale","Gynécologie","Orthopédie","Urologie","ORL","Autre"]}
-                      data={[40, 22, 15, 10, 8, 5]}
-                      colors={["#1A5276","#17A589","#D68910","#6C3483","#117A65","#5D7892"]}
-                    />
+                  <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                    <div style={{ fontSize:32, marginBottom:10, opacity:.4 }}>📊</div>
+                    <div style={{ fontSize:13 }}>🚧 Fonctionnalité indisponible — la spécialité saisie à la création n'est pas encore enregistrée en base.</div>
                   </div>
                 </div>
               </div>
@@ -747,7 +762,7 @@ export default function BlocOperatoire() {
               {/* Today's table */}
               <div className="bo-card bofu">
                 <div className="bo-card-hdr">
-                  <div><h3>{I.calendar} Programme du jour — {today}</h3><p>{DEMO_INTERVENTIONS.length} interventions planifiées</p></div>
+                  <div><h3>{I.calendar} Programme du jour — {today}</h3><p>{interventions.length} interventions planifiées</p></div>
                   <button className="bbtn bbtn-ghost bbtn-sm" onClick={() => setTab("programme")}>Programme complet →</button>
                 </div>
                 <div style={{ overflowX:"auto" }}>
@@ -803,30 +818,45 @@ export default function BlocOperatoire() {
                 Programme opératoire — <span style={{ color:"var(--bt)" }}>{today}</span>
               </div>
 
-              {/* Status strip */}
+              {/* Status strip — Sous-phase 5.1 : "Préparation" retiré (codé en
+                  dur à 1, aucun état modèle réel ne le distingue de
+                  "Programmée", cf. toModelStatut() ci-dessus côté backend). */}
               <div className="status-strip bofu" style={{ marginBottom:20 }}>
                 {[
                   ["Programmée",    kpis.programmees],
-                  ["Préparation",   1],
                   ["En cours",      kpis.en_cours],
                   ["Salle réveil",  kpis.reveil],
                   ["Terminée",      kpis.terminees],
                 ].map(([lbl, val], i) => (
-                  <div key={lbl} className={`status-step ${i === 2 && kpis.en_cours > 0 ? "active" : i === 4 && kpis.terminees > 0 ? "done" : "pending"}`}>
+                  <div key={lbl} className={`status-step ${i === 1 && kpis.en_cours > 0 ? "active" : i === 3 && kpis.terminees > 0 ? "done" : "pending"}`}>
                     <div style={{ fontSize:18, fontWeight:800 }}>{val}</div>
                     <div>{lbl}</div>
                   </div>
                 ))}
               </div>
 
-              {/* Timeline par salle */}
-              {["Bloc 1","Bloc 2","Bloc 3"].map(salle => {
-                const items = DEMO_INTERVENTIONS.filter(x => x.salle === salle);
-                const sc_bloc = { "Bloc 1":{ color:"var(--bb)", light:"#EBF5FB" }, "Bloc 2":{ color:"var(--bt)", light:"#E8F8F5" }, "Bloc 3":{ color:"var(--bg)", light:"#EAFAF1" } }[salle] || { color:"var(--cm)", light:"#F4F9FD" };
+              {/* Timeline par salle — Sous-phase 5.1 : filtrait
+                  DEMO_INTERVENTIONS (toujours vide) par des labels "Bloc 1/2/3"
+                  qui ne correspondent à aucune salle réelle (les vraies salles
+                  sont BO-1/BO-2/BO-3, cf. SALLES_BLOC côté backend et
+                  reduxSalles déjà chargé plus haut) : cette section n'affichait
+                  donc jamais aucune intervention réelle, quelle que soit la
+                  salle. */}
+              {(reduxSalles && reduxSalles.length > 0 ? reduxSalles : [
+                { id:"BO-1", nom:"Salle 1 — Chirurgie générale" },
+                { id:"BO-2", nom:"Salle 2 — Orthopédie" },
+                { id:"BO-3", nom:"Salle 3 — Urgences / Polyvalent" },
+              ]).map((s, salleIdx) => {
+                const items = interventions.filter(x => x.salle === s.id);
+                const sc_bloc = [
+                  { color:"var(--bb)", light:"#EBF5FB" },
+                  { color:"var(--bt)", light:"#E8F8F5" },
+                  { color:"var(--bg)", light:"#EAFAF1" },
+                ][salleIdx] || { color:"var(--cm)", light:"#F4F9FD" };
                 return (
-                  <div key={salle} className="bo-card bofu" style={{ marginBottom:16 }}>
+                  <div key={s.id} className="bo-card bofu" style={{ marginBottom:16 }}>
                     <div className="bo-card-hdr" style={{ background:`linear-gradient(to right,${sc_bloc.light},transparent)` }}>
-                      <h3 style={{ color:sc_bloc.color }}>🏥 {salle}</h3>
+                      <h3 style={{ color:sc_bloc.color }}>🏥 {s.nom}</h3>
                       <span style={{ fontSize:12, color:"var(--cm)" }}>{items.length} intervention(s)</span>
                     </div>
                     {items.length === 0 ? (
@@ -885,7 +915,6 @@ export default function BlocOperatoire() {
                   <select className="binp" style={{ width:180 }} value={filterStatut} onChange={e => { setFilter(e.target.value); setPage(1); }}>
                     <option value="">Tous les statuts</option>
                     <option value="programmee">Programmée</option>
-                    <option value="preparation">En préparation</option>
                     <option value="en_cours">En cours</option>
                     <option value="terminee">Terminée</option>
                     <option value="reveil">Salle réveil</option>
@@ -1060,7 +1089,7 @@ export default function BlocOperatoire() {
                   { id:"deroulement",   label:"🔪 Déroulement" },
                   { id:"cr",            label:"📝 Compte rendu" },
                   { id:"reveil",        label:"💊 Salle réveil" },
-                  { id:"consommables",  label:`📦 Consommables (${consommables.length})` },
+                  { id:"consommables",  label:"📦 Consommables" },
                   { id:"facturation",   label:"💰 Facturation" },
                   { id:"documents",     label:"📄 Documents" },
                 ].map(s => (
@@ -1078,9 +1107,14 @@ export default function BlocOperatoire() {
                     <div style={{ padding:20, display:"flex", flexDirection:"column", gap:14 }}>
                       <div>
                         <label className="blbl">Statut de l'intervention *</label>
+                        {/* Sous-phase 5.1 — "En préparation" a été retiré : le
+                            modèle (DossierChirurgical.statut) n'a aucun état
+                            distinct de "Programmée" pour ce concept, et
+                            toModelStatut() le traduisait vers une valeur
+                            absente de l'enum réel, provoquant une erreur 500
+                            à l'enregistrement (findByIdAndUpdate + runValidators). */}
                         <select className="binp" value={currentInterv.statut} onChange={e => setCurrentInterv(d => ({ ...d, statut:e.target.value }))}>
                           <option value="programmee">📅 Programmée</option>
-                          <option value="preparation">🔧 En préparation</option>
                           <option value="en_cours">🔪 En cours</option>
                           <option value="reveil">💊 Salle de réveil</option>
                           <option value="terminee">✅ Terminée</option>
@@ -1093,10 +1127,25 @@ export default function BlocOperatoire() {
                       </div>
                       <div>
                         <label className="blbl">Salle attribuée</label>
+                        {/* Sous-phase 5.1 — ce menu envoyait "Bloc 1".."Bloc 4"/
+                            "Salle urgences" comme salle_prevue, des valeurs qui
+                            ne correspondent à AUCUNE salle réelle (SALLES_BLOC
+                            n'a que BO-1/BO-2/BO-3, déjà utilisées correctement
+                            par le formulaire de création juste ci-dessous dans
+                            ce même fichier) : replanifier une intervention
+                            existante via cet écran écrivait silencieusement une
+                            salle fictive, invisible pour getSalles()/le suivi
+                            d'occupation réel et la détection de conflit. */}
                         <select className="binp" value={currentInterv.salle || ""} onChange={e => setCurrentInterv(d => ({ ...d, salle:e.target.value }))}>
                           <option value="">— Non attribuée —</option>
-                          {[1,2,3,4].map(n => <option key={n} value={`Bloc ${n}`}>Bloc {n}</option>)}
-                          <option value="Salle urgences">Salle urgences</option>
+                          {reduxSalles && reduxSalles.length > 0
+                            ? reduxSalles.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)
+                            : [
+                                <option key="BO-1" value="BO-1">Salle 1 — Chirurgie générale</option>,
+                                <option key="BO-2" value="BO-2">Salle 2 — Orthopédie</option>,
+                                <option key="BO-3" value="BO-3">Salle 3 — Urgences / Polyvalent</option>,
+                              ]
+                          }
                         </select>
                       </div>
                       <div>
@@ -1581,60 +1630,24 @@ export default function BlocOperatoire() {
               )}
 
               {/* ── CONSOMMABLES ── */}
+              {/* Sous-phase 5.1 — cet onglet était entièrement fictif :
+                  DEMO_CONSO=[] jamais alimenté, boutons "Ajouter article"/
+                  "Valider déduction stock" affichant un toast de succès sans
+                  aucun appel réseau, compteurs +/- ne mutant qu'un état local
+                  jamais persisté, et un encart affirmant une "liaison
+                  automatique avec le stock médical" qui n'existe pas. Aucun
+                  modèle de données (consommable, mouvement de stock lié à une
+                  intervention) n'existe pour ce module — vérifié dans
+                  blocoperatoireController.js (seule mention de "consommable"
+                  concerne la facturation, déjà documentée comme hors
+                  périmètre). Désactivé honnêtement plutôt que de laisser
+                  cette simulation. */}
               {section === "consommables" && (
                 <div style={{ marginTop:20 }}>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-                    <div>
-                      <div style={{ fontSize:15, fontWeight:700, color:"var(--bn)" }}>Consommables & Matériel utilisés</div>
-                      <div style={{ fontSize:12, color:"var(--cm)" }}>Déduction automatique du stock médical</div>
-                    </div>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <button className="bbtn bbtn-primary bbtn-sm" onClick={() => toast.success("📦 Ajout au stock en cours...")}>
-                        {I.plus} Ajouter article
-                      </button>
-                      <button className="bbtn bbtn-teal bbtn-sm" onClick={() => toast.success("✅ Déduction stock enregistrée")}>
-                        {I.box} Valider déduction stock
-                      </button>
-                    </div>
-                  </div>
-
                   <div className="bo-card">
-                    <div className="bo-card-hdr">
-                      <h3>📦 Liste des consommables utilisés</h3>
-                      <Badge cls="blue">{consommables.reduce((s,c)=>s+c.quantite,0)} articles</Badge>
-                    </div>
-                    <div style={{ padding:16 }}>
-                      {consommables.map((c, i) => (
-                        <div key={c.id} className="conso-row">
-                          <div style={{ width:28, height:28, borderRadius:8, background:"#EBF5FB", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>📦</div>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:13, fontWeight:600, color:"var(--bn)" }}>{c.designation}</div>
-                            <div style={{ fontSize:11, color:"var(--cm)" }}>{c.categorie} · Stock dispo : {c.stock_dispo}</div>
-                          </div>
-                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                            <button style={{ width:28, height:28, borderRadius:8, border:"1.5px solid var(--cbr)", background:"#F4F9FD", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"Poppins,sans-serif" }}
-                              onClick={() => setConsommables(prev => prev.map((x,j) => j===i ? { ...x, quantite:Math.max(1,x.quantite-1) } : x))}>−</button>
-                            <span style={{ fontSize:14, fontWeight:700, color:"var(--bn)", minWidth:24, textAlign:"center" }}>{c.quantite}</span>
-                            <button style={{ width:28, height:28, borderRadius:8, border:"1.5px solid var(--cbr)", background:"#F4F9FD", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"Poppins,sans-serif" }}
-                              onClick={() => setConsommables(prev => prev.map((x,j) => j===i ? { ...x, quantite:x.quantite+1 } : x))}>+</button>
-                            <span style={{ fontSize:11, color:"var(--cm)" }}>{c.unite}</span>
-                          </div>
-                        </div>
-                      ))}
-                      <div style={{ marginTop:14, paddingTop:12, borderTop:"1.5px solid var(--cbr)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                        <span style={{ fontSize:12, color:"var(--cm)" }}>Total articles utilisés</span>
-                        <strong style={{ color:"var(--bn)", fontSize:15 }}>{consommables.reduce((s,c)=>s+c.quantite,0)} unités</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="al-bo-ia" style={{ marginTop:16, display:"flex", alignItems:"flex-start", gap:12 }}>
-                    <span style={{ fontSize:18 }}>📦</span>
-                    <div>
-                      <strong style={{ color:"#154360", fontSize:13 }}>Liaison automatique avec le stock médical</strong>
-                      <div style={{ fontSize:12, color:"var(--bb)", marginTop:4 }}>
-                        Après validation, les quantités utilisées seront automatiquement déduites du stock. Alertes de stock critique activées.
-                      </div>
+                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>📦</div>
+                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des consommables n'existe dans ce système.</div>
                     </div>
                   </div>
                 </div>
@@ -1738,14 +1751,23 @@ export default function BlocOperatoire() {
           {tab === "stats" && (
             <div>
               <div style={{ fontSize:16, fontWeight:700, color:"var(--bn)", marginBottom:20 }}>Statistiques & Analytiques — Bloc Opératoire</div>
+              {/* Sous-phase 5.1 — les 6 KPI ci-dessous étaient tous fixes
+                  (kpis.terminees+2 avec un "+2" inventé, "72%"/"92%"/"4.2%"/
+                  "68 min" jamais recalculés). Réellement câblés sur
+                  blocoperatoireController.js::getPlanning (interventions_mois_moy,
+                  taux_complications, taux_succes, duree_moyenne_min) et
+                  ::getSalles (taux_occ, déjà réel et déjà fusionné dans kpis
+                  par loadStats(), simplement jamais utilisé ici). "Recettes/mois"
+                  reste désactivé : aucun tarif réel n'existe pour les actes de
+                  bloc opératoire dans ce système (même constat documenté que
+                  getFacture() en tête de ce fichier côté backend). */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:14, marginBottom:24 }}>
                 {[
-                  { color:"blue",   val:kpis.terminees + 2,   lbl:"Interventions/mois",   sub:"moyenne sur 3 mois" },
-                  { color:"teal",   val:"72%",                 lbl:"Taux d'occupation",    sub:"salles opératoires" },
-                  { color:"green",  val:"92%",                 lbl:"Taux de succès",       sub:"interventions terminées" },
-                  { color:"orange", val:"4.2%",                lbl:"Taux de complications", sub:"sur 12 mois" },
-                  { color:"purple", val:"68 min",              lbl:"Durée moyenne",         sub:"par intervention" },
-                  { color:"blue",   val:"1.8M CFA",            lbl:"Recettes/mois",         sub:"honoraires + salle" },
+                  { color:"blue",   val:kpis.interventions_mois_moy ?? 0,   lbl:"Interventions/mois",   sub:"moyenne sur 3 mois" },
+                  { color:"teal",   val:`${kpis.taux_occ ?? 0}%`,           lbl:"Taux d'occupation",    sub:"salles opératoires" },
+                  { color:"green",  val:`${kpis.taux_succes ?? 0}%`,        lbl:"Taux de succès",       sub:"interventions clôturées" },
+                  { color:"orange", val:`${kpis.taux_complications ?? 0}%`, lbl:"Taux de complications", sub:"interventions opérées" },
+                  { color:"purple", val:`${kpis.duree_moyenne_min ?? 0} min`, lbl:"Durée moyenne",      sub:"entrée/sortie de salle" },
                 ].map((k,i) => (
                   <div key={i} className={`bo-kpi ${k.color} bofu`}>
                     <div className="kpi-val-bo">{k.val}</div>
@@ -1753,6 +1775,11 @@ export default function BlocOperatoire() {
                     <div className="kpi-sub-bo">{k.sub}</div>
                   </div>
                 ))}
+                <div className="bo-kpi blue bofu">
+                  <div className="kpi-val-bo" style={{ fontSize:13, opacity:.6 }}>🚧 N/D</div>
+                  <div className="kpi-lbl-bo">Recettes/mois</div>
+                  <div className="kpi-sub-bo">aucun tarif réel pour le bloc opératoire</div>
+                </div>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:20, marginBottom:20 }}>
@@ -1760,61 +1787,48 @@ export default function BlocOperatoire() {
                   <div className="bo-card-hdr"><h3>{I.trend} Interventions par mois</h3></div>
                   <div style={{ padding:20 }}><BarChart labels={chartMois} data={chartData} color="#1A5276" /></div>
                 </div>
+                {/* Répartition par spécialité — désactivé, même limite que le
+                    Dashboard ci-dessus (aucun champ specialite persisté). */}
                 <div className="bo-card">
                   <div className="bo-card-hdr"><h3>Répartition par spécialité</h3></div>
-                  <div style={{ padding:20 }}>
-                    <DoughnutChart
-                      labels={["Chir. Générale","Gynécologie","Orthopédie","Urologie","ORL","Autre"]}
-                      data={[40, 22, 15, 10, 8, 5]}
-                      colors={["#1A5276","#17A589","#D68910","#6C3483","#117A65","#5D7892"]}
-                    />
+                  <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                    <div style={{ fontSize:32, marginBottom:10, opacity:.4 }}>📊</div>
+                    <div style={{ fontSize:13 }}>🚧 Fonctionnalité indisponible — la spécialité saisie à la création n'est pas encore enregistrée en base.</div>
                   </div>
                 </div>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+                {/* Sous-phase 5.1 — affichait 5 pourcentages fictifs pour
+                    "Bloc 1".."Bloc 4"+"Salle réveil", des salles qui n'existent
+                    pas (les 3 vraies salles sont BO-1/BO-2/BO-3, cf. SALLES_BLOC).
+                    Aucun historique de taux d'occupation dans le temps n'existe
+                    réellement (seul l'état instantané occupée/disponible est
+                    calculé par getSalles()) : remplacé par ce statut réel et
+                    instantané plutôt que d'inventer un pourcentage historique. */}
                 <div className="bo-card">
-                  <div className="bo-card-hdr"><h3>📊 Taux occupation des salles</h3></div>
+                  <div className="bo-card-hdr"><h3>📊 Occupation des salles (temps réel)</h3></div>
                   <div style={{ padding:16 }}>
-                    {[
-                      ["Bloc 1", 82, "var(--bb)"],
-                      ["Bloc 2", 75, "var(--bt)"],
-                      ["Bloc 3", 60, "var(--bg)"],
-                      ["Bloc 4", 40, "var(--bo)"],
-                      ["Salle réveil", 55, "var(--bp)"],
-                    ].map(([lbl,pct,col]) => (
-                      <div key={lbl} style={{ marginBottom:12 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:4 }}>
-                          <span style={{ color:"var(--cm)" }}>{lbl}</span>
-                          <strong style={{ color:"var(--bn)" }}>{pct}%</strong>
-                        </div>
-                        <Prog pct={pct} color={col} />
+                    {(salles.length > 0 ? salles : [
+                      { id:"BO-1", nom:"Salle 1 — Chirurgie générale", statut:"disponible" },
+                      { id:"BO-2", nom:"Salle 2 — Orthopédie", statut:"disponible" },
+                      { id:"BO-3", nom:"Salle 3 — Urgences / Polyvalent", statut:"disponible" },
+                    ]).map(s => (
+                      <div key={s.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid #EAF4FB" }}>
+                        <span style={{ fontSize:12, color:"var(--cm)" }}>{s.nom}</span>
+                        <Badge cls={s.statut === "occupee" ? "orange" : "green"}>{s.statut === "occupee" ? "Occupée" : "Disponible"}</Badge>
                       </div>
                     ))}
                   </div>
                 </div>
+                {/* Consommation de matériel — désactivé, cf. onglet
+                    "Consommables" ci-dessous : aucun modèle de données réel
+                    n'existe pour le suivi des consommables de bloc opératoire. */}
                 <div className="bo-card">
                   <div className="bo-card-hdr"><h3>💊 Consommation de matériel</h3></div>
-                  <div style={{ padding:16 }}>
-                    {[
-                      ["Gants stériles",   240, "var(--bb)"],
-                      ["Compresses",       850, "var(--bt)"],
-                      ["Fils de suture",   95,  "var(--bg)"],
-                      ["Seringues",        310, "var(--bo)"],
-                      ["Trocarts",         42,  "var(--bp)"],
-                    ].map(([lbl,val,col]) => (
-                      <div key={lbl} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid #EAF4FB" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <span style={{ width:8, height:8, borderRadius:2, background:col, display:"inline-block" }} />
-                          <span style={{ fontSize:12, color:"var(--cm)" }}>{lbl}</span>
-                        </div>
-                        <strong style={{ fontSize:13, color:"var(--bn)" }}>{val} unités</strong>
-                      </div>
-                    ))}
-                    <div style={{ marginTop:12, fontSize:12, color:"var(--cm)", display:"flex", justifyContent:"space-between" }}>
-                      <span>Recettes estimées (mois)</span>
-                      <strong style={{ color:"var(--bg)" }}>1 845 000 CFA</strong>
-                    </div>
+                  <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                    <div style={{ fontSize:32, marginBottom:10, opacity:.4 }}>💊</div>
+                    <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des consommables n'existe dans ce système.</div>
                   </div>
                 </div>
               </div>
@@ -1911,7 +1925,6 @@ export default function BlocOperatoire() {
                 <label className="blbl">Statut initial</label>
                 <select className="binp" value={formInterv.statut} onChange={e => setFormInterv(f=>({...f,statut:e.target.value}))}>
                   <option value="programmee">📅 Programmée</option>
-                  <option value="preparation">🔧 En préparation</option>
                   <option value="en_cours">🔪 En cours</option>
                 </select>
               </div>
