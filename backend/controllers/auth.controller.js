@@ -54,10 +54,19 @@ exports.login = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-exports.logout = async (req, res) => {
-  await logAction({ utilisateur: req.user._id, action: 'LOGOUT', module: 'auth', ip: req.ip, message: `Déconnexion de ${req.user.email}` });
-  res.cookie('token', 'none', { expires: new Date(Date.now() + 10 * 1000), httpOnly: true })
-     .json({ success: true, message: 'Déconnecté avec succès.' });
+// SEC-008 — logAction() (écriture AuditLog) n'était pas protégée : un rejet
+// devenait une unhandledRejection non interceptée, que le gestionnaire
+// global (server.js) traite en journalisant puis process.exit(1) — un
+// simple échec de journalisation sur une déconnexion aurait ainsi fait
+// crasher le process entier pour tous les utilisateurs connectés. Le cookie
+// est effacé et la réponse envoyée normalement quand logAction réussit,
+// comme avant.
+exports.logout = async (req, res, next) => {
+  try {
+    await logAction({ utilisateur: req.user._id, action: 'LOGOUT', module: 'auth', ip: req.ip, message: `Déconnexion de ${req.user.email}` });
+    res.cookie('token', 'none', { expires: new Date(Date.now() + 10 * 1000), httpOnly: true })
+       .json({ success: true, message: 'Déconnecté avec succès.' });
+  } catch (err) { next(err); }
 };
 
 exports.me = async (req, res) => {
