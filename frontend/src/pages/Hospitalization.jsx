@@ -1755,10 +1755,40 @@ export default function Hospitalisation() {
                               <div style={{ marginTop:12 }}><Prog pct={Math.round(paye/totalF*100)} color="var(--hg)" /></div>
                               <div style={{ fontSize:11, color:"var(--cm)", marginTop:4, textAlign:"right" }}>Taux de paiement : {Math.round(paye/totalF*100)}%</div>
                             </div>
+                            {/* Sous-phase 5.2 — "Générer facture"/"Envoyer
+                                facturation" affichaient chacun un faux succès
+                                (toast.success) sans action réelle. Aucun
+                                moteur de génération/transmission de facture
+                                n'existe dans ce système. Désactivés
+                                honnêtement (disabled + message clair) ;
+                                "Imprimer" reste réel (window.print()). ANNEXE
+                                IMPORTANTE, non corrigée ici (hors périmètre
+                                "bouton sans handler") : le tableau ci-dessus
+                                (actes/totalF/paye/reste) est entièrement
+                                fabriqué — prixChambre {"{"}standard:15000,
+                                privee:35000, vip:75000{"}"}, "Frais de
+                                consultation médicale" fixe à 25000, tous les
+                                autres postes à un prix unitaire inventé
+                                (5000/18000/12000/35000), et paye =
+                                Math.round(totalF*0.65) est un taux de
+                                paiement fictif sans le moindre paiement réel
+                                enregistré. Même famille de bug déjà corrigée
+                                pour Chirurgie/Blocoperatoire/Urgences
+                                ("Correction 2" — LIMITE DOCUMENTÉE, expose
+                                une vraie Invoice liée si elle existe, sinon
+                                redirige vers Finance), mais Hospitalization
+                                n'a ni getFacture() ni 'hospitalisation' dans
+                                Invoice.source_module (enum actuel :
+                                laboratoire/imagerie/echographie/urgences/
+                                chirurgie/blocoperatoire) : réplique cette
+                                correction dépasserait "ajouter un handler à
+                                un bouton" (ajout d'une valeur d'enum + d'un
+                                endpoint réel). Signalé pour une sous-phase
+                                ultérieure, pas traité ici. */}
                             <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                              <button className="hbtn hbtn-teal" onClick={() => toast.success("📄 Génération facture...")}>{I.dl} Générer facture</button>
+                              <button className="hbtn hbtn-teal" disabled title="Fonctionnalité en cours de développement — aucune génération réelle de facture n'existe encore." onClick={() => toast("🚧 Génération de facture non disponible — fonctionnalité en cours de développement.")}>{I.dl} Générer facture</button>
                               <button className="hbtn hbtn-ghost" onClick={() => window.print()}>{I.print} Imprimer</button>
-                              <button className="hbtn hbtn-ghost" onClick={() => toast.success("📤 Envoi à la facturation...")}>{I.link} Envoyer facturation</button>
+                              <button className="hbtn hbtn-ghost" disabled title="Fonctionnalité en cours de développement — aucune transmission réelle n'existe encore." onClick={() => toast("🚧 Envoi à la facturation non disponible — fonctionnalité en cours de développement.")}>{I.link} Envoyer facturation</button>
                             </div>
                           </>
                         );
@@ -1833,7 +1863,11 @@ export default function Hospitalisation() {
                           <div style={{ fontSize:24 }}>{icon}</div>
                           <div style={{ fontWeight:700, color:"var(--hn)", fontSize:13 }}>{title}</div>
                           <div style={{ fontSize:11, color:"var(--cm)" }}>{desc}</div>
-                          <button className="hbtn hbtn-ghost hbtn-sm" style={{ marginTop:"auto" }} onClick={() => toast.success(`📄 ${title} en cours de génération...`)}>{I.dl} Générer</button>
+                          {/* Sous-phase 5.2 — faux succès (toast.success)
+                              sans génération réelle. Aucun moteur de
+                              génération de documents n'existe pour ces
+                              types dans ce système. */}
+                          <button className="hbtn hbtn-ghost hbtn-sm" style={{ marginTop:"auto" }} disabled title="Fonctionnalité en cours de développement — aucune génération réelle de document n'existe pour ce type." onClick={() => toast("🚧 Génération de documents non disponible — fonctionnalité en cours de développement.")}>{I.dl} Générer</button>
                         </div>
                       ))}
                     </div>
