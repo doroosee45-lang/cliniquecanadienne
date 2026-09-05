@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef, useId } from "react";
+﻿import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -225,13 +225,30 @@ const EXAMENS_IMAG   = ["Radiographie thorax","Échographie abdominale","Échogr
 
 const ALLERGIES_COMMUNES = ["Pénicilline","Aspirine","AINS","Sulfamides","Codéine","Latex","Iode","Tétracyclines"];
 
-// ─── Demo data ────────────────────────────────────────────────
-const DEMO_ORDONNANCES = [];
-
-const DEMO_MOIS = [];
-const DEMO_DATA = [];
-
 const EMPTY_MED = { id:Date.now(), medicament:"", forme:"Comprimé", dosage:"", voie:"Orale", frequence:"2 fois/jour", duree:"7 jours", quantite:"", instructions:"" };
+
+// Correction 5 (relecture du 6 sept. 2026, FE-BUG-007) — le dashboard, le
+// chart de statuts, le BarChart 12 mois et l'onglet "Chroniques" itéraient
+// sur DEMO_ORDONNANCES/DEMO_MOIS/DEMO_DATA, des constantes toujours vides,
+// au lieu de l'état réel (`ordonnances`) déjà chargé par loadOrds. Agrège
+// les vraies ordonnances par mois de date_prescription — même principe que
+// Dashboard.jsx::chartAct.
+function buildOrdonnancesParMois(ordonnances) {
+  const moisFr = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  const now = new Date();
+  const labels = []; const data = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    labels.push(moisFr[d.getMonth()]);
+    const count = ordonnances.filter(o => {
+      if (!o.date_prescription) return false;
+      const od = new Date(o.date_prescription);
+      return od.getFullYear() === d.getFullYear() && od.getMonth() === d.getMonth();
+    }).length;
+    data.push(count);
+  }
+  return { labels, data };
+}
 const EMPTY_ORD = {
   patient_id:"", poids:"", allergies:[], medecin:"", specialite:"", consultation_liee:"",
   date_prescription:new Date().toISOString().substring(0,10),
@@ -367,7 +384,7 @@ export default function Ordonnances() {
   const [patients, setPatients]   = useState([]);
   const [saving, setSaving]       = useState(false);
   const [kpis, setKpis]           = useState({ total:0, actives:0, expirees:0, renouvellements:0, chroniques:0, interactions:0, aujourd_hui:0 });
-  const [chartData] = useState({ labels:DEMO_MOIS, data:DEMO_DATA });
+  const chartData = useMemo(() => buildOrdonnancesParMois(ordonnances), [ordonnances]);
 
   // Modals
   const [modalNouv, setModalNouv]   = useState(false);
@@ -721,7 +738,7 @@ export default function Ordonnances() {
                   <div className="ord-card-hdr"><div><h3>Statuts des ordonnances</h3><p>{kpis.total} au total</p></div></div>
                   <div style={{ padding:20 }}>
                     {[["active","Actives","var(--success)"],["expiree","Expirées","var(--danger)"],["renouvellee","Renouvelées","var(--accent)"],["annulee","Annulées","#6B7280"]].map(([st,lbl,col]) => {
-                      const cnt = DEMO_ORDONNANCES.filter(x=>x.statut===st).length;
+                      const cnt = ordonnances.filter(x=>x.statut===st).length;
                       const pct = kpis.total > 0 ? Math.round(cnt/kpis.total*100) : 0;
                       return (
                         <div key={st} style={{ marginBottom:12 }}>
@@ -795,7 +812,7 @@ export default function Ordonnances() {
                       <tr><th>N° Ordonnance</th><th>Patient</th><th>Médecin</th><th>Diagnostic</th><th>Médicaments</th><th>Date</th><th>Expiration</th><th>Statut</th><th>Action</th></tr>
                     </thead>
                     <tbody>
-                      {DEMO_ORDONNANCES.slice(0,5).map(ord => {
+                      {ordonnances.slice(0,5).map(ord => {
                         const sc = STATUTS[ord.statut] || { cls:"gray", label:ord.statut, icon:"?" };
                         const jRestants = Math.max(0, Math.floor((new Date(ord.date_expiration)-Date.now())/(86400*1000)));
                         return (
@@ -868,7 +885,7 @@ export default function Ordonnances() {
                     <tbody>
                       {loading ? (
                         <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--muted)" }}>Chargement...</td></tr>
-                      ) : (ordonnances.length===0 ? DEMO_ORDONNANCES : ordonnances).map(ord => {
+                      ) : ordonnances.map(ord => {
                         const sc = STATUTS[ord.statut] || { cls:"gray", label:ord.statut, icon:"?" };
                         const jRestants = Math.max(0, Math.floor((new Date(ord.date_expiration)-Date.now())/(86400*1000)));
                         const phCol = { "délivrée":"green", "en attente":"orange", "partielle":"yellow" }[ord.pharmacie_statut] || "gray";
@@ -950,7 +967,7 @@ export default function Ordonnances() {
                           </tr>
                         );
                       })}
-                      {!loading && ordonnances.length===0 && DEMO_ORDONNANCES.length===0 && (
+                      {!loading && ordonnances.length===0 && (
                         <tr><td colSpan={10} style={{ padding:40, textAlign:"center", color:"var(--muted)" }}>Aucune ordonnance trouvée</td></tr>
                       )}
                     </tbody>
@@ -1562,7 +1579,12 @@ export default function Ordonnances() {
               </div>
 
               {MALADIES_CHRONIQUES.map(maladie => {
-                const patients_maladie = DEMO_ORDONNANCES.filter(x=>x.maladie_chronique===maladie);
+                // LIMITE DOCUMENTÉE (Correction 5) — maladie_chronique n'existe
+                // dans aucun champ du schéma Prescription ni dans le formulaire
+                // de création : aucune ordonnance réelle ne portera jamais cette
+                // valeur. Cet onglet reste honnêtement vide (jamais une donnée
+                // fictive) tant qu'aucune vraie catégorisation clinique n'existe.
+                const patients_maladie = ordonnances.filter(x=>x.maladie_chronique===maladie);
                 if (patients_maladie.length===0) return null;
                 return (
                   <div key={maladie} className="ord-card" style={{ marginBottom:16 }}>
@@ -1631,7 +1653,7 @@ export default function Ordonnances() {
               <div className="ord-g11" style={{ marginBottom:24 }}>
                 <div className="ord-card">
                   <div className="ord-card-hdr"><div><h3>{I.trend} Ordonnances par mois</h3><p>Volume annuel des prescriptions</p></div></div>
-                  <div style={{ padding:20 }}><BarChart labels={DEMO_MOIS} data={DEMO_DATA} color="#1B4F9E" /></div>
+                  <div style={{ padding:20 }}><BarChart labels={chartData.labels} data={chartData.data} color="#1B4F9E" /></div>
                 </div>
                 <div className="ord-card">
                   <div className="ord-card-hdr"><div><h3>📊 Ordonnances par service</h3></div></div>
