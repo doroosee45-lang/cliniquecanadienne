@@ -430,6 +430,11 @@ export default function Hospitalisation() {
   const [search, setSearch]   = useState("");
   const [filterStatut, setFilter] = useState("");
   const [currentHosp, setCurrentHosp] = useState(null);
+  // Sous-phase 5.2 (suite) — vraie facture liée au séjour (ou estimation
+  // réelle si le séjour est encore en cours), remplace le calcul fabriqué
+  // côté client de l'onglet Facturation.
+  const [currentInvoice, setCurrentInvoice] = useState(null);
+  const [currentEstimation, setCurrentEstimation] = useState(null);
   const [saving, setSaving]   = useState(false);
   const [patients, setPatients] = useState([]);
   const [lits, setLits]       = useState([]);
@@ -573,18 +578,21 @@ export default function Hospitalisation() {
   const loadDossierData = useCallback(async (hospId) => {
     if (!hospId) return;
     try {
-      const [c, t, pr, ex, v] = await Promise.allSettled([
+      const [c, t, pr, ex, v, fa] = await Promise.allSettled([
         api.get(`/hospitalization/${hospId}/constantes`),
         api.get(`/hospitalization/${hospId}/traitements`),
         api.get(`/hospitalization/${hospId}/prescriptions`),
         api.get(`/hospitalization/${hospId}/examens`),
         api.get(`/hospitalization/${hospId}/visites`),
+        api.get(`/hospitalization/${hospId}/facture`),
       ]);
       setConstantes(c.status === "fulfilled" ? (c.value.data.constantes || c.value.data.data || c.value.data || []) : []);
       setTraitements(t.status === "fulfilled" ? (t.value.data.traitements || t.value.data.data || t.value.data || []) : []);
       setPrescriptions(pr.status === "fulfilled" ? (pr.value.data.prescriptions || pr.value.data.data || pr.value.data || []) : []);
       setExamens(ex.status === "fulfilled" ? (ex.value.data.examens || ex.value.data.data || ex.value.data || []) : []);
       setVisites(v.status === "fulfilled" ? (v.value.data.visites || v.value.data.data || v.value.data || []) : []);
+      setCurrentInvoice(fa.status === "fulfilled" ? (fa.value.data.invoice || null) : null);
+      setCurrentEstimation(fa.status === "fulfilled" ? (fa.value.data.estimation || null) : null);
     } catch(err) {
       console.error("Erreur chargement dossier:", err);
     }
@@ -1711,88 +1719,83 @@ export default function Hospitalisation() {
               )}
 
               {/* ── FACTURATION ── */}
+              {/* Suite de la Sous-phase 5.2 — cet onglet calculait un montant
+                  entièrement fabriqué côté client (prixChambre
+                  {standard:15000, privee:35000, vip:75000}, frais de
+                  consultation fixe à 25000, actes à un prix unitaire inventé,
+                  paye = totalF*0.65 un taux de paiement fictif). Remplacé par
+                  la vraie Invoice liée (créée réellement par discharge() à la
+                  sortie, Invoice.hospitalisation, cf. FLOW-002/Correction A) —
+                  même principe que Correction 2 (Blocoperatoire/Chirurgie/
+                  Urgences) : n'invente jamais de facture, expose uniquement
+                  la vraie facture si elle existe. Pour un séjour encore en
+                  cours, affiche à la place une estimation réelle (même
+                  formule que discharge() : tarif réel du lit occupé × durée
+                  réelle écoulée, Room.lits[].prix_par_jour), jamais un tarif
+                  inventé, clairement distinguée d'une facture. */}
               {section === "facturation" && (
                 <div style={{ marginTop:20 }}>
                   <div className="ho-card">
                     <div className="ho-card-hdr"><h3>💰 Facturation d'hospitalisation</h3></div>
                     <div style={{ padding:20 }}>
-                      {(() => {
-                        const prixChambre = { standard:15000, privee:35000, vip:75000 }[currentHosp.type_chambre] || 15000;
-                        const jours = nbJours(currentHosp.date_admission, currentHosp.date_sortie);
-                        const hebergement = prixChambre * jours;
-                        const actes = [
-                          [`Hébergement — ${TYPE_CHAMBRE[currentHosp.type_chambre]} (${jours} nuit(s) × ${prixChambre.toLocaleString("fr-FR")} CFA)`, hebergement],
-                          ["Frais de consultation médicale", 25000],
-                          ["Soins infirmiers", traitements.filter(t=>t.statut==="administre").length * 5000],
-                          ["Médicaments & perfusions", prescriptions.filter(p=>p.type==="medicament"||p.type==="perfusion").length * 18000],
-                          ["Analyses de laboratoire", examens.filter(e=>e.type==="labo").length * 12000],
-                          ["Imagerie médicale", examens.filter(e=>e.type==="imagerie").length * 35000],
-                        ];
-                        const totalF = actes.reduce((s,[,v])=>s+v,0);
-                        const paye = Math.round(totalF * 0.65);
-                        const reste = totalF - paye;
-                        return (
-                          <>
-                            <table className="ho-tbl" style={{ marginBottom:20 }}>
-                              <thead><tr><th>Prestation</th><th style={{textAlign:"right"}}>Montant (CFA)</th></tr></thead>
-                              <tbody>{actes.map(([lbl,val]) => val > 0 && <tr key={lbl}><td style={{fontSize:12}}>{lbl}</td><td style={{textAlign:"right",fontWeight:600}}>{val.toLocaleString("fr-FR")}</td></tr>)}</tbody>
-                            </table>
-                            <div style={{ background:"#F4F9FD", borderRadius:14, padding:16, marginBottom:16 }}>
-                              <div className="ho-g11s" style={{ gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)" }}>
-                                <div style={{ background:"#EBF5FB", borderRadius:10, padding:14, textAlign:"center" }}>
-                                  <div style={{ fontSize:18, fontWeight:800, color:"var(--hb)" }}>{totalF.toLocaleString("fr-FR")}</div>
-                                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>TOTAL (CFA)</div>
-                                </div>
-                                <div style={{ background:"#EAFAF1", borderRadius:10, padding:14, textAlign:"center" }}>
-                                  <div style={{ fontSize:18, fontWeight:800, color:"var(--hg)" }}>{paye.toLocaleString("fr-FR")}</div>
-                                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>PAYÉ (CFA)</div>
-                                </div>
-                                <div style={{ background:"#FDEDEC", borderRadius:10, padding:14, textAlign:"center" }}>
-                                  <div style={{ fontSize:18, fontWeight:800, color:"var(--hr)" }}>{reste.toLocaleString("fr-FR")}</div>
-                                  <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>RESTE À PAYER</div>
-                                </div>
+                      {currentInvoice ? (
+                        <>
+                          <table className="ho-tbl" style={{ marginBottom:20 }}>
+                            <thead><tr><th>Prestation</th><th style={{textAlign:"right"}}>Montant (CFA)</th></tr></thead>
+                            <tbody>{currentInvoice.lignes.map((l,i) => <tr key={i}><td style={{fontSize:12}}>{l.libelle}</td><td style={{textAlign:"right",fontWeight:600}}>{Number(l.montant||0).toLocaleString("fr-FR")}</td></tr>)}</tbody>
+                          </table>
+                          <div style={{ background:"#F4F9FD", borderRadius:14, padding:16, marginBottom:16 }}>
+                            <div className="ho-g11s" style={{ gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)" }}>
+                              <div style={{ background:"#EBF5FB", borderRadius:10, padding:14, textAlign:"center" }}>
+                                <div style={{ fontSize:18, fontWeight:800, color:"var(--hb)" }}>{Number(currentInvoice.montant_ttc||0).toLocaleString("fr-FR")}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>TOTAL (CFA)</div>
                               </div>
-                              <div style={{ marginTop:12 }}><Prog pct={Math.round(paye/totalF*100)} color="var(--hg)" /></div>
-                              <div style={{ fontSize:11, color:"var(--cm)", marginTop:4, textAlign:"right" }}>Taux de paiement : {Math.round(paye/totalF*100)}%</div>
+                              <div style={{ background:"#EAFAF1", borderRadius:10, padding:14, textAlign:"center" }}>
+                                <div style={{ fontSize:18, fontWeight:800, color:"var(--hg)" }}>{Number(currentInvoice.montant_paye||0).toLocaleString("fr-FR")}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>PAYÉ (CFA)</div>
+                              </div>
+                              <div style={{ background:"#FDEDEC", borderRadius:10, padding:14, textAlign:"center" }}>
+                                <div style={{ fontSize:18, fontWeight:800, color:"var(--hr)" }}>{Number(currentInvoice.montant_restant||0).toLocaleString("fr-FR")}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>RESTE À PAYER</div>
+                              </div>
                             </div>
-                            {/* Sous-phase 5.2 — "Générer facture"/"Envoyer
-                                facturation" affichaient chacun un faux succès
-                                (toast.success) sans action réelle. Aucun
-                                moteur de génération/transmission de facture
-                                n'existe dans ce système. Désactivés
-                                honnêtement (disabled + message clair) ;
-                                "Imprimer" reste réel (window.print()). ANNEXE
-                                IMPORTANTE, non corrigée ici (hors périmètre
-                                "bouton sans handler") : le tableau ci-dessus
-                                (actes/totalF/paye/reste) est entièrement
-                                fabriqué — prixChambre {"{"}standard:15000,
-                                privee:35000, vip:75000{"}"}, "Frais de
-                                consultation médicale" fixe à 25000, tous les
-                                autres postes à un prix unitaire inventé
-                                (5000/18000/12000/35000), et paye =
-                                Math.round(totalF*0.65) est un taux de
-                                paiement fictif sans le moindre paiement réel
-                                enregistré. Même famille de bug déjà corrigée
-                                pour Chirurgie/Blocoperatoire/Urgences
-                                ("Correction 2" — LIMITE DOCUMENTÉE, expose
-                                une vraie Invoice liée si elle existe, sinon
-                                redirige vers Finance), mais Hospitalization
-                                n'a ni getFacture() ni 'hospitalisation' dans
-                                Invoice.source_module (enum actuel :
-                                laboratoire/imagerie/echographie/urgences/
-                                chirurgie/blocoperatoire) : réplique cette
-                                correction dépasserait "ajouter un handler à
-                                un bouton" (ajout d'une valeur d'enum + d'un
-                                endpoint réel). Signalé pour une sous-phase
-                                ultérieure, pas traité ici. */}
-                            <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                              <button className="hbtn hbtn-teal" disabled title="Fonctionnalité en cours de développement — aucune génération réelle de facture n'existe encore." onClick={() => toast("🚧 Génération de facture non disponible — fonctionnalité en cours de développement.")}>{I.dl} Générer facture</button>
-                              <button className="hbtn hbtn-ghost" onClick={() => window.print()}>{I.print} Imprimer</button>
-                              <button className="hbtn hbtn-ghost" disabled title="Fonctionnalité en cours de développement — aucune transmission réelle n'existe encore." onClick={() => toast("🚧 Envoi à la facturation non disponible — fonctionnalité en cours de développement.")}>{I.link} Envoyer facturation</button>
+                          </div>
+                          <div style={{ fontSize:11, color:"var(--cm)", marginBottom:12 }}>
+                            N° {currentInvoice.numero_facture} — {currentInvoice.statut === "payee" ? "✅ Payée" : "⏳ En attente de paiement"} — voir le module Finance pour encaisser un paiement.
+                          </div>
+                          <button className="hbtn hbtn-ghost" onClick={() => window.print()}>{I.print} Imprimer</button>
+                        </>
+                      ) : currentEstimation ? (
+                        <>
+                          <div style={{ background:"#EEF4FF", border:"1.5px solid #BFDBFE", borderRadius:14, padding:"12px 16px", marginBottom:16, fontSize:12, lineHeight:1.6, color:"var(--cn)" }}>
+                            ℹ️ Séjour encore en cours — aucune facture réelle n'existe tant que le patient n'est pas sorti. Estimation calculée à partir du tarif réel du lit occupé (lit {currentEstimation.lit}), pas une facture.
+                          </div>
+                          <div style={{ background:"#F4F9FD", borderRadius:14, padding:16, marginBottom:16 }}>
+                            <div className="ho-g11s" style={{ gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)" }}>
+                              <div style={{ background:"#EBF5FB", borderRadius:10, padding:14, textAlign:"center" }}>
+                                <div style={{ fontSize:18, fontWeight:800, color:"var(--hb)" }}>{currentEstimation.tarif_jour.toLocaleString("fr-FR")}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>TARIF / JOUR (CFA)</div>
+                              </div>
+                              <div style={{ background:"#EAFAF1", borderRadius:10, padding:14, textAlign:"center" }}>
+                                <div style={{ fontSize:18, fontWeight:800, color:"var(--hg)" }}>{currentEstimation.jours}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>JOUR(S) ÉCOULÉ(S)</div>
+                              </div>
+                              <div style={{ background:"#FEF9E7", borderRadius:10, padding:14, textAlign:"center" }}>
+                                <div style={{ fontSize:18, fontWeight:800, color:"var(--ho)" }}>{currentEstimation.montant.toLocaleString("fr-FR")}</div>
+                                <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>ESTIMATION (CFA)</div>
+                              </div>
                             </div>
-                          </>
-                        );
-                      })()}
+                          </div>
+                          <div style={{ fontSize:11, color:"var(--cm)" }}>Une facture réelle sera générée automatiquement à la sortie du patient, basée sur ce même tarif réel.</div>
+                        </>
+                      ) : (
+                        <div style={{ padding:"20px 4px", color:"var(--cm)", fontSize:13, lineHeight:1.6 }}>
+                          Aucune facture réelle n'existe pour ce séjour, et aucun tarif réel de lit n'est disponible pour l'estimer (chambre non structurée ou lit sans tarif renseigné). Établissez une facture manuelle via le module Finance, en la liant à ce séjour.
+                          <div style={{ marginTop:12 }}>
+                            <button className="hbtn hbtn-teal" onClick={() => navigate("/finance")}>{I.link} Aller au module Finance</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

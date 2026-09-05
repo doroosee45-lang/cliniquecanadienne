@@ -533,3 +533,44 @@ exports.discharge = async (req, res, next) => {
     res.json({ success: true, hospitalization: hosp, invoice: factureGeneree });
   } catch (err) { next(err); }
 };
+
+// ── GET /:id/facture ───────────────────────────────────────────────────────
+// Sous-phase 5.2 (suite) — l'onglet "Facturation" de Hospitalization.jsx
+// calculait un montant entièrement fabriqué côté client (prixChambre
+// {standard:15000, privee:35000, vip:75000}, frais de consultation fixe à
+// 25000, actes à un prix unitaire inventé, et paye = totalF*0.65, un taux de
+// paiement fictif), jamais lié à la vraie Invoice que discharge() (ci-dessus)
+// crée réellement à la sortie via Invoice.hospitalisation (champ dédié posé
+// par FLOW-002, distinct du couple source_module/source_id générique utilisé
+// par chirurgie/urgences/blocoperatoire). Même principe que Correction 2
+// (Blocoperatoire/Chirurgie/Urgences) : n'invente jamais de facture, expose
+// uniquement la vraie facture si la sortie l'a déjà générée.
+// Pour un séjour encore en cours (donc sans facture — discharge() est le seul
+// mécanisme qui en crée une), retourne à la place une estimation calculée
+// avec exactement la même formule réelle que discharge() (tarif réel du lit
+// occupé × durée réelle écoulée, Room.lits[].prix_par_jour), jamais un tarif
+// ou un ratio inventés — clairement distinguée d'une facture (jamais un
+// numero_facture, jamais persistée).
+exports.getFacture = async (req, res, next) => {
+  try {
+    const invoice = await Invoice.findOne({ hospitalisation: req.params.id });
+    if (invoice) return res.json({ success: true, invoice, estimation: null });
+
+    const hosp = await Hospitalization.findById(req.params.id).populate('chambre');
+    if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
+
+    let estimation = null;
+    if (hosp.statut === 'en_cours' && hosp.chambre?.lits?.length && hosp.lit_numero) {
+      const bed = hosp.chambre.lits.find(l => l.numero === hosp.lit_numero);
+      if (bed && Number(bed.prix_par_jour) > 0) {
+        const MS_PAR_JOUR = 24 * 60 * 60 * 1000;
+        const dureeJours = Math.max(1, Math.ceil((Date.now() - hosp.date_entree) / MS_PAR_JOUR));
+        estimation = {
+          tarif_jour: bed.prix_par_jour, jours: dureeJours,
+          montant: bed.prix_par_jour * dureeJours, lit: bed.numero,
+        };
+      }
+    }
+    res.json({ success: true, invoice: null, estimation });
+  } catch (err) { next(err); }
+};

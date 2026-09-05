@@ -29,6 +29,10 @@ router.get('/:id/visites',       protect, authorize(...CAN_WRITE), hospC.getVisi
 router.post('/:id/visites',      protect, authorize(...CAN_WRITE), hospC.addVisite);
 router.get('/:id/prescriptions', protect, authorize(...CAN_WRITE), hospC.getPrescriptionsSejour);
 router.post('/:id/prescriptions',protect, authorize(...CAN_WRITE), hospC.addPrescriptionSejour);
+// Sous-phase 5.2 (suite) — vraie facture liée (ou estimation réelle si le
+// séjour est encore en cours), même principe que Correction 2
+// (Blocoperatoire :/:id/facture).
+router.get('/:id/facture',       protect, authorize(...CAN_WRITE), hospC.getFacture);
 
 // P7-1 — mise à jour générique (édition dossier, contact urgence, chambre/lit...).
 // La fonction contrôleur existait déjà mais n'était routée nulle part.
