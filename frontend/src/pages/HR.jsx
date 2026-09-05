@@ -1835,7 +1835,14 @@ export default function RessourcesHumaines() {
                             <div style={{ fontSize:24 }}>{icon}</div>
                             <div style={{ fontWeight:700, color:"var(--rn)", fontSize:13 }}>{title}</div>
                             <div style={{ fontSize:11, color:"var(--rm)" }}>{desc}</div>
-                            <button className="rbtn rbtn-ghost rbtn-sm" style={{ marginTop:"auto" }} onClick={() => toast.success(`📄 ${title} généré...`)}>{I.dl} Générer</button>
+                            {/* Sous-phase 5.2 — faux succès (toast.success)
+                                sans génération réelle. Aucun moteur de
+                                génération de documents personnels employé
+                                n'existe dans ce système (distinct des
+                                exports d'ensemble réels — exportEmployesPDF/
+                                exportRapportRH_Excel/exportSalairesPDF —
+                                déjà utilisés ailleurs dans ce fichier). */}
+                            <button className="rbtn rbtn-ghost rbtn-sm" style={{ marginTop:"auto" }} disabled title="Fonctionnalité en cours de développement — aucune génération réelle de document n'existe pour ce type." onClick={() => toast("🚧 Génération de documents non disponible — fonctionnalité en cours de développement.")}>{I.dl} Générer</button>
                           </div>
                         ))}
                       </div>
