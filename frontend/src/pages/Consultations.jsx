@@ -235,7 +235,10 @@ const GRAVITE_CFG = {
   critique: { cls: "red", label: "Critique" },
 };
 
-const MEDECINS = ["Dr. Martin Leblanc", "Dr. Sophie Pierre", "Dr. Paul Nkoma", "Dr. Fatou Diallo", "Dr. André Mbemba"];
+// Correction 6 (relecture du 6 sept. 2026, FE-BUG-008) — remplacé par le
+// vrai catalogue chargé depuis GET /consultations/medecins (state
+// `medecins`, plus loin dans le composant) : le sélecteur "Médecin
+// consultant" pousse désormais un vrai ObjectId User, jamais un nom fictif.
 const MEDICAMENTS_COURANTS = ["Paracétamol 500mg", "Amoxicilline 500mg", "Ibuprofène 400mg", "Métronidazole 250mg", "Oméprazole 20mg", "Cétirizine 10mg", "Diclofénac 50mg", "Cotrimoxazole 480mg"];
 
 // ─── SVG Icons ────────────────────────────────────────────────
@@ -321,7 +324,7 @@ const EMPTY_CONS = {
   patient_nom: "", patient_prenom: "", patient_sexe: "homme", patient_ddn: "",
   patient_tel: "", patient_adresse: "", patient_groupe_sanguin: "",
   patient_antecedents: "", patient_allergies: "",
-  date_heure: now(), medecin: MEDECINS[0], service: "",
+  date_heure: now(), medecin: "", service: "",
   type_consultation: "nouvelle_visite",
   motif: "",
   temp: "", poids: "", taille: "", ta_sys: "", ta_dia: "", fc: "", spo2: "",
@@ -893,6 +896,22 @@ export default function Consultation() {
       .catch(() => setServicesActifs([]));
   }, []);
 
+  // Correction 6 (relecture du 6 sept. 2026, FE-BUG-008) — même principe que
+  // servicesActifs ci-dessus : remplace MEDECINS, une liste de 5 noms codés
+  // en dur jamais liée à un vrai User, par le vrai catalogue chargé depuis
+  // GET /consultations/medecins (dédié : /admin/users est réservé à
+  // superadmin/adminclinique, alors qu'infirmier peut créer une consultation).
+  const [medecins, setMedecins] = useState([]);
+  useEffect(() => {
+    api.get('/consultations/medecins')
+      .then(({ data }) => setMedecins(data.medecins || []))
+      .catch(() => setMedecins([]));
+  }, []);
+  const medecinLabel = (id) => {
+    const m = medecins.find(x => x._id === id);
+    return m ? `Dr. ${m.prenom || ''} ${m.nom || ''}`.trim() : "";
+  };
+
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const age = ageCalc(form.patient_ddn);
@@ -954,6 +973,7 @@ export default function Consultation() {
         patient: form.patient_id,
         numero: form.numero,
         date_consultation: form.date_heure || new Date().toISOString(),
+        medecin:           form.medecin || undefined,
         type_consultation: form.type_consultation,
         service: form.service,
         signes_vitaux: {
@@ -1398,8 +1418,12 @@ export default function Consultation() {
                   <div>
                     <label className="clbl req">Médecin consultant</label>
                     <select className="cinp" value={form.medecin} onChange={e => setF("medecin", e.target.value)}>
-                      {MEDECINS.map(m => <option key={m} value={m}>{m}</option>)}
+                      <option value="">— Sélectionner —</option>
+                      {medecins.map(m => <option key={m._id} value={m._id}>Dr. {m.prenom} {m.nom}{m.specialite ? ` — ${m.specialite}` : ''}</option>)}
                     </select>
+                    {medecins.length === 0 && (
+                      <div style={{ fontSize:11, color:"var(--cm)", marginTop:4 }}>Aucun médecin actif trouvé dans le catalogue réel.</div>
+                    )}
                   </div>
                   <div style={{ gridColumn: "2 / span 2" }}>
                     <label className="clbl req">Service</label>
@@ -1742,7 +1766,7 @@ export default function Consultation() {
                       <tr>
                         <td>
                           <div style={{ fontWeight:600 }}>Consultation médicale — {form.service}</div>
-                          <div style={{ fontSize:11, color:"var(--cm)" }}>{form.medecin} · {form.type_consultation==="nouvelle_visite"?"Nouvelle visite":"Contrôle"}</div>
+                          <div style={{ fontSize:11, color:"var(--cm)" }}>{medecinLabel(form.medecin)} · {form.type_consultation==="nouvelle_visite"?"Nouvelle visite":"Contrôle"}</div>
                         </td>
                         <td style={{ textAlign:"right" }}>
                           <input type="number" className="cinp" value={form.frais_consultation} onChange={e => setF("frais_consultation", parseInt(e.target.value)||0)} style={{ width:140, textAlign:"right" }} />
@@ -1928,7 +1952,7 @@ export default function Consultation() {
               <div style={{ fontSize:16, fontWeight:800, color:"var(--cn)", letterSpacing:-.3 }}>CLINIQUE CANADIENNE DE SOUANKÉ</div>
               <div style={{ fontSize:11, color:"var(--cm)", marginTop:3 }}>Médecine · Chirurgie · Gynécologie · Pédiatrie</div>
               <div style={{ marginTop:10, display:"flex", justifyContent:"space-between", fontSize:12 }}>
-                <span>{form.medecin} — {form.service}</span>
+                <span>{medecinLabel(form.medecin)} — {form.service}</span>
                 <span style={{ fontFamily:"monospace" }}>{form.numero}</span>
               </div>
             </div>

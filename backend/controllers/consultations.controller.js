@@ -2,9 +2,27 @@ const Consultation = require('../models/Consultation');
 const Prescription  = require('../models/Prescription');
 const Invoice       = require('../models/Invoice');
 const Patient       = require('../models/Patient');
+const User          = require('../models/User');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
+
+const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
+// Correction 6 (relecture du 6 sept. 2026, FE-BUG-008) — le sélecteur
+// "Médecin consultant" (Consultations.jsx) était peuplé par 5 noms fictifs
+// codés en dur, jamais liés à un vrai User ; create() ignorait de toute
+// façon ce champ et attribuait systématiquement la consultation à
+// req.user._id — correct pour un médecin connecté, mais faux dès qu'un
+// infirmier ou un superadmin crée la consultation pour le compte d'un vrai
+// médecin (POST /consultations leur est ouvert, cf. routes).
+// GET /consultations/medecins
+exports.getMedecins = async (req, res, next) => {
+  try {
+    const medecins = await User.find({ role: 'medecin', statut: 'actif' }).select('nom prenom specialite').sort('nom').lean();
+    res.json({ success: true, medecins });
+  } catch (err) { next(err); }
+};
 
 // Liste explicite plutôt que ...req.body : documente précisément ce que ce
 // contrôleur accepte (aligné champ à champ sur le payload réel envoyé par
@@ -83,9 +101,15 @@ exports.create = async (req, res, next) => {
     if (sv.tension_systolique > 140) iaSuggestions.push({ diagnostic: 'HTA — surveiller', confidence: 72 });
     if (sv.glycemie > 7) iaSuggestions.push({ diagnostic: 'Hyperglycémie — évaluer diabète', confidence: 69 });
 
+    // Correction 6 (relecture du 6 sept. 2026, FE-BUG-008) — un vrai médecin
+    // choisi dans le formulaire (ObjectId réel, jamais un nom en texte
+    // libre) prime désormais sur req.user._id — nécessaire pour qu'un
+    // infirmier créant la consultation l'attribue au bon médecin, pas à
+    // lui-même.
+    const medecin = (req.body.medecin && isObjectId(req.body.medecin)) ? req.body.medecin : req.user._id;
     const consultation = await Consultation.create({
       ...buildConsultationFields(req.body),
-      medecin: req.user._id,
+      medecin,
       ia_suggestions: iaSuggestions,
     });
 
