@@ -1,8 +1,15 @@
 const mongoose = require('mongoose');
 
 const MouvementSchema = new mongoose.Schema({
-  type: { type: String, enum: ['entree','sortie','dispensation','retour','perte','peremption'] },
+  type: { type: String, enum: ['entree','sortie','dispensation','retour','perte','peremption','vente'] },
   quantite: Number,
+  // Sous-phase 5.1 (relecture du 6 sept. 2026) — pharmacy.controller.js::
+  // createVente décrémentait le stock mais ne posait jusqu'ici aucun
+  // mouvement pour la vente réussie (seul le rollback en cas d'échec partiel
+  // en posait un, type:'retour') : aucune trace persistée du montant réel
+  // vendu, rendant "ventes_jour"/"ventes_mois" impossibles à calculer
+  // honnêtement. `montant` capture le CFA réel de la ligne vendue.
+  montant: Number,
   date: { type: Date, default: Date.now },
   reference: String,
   utilisateur: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

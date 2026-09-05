@@ -48,7 +48,24 @@ exports.getStats = async (req, res, next) => {
     const expires   = meds.filter(m => m.date_peremption && new Date(m.date_peremption) < now).length;
     const imminents = meds.filter(m => m.date_peremption && new Date(m.date_peremption) >= now && new Date(m.date_peremption) <= in30).length;
     const valeur_stock = meds.reduce((s, m) => s + m.stock_actuel * (m.prix_vente || 0), 0);
-    res.json({ success: true, kpis: { total: meds.length, ruptures, critiques, bas, expires, imminents, valeur_stock, ventes_jour: 0, ventes_mois: 0 } });
+
+    // Sous-phase 5.1 (relecture du 6 sept. 2026) — ventes_jour/ventes_mois
+    // étaient figés à 0 en dur : aucun mouvement de type 'vente' n'était
+    // jamais posé par createVente(). Calculé réellement depuis les vrais
+    // mouvements 'vente' (montant réel), désormais posés à chaque vente.
+    const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
+    const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
+    let ventes_jour = 0, ventes_mois = 0;
+    meds.forEach(m => {
+      (m.mouvements || []).forEach(mv => {
+        if (mv.type !== 'vente' || !mv.date) return;
+        const d = new Date(mv.date);
+        if (d >= debutMois) ventes_mois += (mv.montant || 0);
+        if (d >= debutJour) ventes_jour += (mv.montant || 0);
+      });
+    });
+
+    res.json({ success: true, kpis: { total: meds.length, ruptures, critiques, bas, expires, imminents, valeur_stock, ventes_jour, ventes_mois } });
   } catch (err) { next(err); }
 };
 
@@ -108,7 +125,7 @@ exports.createVente = async (req, res, next) => {
         echec = `${info?.nom_commercial || item.medicament_id} (stock: ${info?.stock_actuel ?? '—'}, requis: ${quantite})`;
         break;
       }
-      decrementes.push({ id: item.medicament_id, quantite });
+      decrementes.push({ id: item.medicament_id, quantite, montant: (item.prix_unitaire || 0) * quantite });
     }
     if (echec) {
       for (const d of decrementes) {
@@ -120,6 +137,16 @@ exports.createVente = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: `Stock insuffisant pour cette vente : ${echec}.`,
+      });
+    }
+    // Sous-phase 5.1 (relecture du 6 sept. 2026) — mouvement réel posé
+    // uniquement une fois la vente ENTIÈREMENT réussie (jamais pour une vente
+    // avortée en cours de boucle ci-dessus, qui ne fait que restaurer le
+    // stock). Sans ce mouvement, aucune trace du montant vendu n'existait
+    // nulle part : ventes_jour/ventes_mois (getStats) restaient figés à 0.
+    for (const d of decrementes) {
+      await Medication.findByIdAndUpdate(d.id, {
+        $push: { mouvements: { type: 'vente', quantite: d.quantite, montant: d.montant, reference: numero, utilisateur: req.user._id, notes: `Vente ${numero}` } },
       });
     }
     const total = items.reduce((s, i) => s + (i.prix_unitaire || 0) * i.quantite, 0);

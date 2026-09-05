@@ -178,6 +178,15 @@ const CSS = `
 const fmtDate  = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : "—";
 const fmtDateI = (d) => d ? new Date(d).toISOString().substring(0,10) : "";
 const fmtCFA   = (n) => n != null ? Number(n).toLocaleString("fr-FR") + " CFA" : "—";
+// Sous-phase 5.1 (relecture du 6 sept. 2026) — remplace les badges de
+// tendance codés en dur ("↑ 12% vs hier", "↑ 8% vs mois dernier") : variation
+// réelle courant vs référence ; `null`/référence à 0 -> badge masqué (jamais
+// un pourcentage fabriqué).
+const fmtTrendVentes = (courant, reference, suffixe) => {
+  if (!reference) return null;
+  const pct = Math.round(((courant - reference) / reference) * 100);
+  return `${pct >= 0 ? '↑' : '↓'} ${Math.abs(pct)}% ${suffixe}`;
+};
 
 const stockSt = (q, seuil) => {
   if (q === 0) return "rupture";
@@ -402,6 +411,17 @@ export default function Pharmacie() {
   const [commandes, setCmds]  = useState([]);
   const [fournisseurs, setFrns] = useState([]);
   const [kpis, setKpis]       = useState({ total:0, ruptures:0, critiques:0, bas:0, expires:0, imminents:0, valeur_stock:0, ventes_jour:0, ventes_mois:0 });
+  // Sous-phase 5.1 (relecture du 6 sept. 2026) — comparaisons réelles
+  // (hier / mois dernier) pour les badges de tendance des ventes, et volume
+  // réel de mouvements de stock sur 30 jours (BarChart "Mouvements de stock").
+  const [ventesHier, setVentesHier] = useState(0);
+  const [ventesMoisDernier, setVentesMoisDernier] = useState(0);
+  const [ventesJourCount, setVentesJourCount] = useState(0);
+  const [ventesMoisCount, setVentesMoisCount] = useState(0);
+  const [mvts30j, setMvts30j] = useState({ labels: ["S.1","S.2","S.3","S.4","Auj."], data: [0,0,0,0,0] });
+  const [ventesParMoisChart, setVentesParMoisChart] = useState({ labels: [], data: [] });
+  const [topMedicamentsVendus, setTopMedicamentsVendus] = useState([]);
+  const [opsCount, setOpsCount] = useState({ total:0, entrees:0, dispensations:0, sorties:0, ajustements:0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [page, setPage]       = useState(1);
@@ -483,6 +503,89 @@ export default function Pharmacie() {
     try {
       const { data } = await api.get("/pharmacy?limit=500");
       const d = (data.medications || data.medicaments || data.data || []).map(normalizeMed);
+
+      // Sous-phase 5.1 — ventes_jour/ventes_mois (+ hier/mois dernier pour
+      // les tendances) calculés réellement depuis les vrais mouvements
+      // type:'vente' (montant réel, posé par pharmacy.controller.js::
+      // createVente), jamais figés à 0. Même bornes de date que
+      // pharmacy.controller.js::getStats.
+      const now = new Date();
+      const debutJour = new Date(now); debutJour.setHours(0,0,0,0);
+      const debutHier = new Date(debutJour); debutHier.setDate(debutHier.getDate()-1);
+      const debutMois = new Date(now.getFullYear(), now.getMonth(), 1);
+      const debutMoisDernier = new Date(now.getFullYear(), now.getMonth()-1, 1);
+      let ventesJourCalc = 0, ventesHierCalc = 0, ventesMoisCalc = 0, ventesMoisDernierCalc = 0;
+      const refsJour = new Set(), refsMois = new Set();
+      // Sous-phase 5.1 — "Mouvements de stock — 30 jours" (entrées + sorties
+      // + dispensations + ventes) bucketé par semaine glissante réelle,
+      // remplace le tableau fixe [142,188,156,204,98].
+      const buckets = [0,0,0,0,0]; // S.1 (le plus ancien) .. Auj.
+      // "Évolution des ventes — 12 mois" (Onglet Ventes), remplace le
+      // tableau fixe [2800000,3200000,...]. Même pattern d'agrégation
+      // glissante que les autres modules (Appointments/Laboratory).
+      const moisLabels = [];
+      const moisBornes = [];
+      for (let i = 11; i >= 0; i--) {
+        const dm = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        moisLabels.push(dm.toLocaleString('fr-FR', { month: 'short' }));
+        moisBornes.push({ y: dm.getFullYear(), m: dm.getMonth() });
+      }
+      const ventesParMois = new Array(12).fill(0);
+      // "Top 5 médicaments vendus" (quantité réellement vendue), remplace la
+      // liste fixe (Paracétamol 28%, Amoxicilline 22%...).
+      const qteParMed = {};
+      d.forEach(m => {
+        (m.mouvements || []).forEach(mv => {
+          if (!mv.date) return;
+          const dt = new Date(mv.date);
+          if (mv.type === 'vente') {
+            if (dt >= debutMois) { ventesMoisCalc += (mv.montant || 0); if (mv.reference) refsMois.add(mv.reference); }
+            else if (dt >= debutMoisDernier && dt < debutMois) ventesMoisDernierCalc += (mv.montant || 0);
+            if (dt >= debutJour) { ventesJourCalc += (mv.montant || 0); if (mv.reference) refsJour.add(mv.reference); }
+            else if (dt >= debutHier && dt < debutJour) ventesHierCalc += (mv.montant || 0);
+
+            const moisIdx = moisBornes.findIndex(b => b.y === dt.getFullYear() && b.m === dt.getMonth());
+            if (moisIdx !== -1) ventesParMois[moisIdx] += (mv.montant || 0);
+
+            qteParMed[m.nom_commercial] = (qteParMed[m.nom_commercial] || 0) + Math.abs(mv.quantite || 0);
+          }
+          if (['entree','sortie','dispensation','vente'].includes(mv.type)) {
+            const joursEcart = Math.floor((now - dt) / 86400000);
+            if (joursEcart < 0 || joursEcart > 29) return;
+            const idx = joursEcart === 0 ? 4 : 4 - Math.min(4, Math.ceil(joursEcart / 7));
+            buckets[Math.max(0, idx)] += Math.abs(mv.quantite || 0);
+          }
+        });
+      });
+      const totalQteVendue = Object.values(qteParMed).reduce((s,n)=>s+n,0);
+      const topMeds = Object.entries(qteParMed)
+        .sort((a,b) => b[1]-a[1])
+        .slice(0,5)
+        .map(([nom,qte]) => [nom, totalQteVendue ? Math.round(qte/totalQteVendue*100) : 0]);
+
+      // Sous-phase 5.1 — "Journal d'audit pharmacie" (onglet Audit) : compte
+      // réel de TOUTES les opérations (pas seulement les 30 affichées dans
+      // mvts, plafonnées), remplace ["1 284","342","681","198","63"] codés
+      // en dur. "Ajustements" = perte + péremption (écritures de correction
+      // d'inventaire, seule catégorie réelle correspondant à ce libellé).
+      let opTotal = 0, opEntrees = 0, opDispensations = 0, opSorties = 0, opAjustements = 0;
+      d.forEach(m => (m.mouvements || []).forEach(mv => {
+        opTotal++;
+        if (mv.type === 'entree') opEntrees++;
+        else if (mv.type === 'dispensation') opDispensations++;
+        else if (mv.type === 'sortie') opSorties++;
+        else if (mv.type === 'perte' || mv.type === 'peremption') opAjustements++;
+      }));
+      setOpsCount({ total: opTotal, entrees: opEntrees, dispensations: opDispensations, sorties: opSorties, ajustements: opAjustements });
+
+      setVentesHier(ventesHierCalc);
+      setVentesMoisDernier(ventesMoisDernierCalc);
+      setVentesJourCount(refsJour.size);
+      setVentesMoisCount(refsMois.size);
+      setMvts30j({ labels: ["S.1","S.2","S.3","S.4","Auj."], data: buckets });
+      setVentesParMoisChart({ labels: moisLabels, data: ventesParMois });
+      setTopMedicamentsVendus(topMeds);
+
       setKpis({
         total: data.total || d.length,
         ruptures: d.filter(x=>stockSt(x.stock_quantite,x.stock_minimum)==="rupture").length,
@@ -491,8 +594,8 @@ export default function Pharmacie() {
         expires: d.filter(x=>perempSt(x.date_expiration)==="perime").length,
         imminents: d.filter(x=>perempSt(x.date_expiration)==="imminent").length,
         valeur_stock: d.reduce((s,m)=>s+m.stock_quantite*(m.prix_vente||0),0),
-        ventes_jour: 0,
-        ventes_mois: 0,
+        ventes_jour: ventesJourCalc,
+        ventes_mois: ventesMoisCalc,
       });
     } catch {
       // garde les kpis à zéro si l'API échoue
@@ -1519,12 +1622,12 @@ ${lignes}
                 <div style={{ background:"linear-gradient(135deg,var(--pg),#047857)", borderRadius:18, padding:"18px 22px", color:"#fff" }}>
                   <div style={{ fontSize:11, fontWeight:600, opacity:.7, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Ventes aujourd'hui</div>
                   <div style={{ fontSize:26, fontWeight:800, letterSpacing:-1 }}>{fmtCFA(kpis.ventes_jour)}</div>
-                  <div style={{ fontSize:11, opacity:.7, marginTop:4 }}>↑ 12% vs hier</div>
+                  <div style={{ fontSize:11, opacity:.7, marginTop:4 }}>{fmtTrendVentes(kpis.ventes_jour, ventesHier, "vs hier")}</div>
                 </div>
                 <div style={{ background:"linear-gradient(135deg,var(--pb),#1e40af)", borderRadius:18, padding:"18px 22px", color:"#fff" }}>
                   <div style={{ fontSize:11, fontWeight:600, opacity:.7, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Ventes ce mois</div>
                   <div style={{ fontSize:26, fontWeight:800, letterSpacing:-1 }}>{fmtCFA(kpis.ventes_mois)}</div>
-                  <div style={{ fontSize:11, opacity:.7, marginTop:4 }}>↑ 8% vs mois dernier</div>
+                  <div style={{ fontSize:11, opacity:.7, marginTop:4 }}>{fmtTrendVentes(kpis.ventes_mois, ventesMoisDernier, "vs mois dernier")}</div>
                 </div>
               </div>
 
@@ -1532,12 +1635,12 @@ ${lignes}
               <div className="ph-g2" style={{ marginBottom:20 }}>
                 <div className="ph-card">
                   <div className="ph-card-hdr">
-                    <div><h3>{I.trend} Mouvements de stock — 30 jours</h3><p>Entrées vs sorties vs dispensations</p></div>
+                    <div><h3>{I.trend} Mouvements de stock — 30 jours</h3><p>Entrées, sorties, dispensations et ventes (volume total)</p></div>
                   </div>
                   <div style={{ padding:20 }}>
                     <BarChartCanvas
-                      labels={["S.1","S.2","S.3","S.4","Auj."]}
-                      data={[142,188,156,204,98]}
+                      labels={mvts30j.labels}
+                      data={mvts30j.data}
                       color="#0EA5A0"
                       height={180}
                     />
@@ -2011,12 +2114,12 @@ ${lignes}
                 <div style={{ background:"linear-gradient(135deg,#059669,#047857)", borderRadius:18, padding:"20px 24px", color:"#fff" }}>
                   <div style={{ fontSize:11, fontWeight:600, opacity:.7, textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Ventes aujourd'hui</div>
                   <div style={{ fontSize:28, fontWeight:800, letterSpacing:-1, marginBottom:4 }}>{fmtCFA(kpis.ventes_jour)}</div>
-                  <div style={{ fontSize:12, opacity:.7 }}>↑ 12% vs hier · 48 transactions</div>
+                  <div style={{ fontSize:12, opacity:.7 }}>{fmtTrendVentes(kpis.ventes_jour, ventesHier, "vs hier")} · {ventesJourCount} transaction{ventesJourCount>1?"s":""}</div>
                 </div>
                 <div style={{ background:"linear-gradient(135deg,#1B4F9E,#1e40af)", borderRadius:18, padding:"20px 24px", color:"#fff" }}>
                   <div style={{ fontSize:11, fontWeight:600, opacity:.7, textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Ventes ce mois</div>
                   <div style={{ fontSize:28, fontWeight:800, letterSpacing:-1, marginBottom:4 }}>{fmtCFA(kpis.ventes_mois)}</div>
-                  <div style={{ fontSize:12, opacity:.7 }}>↑ 8% vs mois dernier · 1 240 transactions</div>
+                  <div style={{ fontSize:12, opacity:.7 }}>{fmtTrendVentes(kpis.ventes_mois, ventesMoisDernier, "vs mois dernier")} · {ventesMoisCount} transaction{ventesMoisCount>1?"s":""}</div>
                 </div>
               </div>
 
@@ -2024,19 +2127,22 @@ ${lignes}
                 <div className="ph-card">
                   <div className="ph-card-hdr"><h3>{I.trend} Évolution des ventes — 12 mois</h3></div>
                   <div style={{ padding:20 }}>
-                    <BarChartCanvas labels={["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"]} data={[2800000,3200000,3000000,3500000,3800000,3600000,3100000,2500000,3300000,3700000,3400000,4000000]} color="#059669" height={180} />
+                    <BarChartCanvas labels={ventesParMoisChart.labels} data={ventesParMoisChart.data} color="#059669" height={180} />
                   </div>
                 </div>
                 <div className="ph-card">
                   <div className="ph-card-hdr"><h3>💊 Top 5 médicaments vendus</h3></div>
                   <div style={{ padding:20 }}>
-                    {[["Paracétamol 1g",28,"var(--pg)"],["Amoxicilline 500mg",22,"var(--pb)"],["Artemether 20mg",18,"var(--pt)"],["Métronidazole 250mg",15,"var(--pp)"],["Oméprazole 20mg",12,"var(--po)"]].map(([med,pct,col])=>(
+                    {topMedicamentsVendus.length === 0 && (
+                      <div style={{ textAlign:"center", color:"var(--pm)", fontSize:12, padding:12 }}>Aucune vente réelle enregistrée pour l'instant.</div>
+                    )}
+                    {topMedicamentsVendus.map(([med,pct],i)=>(
                       <div key={med} style={{ marginBottom:10 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
                           <span style={{ color:"var(--pm)", fontWeight:600 }}>{med}</span>
                           <span style={{ fontWeight:700, color:"var(--pn)" }}>{pct}%</span>
                         </div>
-                        <Prog pct={pct} color={col} />
+                        <Prog pct={pct} color={["var(--pg)","var(--pb)","var(--pt)","var(--pp)","var(--po)"][i%5]} />
                       </div>
                     ))}
                   </div>
@@ -2238,7 +2344,7 @@ ${lignes}
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12, marginBottom:20 }}>
-                {[["Total opérations","1 284","var(--pb)"],["Entrées","342","var(--pg)"],["Dispensations","681","var(--pt)"],["Sorties internes","198","var(--po)"],["Ajustements","63","var(--pp)"]].map(([l,v,c])=>(
+                {[["Total opérations",opsCount.total,"var(--pb)"],["Entrées",opsCount.entrees,"var(--pg)"],["Dispensations",opsCount.dispensations,"var(--pt)"],["Sorties internes",opsCount.sorties,"var(--po)"],["Ajustements",opsCount.ajustements,"var(--pp)"]].map(([l,v,c])=>(
                   <div key={l} style={{ background:"#fff", border:"1.5px solid var(--pbr)", borderRadius:14, padding:"14px 16px", textAlign:"center", boxShadow:"var(--sh)" }}>
                     <div style={{ fontSize:22, fontWeight:800, color:c, letterSpacing:-1 }}>{v}</div>
                     <div style={{ fontSize:11, color:"var(--pm)", fontWeight:600, marginTop:3 }}>{l}</div>
