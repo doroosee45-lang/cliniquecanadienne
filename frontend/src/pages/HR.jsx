@@ -370,8 +370,6 @@ const DEMO_EMPLOYES = [];
 
 const DEMO_EVALUATIONS = [];
 
-const DEMO_SANCTIONS = [];
-
 const DEMO_AUDIT = [];
 
 const MOIS_LABELS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
@@ -393,6 +391,10 @@ const EMPTY_EVAL = { employe_id:"", periode:"2026-S1", ponctualite:3, qualite:3,
 // Sous-phase 5.5.a — Formations. `participants` référence désormais de
 // vrais employés (tableau d'_id Staff), plus une chaîne de noms libres.
 const EMPTY_FORMATION = { titre:"", type:"interne", date:"", duree_h:"", participants:[], certificat:false };
+// Sous-phase 5.5.a — Discipline/Sanctions. Pas de champ "notifié" : ce
+// n'était qu'un Badge fabriqué dans l'ancien formulaire local, aucun envoi
+// réel n'existe ici.
+const EMPTY_SANCTION = { employe_id:"", type:"avertissement", motif:"" };
 
 // Adapter Staff (backend) → champs attendus par le frontend
 const normalizeEmp = (s) => {
@@ -443,7 +445,7 @@ export default function RessourcesHumaines() {
   const [candidatures, setCandidatures]   = useState([]);
   const [evaluations, setEvaluations]     = useState(DEMO_EVALUATIONS);
   const [formations, setFormations]       = useState([]);
-  const [sanctions, setSanctions]         = useState(DEMO_SANCTIONS);
+  const [sanctions, setSanctions]         = useState([]);
   const [auditLog, setAuditLog]           = useState(DEMO_AUDIT);
   const [currentEmp, setCurrentEmp]       = useState(null);
   const [search, setSearch]               = useState("");
@@ -460,6 +462,7 @@ export default function RessourcesHumaines() {
   const [modalCandidat,   setModalCandidat]    = useState(false);
   const [modalEval,       setModalEval]        = useState(false);
   const [modalFormation,  setModalFormation]   = useState(false);
+  const [modalSanction,   setModalSanction]    = useState(false);
   const [publishingId,    setPublishingId]     = useState(null);
 
   // Forms
@@ -469,6 +472,7 @@ export default function RessourcesHumaines() {
   const [formCandidat,  setFormCandidat]  = useState(EMPTY_CANDIDATURE);
   const [formEval,      setFormEval]      = useState(EMPTY_EVAL);
   const [formFormation, setFormFormation] = useState(EMPTY_FORMATION);
+  const [formSanction,  setFormSanction]  = useState(EMPTY_SANCTION);
   const [servicesReels, setServicesReels] = useState([]);
 
   // Charger les employés depuis l'API
@@ -561,6 +565,18 @@ export default function RessourcesHumaines() {
   }, []);
   useEffect(() => { loadFormations(); }, [loadFormations]);
 
+  // Sous-phase 5.5.a — Discipline/Sanctions : GET /hr/sanctions (nouveau
+  // modèle Sanction).
+  const loadSanctions = useCallback(async () => {
+    try {
+      const { data } = await api.get('/hr/sanctions');
+      setSanctions(data.sanctions || []);
+    } catch (err) {
+      console.error('Erreur chargement sanctions:', err);
+    }
+  }, []);
+  useEffect(() => { loadSanctions(); }, [loadSanctions]);
+
   // Semaine courante (lundi → dimanche), calculée dynamiquement — remplace
   // l'ancienne grille figée sur une semaine de juin 2025.
   // AUDIT-M-E9 — recréé (nouveau tableau de nouveaux Date) à chaque rendu
@@ -602,7 +618,8 @@ export default function RessourcesHumaines() {
     loadCandidatures();
     loadEvaluations();
     loadFormations();
-  }, [dispatch, loadConges, loadSchedules, loadCandidatures, loadEvaluations, loadFormations]);
+    loadSanctions();
+  }, [dispatch, loadConges, loadSchedules, loadCandidatures, loadEvaluations, loadFormations, loadSanctions]);
   useRealtimeRefresh(refreshHR);
 
   // AUDIT-M-E9 (Groupe E, Point 9) — KPIs, pivot planning, filtrage et
@@ -854,6 +871,21 @@ export default function RessourcesHumaines() {
       setModalFormation(false); setFormFormation(EMPTY_FORMATION);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erreur lors de la planification de la formation");
+    }
+  };
+
+  // Sous-phase 5.5.a — Discipline/Sanctions : addSanction créait auparavant
+  // un objet local avec un Badge "Notifié" fabriqué. Persiste désormais
+  // réellement via POST /hr/sanctions, sans revendiquer de notification.
+  const addSanction = async (ev) => {
+    ev.preventDefault();
+    try {
+      const { data } = await api.post('/hr/sanctions', formSanction);
+      setSanctions(prev => [data.sanction, ...prev]);
+      toast.success("⚠️ Sanction enregistrée");
+      setModalSanction(false); setFormSanction(EMPTY_SANCTION);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement de la sanction");
     }
   };
 
@@ -1837,17 +1869,37 @@ export default function RessourcesHumaines() {
                 )}
 
                 {/* ── DISCIPLINE ── */}
-                {/* Sous-phase 5.7 — même bug que l'onglet global "Discipline" :
-                    "Enregistrer sanction" ouvrait un formulaire dont la
-                    soumission ne persistait rien en base (CRUD local).
-                    Désactivé honnêtement. */}
+                {/* Sous-phase 5.5.a — reconstruit avec une vraie persistance
+                    (modèle Sanction) : remplace la bannière posée en 5.7. */}
                 {section === "discipline_emp" && (
                   <div style={{ marginTop:20 }}>
-                    <div style={{ fontSize:15, fontWeight:700, color:"var(--rn)", marginBottom:16 }}>Mesures disciplinaires</div>
-                    <div className="rh-card" style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>
-                      <div style={{ fontSize:32, marginBottom:12, opacity:.4 }}>⚠️</div>
-                      🚧 Fonctionnalité en cours de développement — aucun suivi réel des mesures disciplinaires n'existe encore dans ce système.
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--rn)" }}>Mesures disciplinaires</div>
+                      <button className="rbtn rbtn-danger" onClick={() => { setFormSanction({...EMPTY_SANCTION, employe_id:currentEmp._id}); setModalSanction(true); }}>
+                        {I.plus} Enregistrer sanction
+                      </button>
                     </div>
+                    {empSanc.length > 0 ? empSanc.map(s => {
+                      const sc = SANCTION_CFG[s.type] || { cls:"gray", label:s.type, icon:"⚠️" };
+                      return (
+                        <div key={s._id} className="rh-card" style={{ marginBottom:12, borderLeft:`4px solid ${s.type === "avertissement" ? "#CA8A04" : "#DC2626"}` }}>
+                          <div style={{ padding:"14px 20px" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                              <span style={{ fontSize:18 }}>{sc.icon}</span>
+                              <span style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{sc.label}</span>
+                              <Badge cls={sc.cls}>{sc.label}</Badge>
+                              <span style={{ fontSize:11, color:"var(--rm)" }}>📅 {fmtDate(s.date)}</span>
+                            </div>
+                            <div style={{ fontSize:12, color:"var(--rm)", marginTop:8 }}>{s.motif}</div>
+                          </div>
+                        </div>
+                      );
+                    }) : (
+                      <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
+                        <div style={{ fontSize:32, marginBottom:12 }}>✅</div>
+                        <div style={{ fontWeight:700, color:"var(--rg)" }}>Aucune mesure disciplinaire</div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2359,20 +2411,49 @@ export default function RessourcesHumaines() {
           )}
 
           {/* ══ DISCIPLINE ══ */}
-          {/* Sous-phase 5.7 — "Mesures disciplinaires" était un CRUD
-              entièrement local (setSanctions(prev => [new, ...prev])),
-              jamais persisté, affichant même un Badge "Notifié" entièrement
-              fabriqué (aucune notification réelle n'est jamais envoyée).
-              Aucun modèle Sanction n'existe dans le backend — désactivé
-              honnêtement plutôt que de laisser croire qu'une mesure
-              disciplinaire réelle a été enregistrée et notifiée. */}
+          {/* Sous-phase 5.5.a — reconstruit avec une vraie persistance
+              (modèle Sanction) : remplace le CRUD local sans lendemain
+              désactivé en 5.7. Le Badge "Notifié" n'est PAS restauré :
+              aucun mécanisme réel de notification des sanctions n'a été
+              demandé ni construit ici — c'était exactement la donnée
+              fabriquée signalée en 5.7. */}
           {tab === "discipline" && (
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Mesures disciplinaires</div>
-              <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
-                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>⚠️</div>
-                <div style={{ fontSize:13, color:"var(--rm)" }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des mesures disciplinaires n'existe encore dans ce système.</div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:12 }}>
+                <div>
+                  <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Mesures disciplinaires</div>
+                  <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{sanctions.length} mesure(s) enregistrée(s)</div>
+                </div>
+                <button className="rbtn rbtn-danger" onClick={() => { setFormSanction(EMPTY_SANCTION); setModalSanction(true); }}>{I.plus} Enregistrer sanction</button>
               </div>
+              {sanctions.map(s => {
+                const sc = SANCTION_CFG[s.type] || { cls:"gray", label:s.type, icon:"⚠️" };
+                const emp = employes.find(e => e._id === s.employe_id);
+                const pc = emp ? (POSTE_COLORS[emp.poste] || { color:"#6B7280" }) : { color:"#6B7280" };
+                return (
+                  <div key={s._id} className="rh-card fu" style={{ marginBottom:12, borderLeft:`4px solid ${sc.cls === "red" ? "#DC2626" : "#CA8A04"}` }}>
+                    <div style={{ padding:"16px 20px" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+                        {emp && <div className="emp-avatar" style={{ background:pc.color, width:36, height:36, fontSize:12, borderRadius:10 }}>{emp.prenom[0]}{emp.nom[0]}</div>}
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{s.employe_nom}</div>
+                          <div style={{ fontSize:12, color:"var(--rm)" }}>📅 {fmtDate(s.date)}</div>
+                        </div>
+                        <Badge cls={sc.cls}>{sc.icon} {sc.label}</Badge>
+                      </div>
+                      <div style={{ fontSize:12, color:"var(--rm)", marginTop:10, background:"#FFF7ED", borderRadius:8, padding:"8px 12px" }}>
+                        <strong>Motif :</strong> {s.motif}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {sanctions.length === 0 && (
+                <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
+                  <div style={{ fontSize:36, marginBottom:12 }}>✅</div>
+                  <div style={{ fontWeight:700, color:"var(--rg)" }}>Aucune mesure disciplinaire enregistrée</div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2700,6 +2781,30 @@ export default function RessourcesHumaines() {
               <div style={{ display:"flex", gap:10 }}>
                 <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalFormation(false)}>Annuler</button>
                 <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Planifier</button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : SANCTION (Sous-phase 5.5.a) ═══ */}
+        <Modal open={modalSanction} onClose={() => setModalSanction(false)} title="⚠️ Mesure disciplinaire" maxWidth={480}>
+          <form onSubmit={addSanction}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div><label className="rlbl">Employé *</label>
+                <select className="rinp" required value={formSanction.employe_id} onChange={e=>setFormSanction(f=>({...f,employe_id:e.target.value}))}>
+                  <option value="">— Sélectionner —</option>
+                  {employes.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
+                </select>
+              </div>
+              <div><label className="rlbl">Type de sanction *</label>
+                <select className="rinp" required value={formSanction.type} onChange={e=>setFormSanction(f=>({...f,type:e.target.value}))}>
+                  {Object.entries(SANCTION_CFG).map(([k,v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                </select>
+              </div>
+              <div><label className="rlbl">Motif *</label><textarea className="rinp" rows={4} required value={formSanction.motif} onChange={e=>setFormSanction(f=>({...f,motif:e.target.value}))} placeholder="Décrivez les faits reprochés..." /></div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalSanction(false)}>Annuler</button>
+                <button type="submit" className="rbtn rbtn-danger" style={{ marginLeft:"auto" }}>⚠️ Enregistrer</button>
               </div>
             </div>
           </form>

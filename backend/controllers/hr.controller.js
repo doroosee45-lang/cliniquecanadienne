@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Candidature = require('../models/Candidature');
 const Evaluation = require('../models/Evaluation');
 const Formation = require('../models/Formation');
+const Sanction = require('../models/Sanction');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const mail = require('../utils/mail');
@@ -498,4 +499,53 @@ exports.createFormation = async (req, res, next) => {
     const populated = await Formation.findById(formation._id).populate('participants', 'prenom nom').lean();
     res.status(201).json({ success: true, formation: normalizeFormation(populated) });
   } catch (err) { next(err); }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Sous-phase 5.5.a — Discipline / Sanctions
+// ─────────────────────────────────────────────────────────────
+
+function normalizeSanction(s) {
+  const emp = s.employe && typeof s.employe === 'object' ? s.employe : null;
+  return {
+    ...s,
+    employe_id: emp ? emp._id : s.employe,
+    employe_nom: emp ? `${emp.prenom || ''} ${emp.nom || ''}`.trim() : '—',
+  };
+}
+
+// GET /hr/sanctions
+exports.getSanctions = async (req, res, next) => {
+  try {
+    const rows = await Sanction.find()
+      .populate('employe', 'prenom nom poste')
+      .sort('-date')
+      .lean();
+    res.json({ success: true, sanctions: rows.map(normalizeSanction) });
+  } catch (err) { next(err); }
+};
+
+// POST /hr/sanctions
+exports.createSanction = async (req, res, next) => {
+  try {
+    const { employe_id, type, motif } = req.body;
+    if (!motif || !motif.trim()) {
+      return res.status(400).json({ success: false, message: 'Le motif de la sanction est obligatoire.' });
+    }
+    const employe = await Staff.findById(employe_id).lean();
+    if (!employe) return res.status(404).json({ success: false, message: 'Employé introuvable.' });
+
+    const sanction = await Sanction.create({ employe: employe_id, type, motif: motif.trim(), decide_par: req.user._id });
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'hr', entite_id: sanction._id, ip: req.ip, message: `Sanction (${type}) — ${employe.prenom || ''} ${employe.nom || ''}`.trim() });
+    emitActivity({ module: 'hr', action: 'Mesure disciplinaire', detail: `${employe.prenom || ''} ${employe.nom || ''} — ${type}`, icon: '⚠️', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
+
+    const populated = await Sanction.findById(sanction._id).populate('employe', 'prenom nom poste').lean();
+    res.status(201).json({ success: true, sanction: normalizeSanction(populated) });
+  } catch (err) {
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next(err);
+  }
 };

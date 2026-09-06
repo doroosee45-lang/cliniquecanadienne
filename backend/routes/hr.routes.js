@@ -30,6 +30,10 @@ router.post('/evaluations',          protect, authorize(...ADMIN), hrC.createEva
 router.get('/formations',            protect, authorize(...ADMIN), hrC.getFormations);
 router.post('/formations',           protect, authorize(...ADMIN), hrC.createFormation);
 
+// Sous-phase 5.5.a — Discipline/Sanctions (même remarque d'ordre : avant `/:id`).
+router.get('/sanctions',             protect, authorize(...ADMIN), hrC.getSanctions);
+router.post('/sanctions',            protect, authorize(...ADMIN), hrC.createSanction);
+
 router.get('/',          protect, authorize(...ADMIN), hrC.getAll);
 router.post('/',         protect, authorize(...ADMIN), hrC.create);
 router.get('/:id',       protect, authorize(...ADMIN), hrC.getOne);
