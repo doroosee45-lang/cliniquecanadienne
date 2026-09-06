@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import { useAuth } from '../contexts/AuthContext';
 import {
   fetchStaff,
   selectStaff, selectHRLoading,
@@ -386,6 +387,11 @@ const EMPTY_PLAN = { employe_id:"", date:"", heure_debut:"", heure_fin:"", type:
 // faute de persistance réelle) : mêmes champs, désormais branchés sur
 // POST/PUT /hr/candidatures.
 const EMPTY_CANDIDATURE = { nom:"", poste:"infirmier", experience:"", diplome:"", email:"", telephone:"" };
+// Sous-phase 5.5.a — Évaluations. Pas de champ "évaluateur" texte libre
+// (contrairement au formulaire retiré en 5.7) : l'évaluateur réel est
+// l'auteur authentifié de la requête (req.user côté serveur), jamais une
+// chaîne saisissable par n'importe qui.
+const EMPTY_EVAL = { employe_id:"", periode:"2026-S1", ponctualite:3, qualite:3, productivite:3, discipline:3, relation_patient:3, commentaire:"" };
 
 // Adapter Staff (backend) → champs attendus par le frontend
 const normalizeEmp = (s) => {
@@ -412,6 +418,7 @@ const normalizeEmp = (s) => {
 export default function RessourcesHumaines() {
   const dispatch = useDispatch();
   const reduxStaff = useSelector(selectStaff);
+  const { user: authUser } = useAuth() || {};
 
   useEffect(() => {
     dispatch(fetchStaff({}));
@@ -450,6 +457,7 @@ export default function RessourcesHumaines() {
   const [modalConge,      setModalConge]       = useState(false);
   const [modalPlan,       setModalPlan]        = useState(false);
   const [modalCandidat,   setModalCandidat]    = useState(false);
+  const [modalEval,       setModalEval]        = useState(false);
   const [publishingId,    setPublishingId]     = useState(null);
 
   // Forms
@@ -457,6 +465,7 @@ export default function RessourcesHumaines() {
   const [formConge,     setFormConge]     = useState(EMPTY_CONGE);
   const [formPlan,      setFormPlan]      = useState(EMPTY_PLAN);
   const [formCandidat,  setFormCandidat]  = useState(EMPTY_CANDIDATURE);
+  const [formEval,      setFormEval]      = useState(EMPTY_EVAL);
   const [servicesReels, setServicesReels] = useState([]);
 
   // Charger les employés depuis l'API
@@ -525,6 +534,18 @@ export default function RessourcesHumaines() {
   }, []);
   useEffect(() => { loadCandidatures(); }, [loadCandidatures]);
 
+  // Sous-phase 5.5.a — Évaluations : GET /hr/evaluations (nouveau modèle
+  // Evaluation).
+  const loadEvaluations = useCallback(async () => {
+    try {
+      const { data } = await api.get('/hr/evaluations');
+      setEvaluations(data.evaluations || []);
+    } catch (err) {
+      console.error('Erreur chargement évaluations:', err);
+    }
+  }, []);
+  useEffect(() => { loadEvaluations(); }, [loadEvaluations]);
+
   // Semaine courante (lundi → dimanche), calculée dynamiquement — remplace
   // l'ancienne grille figée sur une semaine de juin 2025.
   // AUDIT-M-E9 — recréé (nouveau tableau de nouveaux Date) à chaque rendu
@@ -564,7 +585,8 @@ export default function RessourcesHumaines() {
     loadConges();
     loadSchedules();
     loadCandidatures();
-  }, [dispatch, loadConges, loadSchedules, loadCandidatures]);
+    loadEvaluations();
+  }, [dispatch, loadConges, loadSchedules, loadCandidatures, loadEvaluations]);
   useRealtimeRefresh(refreshHR);
 
   // AUDIT-M-E9 (Groupe E, Point 9) — KPIs, pivot planning, filtrage et
@@ -785,6 +807,22 @@ export default function RessourcesHumaines() {
       toast.success(messageSucces);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erreur lors de la mise à jour du statut");
+    }
+  };
+
+  // Sous-phase 5.5.a — Évaluations : addEval créait auparavant un objet
+  // local (note_globale calculée côté client, jamais persisté). note_globale
+  // est désormais recalculée et renvoyée par le serveur (models/Evaluation.js)
+  // — jamais recalculée ici pour éviter toute divergence.
+  const addEval = async (ev) => {
+    ev.preventDefault();
+    try {
+      const { data } = await api.post('/hr/evaluations', formEval);
+      setEvaluations(prev => [data.evaluation, ...prev]);
+      toast.success("✅ Évaluation enregistrée");
+      setModalEval(false); setFormEval(EMPTY_EVAL);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement de l'évaluation");
     }
   };
 
@@ -1718,17 +1756,52 @@ export default function RessourcesHumaines() {
                 )}
 
                 {/* ── ÉVALUATIONS ── */}
-                {/* Sous-phase 5.7 — même bug que l'onglet global
-                    "Évaluations" : "Nouvelle évaluation" ouvrait un formulaire
-                    dont la soumission ne persistait rien en base (CRUD
-                    local). Désactivé honnêtement. */}
+                {/* Sous-phase 5.5.a — reconstruit avec une vraie persistance
+                    (modèle Evaluation, POST /hr/evaluations) : remplace la
+                    bannière posée en 5.7. */}
                 {section === "eval_emp" && (
                   <div style={{ marginTop:20 }}>
-                    <div style={{ fontSize:15, fontWeight:700, color:"var(--rn)", marginBottom:16 }}>Évaluations</div>
-                    <div className="rh-card" style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>
-                      <div style={{ fontSize:32, marginBottom:12, opacity:.4 }}>⭐</div>
-                      🚧 Fonctionnalité en cours de développement — aucun suivi réel des évaluations n'existe encore dans ce système.
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--rn)" }}>Évaluations</div>
+                      <button className="rbtn rbtn-primary" onClick={() => { setFormEval({...EMPTY_EVAL, employe_id:currentEmp._id}); setModalEval(true); }}>
+                        {I.plus} Nouvelle évaluation
+                      </button>
                     </div>
+                    {empEvals.map(ev => (
+                      <div key={ev._id} className="rh-card" style={{ marginBottom:16 }}>
+                        <div className="rh-card-hdr">
+                          <h3>⭐ Évaluation — {ev.periode}</h3>
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <Stars note={ev.note_globale} />
+                            <span style={{ fontWeight:800, fontSize:14, color:"var(--rn)" }}>{ev.note_globale}/5</span>
+                          </div>
+                        </div>
+                        <div style={{ padding:20 }}>
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:12, marginBottom:14 }}>
+                            {[
+                              ["Ponctualité", ev.ponctualite],
+                              ["Qualité du travail", ev.qualite],
+                              ["Productivité", ev.productivite],
+                              ["Discipline", ev.discipline],
+                              ["Relation patients", ev.relation_patient],
+                            ].map(([lbl,val]) => (
+                              <div key={lbl} style={{ background:"#F8FAFD", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
+                                <div style={{ fontSize:10, color:"var(--rm)", fontWeight:600, textTransform:"uppercase", marginBottom:6 }}>{lbl}</div>
+                                <Stars note={val} max={5} />
+                                <div style={{ fontSize:13, fontWeight:800, color:"var(--rn)", marginTop:4 }}>{val}/5</div>
+                              </div>
+                            ))}
+                          </div>
+                          {ev.commentaire && (
+                            <div style={{ background:"#EEF4FF", borderRadius:10, padding:12, fontSize:12, color:"var(--rm)" }}>
+                              <strong>Commentaire :</strong> {ev.commentaire}
+                            </div>
+                          )}
+                          <div style={{ fontSize:11, color:"var(--rm)", marginTop:8 }}>Évalué par : <strong>{ev.evaluateur}</strong></div>
+                        </div>
+                      </div>
+                    ))}
+                    {empEvals.length === 0 && <div className="rh-card" style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>Aucune évaluation enregistrée</div>}
                   </div>
                 )}
 
@@ -2154,19 +2227,56 @@ export default function RessourcesHumaines() {
           )}
 
           {/* ══ ÉVALUATIONS ══ */}
-          {/* Sous-phase 5.7 — "Évaluations du personnel" était un CRUD
-              entièrement local (setEvaluations(prev => [new, ...prev]),
-              _id:Date.now().toString()), jamais persisté en base. Aucun
-              modèle Evaluation n'existe dans le backend — vérifié. Même
-              logique que "Présences"/"Candidatures" : désactivé
-              honnêtement plutôt que de créer un nouveau sous-système
-              complet hors périmètre de cette sous-phase. */}
+          {/* Sous-phase 5.5.a — reconstruit avec une vraie persistance
+              (modèle Evaluation) : remplace le CRUD local sans lendemain
+              désactivé en 5.7. */}
           {tab === "evaluations" && (
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Évaluations du personnel</div>
-              <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
-                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>⭐</div>
-                <div style={{ fontSize:13, color:"var(--rm)" }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des évaluations du personnel n'existe encore dans ce système.</div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:12 }}>
+                <div>
+                  <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Évaluations du personnel</div>
+                  <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{evaluations.length} évaluation(s)</div>
+                </div>
+                <button className="rbtn rbtn-primary" onClick={() => { setFormEval(EMPTY_EVAL); setModalEval(true); }}>{I.plus} Nouvelle évaluation</button>
+              </div>
+              {evaluations.length === 0 && (
+                <div className="rh-card" style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>
+                  <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>⭐</div>
+                  Aucune évaluation enregistrée
+                </div>
+              )}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))", gap:16 }}>
+                {evaluations.map(ev => {
+                  const emp = employes.find(e => e._id === ev.employe_id);
+                  const pc  = emp ? (POSTE_COLORS[emp.poste] || { color:"#6B7280" }) : { color:"#6B7280" };
+                  return (
+                    <div key={ev._id} className="rh-card fu">
+                      <div style={{ padding:20 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+                          {emp && <div className="emp-avatar" style={{ background:pc.color, width:40, height:40, fontSize:14, borderRadius:10 }}>{emp.prenom[0]}{emp.nom[0]}</div>}
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{ev.employe_nom}</div>
+                            <div style={{ fontSize:11, color:"var(--rm)" }}>Période : {ev.periode}</div>
+                          </div>
+                          <div style={{ textAlign:"center" }}>
+                            <div style={{ fontSize:22, fontWeight:800, color:"var(--rn)" }}>{ev.note_globale}</div>
+                            <Stars note={ev.note_globale} />
+                          </div>
+                        </div>
+                        {[["Ponctualité",ev.ponctualite],["Qualité du travail",ev.qualite],["Productivité",ev.productivite],["Discipline",ev.discipline],["Relation patients",ev.relation_patient]].map(([lbl,val]) => (
+                          <div key={lbl} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                            <span style={{ fontSize:12, color:"var(--rm)" }}>{lbl}</span>
+                            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                              <div className="score-bar" style={{ width:60 }}><div className="score-bar-f" style={{ width:`${val*20}%`, background:val >= 4 ? "var(--rg)" : val >= 3 ? "var(--ro)" : "var(--rr)" }} /></div>
+                              <span style={{ fontSize:12, fontWeight:700, color:"var(--rn)", width:24 }}>{val}/5</span>
+                            </div>
+                          </div>
+                        ))}
+                        {ev.commentaire && <div style={{ fontSize:12, color:"var(--rm)", marginTop:10, background:"#F8FAFD", borderRadius:8, padding:"8px 10px" }}>{ev.commentaire}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -2456,6 +2566,47 @@ export default function RessourcesHumaines() {
             <div style={{ display:"flex", gap:10, marginTop:20 }}>
               <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalCandidat(false)}>Annuler</button>
               <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Enregistrer</button>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : ÉVALUATION (Sous-phase 5.5.a) ═══ */}
+        <Modal open={modalEval} onClose={() => setModalEval(false)} title="⭐ Nouvelle évaluation" maxWidth={560}>
+          <form onSubmit={addEval}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div><label className="rlbl">Employé *</label>
+                <select className="rinp" required value={formEval.employe_id} onChange={e=>setFormEval(f=>({...f,employe_id:e.target.value}))}>
+                  <option value="">— Sélectionner —</option>
+                  {employes.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
+                </select>
+              </div>
+              <div><label className="rlbl">Période</label>
+                <select className="rinp" value={formEval.periode} onChange={e=>setFormEval(f=>({...f,periode:e.target.value}))}>
+                  {["2026-S1","2025-S2","2025-S1","2024-S2"].map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              {[["ponctualite","Ponctualité"],["qualite","Qualité du travail"],["productivite","Productivité"],["discipline","Discipline"],["relation_patient","Relation avec les patients"]].map(([key,lbl]) => (
+                <div key={key}>
+                  <label className="rlbl">{lbl} (1-5)</label>
+                  <div style={{ display:"flex", gap:6 }}>
+                    {[1,2,3,4,5].map(v => (
+                      <button key={v} type="button" onClick={() => setFormEval(f=>({...f,[key]:v}))}
+                        style={{ width:36, height:36, borderRadius:8, border:`2px solid ${formEval[key]>=v?"#F59E0B":"#E5E7EB"}`, background:formEval[key]>=v?"#FEF3C7":"#F9FAFB", cursor:"pointer", fontSize:16, color:formEval[key]>=v?"#F59E0B":"#D1D5DB" }}>
+                        ★
+                      </button>
+                    ))}
+                    <span style={{ marginLeft:8, fontSize:13, color:"var(--rm)", alignSelf:"center" }}>{formEval[key]}/5</span>
+                  </div>
+                </div>
+              ))}
+              <div><label className="rlbl">Commentaires</label><textarea className="rinp" rows={3} value={formEval.commentaire} onChange={e=>setFormEval(f=>({...f,commentaire:e.target.value}))} /></div>
+              <div style={{ background:"#EFF6FF", borderRadius:10, padding:"10px 14px", fontSize:12, color:"var(--rb)" }}>
+                👤 Évaluateur : vous-même (<strong>{authUser ? `${authUser.prenom || ''} ${authUser.nom || ''}`.trim() : '—'}</strong>) — identifié automatiquement, non modifiable.
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalEval(false)}>Annuler</button>
+                <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Enregistrer</button>
+              </div>
             </div>
           </form>
         </Modal>

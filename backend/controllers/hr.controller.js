@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const Staff = require('../models/Staff');
 const User = require('../models/User');
 const Candidature = require('../models/Candidature');
+const Evaluation = require('../models/Evaluation');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const mail = require('../utils/mail');
@@ -377,4 +378,61 @@ exports.updateCandidatureStatut = async (req, res, next) => {
     emitDashboardUpdate();
     res.json({ success: true, candidature });
   } catch (err) { next(err); }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Sous-phase 5.5.a — Évaluations
+// ─────────────────────────────────────────────────────────────
+
+// Aplatit une Evaluation populée en objet frontend-compatible (mêmes clés
+// que l'ancien state local : employe_id, employe_nom, evaluateur en texte).
+function normalizeEvaluation(e) {
+  const emp = e.employe && typeof e.employe === 'object' ? e.employe : null;
+  const user = e.evaluateur && typeof e.evaluateur === 'object' ? e.evaluateur : null;
+  return {
+    ...e,
+    employe_id: emp ? emp._id : e.employe,
+    employe_nom: emp ? `${emp.prenom || ''} ${emp.nom || ''}`.trim() : '—',
+    evaluateur: user ? `${user.prenom || ''} ${user.nom || ''}`.trim() : '—',
+  };
+}
+
+// GET /hr/evaluations
+exports.getEvaluations = async (req, res, next) => {
+  try {
+    const rows = await Evaluation.find()
+      .populate('employe', 'prenom nom poste')
+      .populate('evaluateur', 'prenom nom')
+      .sort('-createdAt')
+      .lean();
+    res.json({ success: true, evaluations: rows.map(normalizeEvaluation) });
+  } catch (err) { next(err); }
+};
+
+// POST /hr/evaluations
+exports.createEvaluation = async (req, res, next) => {
+  try {
+    const { employe_id, periode, ponctualite, qualite, productivite, discipline, relation_patient, commentaire } = req.body;
+    const employe = await Staff.findById(employe_id).lean();
+    if (!employe) return res.status(404).json({ success: false, message: 'Employé introuvable.' });
+
+    const evaluation = await Evaluation.create({
+      employe: employe_id, periode, ponctualite, qualite, productivite, discipline, relation_patient,
+      commentaire, evaluateur: req.user._id,
+    });
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'hr', entite_id: evaluation._id, ip: req.ip, message: `Évaluation (${periode}) — ${employe.prenom || ''} ${employe.nom || ''}`.trim() });
+    emitActivity({ module: 'hr', action: 'Nouvelle évaluation', detail: `${employe.prenom || ''} ${employe.nom || ''} — ${periode}`, icon: '⭐', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
+
+    const populated = await Evaluation.findById(evaluation._id)
+      .populate('employe', 'prenom nom poste')
+      .populate('evaluateur', 'prenom nom')
+      .lean();
+    res.status(201).json({ success: true, evaluation: normalizeEvaluation(populated) });
+  } catch (err) {
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next(err);
+  }
 };
