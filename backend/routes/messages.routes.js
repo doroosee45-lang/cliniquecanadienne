@@ -45,7 +45,15 @@ router.get('/',                  protect, msgC.getConversations);
 // d'un contenu chargé silencieusement — un vrai Guard sur la route
 // frontend (ou une vue patient dédiée) reste à faire séparément.
 router.post('/',                 protect, authorize(...STAFF), msgC.getOrCreate);
-router.post('/groups',           protect, msgC.createGroup);
+// SEC-010 (audit indépendant du 6 sept. 2026) — même classe de faille que
+// SEC-005 (POST / getOrCreate) sur une route que ce correctif n'avait pas
+// couverte : createGroup() accepte un tableau `membres` d'IDs arbitraires
+// venant du client sans aucune vérification de relation, et n'importe quel
+// compte authentifié — y compris role:'patient' — pouvait donc créer un
+// groupe avec n'importe quel autre utilisateur. STAFF exclut explicitement
+// 'patient' ; seul appelant frontend réel confirmé : Messages.jsx (module
+// personnel), jamais Portal.jsx.
+router.post('/groups',           protect, authorize(...STAFF), msgC.createGroup);
 router.post('/reactions/:msgId', protect, msgC.toggleReaction);
 router.get('/:id',               protect, msgC.getMessages);
 router.post('/:id/send',         protect, msgC.sendMessage);
