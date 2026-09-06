@@ -15,6 +15,9 @@ const {
   PROFESSIONAL_ROLES, PERMISSION_ACTIONS, DEFAULT_ROLES_PERMISSIONS,
   SETTING_KEY: PERMISSIONS_SETTING_KEY, enforceSuperadminSafeguard, getRolesPermissionsMatrix,
 } = require('../utils/permissions');
+const path = require('path');
+const { runBackup } = require('../utils/backup');
+const backupState = require('../utils/backupState');
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -505,5 +508,72 @@ exports.updateRolesPermissions = async (req, res, next) => {
     );
     await logAction({ utilisateur: req.user._id, action: 'UPDATE_SETTING', module: 'settings', ip: req.ip, message: 'Matrice de permissions modifiée', avant, apres: setting.valeur });
     res.json({ success: true, permissions: setting.valeur });
+  } catch (err) { next(err); }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Sous-phase 5.5.c — Sauvegarde externe (bouton "Sauvegarder" d'Audit.jsx)
+// utils/backup.js existait déjà comme utilitaire CLI réel et testé
+// (T9.11) mais sans la moindre route pour le déclencher. Volumétrie
+// réelle mesurée avant exposition : 2383 documents / 49 collections sur la
+// base actuelle — quelques secondes tout au plus, donc exposable en HTTP.
+// Deux garde-fous ajoutés pour rendre l'exposition sûre : verrou
+// anti-concurrence (backupState) et réponse asynchrone honnête (202 +
+// statut "en_cours", jamais une requête HTTP bloquée le temps du backup).
+// ─────────────────────────────────────────────────────────────
+
+// POST /settings/backup — superadmin uniquement (donnée = export complet
+// de la base). Répond immédiatement ; le travail réel se poursuit après la
+// réponse, son résultat consultable via GET /settings/backup/status.
+exports.triggerBackup = async (req, res, next) => {
+  try {
+    if (backupState.running) {
+      return res.status(409).json({ success: false, message: 'Une sauvegarde est déjà en cours — réessayez une fois celle-ci terminée.', startedAt: backupState.startedAt });
+    }
+    backupState.running = true;
+    backupState.startedAt = new Date().toISOString();
+    backupState.finishedAt = null;
+    backupState.lastError = null;
+
+    const outDir = path.join(__dirname, '..', 'backups', new Date().toISOString().replace(/[:.]/g, '-'));
+    const uri = process.env.MONGO_URI;
+
+    await logAction({ utilisateur: req.user._id, action: 'BACKUP_START', module: 'settings', ip: req.ip, message: `Sauvegarde déclenchée manuellement → ${outDir}` });
+
+    // Volontairement non attendu ici (pas de `await`) : la réponse HTTP part
+    // immédiatement, le travail réel (potentiellement plusieurs secondes,
+    // amené à grandir avec la base) continue en tâche de fond.
+    runBackup({ uri, outDir })
+      .then((manifest) => {
+        backupState.running = false;
+        backupState.finishedAt = new Date().toISOString();
+        backupState.lastManifest = manifest;
+        logAction({ utilisateur: req.user._id, action: 'BACKUP_SUCCESS', module: 'settings', message: `Sauvegarde terminée → ${outDir} (${Object.values(manifest.collections).reduce((a, b) => a + b, 0)} document(s))` }).catch(() => {});
+      })
+      .catch((err) => {
+        backupState.running = false;
+        backupState.finishedAt = new Date().toISOString();
+        backupState.lastError = err.message;
+        logAction({ utilisateur: req.user._id, action: 'BACKUP_FAILURE', module: 'settings', message: `Échec de la sauvegarde → ${outDir} : ${err.message}`, statut: 'echec' }).catch(() => {});
+      });
+
+    res.status(202).json({ success: true, status: 'en_cours', message: 'Sauvegarde démarrée — consultez GET /settings/backup/status pour son avancement.', startedAt: backupState.startedAt });
+  } catch (err) {
+    backupState.running = false;
+    next(err);
+  }
+};
+
+// GET /settings/backup/status
+exports.getBackupStatus = async (req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      running: backupState.running,
+      startedAt: backupState.startedAt,
+      finishedAt: backupState.finishedAt,
+      lastManifest: backupState.lastManifest,
+      lastError: backupState.lastError,
+    });
   } catch (err) { next(err); }
 };

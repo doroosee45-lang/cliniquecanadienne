@@ -17,6 +17,11 @@ router.post('/',        protect, authorize(...ADMIN), settingsC.upsert);
 router.get('/roles-permissions', protect, authorize('superadmin'), settingsC.getRolesPermissions);
 router.put('/roles-permissions', protect, authorize('superadmin'), settingsC.updateRolesPermissions);
 
+// ── Sauvegarde externe (Sous-phase 5.5.c) ──────────────────────
+// superadmin uniquement — export complet de la base de données.
+router.post('/backup',        protect, authorize('superadmin'), settingsC.triggerBackup);
+router.get('/backup/status',  protect, authorize('superadmin'), settingsC.getBackupStatus);
+
 // ── Gestion utilisateurs ──────────────────────────────────────
 router.get('/users',          protect, authorize(...ADMIN),   settingsC.getUsers);
 router.post('/users',         protect, authorize('superadmin'), settingsC.createUser);

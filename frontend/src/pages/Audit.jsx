@@ -551,6 +551,10 @@ export default function JournalAudit() {
   const [modalExport, setModalExport] = useState(false);
   const [modalArchive, setModalArchive] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Sous-phase 5.5.c — Sauvegarde externe, désormais réelle (POST/GET
+  // /settings/backup) — remplace la désactivation honnête posée en 5.1.
+  const [backupRunning, setBackupRunning] = useState(false);
+  const [lastBackup, setLastBackup] = useState(null);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -678,6 +682,52 @@ export default function JournalAudit() {
       toast.error(err?.response?.data?.message || "Erreur lors de la notification.");
     }
   };
+
+  // Sous-phase 5.5.c — "Sauvegarder" déclenche une vraie sauvegarde
+  // (POST /settings/backup, utils/backup.js — réel et déjà testé en CLI
+  // depuis T9.11). Réponse asynchrone honnête : 202 "en_cours" immédiat,
+  // pas d'attente bloquée — l'avancement réel est ensuite consulté par
+  // sondage (GET /settings/backup/status) jusqu'à la fin du travail réel.
+  const declencherSauvegarde = async () => {
+    try {
+      const { data } = await api.post('/settings/backup');
+      if (data.status === 'en_cours') {
+        setBackupRunning(true);
+        toast("💾 Sauvegarde démarrée en arrière-plan...");
+      }
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        toast("⏳ Une sauvegarde est déjà en cours.");
+        setBackupRunning(true);
+      } else {
+        toast.error(err?.response?.data?.message || "Erreur lors du déclenchement de la sauvegarde.");
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!backupRunning) return;
+    const interval = setInterval(async () => {
+      try {
+        const { data } = await api.get('/settings/backup/status');
+        if (!data.running) {
+          clearInterval(interval);
+          setBackupRunning(false);
+          if (data.lastError) {
+            toast.error(`❌ Échec de la sauvegarde : ${data.lastError}`);
+          } else if (data.lastManifest) {
+            setLastBackup(data.lastManifest);
+            const total = Object.values(data.lastManifest.collections || {}).reduce((a, b) => a + b, 0);
+            toast.success(`✅ Sauvegarde terminée — ${total} document(s) exporté(s)`);
+          }
+        }
+      } catch {
+        clearInterval(interval);
+        setBackupRunning(false);
+      }
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [backupRunning]);
 
   const [archiveDuree, setArchiveDuree] = useState("1an");
 
@@ -1522,22 +1572,24 @@ export default function JournalAudit() {
                       { label: "Total événements", val: `${events.length + (stats.total_logs || 0)} entrées`, color: "var(--ab)" },
                       { label: "Espace utilisé", val: "—", color: "var(--ao)" },
                       { label: "Dernier archivage", val: "—", color: "var(--ag)" },
+                      { label: "Dernière sauvegarde", val: lastBackup ? `${Object.values(lastBackup.collections || {}).reduce((a,b)=>a+b,0)} doc. — ${new Date(lastBackup.timestamp).toLocaleString('fr-FR')}` : "—", color: "var(--at)" },
                     ].map(r => (
                       <div key={r.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: "#F8FAFD", borderRadius: 8, marginBottom: 8 }}>
                         <span style={{ fontSize: 12, color: "var(--cm)" }}>{r.label}</span>
                         <strong style={{ fontSize: 12, color: r.color }}>{r.val}</strong>
                       </div>
                     ))}
-                    {/* Sous-phase 5.1 — traite enfin le constat "AUDIT-11 —
-                        trouvé en marge de A-3", mis en attente jusqu'ici :
-                        "Utilisation stockage 2.4%" était une valeur codée en
-                        dur (aucune requête réelle de quota de stockage
-                        n'existe dans ce système), et "Sauvegarder" affichait
-                        un faux succès ("Sauvegarde externe lancée...") sans
-                        le moindre appel réseau — aucun mécanisme de
-                        sauvegarde externe n'existe réellement ici.
-                        Désactivés honnêtement plutôt que de laisser cette
-                        simulation. */}
+                    {/* Sous-phase 5.1 — "Utilisation stockage 2.4%" était une
+                        valeur codée en dur (aucune requête réelle de quota de
+                        stockage n'existe dans ce système) — reste désactivé,
+                        toujours hors périmètre.
+                        Sous-phase 5.5.c — "Sauvegarder" affichait un faux
+                        succès sans le moindre appel réseau, désactivé
+                        honnêtement en 5.1 faute de mécanisme réel. Construit
+                        ici : utils/backup.js (réel, déjà testé en CLI depuis
+                        T9.11) exposé via POST/GET /settings/backup, avec
+                        verrou anti-concurrence et réponse asynchrone
+                        honnête (voir declencherSauvegarde). */}
                     <div style={{ marginTop: 12, fontSize: 11, color: "var(--cm)" }}>
                       🚧 Aucun quota de stockage n'est configuré dans ce système.
                     </div>
@@ -1545,8 +1597,8 @@ export default function JournalAudit() {
                       <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} onClick={() => setModalArchive(true)}>
                         {I.archive} Estimer le volume
                       </button>
-                      <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} disabled title="Fonctionnalité en cours de développement — aucune sauvegarde externe réelle n'existe dans ce système." onClick={() => toast("🚧 Sauvegarde externe non disponible — fonctionnalité en cours de développement.")}>
-                        {I.dl} Sauvegarder
+                      <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} disabled={backupRunning} onClick={declencherSauvegarde} title="Export complet de la base de données (utils/backup.js)">
+                        {I.dl} {backupRunning ? "Sauvegarde en cours..." : "Sauvegarder"}
                       </button>
                     </div>
                   </div>
