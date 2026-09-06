@@ -2,23 +2,25 @@
 
 **Statut :** Référence vivante (Phase 1). Matrice exhaustive des relations `ref:` Mongoose réelles entre les 37 modèles (source : `backend/models/*.js`, revue exhaustive au 21/08/2026). Complète `cartographie-modules.md` (vue narrative par module) avec une vue tabulaire complète.
 
+**Mise à jour ponctuelle (DATA-003, 6 sept. 2026)** : les entrées Echographie et DossierChirurgical ci-dessous ont été revérifiées contre le code réel et corrigées (`patient_ref`/`patient_id` d'origine, tous deux renommés en `patient` depuis — voir `patient-reference.md` §2 pour l'état complet et à jour des 3 conventions de nommage). Le reste du tableau n'a pas été rejoué ligne par ligne à cette occasion.
+
 **Lecture :** « Références (sortantes) » = champs `ObjectId`/`ref` déclarés sur le modèle lui-même. « Référencé par (entrantes) » = modèles qui pointent vers celui-ci. Un champ marqué *(opt.)* est optionnel dans le schéma — sa relation peut être absente sur un document réel.
 
 | Modèle | Références sortantes | Référencé par (entrantes) |
 |---|---|---|
-| **Patient** | — (aucune) | Appointment, Consultation, Prescription, LabResult, ImagingResult, Echographie (`patient_ref`, opt.), Urgence (opt.), Hospitalization, DossierChirurgical, Pregnancy (opt.), Delivery (opt.), Newborn (opt.), Child (opt.), Document (opt.), ArchiveEntry (opt.), Invoice (opt.), AIPrediction (opt.), Room.lits[] (`patient_actuel`, opt.), User (`patient_id`, opt.) |
+| **Patient** | — (aucune) | Appointment, Consultation, Prescription, LabResult, ImagingResult, Echographie, Urgence (opt.), Hospitalization, DossierChirurgical, Pregnancy (`patient_id`, opt.), Delivery (`patient_id`, opt.), Newborn (`patient_id`, opt.), Child (`patient_id`, opt.), Document (opt.), ArchiveEntry (opt.), Invoice (opt.), AIPrediction (opt.), Room.lits[] (`patient_actuel`, opt.), User (`patient_id`, opt.) |
 | **User** | Patient (`patient_id`, opt.) | Patient (`medecin_referent`, `cree_par`, `anonymise_par`), Appointment (`medecin`, `created_by`), Consultation (`medecin`), Prescription (`medecin`, `dispensee_par`, `publie_par`), LabResult (`medecin_prescripteur`, `technicien`, `validateur`, `acquitte_par`), ImagingResult (`medecin_prescripteur`, `radiologue`), Urgence (`medecin_responsable`), Hospitalization (`medecin_responsable`), DossierChirurgical (`chirurgien_id`), Room.lits *(non — Room ne référence pas User)*, Staff (`utilisateur`, `conges[].approuve_par`), Salaire (`paye_par`), Service (`chef_service`), Medication.mouvements[] (`utilisateur`), Commande (`cree_par`), Depense (`enregistre_par`), Document (`created_by`), ArchiveEntry (`archive_par`, `restaure_par`), AIPrediction (`traite_par`), Child (`created_by`), Pregnancy (`created_by`), Delivery (`created_by`), Newborn (`created_by`), PediatricConsultation (`created_by`), RecurringProtocol (`medecin`, `created_by`), Conversation (`membres[]`, `messages[].expediteur`, `messages[].lu_par[]`, `created_by`), Notification (`destinataire`), AuditLog (`utilisateur`), Invoice (`enregistre_par`, `created_by`) |
 | **Appointment** | Patient, User (`medecin`), Service (opt.) | Consultation (`appointment`, opt.) |
 | **Consultation** | Patient, User (`medecin`), Appointment (opt.) | Prescription (`consultation`, opt.) |
 | **Prescription** | Patient, User (`medecin`, `dispensee_par`, `publie_par`), Consultation (opt.), Medication (`lignes[].medicament`, opt.) | — (aucune) |
 | **LabResult** | Patient, User (`medecin_prescripteur`, `technicien`, `validateur`, `acquitte_par`), ExamCatalogue (opt.) | — (aucune) |
 | **ImagingResult** | Patient, User (`medecin_prescripteur`, `radiologue`), ExamCatalogue (opt.) | — (aucune) |
-| **Echographie** | Patient (`patient_ref`, opt.) | — (aucune) |
+| **Echographie** | Patient (requis — renommé depuis `patient_ref`, voir DATA-003) | — (aucune) |
 | **ExamCatalogue** | — (aucune) | LabResult (`examen`, opt.), ImagingResult (`examen`, opt.) |
 | **Urgence** | Patient (opt.), User (`medecin_responsable`) | Hospitalization (`urgence_id`, opt.) |
 | **Hospitalization** | Patient, Urgence (opt.), Room (`chambre`, opt.), Service (opt.), User (`medecin_responsable`) | — (aucune — **pas DossierChirurgical**, voir écart §6 de `cartographie-modules.md`) |
 | **Room** | Service (opt.) | Hospitalization (`chambre`, opt.) |
-| **DossierChirurgical** | Patient (`patient_id`), User (`chirurgien_id`, opt.) | Complication, Bilan, SuiviPostop (tous `dossier_chirurgical_id`, requis) |
+| **DossierChirurgical** | Patient (requis — renommé depuis `patient_id` par ADR-0006), User (`chirurgien_id`, opt.) | Complication, Bilan, SuiviPostop (tous `dossier_chirurgical_id`, requis) |
 | **Complication / Bilan / SuiviPostop** | DossierChirurgical (`dossier_chirurgical_id`, requis) | — (aucune) |
 | **Pregnancy** | Patient (opt.), User (`created_by`, opt.) | Delivery (`grossesse_id`, opt.), Newborn (`grossesse_id`, opt.) |
 | **Delivery** | Pregnancy (opt.), Patient (opt.), User (`created_by`, opt.) | Newborn (`accouchement_id`, opt.) |

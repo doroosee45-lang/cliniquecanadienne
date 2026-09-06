@@ -14,7 +14,7 @@
 - **Prescription** (Ordonnances) — `patient`, `medecin`→User, `consultation`→Consultation (optionnel), `lignes[].medicament`→Medication (optionnel, `medicament_nom` texte libre en repli), `statut` (brouillon→active→publiee→dispensee/expiree/annulee), `dispensee_par`/`publie_par`→User.
 - **LabResult** (Laboratoire) — `patient`, `medecin_prescripteur`/`technicien`/`validateur`/`acquitte_par`→User, `examen`→ExamCatalogue (optionnel), `est_critique`, `statut` (7 valeurs).
 - **ImagingResult** (Imagerie) — `patient`, `medecin_prescripteur`/`radiologue`→User, `examen`→ExamCatalogue (optionnel), `ia_anomalie`, `statut` (6 valeurs).
-- **Echographie** — `patient` (texte libre) + `patient_ref`→Patient (optionnel). Pas de lien à Consultation (écart documenté, décision 0003).
+- **Echographie** — `patient_nom` (texte libre) + `patient`→Patient (requis — renommé depuis `patient_ref`, DATA-003). Pas de lien à Consultation (écart documenté, décision 0003).
 - **ExamCatalogue** — catalogue commun labo/imagerie (`nom`, `code`, `type`, `prix`, `delai_rendu_h`). Référencé par LabResult/ImagingResult, jamais l'inverse.
 
 ## Urgences, Hospitalisation, Chirurgie
@@ -22,7 +22,7 @@
 - **Urgence** — `patient`→Patient (optionnel, `patient_nom` texte libre en repli), `medecin_responsable`→User, `niveau_triage`, `statut` (9 valeurs), `decision`, `admission_status` (ADR-0005 : non_requise/preparation/terminee/annulee — jamais réassignable par le client), `soins[]`/`prescriptions[]`/`examens[]`/`timeline[]` (sous-documents, texte libre).
 - **Hospitalization** — `patient`→Patient, `urgence_id`→Urgence (optionnel, ADR-0005), `chambre`→Room (optionnel), `service`→Service (optionnel), `medecin_responsable`→User, `statut` (en_cours/sorti/transfere/decede), sous-ressources dossier de séjour (`constantes[]`, `traitements[]`, `examens[]`, `visites[]`, `prescriptions_sejour[]`).
 - **Room** (Chambres & Lits) — `service`→Service, `lits[]` **sous-document embarqué** (pas une collection séparée), `lits[].patient_actuel`→Patient, `lits[].statut` (libre/occupe/maintenance/reserve).
-- **DossierChirurgical** (Chirurgie + Bloc opératoire, même modèle) — `patient_id`→Patient, `chirurgien_id`→User, `statut` (consultation→preoperatoire→opere→suivi_postop→cloture), `decision` (inclut `'hospitalisation'` — **non relié à Hospitalization**, voir écart), `salle_prevue`/`date_intervention_prev` (programmation bloc, index unique anti-conflit), `ia_risque_score/niveau`.
+- **DossierChirurgical** (Chirurgie + Bloc opératoire, même modèle) — `patient`→Patient (requis — renommé depuis `patient_id`, ADR-0006), `chirurgien_id`→User, `statut` (consultation→preoperatoire→opere→suivi_postop→cloture), `decision` (inclut `'hospitalisation'` — **non relié à Hospitalization**, voir écart), `salle_prevue`/`date_intervention_prev` (programmation bloc, index unique anti-conflit), `ia_risque_score/niveau`.
 - **Complication** / **Bilan** / **SuiviPostop** — tous `dossier_chirurgical_id`→DossierChirurgical (requis). Sous-dossiers réels du parcours chirurgical (complications post-opératoires, bilans pré-op, suivi post-op).
 
 ## Maternité et Pédiatrie

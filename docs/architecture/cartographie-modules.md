@@ -15,10 +15,10 @@ Patient (référentiel central)
 │   └── Prescription               — patient, medecin, consultation, lignes[].medicament
 ├── LabResult (Laboratoire)        — patient, medecin_prescripteur, technicien, validateur, examen
 ├── ImagingResult (Imagerie)       — patient, medecin_prescripteur, radiologue, examen
-├── Echographie                    — patient_ref  [voir écart §3.5]
+├── Echographie                    — patient (requis — renommé depuis patient_ref, DATA-003)  [voir écart §3.5]
 ├── Urgence                        — patient, medecin_responsable
 │   └── Hospitalization            — patient, urgence_id, chambre (Room), service, medecin_responsable
-├── DossierChirurgical (Chirurgie / Bloc opératoire) — patient_id, chirurgien_id  [voir écart §3.7]
+├── DossierChirurgical (Chirurgie / Bloc opératoire) — patient (requis — renommé depuis patient_id, ADR-0006), chirurgien_id  [voir écart §3.7]
 │   ├── Complication                — dossier_chirurgical_id
 │   ├── Bilan                       — dossier_chirurgical_id
 │   └── SuiviPostop                 — dossier_chirurgical_id
@@ -48,7 +48,7 @@ Analytics       — aucun modèle propre ; agrège les collections ci-dessus (vo
 
 `models/Patient.js`. Champs clés : `numero_dossier`, `nom/prenom`, `medecin_referent` (→ User), `statut`, `actif`, `anonymise`.
 
-**Référencé par** (relations entrantes réelles) : Appointment, Consultation, Prescription, LabResult, ImagingResult, Echographie (`patient_ref`), Urgence, Hospitalization, DossierChirurgical (`patient_id`), Pregnancy, Delivery, Newborn, Child, Document, ArchiveEntry, Invoice, AIPrediction, User (`patient_id`, compte portail).
+**Référencé par** (relations entrantes réelles, revérifiées DATA-003 le 6 sept. 2026) : Appointment, Consultation, Prescription, LabResult, ImagingResult, Echographie, Urgence, Hospitalization, DossierChirurgical, Pregnancy (`patient_id`), Delivery (`patient_id`), Newborn (`patient_id`), Child (`patient_id`), Document, ArchiveEntry, Invoice, AIPrediction, User (`patient_id`, compte portail), Room.lits[] (`patient_actuel`). Détail des 3 conventions de nommage réelles (`patient`/`patient_id`/`patient_actuel` — `patient_ref` n'existe plus) : `patient-reference.md` §2.
 
 Patient ne référence lui-même **aucun** autre module (pas de champ `ObjectId` sortant) — confirme qu'il est bien la source unique de vérité démographique, jamais un consommateur d'un autre module.
 
@@ -69,7 +69,7 @@ Référencé par : Prescription (`consultation`, optionnel).
 Tous deux : `patient` (requis), `medecin_prescripteur` (User), `examen` (→ ExamCatalogue, optionnel — champs texte libre en repli). `ImagingResult` ajoute `radiologue` (User). `LabResult` ajoute `technicien`, `validateur`, `acquitte_par`.
 
 ### 3.5 Échographie — **écart réel**
-`Echographie.js` ne référence que `patient_ref` (→ Patient). **Aucun champ ne la relie à `Consultation`**, contrairement à la place qu'elle occupe dans l'arborescence attendue (`Consultation → Échographie`). Décision 0003 (déjà actée avant cette phase) : cet écart est connu et volontairement non corrigé pour l'instant. Documenté ici pour que la cartographie reste honnête plutôt que de faire apparaître un lien qui n'existe pas en base.
+`Echographie.js` ne référence que `patient` (→ Patient, requis — renommé depuis `patient_ref`, DATA-003). **Aucun champ ne la relie à `Consultation`**, contrairement à la place qu'elle occupe dans l'arborescence attendue (`Consultation → Échographie`). Décision 0003 (déjà actée avant cette phase) : cet écart est connu et volontairement non corrigé pour l'instant. Documenté ici pour que la cartographie reste honnête plutôt que de faire apparaître un lien qui n'existe pas en base.
 
 ### 3.6 Urgences → Hospitalisation
 Cf. ADR-0005 (Phase 4, ce même plan). `Hospitalization.urgence_id` (optionnel, ref Urgence) est le seul lien structurel, posé uniquement par une action humaine explicite — jamais de création automatique. `Hospitalization` référence en plus `chambre` (Room), `service` (Service), `medecin_responsable` (User).

@@ -36,7 +36,7 @@ Appointment (patient, medecin, service)
 
 ## 3. Consultation → Laboratoire / Imagerie
 
-`LabResult` et `ImagingResult` référencent `patient` et `medecin_prescripteur` (User), **jamais `Consultation`**. Le lien entre une consultation et les examens qu'elle prescrit est **une saisie humaine indépendante** (le personnel de laboratoire/imagerie recrée la demande à partir du même patient), pas une chaîne de références en base. Idem pour `Echographie` (patient_ref seulement, décision 0003).
+`LabResult` et `ImagingResult` référencent `patient` et `medecin_prescripteur` (User), **jamais `Consultation`**. Le lien entre une consultation et les examens qu'elle prescrit est **une saisie humaine indépendante** (le personnel de laboratoire/imagerie recrée la demande à partir du même patient), pas une chaîne de références en base. Idem pour `Echographie` (`patient` seulement — renommé depuis `patient_ref`, DATA-003 —, décision 0003).
 
 > Même écart que §2, également reporté à la **Phase 6**.
 
@@ -55,7 +55,7 @@ Pregnancy (patient_id optionnel, suivi prénatal via cpns[] embarqué)
 ## 5. Chirurgie / Bloc opératoire
 
 ```
-DossierChirurgical (patient_id, chirurgien_id — porte AUSSI la programmation bloc :
+DossierChirurgical (patient — renommé depuis patient_id, ADR-0006 —, chirurgien_id — porte AUSSI la programmation bloc :
                      salle_prevue, date_intervention_prev, statut)
    → Complication[] / Bilan[] / SuiviPostop[] (dossier_chirurgical_id, requis)
 ```
