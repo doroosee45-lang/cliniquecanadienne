@@ -1458,7 +1458,17 @@ export default function BlocOperatoire() {
                         <strong style={{ color:"var(--bg)", fontSize:13 }}>Check-list complète — Autorisation d'incision confirmée</strong>
                       </div>
                     )}
-                    <button className="bbtn bbtn-teal" onClick={() => { updateInterv({ checklist:checklist, checklist_done:Object.values(checklist).every(Boolean) }); toast.success("✅ Check-list sauvegardée"); }}>
+                    {/* Correction FE-BUG-017 — affichait "✅ Check-list
+                        sauvegardée" inconditionnellement juste après avoir
+                        déclenché updateInterv() sans l'attendre : en cas
+                        d'échec réel (updateInterv affiche alors sa propre
+                        erreur), l'utilisateur voyait quand même ce succès
+                        fabriqué. updateInterv() gère déjà honnêtement son
+                        propre toast de succès/échec (voir sa définition) —
+                        aligné ici sur le même motif que les 4 autres boutons
+                        "Enregistrer" de ce fichier (disabled={saving},
+                        aucun toast local redondant). */}
+                    <button className="bbtn bbtn-teal" disabled={saving} onClick={() => updateInterv({ checklist:checklist, checklist_done:Object.values(checklist).every(Boolean) })}>
                       {I.save} Sauvegarder la check-list
                     </button>
                   </div>
