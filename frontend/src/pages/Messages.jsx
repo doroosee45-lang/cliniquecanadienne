@@ -489,6 +489,11 @@ export default function Messagerie() {
   // Historique & Audit (Phase D)
   const [histData, setHistData]       = useState(null);
   const [histLoading, setHistLoading] = useState(false);
+
+  // ── Correction 5 — messages de contact public (formulaire home.jsx) ──
+  const [contactMsgs, setContactMsgs]         = useState(null);
+  const [contactLoading, setContactLoading]   = useState(false);
+  const [contactFiltre, setContactFiltre]     = useState("tous");
   const bottomRef     = useRef(null);
   const textRef       = useRef(null);
   const fileInputRef  = useRef(null);
@@ -1107,6 +1112,37 @@ export default function Messagerie() {
 
   useEffect(() => { if (tab === "historique") loadHistorique(); }, [tab, loadHistorique]);
 
+  // ── Correction 5 — le formulaire de contact public (home.jsx) persiste
+  // réellement les messages depuis Correction 9/FE-BUG-011, mais aucune
+  // interface n'existait pour que le personnel les consulte. Réservé
+  // côté backend à authorize(...ADMIN, 'receptionniste') — même RBAC ici.
+  const loadContactMessages = useCallback(async (filtre = contactFiltre) => {
+    setContactLoading(true);
+    try {
+      const params = {};
+      if (filtre === "traites") params.traite = "true";
+      if (filtre === "non_traites") params.traite = "false";
+      const { data } = await api.get("/contact", { params });
+      setContactMsgs(data.messages);
+    } catch {
+      toast.error("Impossible de charger les messages de contact.");
+      setContactMsgs(null);
+    }
+    setContactLoading(false);
+  }, [contactFiltre]);
+
+  useEffect(() => { if (tab === "contact") loadContactMessages(contactFiltre); }, [tab, contactFiltre, loadContactMessages]);
+
+  const toggleContactTraite = async (msg) => {
+    try {
+      await api.put(`/contact/${msg._id}`, { traite: !msg.traite });
+      toast.success(!msg.traite ? "Message marqué traité." : "Message remis en non traité.");
+      loadContactMessages(contactFiltre);
+    } catch {
+      toast.error("Échec de la mise à jour du message.");
+    }
+  };
+
   const exportHistoriquePDF = async () => {
     if (!histData) return;
     const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
@@ -1412,11 +1448,13 @@ export default function Messagerie() {
 
         {/* Tabs */}
         {(() => {
+            const peutVoirContactPublic = ["superadmin", "adminclinique", "receptionniste"].includes(me.role);
             const TABS = [
               { key:"inbox",         icon:I.chat,    label:"Conversations",         labelM:"Messages",   badge:totalNonLus>0?totalNonLus:null },
               { key:"groupes",       icon:I.users,   label:`Groupes (${groupConvs.length})`, labelM:"Groupes" },
               { key:"notifications", icon:I.bell,    label:"Notifications",         labelM:"Notifs",     badge:notifsNonLues>0?notifsNonLues:null },
               { key:"patients",      icon:"📱",       label:"Communication patients",labelM:"Patients" },
+              ...(peutVoirContactPublic ? [{ key:"contact", icon:"✉️", label:"Contact site", labelM:"Contact" }] : []),
               { key:"historique",    icon:I.archive, label:"Historique & Audit",    labelM:"Historique" },
             ];
             return (
@@ -2130,6 +2168,57 @@ export default function Messagerie() {
                       <div style={{ padding:24, textAlign:"center", color:"var(--cm)", fontSize:12 }}>Aucune action de messagerie tracée pour l'instant.</div>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══ CONTACT SITE (Correction 5) ══ */}
+        {tab === "contact" && (
+          <div style={{ padding:24 }}>
+            <div className="msg-filters" style={{ padding:"0 0 16px", border:"none" }}>
+              {[
+                { id:"tous",         label:"Tous" },
+                { id:"non_traites",  label:"Non traités" },
+                { id:"traites",      label:"Traités" },
+              ].map(f => (
+                <button key={f.id} className={`msg-filter ${contactFiltre === f.id ? "active" : ""}`} onClick={() => setContactFiltre(f.id)}>{f.label}</button>
+              ))}
+            </div>
+            {contactLoading && (
+              <div style={{ textAlign:"center", padding:40, color:"var(--cm)" }}>Chargement...</div>
+            )}
+            {!contactLoading && !contactMsgs && (
+              <div style={{ textAlign:"center", padding:40 }}>
+                <div style={{ color:"var(--cm)", marginBottom:12 }}>Impossible de charger les messages de contact.</div>
+                <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => loadContactMessages(contactFiltre)}>Réessayer</button>
+              </div>
+            )}
+            {!contactLoading && contactMsgs && (
+              <div className="adm-card fu">
+                <div className="adm-card-hdr"><h3>✉️ Messages reçus via le formulaire de contact du site</h3></div>
+                <div style={{ padding:"8px 0" }}>
+                  {contactMsgs.map((m, i, arr) => (
+                    <div key={m._id} style={{ display:"flex", gap:12, alignItems:"flex-start", padding:"14px 20px", borderBottom: i < arr.length - 1 ? "1px solid #F3F7FF" : "" }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                          <span style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{m.nom}</span>
+                          <span style={{ fontSize:11, color:"var(--cm)" }}>{m.email}{m.tel ? ` · ${m.tel}` : ""}</span>
+                          <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99, background: m.traite ? "#ECFDF5" : "#FEF2F2", color: m.traite ? "#059669" : "#DC2626" }}>{m.traite ? "Traité" : "Non traité"}</span>
+                        </div>
+                        {m.sujet && <div style={{ fontSize:12, fontWeight:600, color:"var(--cn)", marginTop:4 }}>{m.sujet}</div>}
+                        <div style={{ fontSize:12, color:"var(--cm)", marginTop:4, whiteSpace:"pre-wrap" }}>{m.message}</div>
+                        <div style={{ fontSize:10, color:"#9CA3AF", marginTop:6 }}>{fmtFull(m.createdAt)}</div>
+                      </div>
+                      <button className="cbtn cbtn-ghost cbtn-sm" style={{ flexShrink:0 }} onClick={() => toggleContactTraite(m)}>
+                        {m.traite ? "Marquer non traité" : "Marquer traité"}
+                      </button>
+                    </div>
+                  ))}
+                  {contactMsgs.length === 0 && (
+                    <div style={{ padding:24, textAlign:"center", color:"var(--cm)", fontSize:12 }}>Aucun message de contact pour ce filtre.</div>
+                  )}
                 </div>
               </div>
             )}
