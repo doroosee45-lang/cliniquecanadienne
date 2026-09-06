@@ -602,11 +602,16 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
 
-  const handleAnnuler = (d) => {
+  const handleAnnuler = async (d) => {
     if (!d?._id) return;
     if (!window.confirm(`Annuler la demande ${d.numero} ? Cette action est définitive.`)) return;
-    dispatch(annulerDemande(d._id));
-    setSelected(null);
+    const result = await dispatch(annulerDemande(d._id));
+    if (annulerDemande.fulfilled.match(result)) {
+      toast.success(`Demande ${d.numero} annulée.`);
+      setSelected(null);
+    } else {
+      toast.error(result.payload || "Échec de l'annulation de la demande.");
+    }
   };
 
   const filtered = demandes.filter(d => {
@@ -749,14 +754,19 @@ function PlanifierModal({ open, onClose, candidats, saving }) {
     if (open) setDemandeId(candidats[0]?._id || "");
   }, [open, candidats]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!demandeId) return;
-    dispatch(planifierDemande({
+    const result = await dispatch(planifierDemande({
       id: demandeId,
       body: { date_planif: datePlanif, echographiste, salle },
     }));
-    onClose();
+    if (planifierDemande.fulfilled.match(result)) {
+      toast.success("Examen planifié.");
+      onClose();
+    } else {
+      toast.error(result.payload || "Échec de la planification de l'examen.");
+    }
   };
 
   return (
@@ -971,24 +981,28 @@ function Realisation({ demandes }) {
     }).join("\n\n");
   };
 
-  const handleSoumettreRapport = () => {
-    if (selDem?._id) {
-      dispatch(saveRapport({
-        id: selDem._id,
-        body: {
-          rapport_texte:   buildRapportTexte(),
-          conclusion:      observations.conclusion || "",
-          recommandations: [observations.recommandations, observations.examens_compl].filter(Boolean).join(" | "),
-          rapport_statut:  "en_validation",
-        },
-      }));
+  const handleSoumettreRapport = async () => {
+    if (!selDem?._id) { setStep(5); return; }
+    const result = await dispatch(saveRapport({
+      id: selDem._id,
+      body: {
+        rapport_texte:   buildRapportTexte(),
+        conclusion:      observations.conclusion || "",
+        recommandations: [observations.recommandations, observations.examens_compl].filter(Boolean).join(" | "),
+        rapport_statut:  "en_validation",
+      },
+    }));
+    if (saveRapport.fulfilled.match(result)) {
+      toast.success("Rapport soumis à validation.");
+      setStep(5);
+    } else {
+      toast.error(result.payload || "Échec de la soumission du rapport.");
     }
-    setStep(5);
   };
 
-  const handleValiderRapport = () => {
+  const handleValiderRapport = async () => {
     if (!selDem?._id) return;
-    dispatch(saveRapport({
+    const result = await dispatch(saveRapport({
       id: selDem._id,
       body: {
         rapport_texte:   selDem.rapport_texte   ?? buildRapportTexte(),
@@ -997,11 +1011,16 @@ function Realisation({ demandes }) {
         rapport_statut:  "valide",
       },
     }));
+    if (saveRapport.fulfilled.match(result)) {
+      toast.success("Rapport validé.");
+    } else {
+      toast.error(result.payload || "Échec de la validation du rapport.");
+    }
   };
 
-  const handleRejeterRapport = () => {
+  const handleRejeterRapport = async () => {
     if (!selDem?._id) return;
-    dispatch(saveRapport({
+    const result = await dispatch(saveRapport({
       id: selDem._id,
       body: {
         rapport_texte:   selDem.rapport_texte   ?? buildRapportTexte(),
@@ -1010,6 +1029,11 @@ function Realisation({ demandes }) {
         rapport_statut:  "rejete",
       },
     }));
+    if (saveRapport.fulfilled.match(result)) {
+      toast.success("Rapport rejeté.");
+    } else {
+      toast.error(result.payload || "Échec du rejet du rapport.");
+    }
   };
 
   return (
@@ -1709,6 +1733,7 @@ function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
   const [patientQuery, setPatientQuery] = useState("");
   const [patientResults, setPatientResults] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const te = TYPES_ECHO.find(t=>t.id===form.type);
 
   // Correction 2 (module 3/6, relecture du 6 sept. 2026) — remplace le calcul
@@ -1744,11 +1769,12 @@ function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
   const pickPatient = (p) => { setSelectedPatient(p); setPatientQuery(""); setPatientResults([]); };
   const clearPatient = () => setSelectedPatient(null);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedPatient) { toast.error("Sélectionnez un patient existant avant de créer la demande."); return; }
     if (!form.source) { toast.error("Sélectionnez le service prescripteur."); return; }
-    onAdd({
+    setSubmitting(true);
+    const ok = await onAdd({
       patient: selectedPatient._id,
       patient_nom: `${selectedPatient.prenom} ${selectedPatient.nom}`.trim(),
       dossier: form.dossier||genNum("DOS"),
@@ -1764,7 +1790,12 @@ function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
       priorite: form.priorite,
       statut: "en_attente",
     });
-    onClose();
+    setSubmitting(false);
+    // Correction FE-BUG-015 — la modale se fermait auparavant
+    // inconditionnellement après un simple dispatch() non attendu, même en
+    // cas d'échec réel de la création côté serveur. Elle ne se ferme
+    // désormais que si le parent (onAdd) confirme un vrai succès.
+    if (ok) onClose();
   };
 
   return (
@@ -1861,7 +1892,7 @@ function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
         </div>
         <div style={{ display:"flex", gap:10 }}>
           <button type="button" className="cbtn cbtn-ghost" onClick={onClose}>Annuler</button>
-          <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={!selectedPatient} title={!selectedPatient ? "Sélectionnez d'abord un patient" : undefined}>➕ Créer la demande</button>
+          <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={!selectedPatient || submitting} title={!selectedPatient ? "Sélectionnez d'abord un patient" : undefined}>{submitting ? "..." : "➕ Créer la demande"}</button>
         </div>
       </form>
     </Modal>
@@ -2011,7 +2042,16 @@ export default function Echographie() {
         <NouvelleDemandeModal
           open={modalNouv}
           onClose={()=>setModalNouv(false)}
-          onAdd={d=>{ dispatch(createDemande(d)); setMainTab("demandes"); }}
+          onAdd={async (d) => {
+            const result = await dispatch(createDemande(d));
+            if (createDemande.fulfilled.match(result)) {
+              toast.success("Demande d'échographie créée.");
+              setMainTab("demandes");
+              return true;
+            }
+            toast.error(result.payload || "Échec de la création de la demande.");
+            return false;
+          }}
           servicesActifs={servicesActifs}
         />
       </div>
