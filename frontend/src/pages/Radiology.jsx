@@ -1309,9 +1309,19 @@ export default function Imagerie() {
                               <div style={{ fontSize:12, fontFamily:"monospace", color:"var(--cn)", marginTop:4 }}>{currentExamen.signature}</div>
                             </div>
                           )}
+                          {/* Correction 4 (FE-BUG-019) — même limite déjà
+                              posée pour "Générer"/"Envoyer" plus bas dans ce
+                              fichier (lignes ~1435,1437) : aucun envoi réel
+                              (email/SMS/portail) n'existe pour transmettre un
+                              compte rendu de radiologie. Ces 2 boutons
+                              affichaient un faux succès (toast.success sans
+                              appel réseau) — désactivés honnêtement pour
+                              rester cohérents avec leurs jumeaux du même
+                              fichier plutôt que de construire un envoi réel
+                              hors périmètre de cette correction. */}
                           <div style={{ marginTop:16, display:"flex", gap:10, justifyContent:"center" }}>
-                            <button className="ibtn ibtn-ghost" onClick={() => toast.success("📨 Résultats transmis au médecin prescripteur")}>{I.send} Envoyer au médecin</button>
-                            <button className="ibtn ibtn-ghost" onClick={() => toast.success("📨 Résultats envoyés au patient")}>{I.send} Envoyer au patient</button>
+                            <button className="ibtn ibtn-ghost" disabled title="Fonctionnalité en cours de développement — aucun envoi réel n'existe pour ce document." onClick={() => toast("🚧 Envoi non disponible — fonctionnalité en cours de développement.")}>{I.send} Envoyer au médecin</button>
+                            <button className="ibtn ibtn-ghost" disabled title="Fonctionnalité en cours de développement — aucun envoi réel n'existe pour ce document." onClick={() => toast("🚧 Envoi non disponible — fonctionnalité en cours de développement.")}>{I.send} Envoyer au patient</button>
                           </div>
                         </div>
                       ) : (
