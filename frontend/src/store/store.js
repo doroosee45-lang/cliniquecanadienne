@@ -9,7 +9,6 @@ import pharmacyReducer from './slices/pharmacySlice';
 import prescriptionsReducer from './slices/prescriptionsSlice';
 import financeReducer from './slices/financeSlice';
 import hrReducer from './slices/hrSlice';
-import messagesReducer from './slices/messagesSlice';
 import aiReducer from './slices/aiSlice';
 import auditReducer from './slices/auditSlice';
 import analyticsReducer from './slices/analyticsSlice';
@@ -18,7 +17,6 @@ import chirurgieReducer from './slices/chirurgieSlice';
 import blocoperatoireReducer from './slices/blocoperatoireSlice';
 import archiveReducer from './slices/archiveSlice';
 import invoicePrintReducer from './slices/invoicePrintSlice';
-import uiReducer from './slices/uiSlice';
 import portalReducer from './slices/portalSlice';
 import materniteReducer from './slices/materniteSlice';
 import pediatrieReducer from './slices/pediatrieSlice';
@@ -37,7 +35,6 @@ const store = configureStore({
     prescriptions: prescriptionsReducer,
     finance: financeReducer,
     hr: hrReducer,
-    messages: messagesReducer,
     ai: aiReducer,
     audit: auditReducer,
     analytics: analyticsReducer,
@@ -46,7 +43,6 @@ const store = configureStore({
     blocoperatoire: blocoperatoireReducer,
     archive: archiveReducer,
     invoicePrint: invoicePrintReducer,
-    ui: uiReducer,
     portal: portalReducer,
     maternite: materniteReducer,
     pediatrie: pediatrieReducer,
