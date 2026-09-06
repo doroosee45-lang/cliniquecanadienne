@@ -384,10 +384,6 @@ const PLAN_LABEL = { travail:"Travail", garde:"Garde", conge:"Congé", repos:"Re
 const EMPTY_EMP = { matricule:"", prenom:"", nom:"", sexe:"homme", date_naissance:"", nationalite:"", telephone:"", email:"", adresse:"", poste:"infirmier", service:"", date_embauche:"", contrat:"cdi", statut:"actif", salaire_base:"" };
 const EMPTY_CONGE = { employe_id:"", type:"annuel", date_debut:"", date_fin:"", motif:"" };
 const EMPTY_PLAN = { employe_id:"", date:"", heure_debut:"", heure_fin:"", type:"travail" };
-const EMPTY_CANDIDATURE = { nom:"", poste:"infirmier", experience:"", diplome:"", email:"", telephone:"", statut:"recu" };
-const EMPTY_EVAL = { employe_id:"", periode:"2025-S1", ponctualite:3, qualite:3, productivite:3, discipline:3, relation_patient:3, commentaire:"", evaluateur:"" };
-const EMPTY_FORMATION = { titre:"", type:"interne", date:"", duree_h:"", participants:"", certificat:false };
-const EMPTY_SANCTION = { employe_id:"", type:"avertissement", motif:"" };
 
 // Adapter Staff (backend) → champs attendus par le frontend
 const normalizeEmp = (s) => {
@@ -450,10 +446,6 @@ export default function RessourcesHumaines() {
   // Modals
   const [modalEmp,        setModalEmp]        = useState(false);
   const [modalConge,      setModalConge]       = useState(false);
-  const [modalCandidat,   setModalCandidat]    = useState(false);
-  const [modalEval,       setModalEval]        = useState(false);
-  const [modalFormation,  setModalFormation]   = useState(false);
-  const [modalSanction,   setModalSanction]    = useState(false);
   const [modalPlan,       setModalPlan]        = useState(false);
   const [publishingId,    setPublishingId]     = useState(null);
 
@@ -461,10 +453,6 @@ export default function RessourcesHumaines() {
   const [formEmp,       setFormEmp]       = useState(EMPTY_EMP);
   const [formConge,     setFormConge]     = useState(EMPTY_CONGE);
   const [formPlan,      setFormPlan]      = useState(EMPTY_PLAN);
-  const [formCandidat,  setFormCandidat]  = useState(EMPTY_CANDIDATURE);
-  const [formEval,      setFormEval]      = useState(EMPTY_EVAL);
-  const [formFormation, setFormFormation] = useState(EMPTY_FORMATION);
-  const [formSanction,  setFormSanction]  = useState(EMPTY_SANCTION);
   const [servicesReels, setServicesReels] = useState([]);
 
   // Charger les employés depuis l'API
@@ -756,41 +744,6 @@ export default function RessourcesHumaines() {
     } finally {
       setPublishingId(null);
     }
-  };
-
-  const addCandidat = (ev) => {
-    ev.preventDefault();
-    const newC = { ...formCandidat, _id:Date.now().toString(), date_depot:new Date().toISOString().substring(0,10) };
-    setCandidatures(prev => [newC, ...prev]);
-    toast.success("✅ Candidature enregistrée");
-    setModalCandidat(false); setFormCandidat(EMPTY_CANDIDATURE);
-  };
-
-  const addEval = (ev) => {
-    ev.preventDefault();
-    const emp = employes.find(e => e._id === formEval.employe_id);
-    const note = Math.round((formEval.ponctualite + formEval.qualite + formEval.productivite + formEval.discipline + formEval.relation_patient) / 5 * 10) / 10;
-    const newE = { ...formEval, _id:Date.now().toString(), employe_nom:emp ? `${emp.prenom} ${emp.nom}` : "—", note_globale:note };
-    setEvaluations(prev => [newE, ...prev]);
-    toast.success("✅ Évaluation enregistrée");
-    setModalEval(false); setFormEval(EMPTY_EVAL);
-  };
-
-  const addFormation = (ev) => {
-    ev.preventDefault();
-    const newF = { ...formFormation, _id:Date.now().toString(), participants:formFormation.participants.split(",").map(s=>s.trim()) };
-    setFormations(prev => [newF, ...prev]);
-    toast.success("✅ Formation planifiée");
-    setModalFormation(false); setFormFormation(EMPTY_FORMATION);
-  };
-
-  const addSanction = (ev) => {
-    ev.preventDefault();
-    const emp = employes.find(e => e._id === formSanction.employe_id);
-    const newS = { ...formSanction, _id:Date.now().toString(), employe_nom:emp ? `${emp.prenom} ${emp.nom}` : "—", date:new Date().toISOString().substring(0,10), statut:"notifie" };
-    setSanctions(prev => [newS, ...prev]);
-    toast.success("⚠️ Sanction enregistrée");
-    setModalSanction(false); setFormSanction(EMPTY_SANCTION);
   };
 
   const updateEmp = async (updates) => {
@@ -1723,82 +1676,32 @@ export default function RessourcesHumaines() {
                 )}
 
                 {/* ── ÉVALUATIONS ── */}
+                {/* Sous-phase 5.7 — même bug que l'onglet global
+                    "Évaluations" : "Nouvelle évaluation" ouvrait un formulaire
+                    dont la soumission ne persistait rien en base (CRUD
+                    local). Désactivé honnêtement. */}
                 {section === "eval_emp" && (
                   <div style={{ marginTop:20 }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-                      <div style={{ fontSize:15, fontWeight:700, color:"var(--rn)" }}>Évaluations</div>
-                      <button className="rbtn rbtn-primary" onClick={() => { setFormEval({...EMPTY_EVAL, employe_id:currentEmp._id}); setModalEval(true); }}>
-                        {I.plus} Nouvelle évaluation
-                      </button>
+                    <div style={{ fontSize:15, fontWeight:700, color:"var(--rn)", marginBottom:16 }}>Évaluations</div>
+                    <div className="rh-card" style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>
+                      <div style={{ fontSize:32, marginBottom:12, opacity:.4 }}>⭐</div>
+                      🚧 Fonctionnalité en cours de développement — aucun suivi réel des évaluations n'existe encore dans ce système.
                     </div>
-                    {empEvals.map(ev => (
-                      <div key={ev._id} className="rh-card" style={{ marginBottom:16 }}>
-                        <div className="rh-card-hdr">
-                          <h3>⭐ Évaluation — {ev.periode}</h3>
-                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                            <Stars note={ev.note_globale} />
-                            <span style={{ fontWeight:800, fontSize:14, color:"var(--rn)" }}>{ev.note_globale}/5</span>
-                          </div>
-                        </div>
-                        <div style={{ padding:20 }}>
-                          <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:12, marginBottom:14 }}>
-                            {[
-                              ["Ponctualité", ev.ponctualite],
-                              ["Qualité du travail", ev.qualite],
-                              ["Productivité", ev.productivite],
-                              ["Discipline", ev.discipline],
-                              ["Relation patients", ev.relation_patient],
-                            ].map(([lbl,val]) => (
-                              <div key={lbl} style={{ background:"#F8FAFD", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
-                                <div style={{ fontSize:10, color:"var(--rm)", fontWeight:600, textTransform:"uppercase", marginBottom:6 }}>{lbl}</div>
-                                <Stars note={val} max={5} />
-                                <div style={{ fontSize:13, fontWeight:800, color:"var(--rn)", marginTop:4 }}>{val}/5</div>
-                              </div>
-                            ))}
-                          </div>
-                          {ev.commentaire && (
-                            <div style={{ background:"#EEF4FF", borderRadius:10, padding:12, fontSize:12, color:"var(--rm)" }}>
-                              <strong>Commentaire :</strong> {ev.commentaire}
-                            </div>
-                          )}
-                          <div style={{ fontSize:11, color:"var(--rm)", marginTop:8 }}>Évalué par : <strong>{ev.evaluateur}</strong></div>
-                        </div>
-                      </div>
-                    ))}
-                    {empEvals.length === 0 && <div className="rh-card" style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>Aucune évaluation enregistrée</div>}
                   </div>
                 )}
 
                 {/* ── DISCIPLINE ── */}
+                {/* Sous-phase 5.7 — même bug que l'onglet global "Discipline" :
+                    "Enregistrer sanction" ouvrait un formulaire dont la
+                    soumission ne persistait rien en base (CRUD local).
+                    Désactivé honnêtement. */}
                 {section === "discipline_emp" && (
                   <div style={{ marginTop:20 }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-                      <div style={{ fontSize:15, fontWeight:700, color:"var(--rn)" }}>Mesures disciplinaires</div>
-                      <button className="rbtn rbtn-danger" onClick={() => { setFormSanction({...EMPTY_SANCTION, employe_id:currentEmp._id}); setModalSanction(true); }}>
-                        {I.plus} Enregistrer sanction
-                      </button>
+                    <div style={{ fontSize:15, fontWeight:700, color:"var(--rn)", marginBottom:16 }}>Mesures disciplinaires</div>
+                    <div className="rh-card" style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>
+                      <div style={{ fontSize:32, marginBottom:12, opacity:.4 }}>⚠️</div>
+                      🚧 Fonctionnalité en cours de développement — aucun suivi réel des mesures disciplinaires n'existe encore dans ce système.
                     </div>
-                    {empSanc.length > 0 ? empSanc.map(s => {
-                      const sc = SANCTION_CFG[s.type] || { cls:"gray", label:s.type, icon:"⚠️" };
-                      return (
-                        <div key={s._id} className="rh-card" style={{ marginBottom:12, borderLeft:`4px solid ${s.type === "avertissement" ? "#CA8A04" : "#DC2626"}` }}>
-                          <div style={{ padding:"14px 20px" }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-                              <span style={{ fontSize:18 }}>{sc.icon}</span>
-                              <span style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{sc.label}</span>
-                              <Badge cls={sc.cls}>{sc.label}</Badge>
-                              <span style={{ fontSize:11, color:"var(--rm)" }}>📅 {fmtDate(s.date)}</span>
-                            </div>
-                            <div style={{ fontSize:12, color:"var(--rm)", marginTop:8 }}>{s.motif}</div>
-                          </div>
-                        </div>
-                      );
-                    }) : (
-                      <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
-                        <div style={{ fontSize:32, marginBottom:12 }}>✅</div>
-                        <div style={{ fontWeight:700, color:"var(--rg)" }}>Aucune mesure disciplinaire</div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -1935,48 +1838,22 @@ export default function RessourcesHumaines() {
           )}
 
           {/* ══ RECRUTEMENT ══ */}
+          {/* Sous-phase 5.7 — "Gestion des candidatures" était un CRUD
+              entièrement local (setCandidatures(prev => [new, ...prev]),
+              _id:Date.now().toString()) : "Convoquer"/"Sélectionner"
+              affichaient un vrai changement d'état... perdu au rechargement,
+              jamais persisté en base. Aucun modèle Candidature n'existe dans
+              le backend — vérifié. Construire un vrai sous-système de
+              recrutement (modèle + contrôleur + routes) dépasse le
+              périmètre de cette sous-phase (corriger des faux succès, pas
+              créer un nouveau module de recrutement complet) : désactivé
+              honnêtement, même logique que "Présences" en 5.3. */}
           {tab === "recrutement" && (
             <div>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:12 }}>
-                <div>
-                  <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Gestion des candidatures</div>
-                  <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{candidatures.length} candidature(s)</div>
-                </div>
-                <button className="rbtn rbtn-primary" onClick={() => { setFormCandidat(EMPTY_CANDIDATURE); setModalCandidat(true); }}>
-                  {I.plus} Nouvelle candidature
-                </button>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>
-                {candidatures.map(c => {
-                  const cs = CANDIDAT_CFG[c.statut] || { cls:"gray", label:c.statut };
-                  const pc = POSTE_COLORS[c.poste] || { cls:"gray", label:c.poste, color:"#6B7280" };
-                  return (
-                    <div key={c._id} className="rh-card fu" style={{ padding:20 }}>
-                      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                          <div className="emp-avatar" style={{ background:pc.color, width:40, height:40, fontSize:15, borderRadius:10 }}>{c.nom[0]}</div>
-                          <div>
-                            <div style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{c.nom}</div>
-                            <div style={{ fontSize:11, color:"var(--rm)" }}>{c.email}</div>
-                          </div>
-                        </div>
-                        <Badge cls={cs.cls}>{cs.label}</Badge>
-                      </div>
-                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                        {[["Poste demandé", pc.label], ["Expérience", c.experience], ["Diplôme", c.diplome], ["Date dépôt", fmtDate(c.date_depot)]].map(([lbl,val]) => (
-                          <div key={lbl} style={{ display:"flex", justifyContent:"space-between", fontSize:12 }}>
-                            <span style={{ color:"var(--rm)" }}>{lbl}</span>
-                            <span style={{ fontWeight:600, color:"var(--rn)" }}>{val}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ display:"flex", gap:8, marginTop:14 }}>
-                        <button className="rbtn rbtn-ghost rbtn-sm" style={{ flex:1 }} onClick={() => { setCandidatures(prev => prev.map(x => x._id === c._id ? {...x, statut:"entretien"} : x)); toast.success("📅 Convoqué en entretien"); }}>Convoquer</button>
-                        <button className="rbtn rbtn-teal rbtn-sm" onClick={() => { setCandidatures(prev => prev.map(x => x._id === c._id ? {...x, statut:"selectionne"} : x)); toast.success("✅ Candidat sélectionné"); }}>Sélectionner</button>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Gestion des candidatures</div>
+              <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
+                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>👤</div>
+                <div style={{ fontSize:13, color:"var(--rm)" }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des candidatures n'existe encore dans ce système.</div>
               </div>
             </div>
           )}
@@ -2199,126 +2076,54 @@ export default function RessourcesHumaines() {
           )}
 
           {/* ══ ÉVALUATIONS ══ */}
+          {/* Sous-phase 5.7 — "Évaluations du personnel" était un CRUD
+              entièrement local (setEvaluations(prev => [new, ...prev]),
+              _id:Date.now().toString()), jamais persisté en base. Aucun
+              modèle Evaluation n'existe dans le backend — vérifié. Même
+              logique que "Présences"/"Candidatures" : désactivé
+              honnêtement plutôt que de créer un nouveau sous-système
+              complet hors périmètre de cette sous-phase. */}
           {tab === "evaluations" && (
             <div>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:12 }}>
-                <div>
-                  <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Évaluations du personnel</div>
-                  <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{evaluations.length} évaluation(s)</div>
-                </div>
-                <button className="rbtn rbtn-primary" onClick={() => { setFormEval(EMPTY_EVAL); setModalEval(true); }}>{I.plus} Nouvelle évaluation</button>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))", gap:16 }}>
-                {evaluations.map(ev => {
-                  const emp = employes.find(e => e._id === ev.employe_id);
-                  const pc  = emp ? (POSTE_COLORS[emp.poste] || { color:"#6B7280" }) : { color:"#6B7280" };
-                  return (
-                    <div key={ev._id} className="rh-card fu">
-                      <div style={{ padding:20 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
-                          {emp && <div className="emp-avatar" style={{ background:pc.color, width:40, height:40, fontSize:14, borderRadius:10 }}>{emp.prenom[0]}{emp.nom[0]}</div>}
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{ev.employe_nom}</div>
-                            <div style={{ fontSize:11, color:"var(--rm)" }}>Période : {ev.periode}</div>
-                          </div>
-                          <div style={{ textAlign:"center" }}>
-                            <div style={{ fontSize:22, fontWeight:800, color:"var(--rn)" }}>{ev.note_globale}</div>
-                            <Stars note={ev.note_globale} />
-                          </div>
-                        </div>
-                        {[["Ponctualité",ev.ponctualite],["Qualité du travail",ev.qualite],["Productivité",ev.productivite],["Discipline",ev.discipline],["Relation patients",ev.relation_patient]].map(([lbl,val]) => (
-                          <div key={lbl} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                            <span style={{ fontSize:12, color:"var(--rm)" }}>{lbl}</span>
-                            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                              <div className="score-bar" style={{ width:60 }}><div className="score-bar-f" style={{ width:`${val*20}%`, background:val >= 4 ? "var(--rg)" : val >= 3 ? "var(--ro)" : "var(--rr)" }} /></div>
-                              <span style={{ fontSize:12, fontWeight:700, color:"var(--rn)", width:24 }}>{val}/5</span>
-                            </div>
-                          </div>
-                        ))}
-                        {ev.commentaire && <div style={{ fontSize:12, color:"var(--rm)", marginTop:10, background:"#F8FAFD", borderRadius:8, padding:"8px 10px" }}>{ev.commentaire}</div>}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Évaluations du personnel</div>
+              <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
+                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>⭐</div>
+                <div style={{ fontSize:13, color:"var(--rm)" }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des évaluations du personnel n'existe encore dans ce système.</div>
               </div>
             </div>
           )}
 
           {/* ══ FORMATIONS ══ */}
+          {/* Sous-phase 5.7 — même bug : CRUD entièrement local
+              (setFormations(prev => [new, ...prev])), jamais persisté, plus
+              "📄 Attestation générée" affichant un faux succès sans document
+              réel. Aucun modèle Formation n'existe dans le backend —
+              désactivé honnêtement. */}
           {tab === "formations" && (
             <div>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:12 }}>
-                <div>
-                  <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Formations & Développement</div>
-                  <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{formations.length} formation(s) · {formations.filter(f=>f.statut==="planifie").length} planifiée(s)</div>
-                </div>
-                <button className="rbtn rbtn-primary" onClick={() => { setFormFormation(EMPTY_FORMATION); setModalFormation(true); }}>{I.plus} Planifier formation</button>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))", gap:16 }}>
-                {formations.map(f => (
-                  <div key={f._id} className="rh-card fu" style={{ padding:20 }}>
-                    <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{f.titre}</div>
-                        <div style={{ fontSize:11, color:"var(--rm)", marginTop:2 }}>{f.type === "interne" ? "🏥 Formation interne" : "🌍 Formation externe"} · {f.duree_h}h</div>
-                      </div>
-                      <Badge cls={f.statut === "termine" ? "green" : "blue"}>{f.statut === "termine" ? "✅ Terminée" : "📅 Planifiée"}</Badge>
-                    </div>
-                    <div style={{ fontSize:12, color:"var(--rm)", marginBottom:8 }}>📅 {fmtDate(f.date)}</div>
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:10 }}>
-                      {f.participants.map(p => (
-                        <span key={p} style={{ background:"#EEF4FF", color:"var(--rb)", border:"1px solid #BFDBFE", borderRadius:8, padding:"2px 8px", fontSize:11, fontWeight:600 }}>{p}</span>
-                      ))}
-                    </div>
-                    {f.certificat && <Badge cls="teal">🎓 Certificat délivré</Badge>}
-                    <div style={{ display:"flex", gap:8, marginTop:12 }}>
-                      <button className="rbtn rbtn-ghost rbtn-sm" onClick={() => toast.success("📄 Attestation générée")}>{I.dl} Attestation</button>
-                    </div>
-                  </div>
-                ))}
+              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Formations & Développement</div>
+              <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
+                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🎓</div>
+                <div style={{ fontSize:13, color:"var(--rm)" }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des formations n'existe encore dans ce système.</div>
               </div>
             </div>
           )}
 
           {/* ══ DISCIPLINE ══ */}
+          {/* Sous-phase 5.7 — "Mesures disciplinaires" était un CRUD
+              entièrement local (setSanctions(prev => [new, ...prev])),
+              jamais persisté, affichant même un Badge "Notifié" entièrement
+              fabriqué (aucune notification réelle n'est jamais envoyée).
+              Aucun modèle Sanction n'existe dans le backend — désactivé
+              honnêtement plutôt que de laisser croire qu'une mesure
+              disciplinaire réelle a été enregistrée et notifiée. */}
           {tab === "discipline" && (
             <div>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:12 }}>
-                <div>
-                  <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Mesures disciplinaires</div>
-                  <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{sanctions.length} mesure(s) enregistrée(s)</div>
-                </div>
-                <button className="rbtn rbtn-danger" onClick={() => { setFormSanction(EMPTY_SANCTION); setModalSanction(true); }}>{I.plus} Enregistrer sanction</button>
+              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Mesures disciplinaires</div>
+              <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
+                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>⚠️</div>
+                <div style={{ fontSize:13, color:"var(--rm)" }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des mesures disciplinaires n'existe encore dans ce système.</div>
               </div>
-              {sanctions.map(s => {
-                const sc = SANCTION_CFG[s.type] || { cls:"gray", label:s.type, icon:"⚠️" };
-                const emp = employes.find(e => e._id === s.employe_id);
-                const pc = emp ? (POSTE_COLORS[emp.poste] || { color:"#6B7280" }) : { color:"#6B7280" };
-                return (
-                  <div key={s._id} className="rh-card fu" style={{ marginBottom:12, borderLeft:`4px solid ${sc.cls === "red" ? "#DC2626" : "#CA8A04"}` }}>
-                    <div style={{ padding:"16px 20px" }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
-                        {emp && <div className="emp-avatar" style={{ background:pc.color, width:36, height:36, fontSize:12, borderRadius:10 }}>{emp.prenom[0]}{emp.nom[0]}</div>}
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{s.employe_nom}</div>
-                          <div style={{ fontSize:12, color:"var(--rm)" }}>📅 {fmtDate(s.date)}</div>
-                        </div>
-                        <Badge cls={sc.cls}>{sc.icon} {sc.label}</Badge>
-                        <Badge cls="green">Notifié</Badge>
-                      </div>
-                      <div style={{ fontSize:12, color:"var(--rm)", marginTop:10, background:"#FFF7ED", borderRadius:8, padding:"8px 12px" }}>
-                        <strong>Motif :</strong> {s.motif}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {sanctions.length === 0 && (
-                <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
-                  <div style={{ fontSize:36, marginBottom:12 }}>✅</div>
-                  <div style={{ fontWeight:700, color:"var(--rg)" }}>Aucune mesure disciplinaire enregistrée</div>
-                </div>
-              )}
             </div>
           )}
 
@@ -2550,119 +2355,6 @@ export default function RessourcesHumaines() {
               <div style={{ display:"flex", gap:10 }}>
                 <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalPlan(false)}>Annuler</button>
                 <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Ajouter en brouillon</button>
-              </div>
-            </div>
-          </form>
-        </Modal>
-
-        {/* ═══ MODAL : CANDIDATURE ═══ */}
-        <Modal open={modalCandidat} onClose={() => setModalCandidat(false)} title="👤 Nouvelle candidature" maxWidth={520}>
-          <form onSubmit={addCandidat}>
-            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
-              <div style={{ gridColumn:"1/-1" }}><label className="rlbl">Nom complet *</label><input className="rinp" required value={formCandidat.nom} onChange={e=>setFormCandidat(f=>({...f,nom:e.target.value}))} /></div>
-              <div><label className="rlbl">Poste demandé</label>
-                <select className="rinp" value={formCandidat.poste} onChange={e=>setFormCandidat(f=>({...f,poste:e.target.value}))}>
-                  {Object.entries(POSTE_COLORS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
-                </select>
-              </div>
-              <div><label className="rlbl">Expérience</label><input className="rinp" value={formCandidat.experience} onChange={e=>setFormCandidat(f=>({...f,experience:e.target.value}))} placeholder="Ex: 3 ans" /></div>
-              <div style={{ gridColumn:"1/-1" }}><label className="rlbl">Diplôme(s)</label><input className="rinp" value={formCandidat.diplome} onChange={e=>setFormCandidat(f=>({...f,diplome:e.target.value}))} /></div>
-              <div><label className="rlbl">Email</label><input type="email" className="rinp" value={formCandidat.email} onChange={e=>setFormCandidat(f=>({...f,email:e.target.value}))} /></div>
-              <div><label className="rlbl">Téléphone</label><input className="rinp" value={formCandidat.telephone} onChange={e=>setFormCandidat(f=>({...f,telephone:e.target.value}))} /></div>
-            </div>
-            <div style={{ display:"flex", gap:10, marginTop:20 }}>
-              <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalCandidat(false)}>Annuler</button>
-              <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Enregistrer</button>
-            </div>
-          </form>
-        </Modal>
-
-        {/* ═══ MODAL : ÉVALUATION ═══ */}
-        <Modal open={modalEval} onClose={() => setModalEval(false)} title="⭐ Nouvelle évaluation" maxWidth={560}>
-          <form onSubmit={addEval}>
-            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <div><label className="rlbl">Employé *</label>
-                <select className="rinp" required value={formEval.employe_id} onChange={e=>setFormEval(f=>({...f,employe_id:e.target.value}))}>
-                  <option value="">— Sélectionner —</option>
-                  {employes.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
-                </select>
-              </div>
-              <div><label className="rlbl">Période</label>
-                <select className="rinp" value={formEval.periode} onChange={e=>setFormEval(f=>({...f,periode:e.target.value}))}>
-                  {["2025-S1","2025-S2","2024-S2","2024-S1"].map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              {[["ponctualite","Ponctualité"],["qualite","Qualité du travail"],["productivite","Productivité"],["discipline","Discipline"],["relation_patient","Relation avec les patients"]].map(([key,lbl]) => (
-                <div key={key}>
-                  <label className="rlbl">{lbl} (1-5)</label>
-                  <div style={{ display:"flex", gap:6 }}>
-                    {[1,2,3,4,5].map(v => (
-                      <button key={v} type="button" onClick={() => setFormEval(f=>({...f,[key]:v}))}
-                        style={{ width:36, height:36, borderRadius:8, border:`2px solid ${formEval[key]>=v?"#F59E0B":"#E5E7EB"}`, background:formEval[key]>=v?"#FEF3C7":"#F9FAFB", cursor:"pointer", fontSize:16, color:formEval[key]>=v?"#F59E0B":"#D1D5DB" }}>
-                        ★
-                      </button>
-                    ))}
-                    <span style={{ marginLeft:8, fontSize:13, color:"var(--rm)", alignSelf:"center" }}>{formEval[key]}/5</span>
-                  </div>
-                </div>
-              ))}
-              <div><label className="rlbl">Évaluateur</label><input className="rinp" value={formEval.evaluateur} onChange={e=>setFormEval(f=>({...f,evaluateur:e.target.value}))} placeholder="Nom du responsable" /></div>
-              <div><label className="rlbl">Commentaires</label><textarea className="rinp" rows={3} value={formEval.commentaire} onChange={e=>setFormEval(f=>({...f,commentaire:e.target.value}))} /></div>
-              <div style={{ display:"flex", gap:10 }}>
-                <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalEval(false)}>Annuler</button>
-                <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Enregistrer</button>
-              </div>
-            </div>
-          </form>
-        </Modal>
-
-        {/* ═══ MODAL : FORMATION ═══ */}
-        <Modal open={modalFormation} onClose={() => setModalFormation(false)} title="🎓 Planifier une formation" maxWidth={500}>
-          <form onSubmit={addFormation}>
-            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <div><label className="rlbl">Titre de la formation *</label><input className="rinp" required value={formFormation.titre} onChange={e=>setFormFormation(f=>({...f,titre:e.target.value}))} /></div>
-              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
-                <div><label className="rlbl">Type</label>
-                  <select className="rinp" value={formFormation.type} onChange={e=>setFormFormation(f=>({...f,type:e.target.value}))}>
-                    <option value="interne">🏥 Interne</option><option value="externe">🌍 Externe</option>
-                    <option value="seminaire">📚 Séminaire</option><option value="atelier">🛠 Atelier</option>
-                  </select>
-                </div>
-                <div><label className="rlbl">Durée (heures)</label><input type="number" className="rinp" value={formFormation.duree_h} onChange={e=>setFormFormation(f=>({...f,duree_h:+e.target.value}))} /></div>
-              </div>
-              <div><label className="rlbl">Date</label><input type="date" className="rinp" value={formFormation.date} onChange={e=>setFormFormation(f=>({...f,date:e.target.value}))} /></div>
-              <div><label className="rlbl">Participants (séparés par virgule)</label><input className="rinp" value={formFormation.participants} onChange={e=>setFormFormation(f=>({...f,participants:e.target.value}))} placeholder="Martin Leblanc, Sophie Pierre..." /></div>
-              <label style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <input type="checkbox" checked={formFormation.certificat} onChange={e=>setFormFormation(f=>({...f,certificat:e.target.checked}))} style={{ width:16, height:16, accentColor:"var(--rt)" }} />
-                <span style={{ fontSize:13, color:"var(--rn)" }}>🎓 Certificat délivré</span>
-              </label>
-              <div style={{ display:"flex", gap:10 }}>
-                <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalFormation(false)}>Annuler</button>
-                <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Planifier</button>
-              </div>
-            </div>
-          </form>
-        </Modal>
-
-        {/* ═══ MODAL : SANCTION ═══ */}
-        <Modal open={modalSanction} onClose={() => setModalSanction(false)} title="⚠️ Mesure disciplinaire" maxWidth={480}>
-          <form onSubmit={addSanction}>
-            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <div><label className="rlbl">Employé *</label>
-                <select className="rinp" required value={formSanction.employe_id} onChange={e=>setFormSanction(f=>({...f,employe_id:e.target.value}))}>
-                  <option value="">— Sélectionner —</option>
-                  {employes.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
-                </select>
-              </div>
-              <div><label className="rlbl">Type de sanction *</label>
-                <select className="rinp" required value={formSanction.type} onChange={e=>setFormSanction(f=>({...f,type:e.target.value}))}>
-                  {Object.entries(SANCTION_CFG).map(([k,v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-                </select>
-              </div>
-              <div><label className="rlbl">Motif *</label><textarea className="rinp" rows={4} required value={formSanction.motif} onChange={e=>setFormSanction(f=>({...f,motif:e.target.value}))} placeholder="Décrivez les faits reprochés..." /></div>
-              <div style={{ display:"flex", gap:10 }}>
-                <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalSanction(false)}>Annuler</button>
-                <button type="submit" className="rbtn rbtn-danger" style={{ marginLeft:"auto" }}>⚠️ Enregistrer</button>
               </div>
             </div>
           </form>
