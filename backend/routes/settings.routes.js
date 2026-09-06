@@ -4,11 +4,18 @@ const settingsC  = require('../controllers/settings.controller');
 const tasksC     = require('../controllers/tasks.controller');
 const suppliersC = require('../controllers/suppliers.controller');
 const { protect, authorize } = require('../middleware/auth');
+const { authorizePermission } = require('../utils/permissions');
 const { ADMIN, STAFF } = require('../utils/roles');
 
 // ── Paramètres clinique ───────────────────────────────────────
 router.get('/',         protect, authorize(...ADMIN), settingsC.getAll);
 router.post('/',        protect, authorize(...ADMIN), settingsC.upsert);
+
+// ── Rôles & Permissions (Sous-phase 5.5.b) ─────────────────────
+// superadmin uniquement — donnée sensible (contrôle d'accès de tout le
+// personnel), contrairement au reste de /settings ouvert à adminclinique.
+router.get('/roles-permissions', protect, authorize('superadmin'), settingsC.getRolesPermissions);
+router.put('/roles-permissions', protect, authorize('superadmin'), settingsC.updateRolesPermissions);
 
 // ── Gestion utilisateurs ──────────────────────────────────────
 router.get('/users',          protect, authorize(...ADMIN),   settingsC.getUsers);
@@ -42,7 +49,15 @@ router.post('/tasks',         protect, authorize(...ADMIN),   tasksC.createTask)
 router.put('/tasks/:id',      protect, authorize(...ADMIN),   tasksC.updateStatut);
 
 // ── Fournisseurs (AUDIT-11-8) ───────────────────────────────────
-router.get('/suppliers',      protect, authorize(...ADMIN),   suppliersC.getSuppliers);
-router.post('/suppliers',     protect, authorize(...ADMIN),   suppliersC.createSupplier);
+// Sous-phase 5.5.b — POST /suppliers sert de démonstration réelle de la
+// matrice éditable : authorize(...ADMIN) (statique) remplacé par
+// authorizePermission('creation') (dynamique, lit la matrice réellement
+// stockée). Choisie précisément parce qu'elle est peu sensible et peu
+// utilisée — modifier la permission "creation" d'un rôle change réellement
+// l'accès à CETTE route, sans toucher au reste de l'application (migrer
+// l'ensemble des routes vers ce mécanisme est un chantier distinct, hors
+// périmètre ici).
+router.get('/suppliers',      protect, authorize(...ADMIN),           suppliersC.getSuppliers);
+router.post('/suppliers',     protect, authorizePermission('creation'), suppliersC.createSupplier);
 
 module.exports = router;

@@ -11,6 +11,10 @@ const Invoice      = require('../models/Invoice');
 const Room         = require('../models/Room');
 const { logAction, createNotification } = require('../utils/helpers');
 const mail = require('../utils/mail');
+const {
+  PROFESSIONAL_ROLES, PERMISSION_ACTIONS, DEFAULT_ROLES_PERMISSIONS,
+  SETTING_KEY: PERMISSIONS_SETTING_KEY, enforceSuperadminSafeguard, getRolesPermissionsMatrix,
+} = require('../utils/permissions');
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -450,5 +454,56 @@ exports.getKpis = async (req, res, next) => {
         autres:      (personnel_present) - (roleMap['medecin'] || 0) - (roleMap['infirmier'] || 0) - (roleMap['pharmacien'] || 0),
       },
     });
+  } catch (err) { next(err); }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Sous-phase 5.5.b — Rôles & Permissions éditables
+// Source de vérité unique (Setting{cle:'roles_permissions'}) remplaçant les
+// deux constantes dupliquées et divergentes d'Administration.jsx et
+// Settings.jsx — voir utils/permissions.js pour le détail de la fusion.
+// ─────────────────────────────────────────────────────────────
+
+// GET /settings/roles-permissions
+exports.getRolesPermissions = async (req, res, next) => {
+  try {
+    const permissions = await getRolesPermissionsMatrix();
+    res.json({ success: true, permissions, roles: PROFESSIONAL_ROLES, actions: PERMISSION_ACTIONS });
+  } catch (err) { next(err); }
+};
+
+// PUT /settings/roles-permissions — authorize('superadmin') seul (routes),
+// avec un second verrou ici : le garde-fou anti-verrouillage s'applique
+// même si un jour une autre route en venait à appeler ce contrôleur.
+exports.updateRolesPermissions = async (req, res, next) => {
+  try {
+    const { permissions } = req.body;
+    if (!permissions || typeof permissions !== 'object') {
+      return res.status(400).json({ success: false, message: 'Matrice de permissions manquante ou invalide.' });
+    }
+    const inconnu = Object.keys(permissions).filter(r => !PROFESSIONAL_ROLES.includes(r));
+    if (inconnu.length) {
+      return res.status(400).json({ success: false, message: `Rôle(s) inconnu(s) : ${inconnu.join(', ')}.` });
+    }
+    for (const [role, perms] of Object.entries(permissions)) {
+      const invalides = Object.keys(perms || {}).filter(a => !PERMISSION_ACTIONS.includes(a));
+      if (invalides.length) {
+        return res.status(400).json({ success: false, message: `Action(s) inconnue(s) pour "${role}" : ${invalides.join(', ')}.` });
+      }
+    }
+
+    const erreurGardeFou = enforceSuperadminSafeguard(permissions);
+    if (erreurGardeFou) {
+      return res.status(400).json({ success: false, message: erreurGardeFou });
+    }
+
+    const avant = await getRolesPermissionsMatrix();
+    const setting = await Setting.findOneAndUpdate(
+      { cle: PERMISSIONS_SETTING_KEY },
+      { valeur: permissions, type: 'json', groupe: 'permissions', description: 'Matrice des permissions par rôle (Rôles & Permissions)' },
+      { upsert: true, new: true }
+    );
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE_SETTING', module: 'settings', ip: req.ip, message: 'Matrice de permissions modifiée', avant, apres: setting.valeur });
+    res.json({ success: true, permissions: setting.valeur });
   } catch (err) { next(err); }
 };

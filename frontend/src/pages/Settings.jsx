@@ -4,6 +4,7 @@ import api from "../api";
 import toast from "react-hot-toast";
 import { Settings as SettingsIcon } from 'lucide-react';
 import Hero from '../components/UI/Hero';
+import { useAuth } from '../contexts/AuthContext';
 
 // ─── CSS Medical Navy + Teal ──────────────────────────────────
 // Palette locale supprimée (alignée sur les tokens globaux de
@@ -82,7 +83,9 @@ const CSS = `
 .set-tbl td { padding:11px 14px; font-size:13px; border-bottom:1px solid #F3F7FF; vertical-align:middle; }
 .set-tbl tbody tr:last-child td { border-bottom:none; }
 .set-tbl tbody tr:hover { background:#F8FAFF; }
-.perm-grid { display:grid; grid-template-columns:180px repeat(6,1fr); gap:0; border:1.5px solid var(--border); border-radius:14px; overflow:hidden; }
+.perm-grid { display:grid; grid-template-columns:150px repeat(7,1fr); gap:0; border:1.5px solid var(--border); border-radius:14px; overflow:hidden; }
+.perm-cell.editable { cursor:pointer; }
+.perm-cell.editable:hover > div { filter:brightness(0.95); }
 .perm-hdr { background:linear-gradient(to right,var(--surface),var(--tint)); padding:10px 14px; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; border-bottom:1.5px solid var(--border); text-align:center; }
 .perm-hdr:first-child { text-align:left; }
 .perm-row { display:contents; }
@@ -216,16 +219,14 @@ const GROUP_ICONS = {
 // ─── DEMO fallback data ───────────────────────────────────────
 const DEMO_USERS = [];
 
-const ROLES_PERMS = [
-  { role:"Super Admin",     read:true,  add:true,  edit:true,  del:true,  print:true,  export:true },
-  { role:"Admin Clinique",  read:true,  add:true,  edit:true,  del:false, print:true,  export:true },
-  { role:"Médecin",         read:true,  add:true,  edit:true,  del:false, print:true,  export:false },
-  { role:"Infirmier",       read:true,  add:true,  edit:false, del:false, print:true,  export:false },
-  { role:"Pharmacien",      read:true,  add:true,  edit:true,  del:false, print:true,  export:false },
-  { role:"Laborantin",      read:true,  add:true,  edit:true,  del:false, print:true,  export:false },
-  { role:"Comptable",       read:true,  add:false, edit:false, del:false, print:true,  export:true },
-  { role:"Réceptionniste",  read:true,  add:true,  edit:false, del:false, print:false, export:false },
-];
+// Sous-phase 5.5.b — l'ancienne constante ROLES_PERMS (codée en dur,
+// divergente de celle d'Administration.jsx — ex. "Comptable" ne pouvait ni
+// ajouter ni modifier ici, alors qu'Administration.jsx le lui permettait)
+// est retirée : la matrice vient désormais réellement de
+// GET /settings/roles-permissions, seule source de vérité, partagée avec
+// Administration.jsx.
+const PERM_LABELS = { lecture:"Lecture", creation:"Création", modification:"Modification", suppression:"Suppression", validation:"Validation", impression:"Impression", exportation:"Exportation" };
+const ROLE_LABELS = { superadmin:"Super Admin", adminclinique:"Admin Clinique", medecin:"Médecin", infirmier:"Infirmier", sage_femme:"Sage-femme", radiologue:"Radiologue", pharmacien:"Pharmacien", laborantin:"Laborantin", comptable:"Comptable", receptionniste:"Réceptionniste" };
 
 const DEMO_LOGS = [];
 
@@ -290,6 +291,8 @@ const ParamRow = ({ cle, label, desc, type = "string", children }) => {
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function Settings() {
   const navigate = useNavigate();
+  const { user: authUser } = useAuth() || {};
+  const isSuperadmin = authUser?.role === 'superadmin';
   const [active, setActive]       = useState("clinique");
   const [settings, setSettings]   = useState([]);    // données brutes API
   const [values, setValues]       = useState({});    // { cle: valeur }
@@ -308,6 +311,14 @@ export default function Settings() {
   const [services, setServices]   = useState([]);
   const [rooms, setRooms]         = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
+  // Sous-phase 5.5.b — Rôles & Permissions : matrice réelle, plus la
+  // constante ROLES_PERMS codée en dur.
+  const [permMatrix, setPermMatrix]     = useState(null);
+  const [permRoles, setPermRoles]       = useState([]);
+  const [permActions, setPermActions]   = useState([]);
+  const [loadingPerms, setLoadingPerms] = useState(false);
+  const [savingPerms, setSavingPerms]   = useState(false);
+  const [permsForbidden, setPermsForbidden] = useState(false);
 
   // ── Chargement API /settings ──────────────────────────────
   const loadSettings = useCallback(async () => {
@@ -465,14 +476,57 @@ export default function Settings() {
     finally { setLoadingServices(false); }
   }, []);
 
+  // Sous-phase 5.5.b — Rôles & Permissions : GET /settings/roles-permissions
+  // est réservé au superadmin côté backend (authorize('superadmin')) — la
+  // donnée est trop sensible pour être exposée en lecture à adminclinique,
+  // même en lecture seule. Un 403 affiche donc un message d'accès restreint
+  // explicite, jamais une grille vide ou trompeuse.
+  const loadRolesPermissions = useCallback(async () => {
+    if (permMatrix || permsForbidden) return;
+    setLoadingPerms(true);
+    try {
+      const { data } = await api.get("/settings/roles-permissions");
+      setPermMatrix(data.permissions || {});
+      setPermRoles(data.roles || []);
+      setPermActions(data.actions || []);
+    } catch (err) {
+      if (err?.response?.status === 403) setPermsForbidden(true);
+    } finally {
+      setLoadingPerms(false);
+    }
+  }, [permMatrix, permsForbidden]);
+
+  // Édition locale (brouillon) — un seul PUT à l'enregistrement, pas un
+  // appel réseau par case cochée. Réservé à isSuperadmin côté UI ; le
+  // backend (authorize('superadmin')) est le vrai verrou, jamais contourné
+  // par ce seul contrôle frontend.
+  const togglePerm = (role, actionKey) => {
+    if (!isSuperadmin) return;
+    setPermMatrix(prev => ({ ...prev, [role]: { ...prev[role], [actionKey]: !prev[role]?.[actionKey] } }));
+  };
+
+  const saveRolesPermissions = async () => {
+    setSavingPerms(true);
+    try {
+      const { data } = await api.put("/settings/roles-permissions", { permissions: permMatrix });
+      setPermMatrix(data.permissions);
+      toast.success("✅ Permissions enregistrées");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'enregistrement des permissions.");
+    } finally {
+      setSavingPerms(false);
+    }
+  };
+
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
   useEffect(() => {
     if (active === "utilisateurs") loadUsers();
     if (active === "audit")        loadLogs();
     if (active === "assurances")   loadInsurances();
+    if (active === "roles")        loadRolesPermissions();
     if (["services","consultations","laboratoire","imagerie","hospitalisation","bloc"].includes(active)) loadServicesData();
-  }, [active, loadUsers, loadLogs, loadInsurances, loadServicesData]);
+  }, [active, loadUsers, loadLogs, loadInsurances, loadRolesPermissions, loadServicesData]);
 
   // ── get / set helpers ─────────────────────────────────────
   const val = (key, def = "") => values[key] !== undefined ? values[key] : def;
@@ -769,37 +823,56 @@ export default function Settings() {
     );
 
     // ════ RÔLES ════
+    // Sous-phase 5.5.b — matrice réelle (GET/PUT /settings/roles-permissions),
+    // seule source de vérité partagée avec Administration.jsx. Éditable
+    // uniquement par un superadmin (isSuperadmin) ; le backend
+    // (authorize('superadmin')) reste le vrai verrou dans tous les cas.
     case "roles": return (
       <div className="fu">
         <div className="set-section-top">
-          <div><div className="set-section-title">🛡️ Rôles & Permissions</div><div className="set-section-sub">Contrôle d'accès par rôle (RBAC)</div></div>
-          <button className="sbtn sbtn-primary" disabled title="Fonctionnalité indisponible : les rôles sont un enum fixe du modèle User (11 valeurs), pas une table configurable — créer un rôle personnalisé nécessiterait un nouveau modèle de permissions (changement d'architecture)." style={{ opacity:0.55, cursor:"not-allowed" }}>{I.plus} Nouveau rôle</button>
+          <div><div className="set-section-title">🛡️ Rôles & Permissions</div><div className="set-section-sub">API /settings/roles-permissions — contrôle d'accès par rôle</div></div>
+          {isSuperadmin && permMatrix && (
+            <button className="sbtn sbtn-teal" disabled={savingPerms} onClick={saveRolesPermissions}>
+              {I.save} {savingPerms ? "..." : "Enregistrer les permissions"}
+            </button>
+          )}
         </div>
         <div className="al-info" style={{ fontSize:12 }}>
           <strong>ℹ️ Conseil :</strong> Les permissions sont appliquées globalement sur tous les modules.
         </div>
-        <div className="set-card" style={{ overflowX:"auto" }}>
-          <div className="perm-grid">
-            {["Rôle","Lire","Ajouter","Modifier","Supprimer","Imprimer","Exporter"].map(h=>(
-              <div key={h} className="perm-hdr">{h}</div>
-            ))}
-            {ROLES_PERMS.map(r => (
-              <div key={r.role} className="perm-row">
-                <div className="perm-cell" style={{ fontWeight:600, fontSize:12.5 }}>{r.role}</div>
-                {["read","add","edit","del","print","export"].map(p => (
-                  <div key={p} className="perm-cell">
-                    <div style={{ width:22, height:22, borderRadius:6, background:r[p]?"#ECFDF5":"#FEF2F2", border:`1.5px solid ${r[p]?"#A7F3D0":"#FECACA"}`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                      {r[p]
-                        ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                        : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                      }
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
+        {!isSuperadmin || permsForbidden ? (
+          <div className="set-card" style={{ padding:40, textAlign:"center", color:"var(--muted)" }}>
+            🔒 Accès restreint : la matrice des permissions n'est consultable et modifiable que par un compte Super Admin.
           </div>
-        </div>
+        ) : loadingPerms || !permMatrix ? (
+          <Skeleton rows={8} />
+        ) : (
+          <div className="set-card" style={{ overflowX:"auto" }}>
+            <div className="perm-grid">
+              {["Rôle", ...permActions.map(a => PERM_LABELS[a] || a)].map(h=>(
+                <div key={h} className="perm-hdr">{h}</div>
+              ))}
+              {permRoles.map(role => (
+                <div key={role} className="perm-row">
+                  <div className="perm-cell" style={{ fontWeight:600, fontSize:12.5 }}>{ROLE_LABELS[role] || role}</div>
+                  {permActions.map(a => {
+                    const has = !!permMatrix[role]?.[a];
+                    return (
+                      <div key={a} className="perm-cell editable" onClick={() => togglePerm(role, a)} title="Cliquer pour basculer">
+                        <div style={{ width:22, height:22, borderRadius:6, background:has?"#ECFDF5":"#FEF2F2", border:`1.5px solid ${has?"#A7F3D0":"#FECACA"}`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                          {has
+                            ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                            : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          }
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
 

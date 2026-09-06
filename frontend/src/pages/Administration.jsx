@@ -400,6 +400,12 @@ export default function Administration() {
   const [audit, setAudit]       = useState([]);
   const [revenus, setRevenus]   = useState(REVENUS_DATA);
   const [depenses, setDepenses] = useState([]);
+  // Sous-phase 5.5.b — matrice réelle (GET /settings/roles-permissions),
+  // plus l'objet `perms` codé en dur ci-dessous (qui avait déjà divergé de
+  // celui de Settings.jsx — ex. Comptable). null tant que non chargée ;
+  // reste null si le compte n'est pas superadmin (403 — donnée réservée).
+  const [permMatrix, setPermMatrix] = useState(null);
+  const [permActions, setPermActions] = useState([]);
 
   // Modals
   const [modalUser, setModalUser]         = useState(false);
@@ -457,7 +463,7 @@ export default function Administration() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [kRes, uRes, svcRes, rRes, sRes, tRes, aRes, depRes, setRes] = await Promise.allSettled([
+      const [kRes, uRes, svcRes, rRes, sRes, tRes, aRes, depRes, setRes, permRes] = await Promise.allSettled([
         api.get("/admin/kpis"),
         api.get("/admin/users"),
         api.get("/settings/services"),
@@ -476,6 +482,9 @@ export default function Administration() {
         api.get("/audit?limit=20"),
         api.get("/finance/depenses?limit=10"),
         api.get("/settings"),
+        // Sous-phase 5.5.b — réservé au superadmin (403 pour adminclinique,
+        // géré ci-dessous comme un simple échec, jamais un repli fabriqué).
+        api.get("/settings/roles-permissions"),
       ]);
       const toArr = (v, fallback) => Array.isArray(v) ? v : fallback;
       if (kRes.status === "fulfilled" && kRes.value.data) {
@@ -499,6 +508,10 @@ export default function Administration() {
           for (const [cle] of SETTINGS_FIELDS) if (parKey[cle] !== undefined) next[cle] = parKey[cle];
           return next;
         });
+      }
+      if (permRes.status === "fulfilled") {
+        setPermMatrix(permRes.value.data.permissions || {});
+        setPermActions(permRes.value.data.actions || []);
       }
     } catch {
       setUsers(DEMO_USERS); setServices([]); setRooms(DEMO_ROOMS);
@@ -1087,24 +1100,25 @@ export default function Administration() {
               )}
 
               {/* ── RÔLES & PERMISSIONS ── */}
+              {/* Sous-phase 5.5.b — l'objet `perms` codé en dur ci-dessous a
+                  été retiré : il avait déjà divergé de la constante
+                  équivalente de Settings.jsx (ex. "Comptable" pouvait ici
+                  créer/modifier, mais pas selon Settings.jsx — aucune des
+                  deux n'a jamais été appliquée par le backend jusqu'ici).
+                  Source unique désormais : GET /settings/roles-permissions,
+                  affichée ici en lecture seule (l'édition se fait depuis
+                  Settings.jsx, réservée au Super Admin). */}
               {section === "roles" && (
                 <div>
                   <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Rôles & Permissions</div>
+                  {!permMatrix ? (
+                    <div className="adm-card" style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                      🔒 Accès restreint : la matrice des permissions n'est consultable que par un compte Super Admin (voir Paramètres → Rôles & Permissions).
+                    </div>
+                  ) : (
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:16 }}>
                     {Object.entries(ROLE_CFG).map(([key, cfg]) => {
-                      const perms = {
-                        superadmin:  ["lecture","creation","modification","suppression","validation","exportation"],
-                        adminclinique: ["lecture","creation","modification","validation","exportation"],
-                        medecin:     ["lecture","creation","modification"],
-                        infirmier:   ["lecture","creation"],
-                        sage_femme:  ["lecture","creation"],
-                        radiologue:  ["lecture","creation","modification"],
-                        pharmacien:  ["lecture","creation","modification"],
-                        laborantin:  ["lecture","creation"],
-                        comptable:   ["lecture","creation","modification","validation","exportation"],
-                        receptionniste: ["lecture","creation"],
-                      }[key] || ["lecture"];
-                      const allPerms = ["lecture","creation","modification","suppression","validation","exportation"];
+                      const perms = permActions.filter(p => permMatrix[key]?.[p]);
                       return (
                         <div key={key} className="adm-card">
                           <div className="adm-card-hdr">
@@ -1116,10 +1130,10 @@ export default function Administration() {
                           </div>
                           <div style={{ padding:16 }}>
                             <div className="perm-grid">
-                              {allPerms.map(p => {
+                              {permActions.map(p => {
                                 const has = perms.includes(p);
-                                const icons = { lecture:"👁️", creation:"➕", modification:"✏️", suppression:"🗑️", validation:"✅", exportation:"📤" };
-                                const labels = { lecture:"Lecture", creation:"Création", modification:"Modif.", suppression:"Suppression", validation:"Validation", exportation:"Exportation" };
+                                const icons = { lecture:"👁️", creation:"➕", modification:"✏️", suppression:"🗑️", validation:"✅", impression:"🖨️", exportation:"📤" };
+                                const labels = { lecture:"Lecture", creation:"Création", modification:"Modif.", suppression:"Suppression", validation:"Validation", impression:"Impression", exportation:"Exportation" };
                                 return (
                                   <div key={p} className={`perm-item ${has ? "active" : ""}`} style={{ opacity: has ? 1 : 0.5 }}>
                                     <span style={{ fontSize:13 }}>{icons[p]}</span>
@@ -1133,6 +1147,7 @@ export default function Administration() {
                       );
                     })}
                   </div>
+                  )}
                 </div>
               )}
 
