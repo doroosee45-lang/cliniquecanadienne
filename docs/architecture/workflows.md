@@ -30,15 +30,15 @@ Appointment (patient, medecin, service)
                → décrémente Medication.stock_actuel (atomique, AUDIT-04b)
 ```
 
-**Écart réel** : `Consultation.prescriptions[]` et `Consultation.examens_complementaires[]` sont des sous-documents **texte libre** (aucun `ref`). Une consultation ne référence donc jamais les `Prescription`/`LabResult`/`ImagingResult` réellement créés à partir d'elle — seul `Prescription.consultation` fait le lien, et uniquement dans ce sens. Remonter d'une consultation vers les examens qu'elle a déclenchés n'est pas une requête directe possible aujourd'hui.
+**Écart réel, partiellement résolu (Correction 4, 6 sept. 2026)** : `Consultation.prescriptions[]` et `Consultation.examens_complementaires[]` restent des sous-documents **texte libre** (aucun `ref` — le schéma `Consultation` lui-même n'a pas changé). Mais depuis Correction 4, à la clôture d'une consultation (statut `terminee`), chaque ligne de `examens_complementaires[]` dont le libellé correspond **exactement** à l'un des 9 libellés curatés de `backend/utils/examLibelleVersCatalogue.js` (même liste que la facturation Sous-phase 5.7) génère réellement un `LabResult` ou `ImagingResult`, avec son champ `consultation` renseigné — le pont existe désormais **pour ces cas reconnus**. Les examens saisis en texte libre sans correspondance (la majorité probable des saisies réelles, le catalogue curaté étant volontairement restreint) restent non pontés — jamais un rattachement inventé. `Prescription.consultation` fait le même lien depuis T5.2, sans cette limite (toute ligne de prescription génère une vraie `Prescription`).
 
-> **Point d'attention reporté à la Phase 6** du plan directeur — ne pas corriger avant cette phase (voir `cartographie-modules.md` §6, `relationships.md` constat #4).
+> Ancien point d'attention "reporté à la Phase 6" du plan directeur (voir `cartographie-modules.md` §6, `relationships.md` constat #4) : traité par anticipation, partiellement, sur demande explicite (Correction 4) plutôt que d'attendre cette phase. Ce qui reste pour une Phase 6 éventuelle : ponter aussi les examens hors catalogue curaté — nécessiterait de migrer la saisie vers une sélection dans le vrai catalogue plutôt que du texte libre, un chantier de refonte UI distinct.
 
 ## 3. Consultation → Laboratoire / Imagerie
 
-`LabResult` et `ImagingResult` référencent `patient` et `medecin_prescripteur` (User), **jamais `Consultation`**. Le lien entre une consultation et les examens qu'elle prescrit est **une saisie humaine indépendante** (le personnel de laboratoire/imagerie recrée la demande à partir du même patient), pas une chaîne de références en base. Idem pour `Echographie` (`patient` seulement — renommé depuis `patient_ref`, DATA-003 —, décision 0003).
+`LabResult` et `ImagingResult` référencent `patient`, `medecin_prescripteur` (User) et, depuis Correction 12 (FLOW-003) puis Correction 4 pour les cas reconnus, `consultation` (optionnel — renseigné uniquement quand une correspondance catalogue exacte a permis la génération automatique, voir §2). Pour tout le reste (examens créés hors de ce pont, ou dont le libellé n'a pas de correspondance), le lien entre une consultation et les examens qu'elle prescrit reste **une saisie humaine indépendante** (le personnel de laboratoire/imagerie recrée la demande à partir du même patient), pas une chaîne de références en base. Idem pour `Echographie` (`patient` seulement — renommé depuis `patient_ref`, DATA-003 —, décision 0003 ; pas concernée par le pont de Correction 4, qui ne couvre que Laboratoire/Radiology).
 
-> Même écart que §2, également reporté à la **Phase 6**.
+> Même écart que §2, partiellement résolu par Correction 4 pour les mêmes raisons.
 
 ## 4. Maternité
 
