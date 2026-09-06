@@ -9,6 +9,7 @@ import api from "../api";
 import toast from "react-hot-toast";
 import { FileText, Plus, Printer } from 'lucide-react';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 
@@ -383,6 +384,7 @@ export default function Ordonnances() {
   const [currentOrd, setCurrent]  = useState(null);
   const [patients, setPatients]   = useState([]);
   const [saving, setSaving]       = useState(false);
+  const [analyzingIA, setAnalyzingIA] = useState(false);
   const [kpis, setKpis]           = useState({ total:0, actives:0, expirees:0, renouvellements:0, chroniques:0, interactions:0, aujourd_hui:0, dispensees:0, annulees:0, mois:0, renouvellements_effectues:0, repartition_specialite:[] });
   const chartData = useMemo(() => buildOrdonnancesParMois(ordonnances), [ordonnances]);
 
@@ -646,6 +648,111 @@ export default function Ordonnances() {
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erreur mise à jour.");
     } finally { setSaving(false); }
+  };
+
+  // Correction 3 (FE-BUG-018) — "Analyser" n'était qu'un toast.success() sans
+  // aucun appel réel. Le module IA a déjà un sous-module réel pour ceci
+  // (POST /ai/interactions, cf. AI.jsx::checkDrugInteractions) — réutilisé
+  // ici plutôt que reconstruit, mêmes rôles autorisés (superadmin/
+  // adminclinique/medecin) que la page Prescriptions elle-même.
+  const analyserInteractionsIA = async () => {
+    if (!currentOrd) return;
+    const medications = (currentOrd.medicaments || []).map(m => m.medicament).filter(Boolean);
+    if (medications.length === 0) {
+      toast.error("Aucun médicament à analyser sur cette ordonnance.");
+      return;
+    }
+    setAnalyzingIA(true);
+    try {
+      const { data } = await api.post('/ai/interactions', { medications, patientId: currentOrd.patient_id || undefined });
+      const warnings = data.warnings || [];
+      const updates = { ia_interactions: warnings.length > 0, interactions: warnings.map(w => w.description) };
+      setCurrent(prev => ({ ...prev, ...updates }));
+      setOrds(prev => prev.map(o => o._id === currentOrd._id ? { ...o, ...updates } : o));
+      toast[warnings.length > 0 ? 'error' : 'success'](
+        warnings.length > 0 ? `⚠ ${warnings.length} interaction(s)/allergie(s) détectée(s).` : '✅ Aucune interaction détectée.'
+      );
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'analyse IA des interactions.");
+    } finally { setAnalyzingIA(false); }
+  };
+
+  // Correction 3 (FE-BUG-018) — les 3 boutons PDF/Excel/CSV du "Rapport
+  // détaillé" n'étaient que des toast.success() sans génération. `kpis`
+  // (état déjà réel, alimenté par GET /prescriptions/stats — voir loadStats)
+  // fournit exactement les 6 valeurs déjà affichées à l'écran : même source,
+  // pas de donnée recalculée séparément. Même motif que Maternite.jsx/
+  // Pediatrie.jsx (Sous-phase 5.2) pour Excel, et Analytics.jsx pour PDF/CSV.
+  const rapportRows = () => ([
+    ['Total prescriptions ce mois', kpis.mois],
+    ['Ordonnances chroniques', kpis.chroniques],
+    ['Interactions détectées par IA', kpis.interactions],
+    ['Ordonnances délivrées', kpis.dispensees],
+    ['Renouvellements effectués', kpis.renouvellements_effectues],
+    ['Ordonnances annulées', kpis.annulees],
+  ]);
+
+  const downloadCSV = (headers, rows, filename) => {
+    const escape = (v) => {
+      const s = String(v ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [headers.map(escape).join(','), ...rows.map(r => r.map(escape).join(','))];
+    const bom = '﻿';
+    const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportRapportExcel = async () => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Indicateur', 'Valeur'], ...rapportRows()]), 'Rapport prescriptions');
+    const filename = `prescriptions-rapport-${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`📊 Excel exporté : ${filename}`);
+  };
+
+  const exportRapportCSV = () => {
+    const filename = `prescriptions-rapport-${new Date().toISOString().split('T')[0]}.csv`;
+    downloadCSV(['Indicateur', 'Valeur'], rapportRows(), filename);
+    toast.success(`📁 CSV exporté : ${filename}`);
+  };
+
+  const exportRapportPDF = async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+    const timeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    doc.setFillColor(11, 30, 59);
+    doc.rect(0, 0, W, 24, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+    doc.text(`RAPPORT PRESCRIPTIONS — ${CLINIC_NAME.toUpperCase()}`, W / 2, 10, { align: 'center' });
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
+    doc.text(`${CLINIC_NAME} ${CLINIC_SUBTITLE} · Généré le ${dateStr} à ${timeStr}`, W / 2, 17, { align: 'center' });
+
+    autoTable(doc, {
+      startY: 32,
+      head: [['Indicateur', 'Valeur']],
+      body: rapportRows(),
+      theme: 'grid',
+      headStyles: { fillColor: [11, 30, 59], fontSize: 9 },
+      bodyStyles: { fontSize: 9 },
+      margin: { left: 14, right: 14 },
+    });
+
+    const filename = `prescriptions-rapport-${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(filename);
+    toast.success(`📄 PDF exporté : ${filename}`);
   };
 
   const interactions = kpis.interactions || 0;
@@ -1235,8 +1342,8 @@ export default function Ordonnances() {
                           : "✅ Aucune interaction médicamenteuse détectée entre les médicaments prescrits. Allergies vérifiées."}
                       </div>
                     </div>
-                    <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:11 }} onClick={() => toast.success("🤖 Analyse IA des interactions en cours...")}>
-                      {I.ia} Analyser
+                    <button className="obtn obtn-ghost obtn-sm" style={{ fontSize:11 }} disabled={analyzingIA} onClick={analyserInteractionsIA}>
+                      {I.ia} {analyzingIA ? "Analyse..." : "Analyser"}
                     </button>
                   </div>
 
@@ -1698,14 +1805,10 @@ export default function Ordonnances() {
               <div className="ord-card">
                 <div className="ord-card-hdr">
                   <div><h3>📋 Rapport détaillé</h3><p>Statistiques des prescriptions</p></div>
-                  {/* Boutons PDF/Excel/CSV — annexe signalée : aucun export
-                      réel (toast.success sans génération), hors périmètre
-                      5.1 (relève de la Sous-phase 5.2, "boutons Générer/
-                      Exporter sans handler"). */}
                   <div style={{ display:"flex", gap:8 }}>
-                    <button className="obtn obtn-ghost obtn-sm" onClick={() => toast.success("📄 PDF exporté")}>{I.dl} PDF</button>
-                    <button className="obtn obtn-ghost obtn-sm" onClick={() => toast.success("📊 Excel exporté")}>📊 Excel</button>
-                    <button className="obtn obtn-ghost obtn-sm" onClick={() => toast.success("📁 CSV exporté")}>📁 CSV</button>
+                    <button className="obtn obtn-ghost obtn-sm" onClick={exportRapportPDF}>{I.dl} PDF</button>
+                    <button className="obtn obtn-ghost obtn-sm" onClick={exportRapportExcel}>📊 Excel</button>
+                    <button className="obtn obtn-ghost obtn-sm" onClick={exportRapportCSV}>📁 CSV</button>
                   </div>
                 </div>
                 <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:16 }}>
