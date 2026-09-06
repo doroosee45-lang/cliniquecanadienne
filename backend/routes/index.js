@@ -33,6 +33,7 @@ router.use('/urgences',         require('./urgences.routes'));         // Urgenc
 router.use('/ambulances',       require('./ambulances.routes'));       // Ambulances
 router.use('/echographie',      require('./echographie.routes'));      // Échographie
 router.use('/contact',          require('./contact.routes'));          // Formulaire de contact public (Correction 9)
+router.use('/medical-records',  require('./medicalRecords.routes'));   // Dossiers médicaux — recherche transversale
 // Alias admin/* → settings/*
 router.use('/admin',            require('./settings.routes'));
 
