@@ -27,9 +27,10 @@
 //     dupliquent réellement aucun champ d'identité — seule la référence
 //     ObjectId existe, jamais retirée. Child/Echographie/Newborn, en
 //     revanche, dupliquent bien une identité (Child.nom/prenom,
-//     Echographie.patient — String malgré son nom trompeur, voir
-//     patient_ref pour la vraie référence —, Newborn.mere_nom) : un premier
-//     passage (grep ciblé sur "patient_nom"/"telephone") les avait manqués
+//     Echographie.patient_nom — copie texte libre du nom, distincte du vrai
+//     champ ObjectId `patient` depuis la fusion Correction 13/DATA-001 (voir
+//     docs/architecture/patient-reference.md) —, Newborn.mere_nom) : un
+//     premier passage (grep ciblé sur "patient_nom"/"telephone") les avait manqués
 //     précisément parce qu'aucun ne suit cette convention de nommage — voir
 //     CASCADE_TARGETS ci-dessous pour le détail par modèle (AUDIT-CRIT-3).
 //     DATA-005 (audit indépendant du 6 sept. 2026) — cette affirmation était
@@ -63,9 +64,14 @@ const ANONYMOUS_LABEL = 'Patient anonymisé';
 // Child/Document/Echographie/Newborn/Room ne dupliquaient aucun champ
 // d'identité, sur la seule base d'un grep ciblé sur "patient_nom"/"telephone" —
 // exactement le type d'angle mort que ce grep pouvait manquer. Relecture
-// complète de chaque schéma : Echographie.patient (String, malgré son nom
-// c'est un doublon d'affichage du nom, jamais peuplé/lié — voir patient_ref
-// pour la vraie référence) et Newborn.mere_nom (copie du nom de la mère,
+// complète de chaque schéma : Echographie.patient_nom (String, doublon
+// d'affichage du nom — DATA-006, audit indépendant du 6 sept. 2026 : ce
+// commentaire décrivait encore ici l'état pré-Correction-13 où `patient`
+// lui-même était cette String ; depuis la fusion avec patient_ref,
+// `patient` est un vrai ObjectId jamais scrubé, et patient_nom est le seul
+// doublon texte libre réellement scrubé par CASCADE_TARGETS ci-dessous —
+// le code (`piiFields: ['patient_nom']`, jamais 'patient') était déjà
+// correct, seul ce commentaire était resté périmé) et Newborn.mere_nom (copie du nom de la mère,
 // confirmée dans maternityController.js::createNewborn) sont bien des
 // doublons d'identité qui avaient échappé à l'audit initial. Child.nom/
 // prenom dupliquent également l'identité du patient référencé par
