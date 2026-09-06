@@ -23,15 +23,26 @@
 //     conservation légale/statistique — et la référence ObjectId vers le
 //     Patient n'est PAS retirée : une fois le Patient lui-même anonymisé,
 //     cette référence seule n'est plus personnellement identifiable.
-//   - AIPrediction/Appointment/Consultation/Document/Hospitalization/
-//     Prescription/Room ne dupliquent réellement aucun champ d'identité —
-//     seule la référence ObjectId existe, jamais retirée. Child/Echographie/
-//     Newborn, en revanche, dupliquent bien une identité (Child.nom/prenom,
+//   - AIPrediction/Appointment/Consultation/Document/Prescription/Room ne
+//     dupliquent réellement aucun champ d'identité — seule la référence
+//     ObjectId existe, jamais retirée. Child/Echographie/Newborn, en
+//     revanche, dupliquent bien une identité (Child.nom/prenom,
 //     Echographie.patient — String malgré son nom trompeur, voir
 //     patient_ref pour la vraie référence —, Newborn.mere_nom) : un premier
 //     passage (grep ciblé sur "patient_nom"/"telephone") les avait manqués
 //     précisément parce qu'aucun ne suit cette convention de nommage — voir
 //     CASCADE_TARGETS ci-dessous pour le détail par modèle (AUDIT-CRIT-3).
+//     DATA-005 (audit indépendant du 6 sept. 2026) — cette affirmation était
+//     elle-même fausse pour Hospitalization : contact_urgence/tel_urgence
+//     dupliquent bien une identité (le contact d'urgence du patient), avec
+//     exactement les mêmes noms de champs que sur Urgence (déjà traité
+//     correctement) — trouvé en relisant le schéma en entier plutôt qu'en
+//     faisant confiance à ce commentaire. Corrigé dans CASCADE_TARGETS.
+//     Appointment/Consultation/Prescription sont désormais également
+//     listés ci-dessous avec piiFields:[] (même principe que AIPrediction/
+//     Document/Room) pour que toute future duplication de champ d'identité
+//     sur l'un de ces 3 modèles ait déjà une entrée à mettre à jour, plutôt
+//     que d'être invisible comme Hospitalization l'a été jusqu'ici.
 const Patient = require('../models/Patient');
 const User = require('../models/User');
 const { logAction } = require('./helpers');
@@ -89,13 +100,26 @@ const CASCADE_TARGETS = [
   { model: require('../models/Pregnancy'),             refField: 'patient_id', piiFields: ['patient_nom', 'patient_prenom', 'telephone', 'date_naissance'] },
   { model: require('../models/Urgence'),               refField: 'patient',    piiFields: ['patient_nom', 'patient_dob', 'patient_tel', 'contact_urgence', 'tel_urgence'], requiredFields: ['patient_nom'] },
   { model: require('../models/AIPrediction'),          refField: 'patient',              piiFields: [] },
+  { model: require('../models/Appointment'),           refField: 'patient',              piiFields: [] },
   { model: require('../models/Child'),                 refField: 'patient_id',           piiFields: ['nom', 'prenom', 'parent_nom', 'parent_tel'], requiredFields: ['nom'] },
+  { model: require('../models/Consultation'),          refField: 'patient',              piiFields: [] },
   { model: require('../models/Document'),              refField: 'patient',              piiFields: [] },
+  // DATA-005 (audit indépendant du 6 sept. 2026) — Hospitalization a
+  // toujours été absent de cette liste, sur la foi d'un commentaire (ligne
+  // 26-27 plus haut) affirmant qu'il ne dupliquait aucune identité — faux,
+  // vérifié par relecture complète du schéma : contact_urgence (nom + lien
+  // de parenté) et tel_urgence (téléphone), saisis via le formulaire
+  // Hospitalization.jsx, identifient une personne réelle (le contact
+  // d'urgence du patient) et n'étaient jamais scrubés après anonymisation —
+  // exactement le même champ, sous le même nom, déjà correctement traité
+  // sur Urgence ci-dessus depuis le début.
+  { model: require('../models/Hospitalization'),       refField: 'patient',              piiFields: ['contact_urgence', 'tel_urgence'] },
   // Correction 13 (DATA-001) — patient_ref fusionné dans patient (référence
   // ObjectId réelle, jamais scrubée) ; le libellé affiché vit désormais dans
   // patient_nom (autrefois `patient`, une String libre).
   { model: require('../models/Echographie'),           refField: 'patient',               piiFields: ['patient_nom'] },
   { model: require('../models/Newborn'),               refField: 'patient_id',           piiFields: ['mere_nom'] },
+  { model: require('../models/Prescription'),          refField: 'patient',              piiFields: [] },
   { model: require('../models/Room'),                  refField: 'lits.patient_actuel',   piiFields: [] },
 ];
 

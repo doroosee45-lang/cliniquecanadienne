@@ -2,7 +2,8 @@
 // base réelle : (a) les champs identifiants du Patient et du compte User
 // lié sont réellement effacés, les champs cliniques/statistiques conservés,
 // (b) les copies d'identité (patient_nom, telephone, etc.) sont scrubées
-// dans les 8 collections qui les dupliquent, SANS toucher au contenu
+// dans les 9 collections qui les dupliquent (DATA-005 : Hospitalization
+// ajouté), SANS toucher au contenu
 // clinique/financier de ces mêmes documents ni à la référence ObjectId vers
 // le patient, (c) un modèle sans copie d'identité (Consultation) reste
 // intact — preuve que le module ne touche que ce qu'il documente,
@@ -26,6 +27,7 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
   const Pregnancy = require('../models/Pregnancy');
   const Urgence = require('../models/Urgence');
   const Consultation = require('../models/Consultation');
+  const Hospitalization = require('../models/Hospitalization');
   const { anonymizePatient } = require('../utils/patientAnonymization');
 
   const stamp = Date.now();
@@ -81,6 +83,12 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
     const urgence = await Urgence.create({ patient: patient._id, patient_nom: 'Nkoulou Sylvie', patient_tel: '+242061234567', patient_dob: new Date('1988-04-12'), contact_urgence: 'Jean Nkoulou', tel_urgence: '+242069876543', motif: 'Douleur thoracique' });
     cleanup.push(() => Urgence.findByIdAndDelete(urgence._id));
 
+    // DATA-005 — contact_urgence/tel_urgence dupliquent bien une identité
+    // (le contact d'urgence du patient) sur Hospitalization, jamais scrubés
+    // jusqu'ici malgré des noms de champs identiques à Urgence ci-dessus.
+    const hosp = await Hospitalization.create({ patient: patient._id, motif_entree: 'Appendicectomie', contact_urgence: 'Jean Nkoulou', tel_urgence: '+242069876543', diagnostic_entree: 'Appendicite aiguë' });
+    cleanup.push(() => Hospitalization.findByIdAndDelete(hosp._id));
+
     let result;
     await t.test('anonymizePatient() réussit et retourne un résumé de la cascade', async () => {
       result = await anonymizePatient(patient._id, { utilisateur: admin._id, ip: '127.0.0.1' });
@@ -93,6 +101,7 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
       assert.equal(result.cascade.LabResult, 1);
       assert.equal(result.cascade.Pregnancy, 1);
       assert.equal(result.cascade.Urgence, 1);
+      assert.equal(result.cascade.Hospitalization, 1, 'DATA-005 — Hospitalization doit désormais être couvert par la cascade');
     });
 
     await t.test('Patient — champs identifiants effacés, champs cliniques conservés', async () => {
@@ -118,7 +127,7 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
       assert.equal(fresh.statut, 'inactif');
     });
 
-    await t.test('8 collections en cascade — copies d\'identité scrubées, contenu clinique/financier intact, référence ObjectId préservée', async () => {
+    await t.test('9 collections en cascade — copies d\'identité scrubées, contenu clinique/financier intact, référence ObjectId préservée', async () => {
       const freshArchive = await ArchiveEntry.findById(archive._id).lean();
       assert.equal(freshArchive.patient_nom, undefined);
       assert.equal(freshArchive.patient.toString(), patient._id.toString(), 'la référence vers le patient ne doit pas être retirée');
@@ -170,6 +179,15 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
       assert.equal(freshUrg.contact_urgence, undefined);
       assert.equal(freshUrg.tel_urgence, undefined);
       assert.equal(freshUrg.motif, 'Douleur thoracique', 'donnée clinique conservée');
+
+      // DATA-005 — preuve non négociable : contact_urgence/tel_urgence
+      // réellement scrubés sur Hospitalization, contenu clinique intact,
+      // référence patient préservée.
+      const freshHosp = await Hospitalization.findById(hosp._id).lean();
+      assert.equal(freshHosp.contact_urgence, undefined);
+      assert.equal(freshHosp.tel_urgence, undefined);
+      assert.equal(freshHosp.diagnostic_entree, 'Appendicite aiguë', 'donnée clinique conservée');
+      assert.equal(freshHosp.patient.toString(), patient._id.toString(), 'la référence vers le patient ne doit pas être retirée');
     });
 
     await t.test('Consultation — aucune copie d\'identité dans ce modèle, document non touché', async () => {
