@@ -1310,9 +1310,14 @@ export default function Archivage() {
             <div className="arc-section-title">{I.config} Paramètres d'archivage</div>
             <div className="arc-section-sub">Configuration des règles d'archivage automatique</div>
           </div>
-          <button className="abtn abtn-teal" onClick={() => toast.success("✅ Paramètres enregistrés")}>
-            💾 Enregistrer
-          </button>
+          {/* Correction FE-BUG-016 — ce bouton affichait un succès sans
+              aucun appel réseau. Vérifié : chaque réglage ci-dessous
+              (Toggle "actif", "durée", éléments concernés) persiste déjà
+              réellement à chaque changement via updateConfigField() →
+              PUT /archives/config (voir ligne ~479) — un bouton "Enregistrer"
+              séparé serait redondant et laisserait croire qu'un changement
+              n'est pas déjà sauvegardé. Retiré plutôt que de fabriquer un
+              faux succès. */}
         </div>
 
         <div className="al-arc-warn" style={{ fontSize:12 }}>
@@ -1327,7 +1332,7 @@ export default function Archivage() {
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", background:"#F8FAFD", borderRadius:10, border:"1.5px solid var(--abr)" }}>
                 <div>
                   <div style={{ fontSize:13, fontWeight:600, color:"var(--an)" }}>Activer l'archivage automatique</div>
-                  <div style={{ fontSize:11, color:"var(--am)" }}>Exécuté chaque nuit à 02:00</div>
+                  <div style={{ fontSize:11, color:"var(--am)" }}>Exécuté chaque nuit à 03:00 (heure fixe côté serveur)</div>
                 </div>
                 <Toggle checked={configAuto.actif} onChange={v => updateConfigField({ actif: v })} />
               </div>
@@ -1342,11 +1347,18 @@ export default function Archivage() {
               </div>
               <div>
                 <label className="albl">Heure d'exécution</label>
-                <input type="time" className="ainp" style={{ width:120 }} defaultValue="02:00" />
+                {/* Correction FE-BUG-016 — ce champ n'avait pas de onChange
+                    et n'a jamais été pris en compte : le job réel
+                    (backend/utils/archiveHarvestJob.js, cron.schedule('0 3
+                    * * *')) tourne à une heure fixe côté serveur, non
+                    configurable depuis le frontend aujourd'hui. Désactivé
+                    honnêtement plutôt que de simuler un champ contrôlé qui
+                    ne persisterait nulle part. */}
+                <input type="time" className="ainp" style={{ width:120 }} value="03:00" disabled title="Heure fixe côté serveur (non configurable actuellement) — voir la tâche planifiée du serveur." readOnly />
               </div>
               <div style={{ background:"#EEF4FF", borderRadius:12, padding:"12px 14px" }}>
                 <div style={{ fontSize:11, fontWeight:700, color:"var(--am)", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>📅 Prochaine exécution</div>
-                <div style={{ fontSize:14, fontWeight:700, color:"var(--ab)" }}>Demain à 02:00</div>
+                <div style={{ fontSize:14, fontWeight:700, color:"var(--ab)" }}>Demain à 03:00</div>
                 <div style={{ fontSize:11, color:"var(--am)", marginTop:2 }}>Estimation : ~{kpis.total > 0 ? Math.ceil(kpis.total * 0.1) : 3} nouveaux dossiers à archiver</div>
               </div>
             </div>
