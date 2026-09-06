@@ -3,9 +3,19 @@ const Prescription  = require('../models/Prescription');
 const Invoice       = require('../models/Invoice');
 const Patient       = require('../models/Patient');
 const User          = require('../models/User');
+const ExamCatalogue = require('../models/ExamCatalogue');
+const LabResult      = require('../models/LabResult');
+const ImagingResult  = require('../models/ImagingResult');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
+const { matchExamCatalogue } = require('../utils/examLibelleVersCatalogue');
+
+// Correction 4 — priorité de l'examen saisi en consultation (normal/
+// semi_urgent/urgent) vers la priorité réelle attendue par LabResult/
+// ImagingResult (vocabulaires distincts, pas un simple renommage 1:1).
+const PRIORITE_LABO    = { normal: 'normale', semi_urgent: 'urgente', urgent: 'urgente' };
+const PRIORITE_IMAGERIE = { normal: 'normale', semi_urgent: 'urgente', urgent: 'urgente' };
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
@@ -180,10 +190,82 @@ exports.create = async (req, res, next) => {
       });
     }
 
+    // Correction 4 (pont examens_complementaires ↔ Laboratoire/Radiology) —
+    // même principe que Prescription/Invoice ci-dessus : à la clôture d'une
+    // consultation (statut 'terminee'), chaque examen complémentaire
+    // reconnu par une correspondance EXACTE et curatée (voir
+    // utils/examLibelleVersCatalogue.js — même liste que la facturation
+    // Sous-phase 5.7) génère un vrai LabResult ou ImagingResult, lié à la
+    // consultation ET au patient. Les examens saisis en texte libre sans
+    // correspondance ne sont jamais rattachés artificiellement — retournés
+    // dans `examens_non_pontes` pour que l'appelant sache honnêtement ce qui
+    // n'a pas pu être ponté, plutôt que de le laisser disparaître en
+    // silence.
+    const labsGeneres = [];
+    const imagesGenerees = [];
+    const examensNonPontes = [];
+    if (consultation.statut === 'terminee' && consultation.examens_complementaires?.length) {
+      const catalogue = await ExamCatalogue.find({ statut: 'actif' }).lean();
+      let labCount = await LabResult.countDocuments();
+      let imgCount = await ImagingResult.countDocuments();
+      const year = new Date().getFullYear();
+
+      for (const exam of consultation.examens_complementaires) {
+        const match = matchExamCatalogue(exam.libelle, catalogue);
+        if (!match) { examensNonPontes.push(exam.libelle); continue; }
+
+        if (match.type === 'laboratoire') {
+          labCount += 1;
+          const lab = await LabResult.create({
+            patient: consultation.patient,
+            consultation: consultation._id,
+            medecin_prescripteur: consultation.medecin,
+            examen: match._id,
+            examens_demandes: [match._id],
+            priorite: PRIORITE_LABO[exam.priorite] || 'normale',
+            statut: 'en_attente',
+            numero: `LAB-${year}-${String(labCount).padStart(4, '0')}`,
+            date_demande: new Date(),
+            commentaires: exam.note || undefined,
+          });
+          labsGeneres.push(lab._id);
+        } else if (match.type === 'imagerie') {
+          imgCount += 1;
+          const img = await ImagingResult.create({
+            patient: consultation.patient,
+            consultation: consultation._id,
+            medecin_prescripteur: consultation.medecin,
+            examen: match._id,
+            type_examen: exam.libelle,
+            priorite: PRIORITE_IMAGERIE[exam.priorite] || 'normale',
+            statut: 'programme',
+            numero: `IMG-${year}-${String(imgCount).padStart(4, '0')}`,
+            motif: exam.note || undefined,
+          });
+          imagesGenerees.push(img._id);
+        } else {
+          // ExamCatalogue.type ne connaît que laboratoire/imagerie (schéma) —
+          // ne devrait jamais arriver, mais honnêtement non ponté si un jour
+          // un 3e type apparaît sans code correspondant ici.
+          examensNonPontes.push(exam.libelle);
+        }
+      }
+
+      if (labsGeneres.length || imagesGenerees.length) {
+        await logAction({
+          utilisateur: req.user._id, action: 'CREATE', module: 'consultations', entite_id: consultation._id, ip: req.ip,
+          message: `${labsGeneres.length} analyse(s) + ${imagesGenerees.length} examen(s) d'imagerie généré(s) depuis la consultation (${examensNonPontes.length} examen(s) sans correspondance catalogue, non ponté(s))`,
+        });
+      }
+    }
+
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'consultations', entite_id: consultation._id, ip: req.ip });
     emitActivity({ module: 'consultations', action: 'Nouvelle consultation', detail: req.body.motif || 'Consultation médicale', icon: '🩺', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
-    res.status(201).json({ success: true, consultation, prescription: prescriptionGeneree, invoice: factureGeneree });
+    res.status(201).json({
+      success: true, consultation, prescription: prescriptionGeneree, invoice: factureGeneree,
+      lab_results: labsGeneres, imaging_results: imagesGenerees, examens_non_pontes: examensNonPontes,
+    });
   } catch (err) { next(err); }
 };
 
