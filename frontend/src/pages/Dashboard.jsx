@@ -1101,7 +1101,15 @@ function LaborantinDashboard({ data, isMobile }) {
           <div style={{ overflowX:"auto" }}>
             <table className="db-tbl">
               <thead><tr><th>Patient</th><th>Examen</th><th>Valeur</th><th>Statut</th><th>Action</th></tr></thead>
-              <tbody>{urgentes.map((a,i)=>(<tr key={i} style={{ background:a.statut==="critique"?"#FEF2F2":"" }}><td style={{ fontWeight:600 }}>{a.patient}</td><td style={{ fontSize:12, color:"var(--dm)" }}>{a.examen}</td><td style={{ fontWeight:700, color:a.statut==="critique"?"var(--dr)":"var(--do)" }}>{a.valeur}</td><td><Badge cls={a.statut==="critique"?"red":a.statut==="anormal"?"orange":"yellow"}>{a.statut}</Badge></td><td><button className="dbtn dbtn-primary dbtn-sm" style={{ fontSize:11 }} onClick={()=>navigate("/laboratory")}>🔔 Notifier</button></td></tr>))}</tbody>
+              <tbody>{urgentes.map((a,i)=>(<tr key={i} style={{ background:a.statut==="critique"?"#FEF2F2":"" }}><td style={{ fontWeight:600 }}>{a.patient}</td><td style={{ fontSize:12, color:"var(--dm)" }}>{a.examen}</td><td style={{ fontWeight:700, color:a.statut==="critique"?"var(--dr)":"var(--do)" }}>{a.valeur}</td><td><Badge cls={a.statut==="critique"?"red":a.statut==="anormal"?"orange":"yellow"}>{a.statut}</Badge></td>{/* Correction FE-BUG-014 — "🔔 Notifier" promettait une notification
+    réelle au médecin prescripteur ; en réalité ce bouton n'a jamais fait
+    que naviguer vers /laboratory (aucune action de notification n'est
+    déclenchée). analyses_urgentes (dashboard.controller.js) ne renvoie
+    d'ailleurs aucun _id de LabResult exploitable pour brancher une vraie
+    notification depuis cette ligne sans changement de schéma de réponse,
+    hors périmètre de cette correction. Libellé rendu honnête : ouvre
+    simplement le module Laboratoire, où l'acquittement réel existe déjà. */}
+<td><button className="dbtn dbtn-primary dbtn-sm" style={{ fontSize:11 }} onClick={()=>navigate("/laboratory")}>👁 Ouvrir</button></td></tr>))}</tbody>
             </table>
           </div>
         )}
@@ -1150,7 +1158,16 @@ function ReceptionDashboard({ data, isMobile }) {
           <div style={{ overflowX:"auto" }}>
             <table className="db-tbl">
               <thead><tr><th>Heure</th><th>Patient</th><th>Médecin</th><th>Type</th><th>Statut</th><th>Action</th></tr></thead>
-              <tbody>{rdvListe.map((r,i)=>(<tr key={i}><td style={{ fontWeight:700 }}>{r.heure}</td><td style={{ fontWeight:600 }}>{r.patient}</td><td style={{ fontSize:12, color:"var(--dm)" }}>{r.medecin}</td><td><Badge cls="blue">{r.type}</Badge></td><td><Badge cls={stR(r.statut)}>{r.statut==="en_attente"?"⏳ Attente":r.statut==="confirme"?"✅ Confirmé":"❌ Annulé"}</Badge></td><td><div style={{ display:"flex", gap:4 }}>{r.statut==="en_attente"&&<button className="dbtn dbtn-teal dbtn-sm" style={{ fontSize:11 }} onClick={()=>navigate("/appointments")}>Confirmer</button>}<button className="dbtn dbtn-ghost dbtn-sm" style={{ fontSize:11 }} onClick={()=>navigate("/appointments")}>📞</button></div></td></tr>))}</tbody>
+              {/* Correction FE-BUG-014 — "Confirmer" et "📞" ne faisaient
+                  tous deux que naviguer vers /appointments : aucune
+                  confirmation de RDV ni aucun appel téléphonique réel
+                  n'était déclenché (rdv_prochains, dashboard.controller.js,
+                  ne renvoie même aucun numéro de téléphone ni _id de
+                  rendez-vous exploitable depuis cette ligne). Les deux
+                  boutons redondants sont remplacés par un unique bouton
+                  honnête qui ouvre le module Rendez-vous, où la
+                  confirmation réelle se fait déjà. */}
+              <tbody>{rdvListe.map((r,i)=>(<tr key={i}><td style={{ fontWeight:700 }}>{r.heure}</td><td style={{ fontWeight:600 }}>{r.patient}</td><td style={{ fontSize:12, color:"var(--dm)" }}>{r.medecin}</td><td><Badge cls="blue">{r.type}</Badge></td><td><Badge cls={stR(r.statut)}>{r.statut==="en_attente"?"⏳ Attente":r.statut==="confirme"?"✅ Confirmé":"❌ Annulé"}</Badge></td><td><button className="dbtn dbtn-ghost dbtn-sm" style={{ fontSize:11 }} onClick={()=>navigate("/appointments")}>👁 Ouvrir</button></td></tr>))}</tbody>
             </table>
           </div>
         )}
