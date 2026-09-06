@@ -370,8 +370,6 @@ const DEMO_EMPLOYES = [];
 
 const DEMO_EVALUATIONS = [];
 
-const DEMO_FORMATIONS = [];
-
 const DEMO_SANCTIONS = [];
 
 const DEMO_AUDIT = [];
@@ -392,6 +390,9 @@ const EMPTY_CANDIDATURE = { nom:"", poste:"infirmier", experience:"", diplome:""
 // l'auteur authentifié de la requête (req.user côté serveur), jamais une
 // chaîne saisissable par n'importe qui.
 const EMPTY_EVAL = { employe_id:"", periode:"2026-S1", ponctualite:3, qualite:3, productivite:3, discipline:3, relation_patient:3, commentaire:"" };
+// Sous-phase 5.5.a — Formations. `participants` référence désormais de
+// vrais employés (tableau d'_id Staff), plus une chaîne de noms libres.
+const EMPTY_FORMATION = { titre:"", type:"interne", date:"", duree_h:"", participants:[], certificat:false };
 
 // Adapter Staff (backend) → champs attendus par le frontend
 const normalizeEmp = (s) => {
@@ -441,7 +442,7 @@ export default function RessourcesHumaines() {
   const [schedules, setSchedules]         = useState([]);
   const [candidatures, setCandidatures]   = useState([]);
   const [evaluations, setEvaluations]     = useState(DEMO_EVALUATIONS);
-  const [formations, setFormations]       = useState(DEMO_FORMATIONS);
+  const [formations, setFormations]       = useState([]);
   const [sanctions, setSanctions]         = useState(DEMO_SANCTIONS);
   const [auditLog, setAuditLog]           = useState(DEMO_AUDIT);
   const [currentEmp, setCurrentEmp]       = useState(null);
@@ -458,6 +459,7 @@ export default function RessourcesHumaines() {
   const [modalPlan,       setModalPlan]        = useState(false);
   const [modalCandidat,   setModalCandidat]    = useState(false);
   const [modalEval,       setModalEval]        = useState(false);
+  const [modalFormation,  setModalFormation]   = useState(false);
   const [publishingId,    setPublishingId]     = useState(null);
 
   // Forms
@@ -466,6 +468,7 @@ export default function RessourcesHumaines() {
   const [formPlan,      setFormPlan]      = useState(EMPTY_PLAN);
   const [formCandidat,  setFormCandidat]  = useState(EMPTY_CANDIDATURE);
   const [formEval,      setFormEval]      = useState(EMPTY_EVAL);
+  const [formFormation, setFormFormation] = useState(EMPTY_FORMATION);
   const [servicesReels, setServicesReels] = useState([]);
 
   // Charger les employés depuis l'API
@@ -546,6 +549,18 @@ export default function RessourcesHumaines() {
   }, []);
   useEffect(() => { loadEvaluations(); }, [loadEvaluations]);
 
+  // Sous-phase 5.5.a — Formations : GET /hr/formations (nouveau modèle
+  // Formation).
+  const loadFormations = useCallback(async () => {
+    try {
+      const { data } = await api.get('/hr/formations');
+      setFormations(data.formations || []);
+    } catch (err) {
+      console.error('Erreur chargement formations:', err);
+    }
+  }, []);
+  useEffect(() => { loadFormations(); }, [loadFormations]);
+
   // Semaine courante (lundi → dimanche), calculée dynamiquement — remplace
   // l'ancienne grille figée sur une semaine de juin 2025.
   // AUDIT-M-E9 — recréé (nouveau tableau de nouveaux Date) à chaque rendu
@@ -586,7 +601,8 @@ export default function RessourcesHumaines() {
     loadSchedules();
     loadCandidatures();
     loadEvaluations();
-  }, [dispatch, loadConges, loadSchedules, loadCandidatures, loadEvaluations]);
+    loadFormations();
+  }, [dispatch, loadConges, loadSchedules, loadCandidatures, loadEvaluations, loadFormations]);
   useRealtimeRefresh(refreshHR);
 
   // AUDIT-M-E9 (Groupe E, Point 9) — KPIs, pivot planning, filtrage et
@@ -823,6 +839,21 @@ export default function RessourcesHumaines() {
       setModalEval(false); setFormEval(EMPTY_EVAL);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement de l'évaluation");
+    }
+  };
+
+  // Sous-phase 5.5.a — Formations : addFormation créait auparavant un objet
+  // local (participants:"texte, séparé, par, virgules".split(",")), jamais
+  // persisté. Persiste désormais réellement via POST /hr/formations.
+  const addFormation = async (ev) => {
+    ev.preventDefault();
+    try {
+      const { data } = await api.post('/hr/formations', formFormation);
+      setFormations(prev => [data.formation, ...prev]);
+      toast.success("✅ Formation planifiée");
+      setModalFormation(false); setFormFormation(EMPTY_FORMATION);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la planification de la formation");
     }
   };
 
@@ -2282,17 +2313,47 @@ export default function RessourcesHumaines() {
           )}
 
           {/* ══ FORMATIONS ══ */}
-          {/* Sous-phase 5.7 — même bug : CRUD entièrement local
-              (setFormations(prev => [new, ...prev])), jamais persisté, plus
-              "📄 Attestation générée" affichant un faux succès sans document
-              réel. Aucun modèle Formation n'existe dans le backend —
-              désactivé honnêtement. */}
+          {/* Sous-phase 5.5.a — reconstruit avec une vraie persistance
+              (modèle Formation) : remplace le CRUD local sans lendemain
+              désactivé en 5.7. Le bouton "📄 Attestation" n'est pas
+              restauré : aucune génération réelle de document n'existe
+              (c'était exactement le faux succès signalé en 5.7) — le champ
+              "certificat" reste un simple indicateur réel (prévu ou non),
+              sans bouton qui prétendrait produire un fichier inexistant. */}
           {tab === "formations" && (
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Formations & Développement</div>
-              <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
-                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🎓</div>
-                <div style={{ fontSize:13, color:"var(--rm)" }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des formations n'existe encore dans ce système.</div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:12 }}>
+                <div>
+                  <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Formations & Développement</div>
+                  <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{formations.length} formation(s) · {formations.filter(f=>f.statut==="planifie").length} planifiée(s)</div>
+                </div>
+                <button className="rbtn rbtn-primary" onClick={() => { setFormFormation(EMPTY_FORMATION); setModalFormation(true); }}>{I.plus} Planifier formation</button>
+              </div>
+              {formations.length === 0 && (
+                <div className="rh-card" style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>
+                  <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🎓</div>
+                  Aucune formation planifiée
+                </div>
+              )}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))", gap:16 }}>
+                {formations.map(f => (
+                  <div key={f._id} className="rh-card fu" style={{ padding:20 }}>
+                    <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{f.titre}</div>
+                        <div style={{ fontSize:11, color:"var(--rm)", marginTop:2 }}>{f.type === "interne" ? "🏥 Formation interne" : f.type === "externe" ? "🌍 Formation externe" : f.type === "seminaire" ? "📚 Séminaire" : "🛠 Atelier"} · {f.duree_h}h</div>
+                      </div>
+                      <Badge cls={f.statut === "termine" ? "green" : "blue"}>{f.statut === "termine" ? "✅ Terminée" : "📅 Planifiée"}</Badge>
+                    </div>
+                    <div style={{ fontSize:12, color:"var(--rm)", marginBottom:8 }}>📅 {fmtDate(f.date)}</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:10 }}>
+                      {f.participants.map(p => (
+                        <span key={p._id} style={{ background:"#EEF4FF", color:"var(--rb)", border:"1px solid #BFDBFE", borderRadius:8, padding:"2px 8px", fontSize:11, fontWeight:600 }}>{p.nom}</span>
+                      ))}
+                    </div>
+                    {f.certificat && <Badge cls="teal">🎓 Certificat prévu</Badge>}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -2606,6 +2667,39 @@ export default function RessourcesHumaines() {
               <div style={{ display:"flex", gap:10 }}>
                 <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalEval(false)}>Annuler</button>
                 <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Enregistrer</button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : FORMATION (Sous-phase 5.5.a) ═══ */}
+        <Modal open={modalFormation} onClose={() => setModalFormation(false)} title="🎓 Planifier une formation" maxWidth={520}>
+          <form onSubmit={addFormation}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div><label className="rlbl">Titre de la formation *</label><input className="rinp" required value={formFormation.titre} onChange={e=>setFormFormation(f=>({...f,titre:e.target.value}))} /></div>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div><label className="rlbl">Type</label>
+                  <select className="rinp" value={formFormation.type} onChange={e=>setFormFormation(f=>({...f,type:e.target.value}))}>
+                    <option value="interne">🏥 Interne</option><option value="externe">🌍 Externe</option>
+                    <option value="seminaire">📚 Séminaire</option><option value="atelier">🛠 Atelier</option>
+                  </select>
+                </div>
+                <div><label className="rlbl">Durée (heures)</label><input type="number" min="0" className="rinp" value={formFormation.duree_h} onChange={e=>setFormFormation(f=>({...f,duree_h:e.target.value}))} /></div>
+              </div>
+              <div><label className="rlbl">Date *</label><input type="date" className="rinp" required value={formFormation.date} onChange={e=>setFormFormation(f=>({...f,date:e.target.value}))} /></div>
+              <div><label className="rlbl">Participants</label>
+                <select multiple className="rinp" style={{ height:120 }} value={formFormation.participants} onChange={e=>setFormFormation(f=>({...f,participants:Array.from(e.target.selectedOptions,o=>o.value)}))}>
+                  {employes.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
+                </select>
+                <div style={{ fontSize:11, color:"var(--rm)", marginTop:4 }}>Ctrl/Cmd + clic pour sélectionner plusieurs employés.</div>
+              </div>
+              <label style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <input type="checkbox" checked={formFormation.certificat} onChange={e=>setFormFormation(f=>({...f,certificat:e.target.checked}))} style={{ width:16, height:16, accentColor:"var(--rt)" }} />
+                <span style={{ fontSize:13, color:"var(--rn)" }}>🎓 Certificat prévu</span>
+              </label>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalFormation(false)}>Annuler</button>
+                <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Planifier</button>
               </div>
             </div>
           </form>

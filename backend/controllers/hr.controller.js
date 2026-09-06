@@ -3,6 +3,7 @@ const Staff = require('../models/Staff');
 const User = require('../models/User');
 const Candidature = require('../models/Candidature');
 const Evaluation = require('../models/Evaluation');
+const Formation = require('../models/Formation');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const mail = require('../utils/mail');
@@ -435,4 +436,66 @@ exports.createEvaluation = async (req, res, next) => {
     }
     next(err);
   }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Sous-phase 5.5.a — Formations
+// ─────────────────────────────────────────────────────────────
+
+// Aplatit une Formation populée : participants → tableau {_id, nom}, statut
+// dérivé de la date (jamais stocké — ne peut donc jamais devenir obsolète
+// par rapport à la date réelle de la formation).
+function normalizeFormation(f) {
+  const participants = (f.participants || []).map(p => (
+    typeof p === 'object' && p !== null
+      ? { _id: p._id, nom: `${p.prenom || ''} ${p.nom || ''}`.trim() }
+      : { _id: p, nom: '—' }
+  ));
+  return {
+    ...f,
+    participants,
+    statut: f.date && new Date(f.date) < new Date() ? 'termine' : 'planifie',
+  };
+}
+
+// GET /hr/formations
+exports.getFormations = async (req, res, next) => {
+  try {
+    const rows = await Formation.find()
+      .populate('participants', 'prenom nom')
+      .sort('-date')
+      .lean();
+    res.json({ success: true, formations: rows.map(normalizeFormation) });
+  } catch (err) { next(err); }
+};
+
+// POST /hr/formations
+exports.createFormation = async (req, res, next) => {
+  try {
+    const { titre, type, date, duree_h, participants, certificat } = req.body;
+    if (!titre || !titre.trim()) {
+      return res.status(400).json({ success: false, message: 'Le titre de la formation est obligatoire.' });
+    }
+    if (!date) {
+      return res.status(400).json({ success: false, message: 'La date de la formation est obligatoire.' });
+    }
+    const participantIds = Array.isArray(participants) ? participants : [];
+    if (participantIds.length) {
+      const count = await Staff.countDocuments({ _id: { $in: participantIds } });
+      if (count !== participantIds.length) {
+        return res.status(400).json({ success: false, message: 'Un ou plusieurs participants sélectionnés sont introuvables.' });
+      }
+    }
+
+    const formation = await Formation.create({
+      titre: titre.trim(), type, date, duree_h: duree_h ? Number(duree_h) : 0,
+      participants: participantIds, certificat: !!certificat, cree_par: req.user._id,
+    });
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'hr', entite_id: formation._id, ip: req.ip, message: `Formation planifiée — ${titre}` });
+    emitActivity({ module: 'hr', action: 'Formation planifiée', detail: titre, icon: '🎓', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
+
+    const populated = await Formation.findById(formation._id).populate('participants', 'prenom nom').lean();
+    res.status(201).json({ success: true, formation: normalizeFormation(populated) });
+  } catch (err) { next(err); }
 };

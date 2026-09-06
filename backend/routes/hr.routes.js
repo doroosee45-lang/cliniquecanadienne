@@ -26,6 +26,10 @@ router.put('/candidatures/:id',      protect, authorize(...ADMIN), hrC.updateCan
 router.get('/evaluations',           protect, authorize(...ADMIN), hrC.getEvaluations);
 router.post('/evaluations',          protect, authorize(...ADMIN), hrC.createEvaluation);
 
+// Sous-phase 5.5.a — Formations (même remarque d'ordre : avant `/:id`).
+router.get('/formations',            protect, authorize(...ADMIN), hrC.getFormations);
+router.post('/formations',           protect, authorize(...ADMIN), hrC.createFormation);
+
 router.get('/',          protect, authorize(...ADMIN), hrC.getAll);
 router.post('/',         protect, authorize(...ADMIN), hrC.create);
 router.get('/:id',       protect, authorize(...ADMIN), hrC.getOne);
