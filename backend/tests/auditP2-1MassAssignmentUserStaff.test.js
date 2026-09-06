@@ -6,6 +6,13 @@
 // User, salaire pour Staff) envoyé dans le même appel n'est jamais persisté,
 // (c) runValidators rejette désormais une valeur enum invalide qui aurait
 // été silencieusement acceptée auparavant.
+// CODE-004 (régression relevée en clôture de Phase 9) — le premier sous-test
+// fait passer un compte à statut:'inactif' via updateUser, ce qui déclenche
+// désormais un vrai mail.sendAccountDeactivatedEmail() (voir ticket 0024).
+// Non stubbé, cet appel part réellement vers l'adresse de test factice
+// *_@_test.local, que le relais SMTP réel rejette (553 RFC 5321) — même
+// garde-fou déjà en place dans archivageAuditPointB.test.js et
+// auditA4NotifChangementRoleStatut.test.js pour ce même appel.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -18,11 +25,15 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
   const User = require('../models/User');
   const Staff = require('../models/Staff');
   const Service = require('../models/Service');
+  const mailModule = require('../utils/mail');
 
   const stamp = Date.now();
   const superadmin = { _id: new mongoose.Types.ObjectId(), role: 'superadmin' };
   // AUDIT-M-A1 — User.service est désormais une vraie référence ObjectId.
   const svcChirurgie = await Service.create({ nom: `Chirurgie ${stamp}` });
+
+  const originalSendAccountDeactivatedEmail = mailModule.sendAccountDeactivatedEmail;
+  mailModule.sendAccountDeactivatedEmail = async () => ({ simulated: true });
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -159,6 +170,7 @@ test('P2-1 — mass-assignment bloqué sur User.updateUser et Staff.update (base
       assert.equal(caught.name, 'ValidationError');
     });
   } finally {
+    mailModule.sendAccountDeactivatedEmail = originalSendAccountDeactivatedEmail;
     for (const fn of cleanup) await fn();
     await Service.findByIdAndDelete(svcChirurgie._id);
     await mongoose.disconnect();
