@@ -534,6 +534,51 @@ const sendAccountSuspendedEmail = async ({ email, prenom, nom }) => {
   });
 };
 
+/**
+ * CODE-004 (audit indépendant du 6 sept. 2026) — deactivateUser() envoyait
+ * jusqu'ici sendAccountSuspendedEmail() (texte "suspendu... tant que cette
+ * suspension n'est pas levée") alors qu'il fixe réellement statut:'inactif',
+ * une notion distincte dans l'enum (User.statut: actif/inactif/suspendu) —
+ * un message inexact envoyé à l'utilisateur. Même structure visuelle que
+ * sendAccountSuspendedEmail ci-dessus, texte corrigé pour ne décrire que ce
+ * qui est réellement vrai : l'accès est désactivé, sans laisser entendre
+ * qu'une "levée" de suspension suffira à le rétablir.
+ * @param {{ email, prenom, nom }} opts
+ */
+const sendAccountDeactivatedEmail = async ({ email, prenom, nom }) => {
+  const html = `
+  <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#f8fafd;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:800;color:#0B1E3B;">🏥 Clinique Canadienne</div>
+      <div style="color:#6B7A99;font-size:13px;margin-top:4px;">Système de santé MediSync · Souanké</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:30px;border:1.5px solid #E2EAF4;">
+      <div style="background:#FEF2F2;border-left:4px solid #DC2626;border-radius:8px;padding:14px 18px;margin-bottom:24px;">
+        <div style="font-size:11px;color:#991B1B;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Compte désactivé</div>
+        <div style="font-size:18px;font-weight:800;color:#0B1E3B;margin-top:4px;">⛔ Votre accès a été désactivé</div>
+      </div>
+      <h2 style="color:#0B1E3B;font-size:17px;margin-top:0;">Bonjour ${prenom} ${nom},</h2>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Votre compte sur le système MediSync de la Clinique Canadienne de Souanké a été désactivé par un administrateur.
+        Vous ne pouvez plus vous connecter.
+      </p>
+      <p style="color:#374151;font-size:14px;line-height:1.7;">
+        Si vous pensez qu'il s'agit d'une erreur, contactez l'administration de la clinique.
+      </p>
+    </div>
+    <p style="text-align:center;color:#9CA3AF;font-size:11px;margin-top:20px;">
+      Clinique Canadienne de Souanké · MediSync HIS<br/>
+      Cet email est généré automatiquement, ne pas répondre.
+    </p>
+  </div>`;
+
+  return sendEmail({
+    to: email,
+    subject: 'Votre compte a été désactivé — Clinique Canadienne',
+    html,
+  });
+};
+
 // AUDIT-RH-PLANNING-NOTIF — un email par créneau publié (pas de
 // consolidation — décision explicite) : hr.controller.js::publishSchedules
 // appelle cette fonction une fois par créneau brouillon.
@@ -700,4 +745,4 @@ const sendWeeklyAnalyticsReportEmail = async ({ email, prenom, nom, htmlContenu,
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendPlanningPublishedEmail, sendPlanningReminderEmail, sendAnalyticsReportEmail, sendWeeklyAnalyticsReportEmail };
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendAccountDeactivatedEmail, sendPlanningPublishedEmail, sendPlanningReminderEmail, sendAnalyticsReportEmail, sendWeeklyAnalyticsReportEmail };

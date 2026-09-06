@@ -162,15 +162,26 @@ exports.updateUser = async (req, res, next) => {
       if (avant.role !== user.role) changements.push(`rôle : ${avant.role} → ${user.role}`);
       if (avant.statut !== user.statut) changements.push(`statut : ${avant.statut} → ${user.statut}`);
       const estSuspension = avant.statut !== user.statut && user.statut === 'suspendu';
+      // CODE-004 (audit indépendant du 6 sept. 2026) — seul le passage à
+      // 'suspendu' déclenchait un email ici, alors que 'inactif' bloque
+      // tout autant la connexion (middleware/auth.js::protect exige
+      // statut==='actif') : un admin qui désactive un compte via CE
+      // formulaire (le seul chemin réellement utilisé par l'UI — voir
+      // ticket 0024) en choisissant "Inactif" ne prévenait jusqu'ici jamais
+      // l'intéressé par email, contrairement à deactivateUser() plus bas
+      // (jamais appelée par l'UI) qui envoyait déjà un email pour ce cas.
+      const estDesactivation = avant.statut !== user.statut && user.statut === 'inactif';
       await createNotification({
         destinataire: user._id,
-        type:    estSuspension ? 'warning' : 'info',
+        type:    (estSuspension || estDesactivation) ? 'warning' : 'info',
         titre:   'Votre compte a été modifié',
         message: `Un administrateur a modifié votre compte (${changements.join(', ')}).`,
-        priorite: estSuspension ? 'haute' : 'normale',
+        priorite: (estSuspension || estDesactivation) ? 'haute' : 'normale',
       });
       if (estSuspension && user.email) {
         await mail.sendAccountSuspendedEmail({ email: user.email, prenom: user.prenom, nom: user.nom });
+      } else if (estDesactivation && user.email) {
+        await mail.sendAccountDeactivatedEmail({ email: user.email, prenom: user.prenom, nom: user.nom });
       }
     }
 
@@ -207,7 +218,12 @@ exports.deactivateUser = async (req, res, next) => {
         priorite: 'haute',
       });
       if (user.email) {
-        await mail.sendAccountSuspendedEmail({ email: user.email, prenom: user.prenom, nom: user.nom });
+        // CODE-004 (audit indépendant du 6 sept. 2026) — envoyait
+        // sendAccountSuspendedEmail() (texte "suspendu... tant que cette
+        // suspension n'est pas levée") alors que cette fonction fixe
+        // statut:'inactif', une notion distincte de 'suspendu' dans
+        // l'enum — message inexact envoyé à l'utilisateur. Corrigé.
+        await mail.sendAccountDeactivatedEmail({ email: user.email, prenom: user.prenom, nom: user.nom });
       }
     }
 

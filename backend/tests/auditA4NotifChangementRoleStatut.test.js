@@ -7,6 +7,13 @@
 // notification 'warning' + un email de suspension sont envoyés quand le
 // statut passe à 'suspendu', (d) un changement simultané role+statut
 // produit un message combiné en une seule notification.
+// CODE-004 (audit indépendant du 6 sept. 2026) — (e) un passage à 'inactif'
+// via CE contrôleur (le seul chemin réellement atteint par l'UI — voir
+// ticket 0024) déclenche désormais aussi une notification warning + un
+// email réel (sendAccountDeactivatedEmail) : avant ce correctif, seul
+// 'suspendu' déclenchait un email ici, alors que 'inactif' bloque tout
+// autant la connexion (middleware/auth.js::protect) — l'utilisateur
+// désactivé via le formulaire réel n'était jamais prévenu.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -35,6 +42,9 @@ test('A-4 — notification (et email si suspension) sur changement de rôle/stat
   const sentSuspensionEmails = [];
   const originalSendAccountSuspendedEmail = mailModule.sendAccountSuspendedEmail;
   mailModule.sendAccountSuspendedEmail = async (opts) => { sentSuspensionEmails.push(opts); return { simulated: true }; };
+  const sentDeactivationEmails = [];
+  const originalSendAccountDeactivatedEmail = mailModule.sendAccountDeactivatedEmail;
+  mailModule.sendAccountDeactivatedEmail = async (opts) => { sentDeactivationEmails.push(opts); return { simulated: true }; };
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -106,6 +116,30 @@ test('A-4 — notification (et email si suspension) sur changement de rôle/stat
       assert.equal(sentSuspensionEmails[0].prenom, 'Futur');
     });
 
+    await t.test('CODE-004 — changement de statut vers inactif — notification warning + email de désactivation réel', async () => {
+      const user = await User.create({ email: `_a4-inactif-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Desactive', prenom: 'Futur', role: 'receptionniste', statut: 'actif' });
+      const inactifId = user._id;
+      cleanup.push(() => User.findByIdAndDelete(inactifId));
+      cleanup.push(() => Notification.deleteMany({ destinataire: inactifId }));
+
+      const { status } = await call(settingsC.updateUser, {
+        params: { id: inactifId },
+        body: { prenom: 'Futur', nom: 'Desactive', email: user.email, telephone: '', role: 'receptionniste', service: '', statut: 'inactif' },
+        user: superadmin, ip: '127.0.0.1',
+      });
+      assert.equal(status, 200);
+
+      const notif = await Notification.findOne({ destinataire: inactifId }).lean();
+      assert.ok(notif, 'une notification doit être créée sur désactivation');
+      assert.equal(notif.type, 'warning', 'une désactivation bloque la connexion tout autant qu\'une suspension — même sévérité de notification');
+      assert.equal(notif.priorite, 'haute');
+      assert.match(notif.message, /statut : actif → inactif/);
+
+      assert.equal(sentDeactivationEmails.length, 1, 'un email de désactivation réel doit être envoyé — avant CODE-004, aucun email n\'était jamais envoyé pour ce cas');
+      assert.equal(sentDeactivationEmails[0].email, user.email);
+      assert.equal(sentSuspensionEmails.length, 1, 'le compte "suspendu" du sous-test précédent ne doit pas avoir généré un nouvel email de suspension ici — les deux emails sont bien distincts');
+    });
+
     await t.test('changement simultané rôle + statut — message combiné en une seule notification', async () => {
       const before = await Notification.countDocuments({ destinataire: suspenduId });
       const { status } = await call(settingsC.updateUser, {
@@ -126,6 +160,7 @@ test('A-4 — notification (et email si suspension) sur changement de rôle/stat
     });
   } finally {
     mailModule.sendAccountSuspendedEmail = originalSendAccountSuspendedEmail;
+    mailModule.sendAccountDeactivatedEmail = originalSendAccountDeactivatedEmail;
     for (const fn of cleanup) await fn();
     await Service.findByIdAndDelete(svcUrgences._id);
     await mongoose.disconnect();

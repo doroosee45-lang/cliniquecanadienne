@@ -1,9 +1,14 @@
 // AUDIT-ARCHIVAGE-B — 2 endpoints qui contournaient entièrement leur
 // contrôleur (aucun logAction possible depuis un handler inline de fichier
 // de routes) sont désormais de vraies fonctions de contrôleur, tracées.
-// mail.sendAccountSuspendedEmail est stubbée pour la durée du test (même
+// mail.sendAccountDeactivatedEmail est stubbée pour la durée du test (même
 // garde-fou que Phase 8 — SMTP est réellement configuré dans cet
 // environnement partagé, un envoi non stubbé enverrait un vrai email).
+// CODE-004 (audit indépendant du 6 sept. 2026) — deactivateUser() appelait
+// à tort sendAccountSuspendedEmail() (texte "suspendu", alors que cette
+// fonction fixe statut:'inactif', une notion distincte) ; corrigé pour
+// utiliser sendAccountDeactivatedEmail(), le stub ci-dessous suit ce
+// changement réel, pas l'inverse.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -22,9 +27,9 @@ test('Archivage/Audit — Point B : endpoints hors contrôleur désormais tracé
   const stamp = Date.now();
   const created = { users: [], invoices: [] };
 
-  const originalSendAccountSuspendedEmail = mailModule.sendAccountSuspendedEmail;
+  const originalSendAccountDeactivatedEmail = mailModule.sendAccountDeactivatedEmail;
   const sentEmails = [];
-  mailModule.sendAccountSuspendedEmail = async ({ email }) => { sentEmails.push(email); return { simulated: true }; };
+  mailModule.sendAccountDeactivatedEmail = async ({ email }) => { sentEmails.push(email); return { simulated: true }; };
 
   const call = async (fn, req = {}) => {
     let status = 200, body = null;
@@ -97,7 +102,7 @@ test('Archivage/Audit — Point B : endpoints hors contrôleur désormais tracé
       assert.equal(body.success, false);
     });
   } finally {
-    mailModule.sendAccountSuspendedEmail = originalSendAccountSuspendedEmail;
+    mailModule.sendAccountDeactivatedEmail = originalSendAccountDeactivatedEmail;
     for (const inv of created.invoices) await Invoice.findByIdAndDelete(inv._id);
     for (const u of created.users) await User.findByIdAndDelete(u._id);
     await mongoose.disconnect();
