@@ -22,6 +22,7 @@ import materniteReducer from './slices/materniteSlice';
 import pediatrieReducer from './slices/pediatrieSlice';
 import urgencesReducer from './slices/urgencesSlice';
 import echographieReducer from './slices/echographieSlice';
+import dossiersMedicauxReducer from './slices/dossiersMedicauxSlice';
 
 const store = configureStore({
   reducer: {
@@ -48,6 +49,7 @@ const store = configureStore({
     pediatrie: pediatrieReducer,
     urgences:     urgencesReducer,
     echographie:  echographieReducer,
+    dossiersMedicaux: dossiersMedicauxReducer,
   },
 });
 

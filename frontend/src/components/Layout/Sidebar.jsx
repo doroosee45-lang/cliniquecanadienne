@@ -226,6 +226,7 @@ import {
   Wallet, ClipboardList, User, Home, Users, Calendar, FileText, BedDouble,
   Siren, HeartPulse, Scissors, Hospital, Activity, Briefcase, MessageSquare,
   BrainCircuit, BarChart3, Archive, ShieldCheck, Settings, ClipboardCheck, LogOut,
+  Search,
 } from 'lucide-react';
 
 // ── Configuration des rôles ────────────────────────────────────────────────
@@ -263,6 +264,7 @@ const NAV_SECTIONS = [
     label: 'Clinique',
     items: [
       { to: '/patients',        label: 'Patients',        icon: Users,      roles: withAdmins('medecin','infirmier','receptionniste') },
+      { to: '/dossiers-medicaux', label: 'Dossiers Médicaux', icon: Search, roles: withAdmins('medecin','infirmier','laborantin','radiologue','sage_femme','pharmacien') },
       { to: '/appointments',    label: 'Rendez-vous',     icon: Calendar,   roles: null },
       { to: '/consultations',   label: 'Consultations',   icon: Stethoscope, roles: withAdmins('medecin','infirmier'), ai: true },
       { to: '/prescriptions',   label: 'Ordonnances',     icon: FileText,   roles: withAdmins('medecin','pharmacien','infirmier') },

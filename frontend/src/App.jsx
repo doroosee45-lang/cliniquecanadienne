@@ -30,6 +30,7 @@ const Dashboard         = lazy(() => import('./pages/Dashboard'));
 // ─── Patients ─────────────────────────────────────────────────────────────────
 const Patients          = lazy(() => import('./pages/Patients'));
 const PatientDetail     = lazy(() => import('./pages/PatientDetail'));
+const DossiersMedicaux  = lazy(() => import('./pages/DossiersMedicaux'));
 
 // ─── Agenda & Consultations ───────────────────────────────────────────────────
 const Appointments      = lazy(() => import('./pages/Appointments'));
@@ -130,6 +131,11 @@ const ROLES = {
   prescription    : ['superadmin', 'medecin', 'pharmacien', 'infirmier'],
   // ── Spécialités & Paraclinique ─────────────────────────────────────────────
   maternite       : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme'],
+  // Union des rôles autorisés par AU MOINS un des 9 types de dossiers
+  // recherchés (voir medicalRecordsController.js::SOURCES) — la matrice
+  // fine par collection est appliquée côté backend, cette garde ne fait
+  // qu'empêcher d'atteindre une page qui ne montrerait jamais rien.
+  dossiersMedicaux: ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'laborantin', 'radiologue', 'sage_femme', 'pharmacien'],
   pediatrie       : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme'],
   urgences        : ['superadmin', 'adminclinique', 'medecin', 'infirmier'],
   laboratoire     : ['superadmin', 'adminclinique', 'medecin', 'laborantin'],
@@ -185,6 +191,7 @@ const AppRoutes = () => {
         {/* ── Patients ─────────────────────────────────────────────────── */}
         <Route path="patients"      element={<Patients />} />
         <Route path="patients/:id"  element={<PatientDetail />} />
+        <Route path="dossiers-medicaux" element={<Guard roles={ROLES.dossiersMedicaux}><DossiersMedicaux /></Guard>} />
 
         {/* ── Agenda & Consultations ───────────────────────────────────── */}
         <Route path="appointments"  element={<Appointments />} />
