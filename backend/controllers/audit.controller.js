@@ -1,5 +1,8 @@
 const AuditLog = require('../models/AuditLog');
-const { paginate, escapeRegex } = require('../utils/helpers');
+const AuditAlert = require('../models/AuditAlert');
+const User = require('../models/User');
+const { paginate, escapeRegex, createNotification } = require('../utils/helpers');
+const ADMIN_ROLES = ['superadmin', 'adminclinique'];
 
 // ── Risk mapping ────────────────────────────────────────────────
 const RISK_MAP = {
@@ -246,7 +249,86 @@ exports.getSuspects = async (req, res, next) => {
       });
     });
 
+    // Sous-phase 5.7 — "Enquêter"/"Clôturer" ne persistaient jamais rien :
+    // les suspects ci-dessus sont recalculés à zéro à chaque appel
+    // (_id synthétique), muter leur statut côté client était donc sans
+    // effet réel. Un vrai statut est maintenant stocké (AuditAlert,
+    // alert_id = l'_id synthétique) et réappliqué ici sur le calcul frais.
+    const alertIds = suspects.map(s => s._id);
+    const overlays = await AuditAlert.find({ alert_id: { $in: alertIds } }).lean();
+    const overlayByAlertId = Object.fromEntries(overlays.map(o => [o.alert_id, o]));
+    suspects.forEach(s => { if (overlayByAlertId[s._id]) s.statut = overlayByAlertId[s._id].statut; });
+
+    // "Créer alerte" (Audit.jsx) ne persistait jamais rien non plus : les
+    // alertes créées manuellement (source:'manuel', pas d'alert_id) sont
+    // de vrais documents, ajoutées ici au tableau calculé.
+    const manuelles = await AuditAlert.find({ source: 'manuel' }).sort('-createdAt').lean();
+    manuelles.forEach(m => suspects.push({
+      _id: String(m._id), type: m.type, utilisateur: m.utilisateur, description: m.description,
+      date: m.date_evenement || m.createdAt, severite: m.severite, risque: m.severite, statut: m.statut,
+    }));
+
     res.json({ success: true, suspects });
+  } catch (err) { next(err); }
+};
+
+// PUT /audit/suspects/:id/statut — Sous-phase 5.7, cf. commentaire ci-dessus.
+exports.updateSuspectStatut = async (req, res, next) => {
+  try {
+    const { statut } = req.body;
+    if (!['ouvert', 'en_enquete', 'cloture'].includes(statut)) {
+      return res.status(400).json({ success: false, message: 'Statut invalide.' });
+    }
+    const id = req.params.id;
+    // Une alerte manuelle (créée via createAlert) a un vrai _id Mongo ;
+    // une alerte calculée (brute_x/denied_x) n'existe qu'en tant
+    // qu'alert_id synthétique — jamais les deux pour le même document.
+    const isManuelle = /^[0-9a-fA-F]{24}$/.test(id) && await AuditAlert.exists({ _id: id, source: 'manuel' });
+    const alert = isManuelle
+      ? await AuditAlert.findByIdAndUpdate(id, { statut, cree_par: req.user._id }, { new: true })
+      : await AuditAlert.findOneAndUpdate(
+          { alert_id: id },
+          { alert_id: id, statut, source: 'auto', cree_par: req.user._id },
+          { new: true, upsert: true }
+        );
+    res.json({ success: true, alert });
+  } catch (err) { next(err); }
+};
+
+// POST /audit/suspects/:id/notifier — Sous-phase 5.7 — "Notifier admin"
+// affichait un faux succès sans le moindre envoi. Crée une vraie
+// Notification (utils/helpers.js::createNotification, déjà réelle et déjà
+// utilisée ailleurs — ex. portal.controller.js) pour chaque administrateur
+// réel (superadmin/adminclinique), jamais une simulation.
+exports.notifySuspect = async (req, res, next) => {
+  try {
+    const { type, utilisateur, description } = req.body;
+    if (!description) return res.status(400).json({ success: false, message: 'Description requise.' });
+    const admins = await User.find({ role: { $in: ADMIN_ROLES }, statut: 'actif' }).select('_id');
+    await Promise.all(admins.map(a => createNotification({
+      destinataire: a._id, type: 'critical', priorite: 'critique',
+      titre: `🚨 Alerte sécurité : ${type || 'Activité suspecte'}`,
+      message: `${utilisateur ? `Utilisateur : ${utilisateur}. ` : ''}${description}`,
+      lien: '/audit',
+    })));
+    res.json({ success: true, notifies: admins.length });
+  } catch (err) { next(err); }
+};
+
+// POST /audit/alertes — Sous-phase 5.7 — "Créer alerte" (Audit.jsx, depuis
+// le détail d'un événement critique) poussait un objet local jamais
+// persisté. Crée une vraie AuditAlert manuelle, réapparaît réellement dans
+// getSuspects() ci-dessus au prochain chargement.
+exports.createAlert = async (req, res, next) => {
+  try {
+    const { type, utilisateur, description, severite, date_evenement } = req.body;
+    if (!description) return res.status(400).json({ success: false, message: 'Description requise.' });
+    const alert = await AuditAlert.create({
+      type: type || 'Activité critique signalée', utilisateur, description,
+      severite: severite === 'critique' ? 'critique' : 'eleve', source: 'manuel',
+      cree_par: req.user._id, date_evenement: date_evenement || new Date(),
+    });
+    res.status(201).json({ success: true, alert });
   } catch (err) { next(err); }
 };
 

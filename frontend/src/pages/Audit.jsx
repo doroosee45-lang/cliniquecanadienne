@@ -647,9 +647,36 @@ export default function JournalAudit() {
     setPage(1);
   };
 
-  const clotureAlerte = (id) => {
-    setSuspects(prev => prev.map(s => s._id === id ? { ...s, statut: "cloture" } : s));
-    toast.success("✅ Alerte clôturée");
+  // Sous-phase 5.7 — "Enquêter"/"Clôturer" mutaient seulement l'état local
+  // (suspects recalculé à zéro par getSuspects() à chaque chargement, cf.
+  // audit.controller.js) : sans effet réel, le statut revenait à "ouvert"
+  // au moindre rechargement. Persiste réellement via PUT /audit/suspects/
+  // :id/statut (AuditAlert, réel), puis reflète la réponse serveur plutôt
+  // que de deviner l'état côté client.
+  const updateSuspectStatut = async (id, statut) => {
+    try {
+      await api.put(`/audit/suspects/${id}/statut`, { statut });
+      setSuspects(prev => prev.map(s => s._id === id ? { ...s, statut } : s));
+      toast.success(statut === "cloture" ? "✅ Alerte clôturée" : "🔍 Enquête ouverte");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la mise à jour de l'alerte.");
+    }
+  };
+  const clotureAlerte = (id) => updateSuspectStatut(id, "cloture");
+
+  // Sous-phase 5.7 — "Notifier admin" affichait un faux succès sans le
+  // moindre envoi. POST /audit/suspects/:id/notifier crée une vraie
+  // Notification pour chaque administrateur réel (superadmin/
+  // adminclinique, déjà réel — utils/helpers.js::createNotification).
+  const notifierAdmin = async (s) => {
+    try {
+      const { data } = await api.post(`/audit/suspects/${s._id}/notifier`, {
+        type: s.type, utilisateur: s.utilisateur, description: s.description,
+      });
+      toast.success(`📧 ${data.notifies} administrateur(s) notifié(s)`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la notification.");
+    }
   };
 
   const [archiveDuree, setArchiveDuree] = useState("1an");
@@ -1204,8 +1231,22 @@ export default function JournalAudit() {
                             </ABadge>
                           </td>
                           <td>
+                            {/* Sous-phase 5.7 — mutait uniquement l'état
+                                local (setConnexions), sans jamais invalider
+                                la vraie session : le token JWT de
+                                l'utilisateur restait valide, il n'était pas
+                                réellement déconnecté malgré le message de
+                                succès. Aucun mécanisme réel de révocation
+                                de session/JWT individuelle n'existe dans ce
+                                système (middleware/auth.js ne vérifie que la
+                                signature et User.statut) — construire une
+                                vraie révocation par session dépasse le
+                                périmètre de cette sous-phase. Désactivé
+                                honnêtement ; seule la suspension du compte
+                                entier (module Administration, déjà réelle)
+                                empêche réellement tout accès futur. */}
                             {c.statut === "actif" && (
-                              <button className="abtn abtn-danger abtn-sm" style={{ fontSize: 11 }} onClick={() => { setConnexions(prev => prev.map(x => x._id === c._id ? { ...x, statut: "deconnecte", heure_deconnexion: new Date().toISOString() } : x)); toast.success("Session déconnectée"); }}>
+                              <button className="abtn abtn-danger abtn-sm" style={{ fontSize: 11 }} disabled title="Fonctionnalité en cours de développement — aucune révocation réelle de session n'existe encore. Utilisez la suspension de compte (module Administration) pour bloquer réellement l'accès." onClick={() => toast("🚧 Déconnexion forcée non disponible — suspendez le compte via le module Administration pour bloquer réellement l'accès.")}>
                                 {I.ban} Forcer
                               </button>
                             )}
@@ -1292,16 +1333,13 @@ export default function JournalAudit() {
                         <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 6 }}>📅 {fmtDT(s.date)}</div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
-                        <button className="abtn abtn-danger abtn-sm" onClick={() => {
-                          setSuspects(prev => prev.map(x => x._id === s._id ? { ...x, statut: "en_enquete" } : x));
-                          toast.success("🔍 Enquête ouverte");
-                        }}>
+                        <button className="abtn abtn-danger abtn-sm" onClick={() => updateSuspectStatut(s._id, "en_enquete")}>
                           🔍 Enquêter
                         </button>
                         <button className="abtn abtn-ghost abtn-sm" onClick={() => clotureAlerte(s._id)}>
                           {I.check} Clôturer
                         </button>
-                        <button className="abtn abtn-ghost abtn-sm" style={{ fontSize: 11 }} onClick={() => toast.success("📧 Notification envoyée à l'administrateur")}>
+                        <button className="abtn abtn-ghost abtn-sm" style={{ fontSize: 11 }} onClick={() => notifierAdmin(s)}>
                           📧 Notifier admin
                         </button>
                       </div>
@@ -1593,14 +1631,28 @@ export default function JournalAudit() {
                     {I.dl} Télécharger PDF
                   </button>
                   {selectedEvent.risque === "critique" && (
-                    <button className="abtn abtn-danger abtn-sm" onClick={() => {
-                      setSuspects(prev => [...prev, {
-                        _id: `alerte_${selectedEvent._id}`, type: 'Activité critique signalée',
-                        utilisateur: selectedEvent.utilisateur, description: selectedEvent.description,
-                        date: new Date().toISOString(), severite:'critique', risque:'critique', statut:'ouvert',
-                      }]);
-                      toast.success("🚨 Alerte créée — onglet Activités suspectes mis à jour");
-                      setModalEvent(false); setTab("suspects");
+                    <button className="abtn abtn-danger abtn-sm" onClick={async () => {
+                      // Sous-phase 5.7 — poussait un objet local
+                      // (_id:`alerte_${...}`) jamais persisté : disparaissait
+                      // au rechargement de l'onglet "Activités suspectes".
+                      // POST /audit/alertes crée une vraie AuditAlert,
+                      // réellement reflétée par getSuspects() ensuite.
+                      try {
+                        const { data } = await api.post('/audit/alertes', {
+                          type: 'Activité critique signalée',
+                          utilisateur: selectedEvent.utilisateur, description: selectedEvent.description,
+                          severite: 'critique', date_evenement: selectedEvent.date,
+                        });
+                        setSuspects(prev => [...prev, {
+                          _id: data.alert._id, type: data.alert.type, utilisateur: data.alert.utilisateur,
+                          description: data.alert.description, date: data.alert.date_evenement,
+                          severite: data.alert.severite, risque: data.alert.severite, statut: data.alert.statut,
+                        }]);
+                        toast.success("🚨 Alerte créée — onglet Activités suspectes mis à jour");
+                        setModalEvent(false); setTab("suspects");
+                      } catch (err) {
+                        toast.error(err?.response?.data?.message || "Erreur lors de la création de l'alerte.");
+                      }
                     }}>
                       🚨 Créer alerte
                     </button>
