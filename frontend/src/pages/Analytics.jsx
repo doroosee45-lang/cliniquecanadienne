@@ -327,23 +327,19 @@ const TEMPS_PRISE_CHARGE_DATASETS = [
   { label:"Temps consultation (min)", data:[22,24,26,25,24,20,18], borderColor:"#1B4F9E", backgroundColor:"rgba(27,79,158,.06)", tension:.4, fill:false, borderDash:[5,5], pointRadius:3, pointBackgroundColor:"#1B4F9E" },
 ];
 
-const DEMO_KPI = {};
-
-const DEMO_CONSULT_LINE = {};
-
-const DEMO_REVENUS_BAR = {};
-
-const DEMO_GENDER = {};
-
-const DEMO_PATHOLOGIES = [];
-
-const DEMO_MEDECINS = [];
-
-const DEMO_ALERTES_MED = [];
-
-const DEMO_ALERTES_ADM = [];
-
-const DEMO_PERF = [];
+// Correction 2 (FE-BUG-013, audit indépendant du 6 sept. 2026) — ces 9
+// constantes DEMO_* de portée module (DEMO_KPI, DEMO_CONSULT_LINE,
+// DEMO_REVENUS_BAR, DEMO_GENDER, DEMO_PATHOLOGIES, DEMO_MEDECINS,
+// DEMO_ALERTES_MED, DEMO_ALERTES_ADM, DEMO_PERF) étaient un résidu mort :
+// DEMO_KPI n'était référencée nulle part (grep confirmé), et les 8 autres
+// étaient systématiquement masquées (shadowing) par une constante locale de
+// même nom à l'intérieur du composant (via useMemo, alimentée par les vraies
+// données Redux `charts.*`) — jamais lues à l'exécution. Leur seul effet
+// réel était de tromper un lecteur (humain ou audit automatisé) qui grep le
+// nom "DEMO_*" en tête de fichier et conclut à des données fabriquées, sans
+// voir que la variable réellement utilisée plus bas porte le même nom mais
+// vient bien du backend. Supprimées : aucune régression possible, elles
+// n'étaient lues nulle part.
 
 // ─── MAIN ───────────────────────────────────────────────────
 export default function Analytics() {
@@ -672,6 +668,61 @@ export default function Analytics() {
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // Correction 2 (FE-BUG-013) — remplace un bouton qui n'était qu'un
+  // toast.success("📄 Export PDF") sans la moindre génération. Même motif
+  // jsPDF/autoTable que buildAnalyticsPdfDoc (ligne 507), réduit aux deux
+  // vraies sources de cette section (DEMO_REVENUS_BAR/DEMO_PATHOLOGIES,
+  // toutes deux alimentées par charts.* réel, voir useMemo ci-dessus) —
+  // jamais de valeur inventée.
+  const exportMedicalPDF = async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+    const timeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    doc.setFillColor(11, 30, 59);
+    doc.rect(0, 0, W, 24, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+    doc.text(`REVENUS PAR SOURCE MÉDICALE — ${CLINIC_NAME.toUpperCase()}`, W / 2, 10, { align: 'center' });
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
+    doc.text(`${CLINIC_NAME} ${CLINIC_SUBTITLE} · Généré le ${dateStr} à ${timeStr}`, W / 2, 17, { align: 'center' });
+
+    let y = 32;
+    doc.setTextColor(60, 60, 60); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+    doc.text('Revenus par source', 14, y);
+    autoTable(doc, {
+      startY: y + 3,
+      head: [['Service', 'Revenus (CFA)']],
+      body: DEMO_REVENUS_BAR.labels.map((lbl, i) => [lbl, (DEMO_REVENUS_BAR.data[i] ?? 0).toLocaleString('fr-FR')]),
+      theme: 'grid',
+      headStyles: { fillColor: [11, 30, 59], fontSize: 9 },
+      bodyStyles: { fontSize: 9 },
+      margin: { left: 14, right: 14 },
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+    doc.text('Top 5 pathologies', 14, y);
+    autoTable(doc, {
+      startY: y + 3,
+      head: [['Rang', 'Pathologie', 'Nombre', '%']],
+      body: DEMO_PATHOLOGIES.map((p, i) => [i + 1, p.maladie, p.nb, `${p.pct}%`]),
+      theme: 'grid',
+      headStyles: { fillColor: [11, 30, 59], fontSize: 9 },
+      bodyStyles: { fontSize: 9 },
+      margin: { left: 14, right: 14 },
+    });
+
+    const filename = `analytics-medical-${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(filename);
+    toast.success(`📄 PDF exporté : ${filename}`);
   };
 
   const exportMedicalExcel = async () => {
@@ -1233,7 +1284,7 @@ export default function Analytics() {
                   <div><h3>{I.money} Revenus par source médicale</h3><p>Répartition du chiffre d'affaires</p></div>
                   <div style={{ display:"flex", gap:6 }}>
                     <button className="abtn abtn-ghost abtn-sm" onClick={exportMedicalExcel}>📊 Excel</button>
-                    <button className="abtn abtn-ghost abtn-sm" onClick={() => toast.success("📄 Export PDF")}>{I.dl} PDF</button>
+                    <button className="abtn abtn-ghost abtn-sm" onClick={exportMedicalPDF}>{I.dl} PDF</button>
                   </div>
                 </div>
                 <div style={{ padding:20 }}>
