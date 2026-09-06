@@ -144,6 +144,37 @@ const articles = [
 
 const navLinks = ["À propos", "Services", "Médecins", "Départements", "Actualités", "Contact"];
 
+// Sous-phase 5.8 — liens du footer : chaque libellé pointe vers une ancre
+// réellement existante sur cette page (aucune de ces sections n'est
+// fictive). "Chirurgie" ne figure pas dans la section Services mais bien
+// dans Départements — pointé en conséquence, pas vers "services" par
+// simplicité trompeuse.
+const footerServiceAnchors = {
+  "Consultation": "services",
+  "Pédiatrie": "services",
+  "Maternité": "services",
+  "Chirurgie": "départements",
+  "Urgences": "services",
+  "Laboratoire": "services",
+};
+const footerLiensUtilesAnchors = {
+  "À propos": "à-propos",
+  "Médecins": "médecins",
+  "Actualités": "actualités",
+  "Urgences": "services",
+};
+// Éléments réels du "Plan du site" (panneau) : uniquement des ancres et
+// routes qui existent vraiment sur cette page / dans l'application.
+const sitePlanItems = [
+  { label: "Accueil", id: "hero" },
+  { label: "À propos", id: "à-propos" },
+  { label: "Services", id: "services" },
+  { label: "Médecins", id: "médecins" },
+  { label: "Départements", id: "départements" },
+  { label: "Actualités", id: "actualités" },
+  { label: "Contact", id: "contact" },
+];
+
 export default function ClinicLanding() {
   // Correction 10 (relecture du 6 sept. 2026, FE-BUG-012) — le sélecteur de
   // langue FR/EN/AR a été retiré : il changeait ce state mais aucune
@@ -178,6 +209,7 @@ export default function ClinicLanding() {
     }
   };
   const [hovered, setHovered] = useState(null);
+  const [sitePlanOpen, setSitePlanOpen] = useState(false);
   const intervalRef = useRef(null);
 
   useEffect(() => {
@@ -854,15 +886,21 @@ export default function ClinicLanding() {
             <div>
               <h4 style={{ color: COLORS.white, fontWeight: "700", marginBottom: "18px", fontSize: "15px" }}>Services</h4>
               {["Consultation", "Pédiatrie", "Maternité", "Chirurgie", "Urgences", "Laboratoire"].map(s => (
-                <div key={s} style={{ marginBottom: "10px", fontSize: "14px", cursor: "pointer", transition: "color 0.2s" }}
+                <div key={s} onClick={() => scrollTo(footerServiceAnchors[s])} style={{ marginBottom: "10px", fontSize: "14px", cursor: "pointer", transition: "color 0.2s" }}
                   onMouseEnter={e => e.target.style.color = COLORS.white}
                   onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.7)"}>{s}</div>
               ))}
             </div>
             <div>
               <h4 style={{ color: COLORS.white, fontWeight: "700", marginBottom: "18px", fontSize: "15px" }}>Liens utiles</h4>
-              {["À propos", "Médecins", "Actualités", "Carrières", "FAQ", "Urgences"].map(l => (
-                <div key={l} style={{ marginBottom: "10px", fontSize: "14px", cursor: "pointer", transition: "color 0.2s" }}
+              {/* Correction (Sous-phase 5.8) — "Carrières" et "FAQ" retirés :
+                  aucune page/contenu réel n'existe pour ces destinations et en
+                  créer un maintenant nécessiterait une vraie rédaction
+                  (offres d'emploi, questions/réponses) hors périmètre d'une
+                  correction de lien mort. Les 4 restants pointent vers des
+                  ancres réellement existantes sur cette page. */}
+              {["À propos", "Médecins", "Actualités", "Urgences"].map(l => (
+                <div key={l} onClick={() => scrollTo(footerLiensUtilesAnchors[l])} style={{ marginBottom: "10px", fontSize: "14px", cursor: "pointer", transition: "color 0.2s" }}
                   onMouseEnter={e => e.target.style.color = COLORS.white}
                   onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.7)"}>{l}</div>
               ))}
@@ -886,16 +924,51 @@ export default function ClinicLanding() {
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", padding: "22px 24px" }}>
           <div className="footer-bottom" style={{ maxWidth: "1280px", margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <span style={{ fontSize: "13px" }}>© 2026 Clinique Canadienne de Souanké. Tous droits réservés.</span>
+            {/* Correction (Sous-phase 5.8) — "Politique de confidentialité" et
+                "Conditions d'utilisation" retirés : contenu juridique réel
+                nécessitant une vraie rédaction, hors périmètre d'une
+                correction de lien mort. "Plan du site" ouvre un panneau réel
+                listant les ancres existantes de cette page. */}
             <div style={{ display: "flex", gap: "24px" }}>
-              {["Politique de confidentialité", "Conditions d'utilisation", "Plan du site"].map(l => (
-                <span key={l} style={{ fontSize: "13px", cursor: "pointer", transition: "color 0.2s" }}
-                  onMouseEnter={e => e.target.style.color = COLORS.white}
-                  onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.7)"}>{l}</span>
-              ))}
+              <span onClick={() => setSitePlanOpen(true)} style={{ fontSize: "13px", cursor: "pointer", transition: "color 0.2s" }}
+                onMouseEnter={e => e.target.style.color = COLORS.white}
+                onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.7)"}>Plan du site</span>
             </div>
           </div>
         </div>
       </footer>
+
+      {sitePlanOpen && (
+        <div
+          role="dialog" aria-modal="true" aria-label="Plan du site"
+          onClick={() => setSitePlanOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,0.55)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: COLORS.white, borderRadius: "20px", padding: "28px", maxWidth: "380px", width: "100%", boxShadow: "0 30px 80px rgba(0,0,0,0.35)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+              <h3 style={{ fontSize: "18px", fontWeight: "800", color: COLORS.gray900 }}>Plan du site</h3>
+              <button type="button" aria-label="Fermer" onClick={() => setSitePlanOpen(false)} style={{ border: "none", background: "transparent", fontSize: "20px", cursor: "pointer", color: COLORS.gray600, lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ display: "grid", gap: "8px" }}>
+              {sitePlanItems.map(item => (
+                <button
+                  key={item.id} type="button"
+                  onClick={() => { scrollTo(item.id); setSitePlanOpen(false); }}
+                  style={{ textAlign: "left", padding: "10px 14px", borderRadius: "10px", border: "1px solid #EFF6FF", background: COLORS.gray50, color: COLORS.gray700, fontSize: "14px", fontWeight: "600", cursor: "pointer" }}
+                >
+                  {item.label}
+                </button>
+              ))}
+              <Link
+                to="/login" onClick={() => setSitePlanOpen(false)}
+                style={{ textAlign: "left", padding: "10px 14px", borderRadius: "10px", border: `1px solid ${COLORS.primary}`, background: COLORS.accent, color: COLORS.primary, fontSize: "14px", fontWeight: "700", textDecoration: "none" }}
+              >
+                🔑 Connexion / Espace patient
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
