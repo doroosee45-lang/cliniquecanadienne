@@ -43,7 +43,16 @@ test('toutes les routes mutantes déclarent authorize(...)', () => {
       if (EXEMPT_LINE_PATTERNS.some(p => p.test(line))) return;
       // authorize peut être inline (authorize(...)) ou via une variable
       // pré-liée (const canWrite = authorize(...); ... router.post(path, canWrite, ...))
-      const hasInlineAuthorize = /authorize\(/.test(line);
+      // QA-003 (audit indépendant du 6 sept. 2026) — ne reconnaissait que
+      // authorize(...) littéral : authorizePermission(...) (Sous-phase
+      // 5.5.b, matrice de permissions éditable réservée au superadmin — un
+      // garde RBAC tout aussi réel, juste plus granulaire) ne contient pas
+      // la sous-chaîne "authorize(" (il y a "Permission" entre les deux),
+      // donc settings.routes.js:66 remontait un faux positif "route sans
+      // authorize()" alors qu'elle est bien protégée. Corrigé le test, pas
+      // la route : authorizePermission est le comportement réel voulu ici,
+      // pas une régression à faire disparaître en le remplaçant.
+      const hasInlineAuthorize = /\bauthorize(?:Permission)?\(/.test(line);
       const usesNamedGuard = /,\s*(canWrite|canRead|ROLE)\s*,/.test(line) || /,\s*(canWrite|canRead|ROLE)\s*\)/.test(line);
       if (!hasInlineAuthorize && !usesNamedGuard) {
         violations.push(`${file}:${i + 1} — ${line.trim()}`);
@@ -71,7 +80,9 @@ test('les routes de lecture des modules cliniques/financiers sensibles déclaren
       const isRead = /^\s*router\.get\(/.test(line);
       if (!isRead) return;
       if (/\/activate\/:token/.test(line)) return; // route publique légitime
-      const hasInlineAuthorize = /authorize\(/.test(line);
+      // QA-003 — même correctif de regex que le test précédent (voir son
+      // commentaire) : reconnaît aussi authorizePermission(...).
+      const hasInlineAuthorize = /\bauthorize(?:Permission)?\(/.test(line);
       const usesNamedGuard = /,\s*(canWrite|canRead|ROLE)\s*[,)]/.test(line);
       if (!hasInlineAuthorize && !usesNamedGuard) violations.push(`${file}:${i + 1} — ${line.trim()}`);
     });
