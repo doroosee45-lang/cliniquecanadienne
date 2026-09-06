@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
 import Spinner from '../components/UI/Spinner';
@@ -45,8 +45,15 @@ const OpenBtn = ({ to, label }) => {
 export default function PatientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  // Module « Dossiers Médicaux » (recherche transversale) — un résultat de
+  // recherche ouvre directement l'onglet concerné via ?tab=, au lieu de
+  // toujours retomber sur 'info' puis obliger l'utilisateur à re-cliquer.
+  // Valeur ignorée si elle ne correspond à aucun onglet réel (ex. lien
+  // obsolète, saisie manuelle) — jamais un onglet vide/blanc affiché.
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
   const [patient,    setPatient]    = useState(null);
-  const [tab,        setTab]        = useState('info');
+  const [tab,        setTab]        = useState(TABS.some(t => t.id === requestedTab) ? requestedTab : 'info');
   const [data,       setData]       = useState({});
   const [loading,    setLoading]    = useState(true);
   const [tabLoading, setTabLoading] = useState(false);
@@ -77,7 +84,23 @@ export default function PatientDetail() {
       hospi:    () => api.get(`/hospitalization?patient=${id}&limit=15`),
       ordos:    () => api.get(`/prescriptions?patient=${id}&limit=15`),
       labo:     () => api.get(`/laboratory?patient=${id}&limit=15`),
-      imagerie: () => api.get(`/radiology?patient=${id}&limit=15`),
+      // Module « Dossiers Médicaux » — cet onglet ne récupérait jusqu'ici que
+      // la radiologie (ImagingResult) ; le filtre de recherche "Imagerie/Écho"
+      // couvre aussi les échographies (Echographie), qui n'apparaissaient
+      // donc jamais ici malgré l'icône/le libellé "Imagerie". Les deux
+      // sources sont fusionnées ci-dessous, chacune taguée par son origine
+      // réelle pour un affichage honnête (elles n'ont pas les mêmes champs).
+      imagerie: () => Promise.all([
+        api.get(`/radiology?patient=${id}&limit=15`),
+        api.get(`/echographie?patient=${id}&limit=15`),
+      ]).then(([radio, echo]) => ({
+        data: {
+          results: [
+            ...(radio.data.examens || []).map(r => ({ ...r, _source: 'radiology' })),
+            ...(echo.data.demandes || []).map(r => ({ ...r, _source: 'echographie' })),
+          ],
+        },
+      })),
       urgences: () => api.get(`/urgences?patient=${id}&limit=15`),
       chirurgie:() => api.get(`/chirurgie?patient=${id}&limit=15`),
       factures: () => api.get(`/finance?patient=${id}&limit=15`),
@@ -488,19 +511,22 @@ export default function PatientDetail() {
                   <div className="flex justify-end mb-2">
                     <OpenBtn to="/radiology" label="Module Imagerie" />
                   </div>
-                  {!(data.imagerie?.results?.length || data.imagerie?.examens?.length)
+                  {!data.imagerie?.results?.length
                     ? <Empty msg="Aucun examen d'imagerie pour ce patient." />
-                    : (data.imagerie?.results || data.imagerie?.examens || []).map(r => (
+                    : data.imagerie.results.map(r => (
                         <div key={r._id} className="p-4 rounded-xl border border-gray-100">
                           <div className="flex items-center justify-between">
                             <div>
-                              <span className="font-semibold text-sm">{r.type_examen}{r.region_anatomique ? ` — ${r.region_anatomique}` : ''}</span>
+                              <span className="font-semibold text-sm">
+                                {r._source === 'echographie' ? '🩻 Échographie' : (r.type_examen || 'Imagerie')}
+                                {r.region_anatomique ? ` — ${r.region_anatomique}` : (r.sous_type ? ` — ${r.sous_type}` : '')}
+                              </span>
                               {r.anomalie_detectee && <span className="badge badge-red ml-2">⚠️ Anomalie</span>}
                             </div>
                             <StatusBadge statut={r.statut} />
                           </div>
-                          {r.conclusion && <p className="text-sm text-gray-600 mt-1">{r.conclusion}</p>}
-                          <div className="text-xs text-gray-400 mt-1">{fmt(r.date_prescription || r.date_rdv)}</div>
+                          {(r.motif || r.conclusion) && <p className="text-sm text-gray-600 mt-1">{r.conclusion || r.motif}</p>}
+                          <div className="text-xs text-gray-400 mt-1">{fmt(r.date_prescription || r.date_rdv || r.createdAt)}</div>
                         </div>
                       ))}
                 </div>

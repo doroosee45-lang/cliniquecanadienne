@@ -111,7 +111,7 @@ exports.getStats = async (req, res, next) => {
 // ── GET /echographie
 exports.getAll = async (req, res, next) => {
   try {
-    const { page = 1, limit = 50, q, type, statut, priorite } = req.query;
+    const { page = 1, limit = 50, q, type, statut, priorite, patient } = req.query;
     const filter = {};
     if (q) {
       const re = new RegExp(escapeRegex(q), 'i');
@@ -120,6 +120,12 @@ exports.getAll = async (req, res, next) => {
     if (type)     filter.type     = type;
     if (statut)   filter.statut   = statut;
     if (priorite) filter.priorite = priorite;
+    // Module « Dossiers Médicaux » (recherche transversale) — PatientDetail.jsx
+    // récupère désormais aussi les échographies du patient dans son onglet
+    // "Imagerie" (voir PatientDetail.jsx) ; ce filtre manquait alors que
+    // toutes les collections sœurs (laboratory/radiology/hospitalization/...)
+    // le supportent déjà.
+    if (patient)  filter.patient  = patient;
 
     const [demandes, total] = await Promise.all([
       Echographie.find(filter)
