@@ -367,8 +367,6 @@ function Stars({ note, max = 5 }) {
 const DEMO_EMPLOYES = [];
 
 
-const DEMO_CANDIDATURES = [];
-
 const DEMO_EVALUATIONS = [];
 
 const DEMO_FORMATIONS = [];
@@ -384,6 +382,10 @@ const PLAN_LABEL = { travail:"Travail", garde:"Garde", conge:"Congé", repos:"Re
 const EMPTY_EMP = { matricule:"", prenom:"", nom:"", sexe:"homme", date_naissance:"", nationalite:"", telephone:"", email:"", adresse:"", poste:"infirmier", service:"", date_embauche:"", contrat:"cdi", statut:"actif", salaire_base:"" };
 const EMPTY_CONGE = { employe_id:"", type:"annuel", date_debut:"", date_fin:"", motif:"" };
 const EMPTY_PLAN = { employe_id:"", date:"", heure_debut:"", heure_fin:"", type:"travail" };
+// Sous-phase 5.5.a — restaure le formulaire "Candidature" (retiré en 5.7
+// faute de persistance réelle) : mêmes champs, désormais branchés sur
+// POST/PUT /hr/candidatures.
+const EMPTY_CANDIDATURE = { nom:"", poste:"infirmier", experience:"", diplome:"", email:"", telephone:"" };
 
 // Adapter Staff (backend) → champs attendus par le frontend
 const normalizeEmp = (s) => {
@@ -430,7 +432,7 @@ export default function RessourcesHumaines() {
   const [employes, setEmployes]           = useState([]);
   const [conges, setConges]               = useState([]);
   const [schedules, setSchedules]         = useState([]);
-  const [candidatures, setCandidatures]   = useState(DEMO_CANDIDATURES);
+  const [candidatures, setCandidatures]   = useState([]);
   const [evaluations, setEvaluations]     = useState(DEMO_EVALUATIONS);
   const [formations, setFormations]       = useState(DEMO_FORMATIONS);
   const [sanctions, setSanctions]         = useState(DEMO_SANCTIONS);
@@ -447,12 +449,14 @@ export default function RessourcesHumaines() {
   const [modalEmp,        setModalEmp]        = useState(false);
   const [modalConge,      setModalConge]       = useState(false);
   const [modalPlan,       setModalPlan]        = useState(false);
+  const [modalCandidat,   setModalCandidat]    = useState(false);
   const [publishingId,    setPublishingId]     = useState(null);
 
   // Forms
   const [formEmp,       setFormEmp]       = useState(EMPTY_EMP);
   const [formConge,     setFormConge]     = useState(EMPTY_CONGE);
   const [formPlan,      setFormPlan]      = useState(EMPTY_PLAN);
+  const [formCandidat,  setFormCandidat]  = useState(EMPTY_CANDIDATURE);
   const [servicesReels, setServicesReels] = useState([]);
 
   // Charger les employés depuis l'API
@@ -509,6 +513,18 @@ export default function RessourcesHumaines() {
   }, []);
   useEffect(() => { loadConges(); }, [loadConges]);
 
+  // Sous-phase 5.5.a — Recrutement : GET /hr/candidatures (nouveau modèle
+  // Candidature). Remplace le state local jamais persisté retiré en 5.7.
+  const loadCandidatures = useCallback(async () => {
+    try {
+      const { data } = await api.get('/hr/candidatures');
+      setCandidatures(data.candidatures || []);
+    } catch (err) {
+      console.error('Erreur chargement candidatures:', err);
+    }
+  }, []);
+  useEffect(() => { loadCandidatures(); }, [loadCandidatures]);
+
   // Semaine courante (lundi → dimanche), calculée dynamiquement — remplace
   // l'ancienne grille figée sur une semaine de juin 2025.
   // AUDIT-M-E9 — recréé (nouveau tableau de nouveaux Date) à chaque rendu
@@ -547,7 +563,8 @@ export default function RessourcesHumaines() {
     dispatch(fetchStaff({}));
     loadConges();
     loadSchedules();
-  }, [dispatch, loadConges, loadSchedules]);
+    loadCandidatures();
+  }, [dispatch, loadConges, loadSchedules, loadCandidatures]);
   useRealtimeRefresh(refreshHR);
 
   // AUDIT-M-E9 (Groupe E, Point 9) — KPIs, pivot planning, filtrage et
@@ -743,6 +760,31 @@ export default function RessourcesHumaines() {
       toast.error(err?.response?.data?.message || "Erreur lors de la publication du planning");
     } finally {
       setPublishingId(null);
+    }
+  };
+
+  // Sous-phase 5.5.a — Recrutement : addCandidat créait auparavant un objet
+  // local (_id:Date.now().toString()) jamais persisté (retiré en 5.7).
+  // Persiste désormais réellement via POST /hr/candidatures.
+  const addCandidat = async (ev) => {
+    ev.preventDefault();
+    try {
+      const { data } = await api.post('/hr/candidatures', formCandidat);
+      setCandidatures(prev => [data.candidature, ...prev]);
+      toast.success("✅ Candidature enregistrée");
+      setModalCandidat(false); setFormCandidat(EMPTY_CANDIDATURE);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement de la candidature");
+    }
+  };
+
+  const updateCandidatStatut = async (id, statut, messageSucces) => {
+    try {
+      const { data } = await api.put(`/hr/candidatures/${id}`, { statut });
+      setCandidatures(prev => prev.map(c => c._id === id ? data.candidature : c));
+      toast.success(messageSucces);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la mise à jour du statut");
     }
   };
 
@@ -1838,22 +1880,58 @@ export default function RessourcesHumaines() {
           )}
 
           {/* ══ RECRUTEMENT ══ */}
-          {/* Sous-phase 5.7 — "Gestion des candidatures" était un CRUD
-              entièrement local (setCandidatures(prev => [new, ...prev]),
-              _id:Date.now().toString()) : "Convoquer"/"Sélectionner"
-              affichaient un vrai changement d'état... perdu au rechargement,
-              jamais persisté en base. Aucun modèle Candidature n'existe dans
-              le backend — vérifié. Construire un vrai sous-système de
-              recrutement (modèle + contrôleur + routes) dépasse le
-              périmètre de cette sous-phase (corriger des faux succès, pas
-              créer un nouveau module de recrutement complet) : désactivé
-              honnêtement, même logique que "Présences" en 5.3. */}
+          {/* Sous-phase 5.5.a — reconstruit avec une vraie persistance
+              (modèle Candidature, POST/PUT /hr/candidatures) : le CRUD
+              local sans lendemain désactivé en 5.7 est remplacé, pas
+              simplement réaffiché. */}
           {tab === "recrutement" && (
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)", marginBottom:20 }}>Gestion des candidatures</div>
-              <div className="rh-card" style={{ padding:40, textAlign:"center" }}>
-                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>👤</div>
-                <div style={{ fontSize:13, color:"var(--rm)" }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des candidatures n'existe encore dans ce système.</div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:12 }}>
+                <div>
+                  <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Gestion des candidatures</div>
+                  <div style={{ fontSize:12, color:"var(--rm)", marginTop:2 }}>{candidatures.length} candidature(s)</div>
+                </div>
+                <button className="rbtn rbtn-primary" onClick={() => { setFormCandidat(EMPTY_CANDIDATURE); setModalCandidat(true); }}>
+                  {I.plus} Nouvelle candidature
+                </button>
+              </div>
+              {candidatures.length === 0 && (
+                <div className="rh-card" style={{ padding:40, textAlign:"center", color:"var(--rm)" }}>
+                  <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>👤</div>
+                  Aucune candidature enregistrée
+                </div>
+              )}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>
+                {candidatures.map(c => {
+                  const cs = CANDIDAT_CFG[c.statut] || { cls:"gray", label:c.statut };
+                  const pc = POSTE_COLORS[c.poste] || { cls:"gray", label:c.poste, color:"#6B7280" };
+                  return (
+                    <div key={c._id} className="rh-card fu" style={{ padding:20 }}>
+                      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                          <div className="emp-avatar" style={{ background:pc.color, width:40, height:40, fontSize:15, borderRadius:10 }}>{c.nom[0]}</div>
+                          <div>
+                            <div style={{ fontWeight:700, fontSize:14, color:"var(--rn)" }}>{c.nom}</div>
+                            <div style={{ fontSize:11, color:"var(--rm)" }}>{c.email}</div>
+                          </div>
+                        </div>
+                        <Badge cls={cs.cls}>{cs.label}</Badge>
+                      </div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {[["Poste demandé", pc.label], ["Expérience", c.experience], ["Diplôme", c.diplome], ["Date dépôt", fmtDate(c.date_depot)]].map(([lbl,val]) => (
+                          <div key={lbl} style={{ display:"flex", justifyContent:"space-between", fontSize:12 }}>
+                            <span style={{ color:"var(--rm)" }}>{lbl}</span>
+                            <span style={{ fontWeight:600, color:"var(--rn)" }}>{val}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display:"flex", gap:8, marginTop:14 }}>
+                        <button className="rbtn rbtn-ghost rbtn-sm" style={{ flex:1 }} onClick={() => updateCandidatStatut(c._id, "entretien", "📅 Convoqué en entretien")}>Convoquer</button>
+                        <button className="rbtn rbtn-teal rbtn-sm" onClick={() => updateCandidatStatut(c._id, "selectionne", "✅ Candidat sélectionné")}>Sélectionner</button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -2356,6 +2434,28 @@ export default function RessourcesHumaines() {
                 <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalPlan(false)}>Annuler</button>
                 <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Ajouter en brouillon</button>
               </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : CANDIDATURE (Sous-phase 5.5.a) ═══ */}
+        <Modal open={modalCandidat} onClose={() => setModalCandidat(false)} title="👤 Nouvelle candidature" maxWidth={520}>
+          <form onSubmit={addCandidat}>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
+              <div style={{ gridColumn:"1/-1" }}><label className="rlbl">Nom complet *</label><input className="rinp" required value={formCandidat.nom} onChange={e=>setFormCandidat(f=>({...f,nom:e.target.value}))} /></div>
+              <div><label className="rlbl">Poste demandé</label>
+                <select className="rinp" value={formCandidat.poste} onChange={e=>setFormCandidat(f=>({...f,poste:e.target.value}))}>
+                  {Object.entries(POSTE_COLORS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+              <div><label className="rlbl">Expérience</label><input className="rinp" value={formCandidat.experience} onChange={e=>setFormCandidat(f=>({...f,experience:e.target.value}))} placeholder="Ex: 3 ans" /></div>
+              <div style={{ gridColumn:"1/-1" }}><label className="rlbl">Diplôme(s)</label><input className="rinp" value={formCandidat.diplome} onChange={e=>setFormCandidat(f=>({...f,diplome:e.target.value}))} /></div>
+              <div><label className="rlbl">Email</label><input type="email" className="rinp" value={formCandidat.email} onChange={e=>setFormCandidat(f=>({...f,email:e.target.value}))} /></div>
+              <div><label className="rlbl">Téléphone</label><input className="rinp" value={formCandidat.telephone} onChange={e=>setFormCandidat(f=>({...f,telephone:e.target.value}))} /></div>
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalCandidat(false)}>Annuler</button>
+              <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Enregistrer</button>
             </div>
           </form>
         </Modal>

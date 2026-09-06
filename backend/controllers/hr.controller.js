@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const Staff = require('../models/Staff');
 const User = require('../models/User');
+const Candidature = require('../models/Candidature');
 const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const mail = require('../utils/mail');
@@ -324,5 +325,56 @@ exports.publishSchedules = async (req, res, next) => {
     emitDashboardUpdate();
 
     res.json({ success: true, staff, publies: brouillons.length });
+  } catch (err) { next(err); }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Sous-phase 5.5.a — Recrutement (Candidature)
+// Remplace le CRUD purement local de HR.jsx (onglet "Recrutement" et sa
+// bannière "en développement" posée en 5.7) par une vraie persistance.
+// ─────────────────────────────────────────────────────────────
+
+// GET /hr/candidatures
+exports.getCandidatures = async (req, res, next) => {
+  try {
+    const candidatures = await Candidature.find().sort('-date_depot').lean();
+    res.json({ success: true, candidatures });
+  } catch (err) { next(err); }
+};
+
+// POST /hr/candidatures
+exports.createCandidature = async (req, res, next) => {
+  try {
+    const { nom, poste, experience, diplome, email, telephone } = req.body;
+    if (!nom || !nom.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom du candidat est obligatoire.' });
+    }
+    const candidature = await Candidature.create({
+      nom: nom.trim(), poste, experience, diplome,
+      email: email ? email.toLowerCase() : '', telephone,
+      cree_par: req.user._id,
+    });
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'hr', entite_id: candidature._id, ip: req.ip, message: `Nouvelle candidature — ${nom}` });
+    emitActivity({ module: 'hr', action: 'Nouvelle candidature', detail: nom, icon: '👤', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
+    emitDashboardUpdate();
+    res.status(201).json({ success: true, candidature });
+  } catch (err) { next(err); }
+};
+
+// PUT /hr/candidatures/:id — changer le statut ("Convoquer" → entretien,
+// "Sélectionner" → selectionne, ou tout autre statut valide du workflow).
+const CANDIDATURE_STATUTS = ['recu', 'en_analyse', 'entretien', 'selectionne', 'refuse'];
+exports.updateCandidatureStatut = async (req, res, next) => {
+  try {
+    const { statut } = req.body;
+    if (!CANDIDATURE_STATUTS.includes(statut)) {
+      return res.status(400).json({ success: false, message: 'Statut invalide.' });
+    }
+    const avant = await Candidature.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Candidature introuvable.' });
+    const candidature = await Candidature.findByIdAndUpdate(req.params.id, { statut }, { new: true, runValidators: true }).lean();
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'hr', entite_id: candidature._id, ip: req.ip, message: `Statut candidature (${candidature.nom}) : ${avant.statut} → ${statut}`, avant, apres: candidature });
+    emitDashboardUpdate();
+    res.json({ success: true, candidature });
   } catch (err) { next(err); }
 };

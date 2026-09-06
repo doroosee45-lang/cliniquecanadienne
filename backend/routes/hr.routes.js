@@ -13,6 +13,14 @@ router.get('/staff',     protect, authorize(...ADMIN), hrC.getAll);
 router.get('/leaves',    protect, authorize(...ADMIN), hrC.getLeaves);
 router.get('/schedules', protect, authorize(...ADMIN), hrC.getSchedules);
 
+// Sous-phase 5.5.a — Recrutement (Candidature). Doit impérativement précéder
+// `/:id` ci-dessous : sinon GET /hr/candidatures serait capté par
+// `router.get('/:id', ...)` (id="candidatures") avant d'atteindre cette
+// route, comme pour /staff /leaves /schedules ci-dessus.
+router.get('/candidatures',          protect, authorize(...ADMIN), hrC.getCandidatures);
+router.post('/candidatures',         protect, authorize(...ADMIN), hrC.createCandidature);
+router.put('/candidatures/:id',      protect, authorize(...ADMIN), hrC.updateCandidatureStatut);
+
 router.get('/',          protect, authorize(...ADMIN), hrC.getAll);
 router.post('/',         protect, authorize(...ADMIN), hrC.create);
 router.get('/:id',       protect, authorize(...ADMIN), hrC.getOne);
