@@ -104,7 +104,25 @@ const googleLogin = async (req, res) => {
       await logAction({ action: 'LOGIN_ECHEC', module: 'auth', ip: req.ip, statut: 'echec', message: 'Google — jeton invalide ou expiré' });
       return res.status(401).json({ success: false, message: 'Token Google invalide ou expiré.' });
     }
-    if (env.GOOGLE_CLIENT_ID && tokenInfo.aud !== env.GOOGLE_CLIENT_ID) {
+    // SEC-011 (audit indépendant du 6 sept. 2026) — si GOOGLE_CLIENT_ID est
+    // absent, le `&&` ci-dessous désactivait silencieusement TOUTE
+    // vérification d'audience : un jeton Google valide mais émis pour
+    // n'importe quelle autre application tierce était alors accepté sans
+    // avertissement (confused deputy non détecté). En production, une
+    // configuration incomplète ne doit jamais dégénérer en désactivation
+    // silencieuse d'un contrôle de sécurité — échec explicite et fermé. En
+    // développement/test, GOOGLE_CLIENT_ID peut légitimement rester absent
+    // (Google OAuth non configuré localement) : le comportement historique
+    // est conservé, mais désormais accompagné d'un avertissement explicite
+    // dans les logs plutôt que d'un silence total.
+    if (!env.GOOGLE_CLIENT_ID) {
+      if (env.NODE_ENV === 'production') {
+        logger.error('[googleLogin] GOOGLE_CLIENT_ID absent en production — connexion Google refusée (impossible de vérifier l\'audience du jeton).');
+        await logAction({ action: 'LOGIN_ECHEC', module: 'auth', ip: req.ip, statut: 'echec', message: 'Google — configuration serveur incomplète (GOOGLE_CLIENT_ID absent), connexion refusée par sécurité.' });
+        return res.status(503).json({ success: false, message: 'Connexion Google momentanément indisponible (configuration serveur incomplète).' });
+      }
+      logger.warn('[googleLogin] GOOGLE_CLIENT_ID absent — vérification d\'audience Google ignorée (développement/test uniquement, jamais en production).');
+    } else if (tokenInfo.aud !== env.GOOGLE_CLIENT_ID) {
       // AUDIT-ARCHIVAGE-C — signal confused deputy réel : un jeton Google
       // valide mais émis pour une autre application. tokenInfo est déjà
       // vérifié à ce stade (signature/émetteur/expiration), donc son email

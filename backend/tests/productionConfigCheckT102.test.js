@@ -56,6 +56,7 @@ const GOOD_ENV = {
   TWILIO_ACCOUNT_SID: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
   TWILIO_AUTH_TOKEN: 'x'.repeat(32),
   TWILIO_PHONE_NUMBER: '+15005550006',
+  GOOGLE_CLIENT_ID: 'xxxx.apps.googleusercontent.com',
 };
 
 test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart de configuration production', async (t) => {
@@ -101,6 +102,14 @@ test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart 
   await t.test('Twilio non configuré (mode simulé) — signalé', async () => {
     const findings = await checkProductionConfig({ env: { ...GOOD_ENV, TWILIO_ACCOUNT_SID: undefined, TWILIO_AUTH_TOKEN: undefined, TWILIO_PHONE_NUMBER: undefined } });
     assert.ok(findings.some(f => f.check === 'TWILIO'), 'doit signaler Twilio en mode simulé');
+  });
+
+  // SEC-011 — GOOGLE_CLIENT_ID absent désactivait silencieusement la
+  // vérification d'audience du jeton Google (googleAuth.controller.js,
+  // corrigé séparément) ; ce contrôle de pré-déploiement doit le détecter.
+  await t.test('GOOGLE_CLIENT_ID non configuré — signalé', async () => {
+    const findings = await checkProductionConfig({ env: { ...GOOD_ENV, GOOGLE_CLIENT_ID: undefined } });
+    assert.ok(findings.some(f => f.check === 'GOOGLE_OAUTH'), 'doit signaler GOOGLE_CLIENT_ID absent');
   });
 
   await t.test('plusieurs écarts simultanés — tous signalés, pas seulement le premier', async () => {

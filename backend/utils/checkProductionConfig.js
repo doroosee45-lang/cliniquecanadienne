@@ -77,6 +77,17 @@ function checkTwilio(env, findings) {
   }
 }
 
+// SEC-011 (audit indépendant du 6 sept. 2026) — googleAuth.controller.js
+// désactivait silencieusement la vérification d'audience du jeton Google
+// quand GOOGLE_CLIENT_ID est absent (corrigé : refus explicite en
+// production désormais). Ce contrôle de pré-déploiement le détecte en
+// amont, même pattern que checkSmtp/checkTwilio/checkOpenAI.
+function checkGoogleOAuth(env, findings) {
+  if (!env.GOOGLE_CLIENT_ID) {
+    findings.push({ level: 'error', check: 'GOOGLE_OAUTH', message: 'GOOGLE_CLIENT_ID non configuré — googleAuth.controller.js refusera désormais toute connexion Google en production (fail-closed), plutôt que d\'accepter un jeton sans vérifier son audience.' });
+  }
+}
+
 // checkSeedAccounts — nécessite une connexion Mongo (paramètre injecté,
 // jamais géré en interne) pour rester testable sans dépendre d'une base
 // précise ; utilise une connexion mongoose distincte de celle de l'appelant
@@ -108,6 +119,7 @@ async function checkProductionConfig({ env = process.env, mongoUri } = {}) {
   checkSmtp(env, findings);
   checkOpenAI(env, findings);
   checkTwilio(env, findings);
+  checkGoogleOAuth(env, findings);
   if (mongoUri) {
     await checkSeedAccounts(mongoUri, findings);
   }
