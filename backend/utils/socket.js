@@ -8,9 +8,6 @@ let _io = null;
 /** Enregistre l'instance Socket.IO (appelé une seule fois dans server.js) */
 const setIO = (io) => { _io = io; };
 
-/** Récupère l'instance Socket.IO */
-const getIO = () => _io;
-
 /**
  * Émet un événement vers une room spécifique.
  * @param {string} room   ex: 'user:abc123', 'conversation:xyz'
@@ -20,14 +17,6 @@ const getIO = () => _io;
 const emitTo = (room, event, data) => {
   if (!_io) return;
   _io.to(room).emit(event, data);
-};
-
-/**
- * Diffuse un événement à tous les clients connectés.
- */
-const broadcast = (event, data) => {
-  if (!_io) return;
-  _io.emit(event, data);
 };
 
 /**
@@ -60,4 +49,9 @@ const emitDashboardUpdate = () => {
   _io.emit('dashboard:refresh');
 };
 
-module.exports = { setIO, getIO, emitTo, broadcast, emitActivity, emitDashboardUpdate };
+// CODE-001 (audit indépendant du 6 sept. 2026) — getIO() et broadcast()
+// étaient exportées mais jamais appelées nulle part dans le backend
+// (vérifié exhaustivement : aucune occurrence de "getIO(" ni "broadcast("
+// hors leur propre définition ici, et les ~20 fichiers qui importent ce
+// module ne déstructurent jamais ces deux noms). Retirées.
+module.exports = { setIO, emitTo, emitActivity, emitDashboardUpdate };
