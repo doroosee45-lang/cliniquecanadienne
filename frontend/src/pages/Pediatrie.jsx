@@ -544,11 +544,27 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
     if (!enfant?._id) { toast.error("Sélectionnez un patient"); return; }
     const newVaccins = VACCINS_REF.filter(v => doses[v.nom] && !vaccinesAdministres.has(v.nom));
     if (newVaccins.length === 0) { toast.success("Aucun nouveau vaccin à enregistrer"); onClose(); return; }
+    // Correction 5 (FE-BUG-020) — chaque dispatch de la boucle était
+    // auparavant ignoré (ni fulfilled.match, ni rejected géré), un échec
+    // partiel s'affichait donc comme un succès total. Même vérification que
+    // createEnfant/createConsultation/addMesureCroissance/addMaladieChronique
+    // dans ce fichier, appliquée à chaque vaccin de la boucle.
+    let succes = 0;
+    const echecs = [];
     for (const v of newVaccins) {
-      await dispatch(addVaccination({ id: enfant._id, body: { vaccin: v.nom, dose: `${v.doses} dose(s)` } }));
+      const result = await dispatch(addVaccination({ id: enfant._id, body: { vaccin: v.nom, dose: `${v.doses} dose(s)` } }));
+      if (addVaccination.fulfilled.match(result)) succes++;
+      else echecs.push(v.nom);
     }
-    toast.success(`💉 ${newVaccins.length} vaccination(s) enregistrée(s) pour ${patientNom}`);
-    onClose();
+    if (echecs.length === 0) {
+      toast.success(`💉 ${succes} vaccination(s) enregistrée(s) pour ${patientNom}`);
+      onClose();
+    } else if (succes === 0) {
+      toast.error(`Échec de l'enregistrement des ${echecs.length} vaccination(s) : ${echecs.join(', ')}`);
+    } else {
+      toast.error(`💉 ${succes}/${newVaccins.length} vaccination(s) enregistrée(s) — échec pour : ${echecs.join(', ')}`);
+      onClose();
+    }
   };
 
   return (
