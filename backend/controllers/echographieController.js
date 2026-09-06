@@ -3,7 +3,7 @@ const ExamCatalogue = require('../models/ExamCatalogue');
 const Invoice = require('../models/Invoice');
 const Patient = require('../models/Patient');
 const { emitDashboardUpdate } = require('../utils/socket');
-const { logAction } = require('../utils/helpers');
+const { logAction, escapeRegex } = require('../utils/helpers');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
@@ -114,7 +114,7 @@ exports.getAll = async (req, res, next) => {
     const { page = 1, limit = 50, q, type, statut, priorite } = req.query;
     const filter = {};
     if (q) {
-      const re = new RegExp(q, 'i');
+      const re = new RegExp(escapeRegex(q), 'i');
       filter.$or = [{ patient_nom: re }, { numero: re }, { source: re }, { medecin_presc: re }];
     }
     if (type)     filter.type     = type;
