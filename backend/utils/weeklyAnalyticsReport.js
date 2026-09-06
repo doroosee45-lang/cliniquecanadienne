@@ -165,7 +165,12 @@ function startWeeklyAnalyticsReportJob() {
   });
 }
 
+// CODE-002 (audit indépendant du 6 sept. 2026) — SYSTEM_PROMPT n'était
+// consommée nulle part hors de ce fichier (analyticsPhase8.test.js
+// n'utilise que buildPromptData/buildUserPrompt/sendWeeklyAnalyticsReport/
+// markdownToHtml, jamais SYSTEM_PROMPT directement) : export retiré, la
+// constante reste utilisée en interne (ligne ~121).
 module.exports = {
   sendWeeklyAnalyticsReport, startWeeklyAnalyticsReportJob,
-  buildPromptData, buildUserPrompt, markdownToHtml, SYSTEM_PROMPT,
+  buildPromptData, buildUserPrompt, markdownToHtml,
 };

@@ -2,7 +2,13 @@
 // déplacée hors du chemin de lecture (GET /archives/stats la déclenchait
 // auparavant de façon synchrone à chaque requête). Même structure que
 // appointmentReminders.js/planningReminders.js : job node-cron + fonction de
-// travail exportée séparément pour les tests.
+// travail interne.
+// CODE-002 (audit indépendant du 6 sept. 2026) — runArchiveHarvest() n'était
+// en réalité jamais importée par aucun test (le commentaire ci-dessus
+// affirmait "exportée séparément pour les tests" — faux, vérifié :
+// auditCrit4ArchiveHarvestPerf.test.js appelle directement
+// archiveC.harvestArchivables(), jamais ce wrapper). Export retiré ; la
+// fonction reste utilisée en interne par startArchiveHarvestJob ci-dessous.
 //
 // Fréquence quotidienne (3h00, heure creuse — distincte du rappel RDV de
 // 8h00) : les seuils d'archivabilité (SEUILS dans archive.controller.js)
@@ -49,4 +55,4 @@ function startArchiveHarvestJob() {
   });
 }
 
-module.exports = { runArchiveHarvest, startArchiveHarvestJob };
+module.exports = { startArchiveHarvestJob };

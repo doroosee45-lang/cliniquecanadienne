@@ -31,4 +31,8 @@ function matchExamCatalogue(libelle, catalogue) {
   return (catalogue || []).find(c => (c.nom || '').trim().toLowerCase() === cibleNom) || null;
 }
 
-module.exports = { LIBELLE_VERS_CATALOGUE, matchExamCatalogue };
+// CODE-002 (audit indépendant du 6 sept. 2026) — LIBELLE_VERS_CATALOGUE
+// n'était consommée nulle part hors de ce fichier (seul consultations.
+// controller.js:12 importe matchExamCatalogue) : export retiré, la
+// constante reste utilisée en interne ci-dessus.
+module.exports = { matchExamCatalogue };
