@@ -504,8 +504,12 @@ export default function ClinicLanding() {
                 </div>
                 <div style={{ padding: "20px" }}>
                   <h3 style={{ fontSize: "16px", fontWeight: "700", color: COLORS.gray900, marginBottom: "8px" }}>{s.title}</h3>
-                  <p style={{ fontSize: "13px", color: COLORS.gray600, lineHeight: "1.6", marginBottom: "16px" }}>{s.desc}</p>
-                  <button style={{ ...style.btn, background: COLORS.accent, color: COLORS.primary, border: "none", padding: "7px 16px", fontSize: "13px" }}>Voir plus →</button>
+                  {/* Correction FE-BUG-021 — "Voir plus →" ne menait nulle
+                      part (aucun onClick, aucune page de détail par
+                      service) : la carte affiche déjà sa description
+                      complète (s.desc), rien de plus à révéler. Retiré
+                      plutôt que d'inventer une page /service/xxx. */}
+                  <p style={{ fontSize: "13px", color: COLORS.gray600, lineHeight: "1.6" }}>{s.desc}</p>
                 </div>
               </div>
             ))}
@@ -561,12 +565,14 @@ export default function ClinicLanding() {
                     <div style={{ color: "rgba(255,255,255,0.9)", fontSize: "13px" }}>{doc.specialty}</div>
                   </div>
                 </div>
-                <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div>
-                    <div style={{ fontSize: "12px", color: COLORS.gray600 }}>{doc.exp}</div>
-                    <div style={{ display: "flex", gap: "2px", marginTop: "4px" }}>{"⭐⭐⭐⭐⭐".split("").map((s, j) => <span key={j} style={{ fontSize: "12px" }}>{s}</span>)}</div>
-                  </div>
-                  <button style={{ ...style.btn, background: COLORS.accent, color: COLORS.primary, border: "none", padding: "7px 14px", fontSize: "12px" }}>Profil</button>
+                {/* Correction FE-BUG-021 — "Profil" ne menait nulle part
+                    (aucun onClick, aucune page de profil médecin publique) :
+                    la carte affiche déjà l'essentiel (nom, spécialité,
+                    expérience). Retiré plutôt que d'inventer une page
+                    /doctor/xxx. */}
+                <div style={{ padding: "16px 20px" }}>
+                  <div style={{ fontSize: "12px", color: COLORS.gray600 }}>{doc.exp}</div>
+                  <div style={{ display: "flex", gap: "2px", marginTop: "4px" }}>{"⭐⭐⭐⭐⭐".split("").map((s, j) => <span key={j} style={{ fontSize: "12px" }}>{s}</span>)}</div>
                 </div>
               </div>
             ))}
@@ -678,7 +684,11 @@ export default function ClinicLanding() {
                     <span style={{ fontSize: "12px", color: COLORS.gray600 }}>📅 {a.date}</span>
                     <span style={{ fontSize: "12px", color: COLORS.gray600 }}>⏱ {a.readTime}</span>
                   </div>
-                  <button style={{ ...style.btn, background: "transparent", color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, padding: "7px 18px", fontSize: "13px" }}>Lire l'article →</button>
+                  {/* Correction FE-BUG-021 — "Lire l'article →" ne menait
+                      nulle part : ces cartes n'ont ni contenu d'article ni
+                      page de détail (aucun champ a.body/a.excerpt, aucune
+                      route /article/xxx) — retiré plutôt que d'inventer un
+                      système d'articles complet. */}
                 </div>
               </div>
             ))}
@@ -699,10 +709,11 @@ export default function ClinicLanding() {
                 <div key={f} style={{ background: "rgba(255,255,255,0.14)", borderRadius: "12px", padding: "13px 16px", color: COLORS.white, fontSize: "14px", fontWeight: "500", border: "1px solid rgba(255,255,255,0.18)" }}>{f}</div>
               ))}
             </div>
-            <div style={{ display: "flex", gap: "14px" }}>
-              <button style={{ ...style.btn, background: COLORS.white, color: COLORS.primaryDark, padding: "12px 26px", fontSize: "14px", fontWeight: "700" }}>🍎 App Store</button>
-              <button style={{ ...style.btn, background: "rgba(255,255,255,0.18)", color: COLORS.white, border: "1.5px solid rgba(255,255,255,0.4)", padding: "12px 26px", fontSize: "14px" }}>🤖 Google Play</button>
-            </div>
+            {/* Correction FE-BUG-021 — "App Store"/"Google Play" se
+                présentaient comme de vrais liens de téléchargement sans
+                aucune URL réelle : aucune application mobile MediSync
+                n'est publiée sur l'un ou l'autre store. Retirés plutôt que
+                de fabriquer un lien fictif. */}
           </div>
           <div style={{ display: "flex", justifyContent: "center" }}>
             <div style={{ position: "relative" }}>
@@ -875,13 +886,10 @@ export default function ClinicLanding() {
               <p style={{ fontSize: "14px", lineHeight: "1.85", maxWidth: "290px", marginBottom: "22px" }}>
                 Une clinique de référence offrant des soins de qualité supérieure dans un environnement moderne et bienveillant depuis 2002.
               </p>
-              <div style={{ display: "flex", gap: "10px" }}>
-                {["📘", "🐦", "📸", "💼"].map((icon, i) => (
-                  <div key={i} style={{ width: "38px", height: "38px", background: "rgba(255,255,255,0.1)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "17px", transition: "background 0.2s" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.22)"}
-                    onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}>{icon}</div>
-                ))}
-              </div>
+              {/* Correction FE-BUG-021 — ces icônes se présentaient comme de
+                  vrais liens vers des réseaux sociaux sans aucune URL réelle
+                  (aucune présence sociale connue pour cette clinique) —
+                  retirées plutôt que de fabriquer des liens fictifs. */}
             </div>
             <div>
               <h4 style={{ color: COLORS.white, fontWeight: "700", marginBottom: "18px", fontSize: "15px" }}>Services</h4>
