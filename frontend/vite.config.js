@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // Cible du proxy dev — configurable via VITE_PROXY_TARGET pour les tests
@@ -46,5 +46,16 @@ export default defineConfig({
         ws: true,
       },
     },
+  },
+  // QA-002 — infrastructure de test frontend (0 test existant avant ce
+  // chantier). jsdom : les pages testées ici rendent du vrai DOM (formulaires,
+  // boutons désactivés) sans navigateur réel. globals:true évite un import
+  // répété de describe/it/expect dans chaque fichier de test, cohérent avec
+  // la convention déjà choisie côté backend (node:test global-like usage).
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+    css: false,
   },
 });
