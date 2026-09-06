@@ -46,10 +46,16 @@ async function check() {
   }
   console.log('   ✅ Utilisateur trouvé :', user.prenom, user.nom, `(${user.role})`);
   console.log('   Statut :', user.statut);
-  console.log('   Password hash :', user.password ? user.password.substring(0, 20) + '...' : '❌ ABSENT');
+  // SEC-012 (audit indépendant du 6 sept. 2026) — affichait un extrait du
+  // hash bcrypt réel en clair dans le terminal (scrollback sensible, même
+  // partiel) ; un simple indicateur de présence/format suffit au diagnostic.
+  console.log('   Password hash :', user.password ? (user.password.startsWith('$2') ? '✅ présent (format bcrypt valide)' : '⚠️ présent mais format inattendu') : '❌ ABSENT');
 
   // 4. Vérifier le mot de passe
-  console.log(`\n4. Test mot de passe "${PASSWORD}"...`);
+  // SEC-012 — n'affiche plus le mot de passe configuré (SEED_PASSWORD) en
+  // clair : le développeur le connaît déjà via son propre .env, ce script
+  // n'a besoin d'afficher que le résultat de la comparaison.
+  console.log('\n4. Test du mot de passe configuré (SEED_PASSWORD)...');
   if (!user.password) {
     console.log('   ❌ Pas de mot de passe stocké (compte Google ?)');
   } else {
@@ -66,17 +72,21 @@ async function check() {
     console.log('   ❌ JWT_SECRET manquant — cause du 500 !');
     console.log('   → Vérifiez que backend/.env contient JWT_SECRET=...');
   } else {
+    // SEC-012 — n'affiche plus d'extrait du jeton réel en clair.
     const token = user.getSignedJWT();
-    console.log('   ✅ JWT généré :', token.substring(0, 30) + '...');
+    console.log(`   ✅ JWT généré avec succès (${token.length} caractères)`);
   }
 
   console.log('\n══════════════════════════════════════');
   if (process.env.JWT_SECRET && user.password) {
     const match = await user.matchPassword(PASSWORD);
     if (match && user.statut === 'actif') {
+      // SEC-012 — n'affiche plus le mot de passe en clair dans le résumé
+      // final : il est déjà configuré dans backend/.env (SEED_PASSWORD),
+      // pas besoin de le faire réapparaître dans le terminal.
       console.log('  ✅ TOUT EST OK — Login devrait fonctionner');
       console.log(`  Email    : ${EMAIL}`);
-      console.log(`  Password : ${PASSWORD}`);
+      console.log('  Password : (voir SEED_PASSWORD dans backend/.env)');
     }
   }
   console.log('══════════════════════════════════════\n');
