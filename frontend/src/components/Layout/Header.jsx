@@ -16,10 +16,18 @@ export default function Header({ title, onMenuToggle }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showAI, setShowAI] = useState(false);
-  const [aiMessages, setAiMessages] = useState([
-    { role: 'ai', content: `Bonjour ${user?.prenom} ! Je suis votre assistant IA. Posez-moi vos questions.` },
-  ]);
-  const [aiInput, setAiInput] = useState('');
+  // ARCH-004 (audit du 11 sept. 2026) — ce panneau répondait via un
+  // setTimeout() et un dictionnaire de mots-clés codés en dur (ex. "stock"
+  // → de faux chiffres de stock pharmacie précis et plausibles), sans jamais
+  // interroger le moindre backend, et sans aucune mention "démonstration" —
+  // contrairement au Chat Assistant IA de AI.jsx (même fonctionnalité),
+  // honnêtement désactivé. Aucun endpoint de question-réponse en langage
+  // libre n'existe côté backend (ai.routes.js n'expose que des actions
+  // structurées : diagnose/interactions/predictions) — pas de vraie source à
+  // connecter ici sans fabriquer une route. Désactivé honnêtement, même
+  // texte que AI.jsx, plutôt que remplacer de faux chiffres par d'autres.
+  const AI_DISABLED_MSG = "Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.";
+  const [aiMessages] = useState([{ role: 'ai', content: AI_DISABLED_MSG }]);
   const notifRef = useRef(null);
 
   // Chargement initial
@@ -82,22 +90,6 @@ export default function Header({ title, onMenuToggle }) {
       setNotifications(n => n.map(x => ({ ...x, lu: true })));
       setUnread(0);
     } catch {}
-  };
-
-  const sendAI = () => {
-    if (!aiInput.trim()) return;
-    const q = aiInput;
-    setAiMessages(m => [...m, { role: 'user', content: q }]);
-    setAiInput('');
-    setTimeout(() => {
-      const responses = {
-        'stock': '💊 Alertes stock actives : Amlodipine (15 unités, seuil 20) et Ibuprofène (8 unités, seuil 30). Commande recommandée.',
-        'rdv': '📅 Vous avez 3 rendez-vous planifiés aujourd\'hui. Prochain dans 45 minutes.',
-        'lit': '🛏️ Occupation actuelle : 8/13 lits occupés (62%). 2 sorties prévues aujourd\'hui.',
-      };
-      const reply = Object.entries(responses).find(([k]) => q.toLowerCase().includes(k));
-      setAiMessages(m => [...m, { role: 'ai', content: reply ? reply[1] : `Analyse en cours pour : "${q}". Je consulte les données cliniques... Résultat disponible dans les prochaines secondes.` }]);
-    }, 800);
   };
 
   const notifIcons = { critical: '🚨', warning: '⚠️', info: 'ℹ️', success: '✅', ai_alert: '🤖', rappel: '🔔' };
@@ -245,17 +237,16 @@ export default function Header({ title, onMenuToggle }) {
               ))}
             </div>
             <div className="p-3 border-t border-gray-100 bg-white flex gap-2">
-              <label htmlFor="header-ai-input" className="sr-only">Votre question à l'assistant IA</label>
+              <label htmlFor="header-ai-input" className="sr-only">{AI_DISABLED_MSG}</label>
               <input
                 id="header-ai-input"
                 type="text"
-                value={aiInput}
-                onChange={e => setAiInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendAI()}
-                placeholder="Votre question..."
-                className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled
+                placeholder={AI_DISABLED_MSG}
+                title={AI_DISABLED_MSG}
+                className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm border border-gray-200 cursor-not-allowed"
               />
-              <button onClick={sendAI} aria-label="Envoyer" className="bg-blue-600 text-white rounded-xl px-3 py-2 text-sm font-semibold hover:bg-blue-700">→</button>
+              <button disabled aria-label="Envoyer" title={AI_DISABLED_MSG} className="bg-gray-300 text-white rounded-xl px-3 py-2 text-sm font-semibold cursor-not-allowed">→</button>
             </div>
           </div>
         </div>
