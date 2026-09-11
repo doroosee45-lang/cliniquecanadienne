@@ -416,19 +416,17 @@ export default function Chirurgie() {
       setKpis(prev => data.kpis || prev);
       if (data.chart) { setChartMois(data.chart.labels); setChartInterv(data.chart.data); }
       setTauxCompl(data.taux_compl || 0);
-    } catch {
-      const d = DEMO_DOSSIERS;
-      setKpis({
-        total: d.length,
-        consultations: d.filter(x => x.statut === "consultation").length,
-        preoperatoires: d.filter(x => x.statut === "preoperatoire").length,
-        operes: d.filter(x => x.statut === "opere").length,
-        suivis_nb: d.filter(x => x.statut === "suivi_postop").length,
-        clotures: d.filter(x => x.statut === "cloture").length,
-        risques_eleves: d.filter(x => ["eleve","critique"].includes(x.ia_risque_niveau)).length,
-        score_moyen: Math.round(d.reduce((s,x)=>s+x.ia_risque_score,0)/d.length),
-      });
-      setTauxCompl(8.3);
+    } catch (err) {
+      // Phase 7 (audit du 11 sept. 2026) — sur échec réel de GET
+      // /chirurgie/stats, ce repli calculait des KPIs à partir de
+      // DEMO_DOSSIERS (vide, donc tous à 0 — inoffensif) MAIS fixait
+      // ensuite taux_compl à 8.3% codé en dur : un taux de complication
+      // fictif présenté comme réel sur un simple échec réseau. Aucune
+      // fabrication désormais — état vide honnête, comme loadDossiers()
+      // juste au-dessus sur le même type d'échec.
+      console.error("Erreur chargement stats chirurgie:", err);
+      setKpis({ total: 0, consultations: 0, preoperatoires: 0, operes: 0, suivis_nb: 0, clotures: 0, risques_eleves: 0, score_moyen: 0 });
+      setTauxCompl(0);
     }
   }, []);
 
@@ -441,20 +439,25 @@ export default function Chirurgie() {
       setSuivis(data.suivis || []);
       setComplications(data.complications || []);
       setCurrentInvoice(data.invoice || null);
-    } catch {
-      const d = DEMO_DOSSIERS.find(x => x._id === id);
-      setCurrentDossier(d || null);
+    } catch (err) {
+      // Phase 7 (audit du 11 sept. 2026) — sur échec réel de GET
+      // /chirurgie/:id (réseau, 500...), ce repli affichait un bilan
+      // biologique/imagerie et des relevés postopératoires entièrement
+      // fabriqués (Hb, glycémie, échographie, température, tension...)
+      // comme s'ils appartenaient réellement au dossier demandé — un(e)
+      // clinicien(ne) tombant sur une erreur transitoire aurait vu des
+      // valeurs médicales plausibles mais inventées, sans aucune
+      // indication d'échec. Jamais de donnée médicale fabriquée : état
+      // vide honnête + erreur signalée. currentDossier n'est pas modifié
+      // ici : openDossier() l'a déjà positionné sur le vrai objet de la
+      // liste avant cet appel — l'écraser avec DEMO_DOSSIERS.find (toujours
+      // introuvable, DEMO_DOSSIERS étant vide) ne faisait que masquer
+      // inutilement des informations réelles déjà connues (nom, statut...).
+      console.error("Erreur chargement dossier chirurgie:", err);
+      toast.error("Impossible de charger ce dossier.");
       setCurrentInvoice(null);
-      setBilan([
-        { _id:"b1", type:"biologie", examen:"NFS complète", valeur:"Hb: 12.5 g/dL", statut:"normal", date_examen:"2025-06-01", urgence:false },
-        { _id:"b2", type:"biologie", examen:"Glycémie à jeun", valeur:"7.2 mmol/L", statut:"anormal", date_examen:"2025-06-01", urgence:true },
-        { _id:"b3", type:"imagerie", examen:"Échographie abdominale", resultat:"Hernie inguinale droite confirmée, contenu graisseux", statut:"recu", date_examen:"2025-05-28", urgence:false },
-        { _id:"b4", type:"anesthesie", examen:"Évaluation préanesthésique", resultat:"ASA II — Risque modéré", statut:"recu", date_examen:"2025-06-02", urgence:false },
-      ]);
-      setSuivis([
-        { _id:"s1", date_suivi:"2025-06-12T09:30:00", temperature:37.2, tension_sys:125, tension_dia:80, pouls:72, douleur_score:3, etat_plaie:"bonne_evolution", pansement_fait:true, antibiotherapie:"Amoxicilline 1g × 3/j", observations:"Patient mobile, transit rétabli, plaie propre" },
-        { _id:"s2", date_suivi:"2025-06-11T14:00:00", temperature:38.1, tension_sys:130, tension_dia:85, pouls:88, douleur_score:5, etat_plaie:"suintement", pansement_fait:true, antibiotherapie:"Amoxicilline 1g × 3/j", observations:"Légère fièvre, suintement plaie traité" },
-      ]);
+      setBilan([]);
+      setSuivis([]);
       setComplications([]);
     }
   }, []);
@@ -464,10 +467,21 @@ export default function Chirurgie() {
     try {
       const [pRes, cRes] = await Promise.allSettled([api.get("/patients?limit=500"), api.get("/admin/users?role=medecin")]);
       if (pRes.status === "fulfilled") setPatients(pRes.value.data.patients || pRes.value.data.data || []);
+      else { console.error("Erreur chargement patients:", pRes.reason); setPatients([]); }
       if (cRes.status === "fulfilled") setChirurgiens(cRes.value.data.users || []);
-    } catch {
-      setPatients([{ _id:"p1", prenom:"Jean", nom:"Dupont", numero_dossier:"PAT-001" }]);
-      setChirurgiens([{ _id:"c1", prenom:"Martin", nom:"Leblanc", specialite:"Chirurgie Générale" }]);
+      else { console.error("Erreur chargement chirurgiens:", cRes.reason); setChirurgiens([]); }
+    } catch (err) {
+      // Phase 7 (audit du 11 sept. 2026) — sur échec des deux requêtes,
+      // le formulaire "Nouveau dossier" proposait un patient fictif
+      // ("Jean Dupont", PAT-001) et un chirurgien fictif ("Martin
+      // Leblanc") : un dossier chirurgical réel aurait pu être créé
+      // contre un patient inexistant. Blocoperatoire.jsx a déjà ce même
+      // correctif (repli sur liste vide) ; appliqué ici de façon
+      // identique — jamais de personne fabriquée dans un sélecteur qui
+      // écrit ensuite en base.
+      console.error("Erreur chargement patients/chirurgiens:", err);
+      setPatients([]);
+      setChirurgiens([]);
     }
   }, []);
 
