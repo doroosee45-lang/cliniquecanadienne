@@ -405,7 +405,12 @@ const F = ({label,children}) => (
 function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
   const dispatch = useDispatch();
   const [form, setForm] = useState({
-    tension_sys:"", tension_dia:"", temperature:"", poids:"", hauteur_uterine:"",
+    // MAT-001 (audit du 11 sept. 2026) — `terme` (semaines d'aménorrhée)
+    // existe bien dans CPNSchema (backend/models/Pregnancy.js) et est déjà
+    // saisi par ModalEcho plus bas dans ce même fichier, mais ce formulaire
+    // ne le proposait jamais : l'historique CPN ne pouvait donc jamais
+    // afficher de terme réel, quel que soit l'affichage utilisé.
+    terme:"", tension_sys:"", tension_dia:"", temperature:"", poids:"", hauteur_uterine:"",
     bcf:"", presentation:"cephalique", hemoglobine:"", glycemie:"",
     vih:"negatif", hepatite_b:"negatif", syphilis:"negatif", proteinurie:"negative",
     conseils:"", vitamines:""
@@ -430,6 +435,7 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
   const handleSubmit = async () => {
     if (!grossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
     const body = { ...form };
+    if (form.terme) body.terme = Number(form.terme);
     if (form.tension_sys) body.tension_sys = Number(form.tension_sys);
     if (form.tension_dia) body.tension_dia = Number(form.tension_dia);
     if (form.temperature) body.temperature = Number(form.temperature);
@@ -457,6 +463,7 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
         <div className="mat-modal-body">
           <div style={{fontSize:13,fontWeight:700,color:"var(--apk)",marginBottom:12}}>📊 Signes vitaux</div>
           <div className="mat-g2">
+            <F label="Terme (SA)"><input className="mat-input" placeholder="Ex: 22" value={form.terme} onChange={e=>setForm({...form,terme:e.target.value})}/></F>
             <F label="Tension systolique (mmHg)"><input className="mat-input" placeholder="Ex: 120" value={form.tension_sys} onChange={e=>setForm({...form,tension_sys:e.target.value})}/></F>
             <F label="Tension diastolique (mmHg)"><input className="mat-input" placeholder="Ex: 80" value={form.tension_dia} onChange={e=>setForm({...form,tension_dia:e.target.value})}/></F>
             <F label="Température (°C)"><input className="mat-input" placeholder="Ex: 37.2" value={form.temperature} onChange={e=>setForm({...form,temperature:e.target.value})}/></F>
@@ -1686,8 +1693,16 @@ export default function Maternite() {
                   ) : [...(grossesseDossier.cpns||[])].reverse().map((c,i) => (
                     <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr", gap:12, background:"#F8FAFD", borderRadius:10, padding:"10px 14px", border:"1.5px solid var(--abr)", marginBottom:8 }}>
                       <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Date</div><div style={{ fontSize:12, fontWeight:600, color:"var(--an)" }}>{fmtDate(c.date)}</div></div>
-                      <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>SA</div><div style={{ fontSize:12, fontWeight:600, color:"var(--ab)" }}>{c.sa||"—"} SA</div></div>
-                      <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>TA</div><div style={{ fontSize:12, fontWeight:600 }}>{c.ta||"—"}</div></div>
+                      {/* MAT-001 — `sa`/`ta` n'ont jamais existé sur CPNSchema
+                          (backend/models/Pregnancy.js) : ces deux colonnes
+                          affichaient toujours "—", même pour des CPN avec un
+                          terme et une tension réellement enregistrés. Champs
+                          réels : `terme` (désormais saisi ci-dessus) et
+                          `tension_sys`/`tension_dia` (déjà saisis, même
+                          formule d'affichage qu'ailleurs dans ce fichier,
+                          ex. lignes ~880/~1182). */}
+                      <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>SA</div><div style={{ fontSize:12, fontWeight:600, color:"var(--ab)" }}>{c.terme?`${c.terme} SA`:"—"}</div></div>
+                      <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>TA</div><div style={{ fontSize:12, fontWeight:600 }}>{c.tension_sys&&c.tension_dia?`${c.tension_sys}/${c.tension_dia}`:"—"}</div></div>
                       <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Poids</div><div style={{ fontSize:12, fontWeight:600 }}>{c.poids?`${c.poids} kg`:"—"}</div></div>
                       <div><div style={{ fontSize:11, color:"var(--am)", fontWeight:700 }}>Médecin</div><div style={{ fontSize:12, color:"var(--am)" }}>{c.medecin||"—"}</div></div>
                     </div>
