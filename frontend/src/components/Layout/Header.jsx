@@ -150,7 +150,13 @@ export default function Header({ title, onMenuToggle }) {
                   <button
                     key={p._id}
                     className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 text-sm"
-                    onClick={() => { navigate('/patients'); setSearchResults([]); setSearchQuery(''); }}
+                    // ARCH-005 (audit du 11 sept. 2026) — chaque résultat de
+                    // recherche est un vrai patient (p._id réel, /patients/
+                    // search) mais le clic ignorait cet id et renvoyait
+                    // toujours vers la liste générale /patients, jamais vers
+                    // sa propre fiche — /patients/:id existe déjà (App.jsx,
+                    // PatientDetail).
+                    onClick={() => { navigate(`/patients/${p._id}`); setSearchResults([]); setSearchQuery(''); }}
                   >
                     <div className="font-semibold">{p.nom} {p.prenom}</div>
                     <div className="text-gray-400 text-xs">{p.numero_dossier} • {p.telephone}</div>
