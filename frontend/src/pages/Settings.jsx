@@ -228,8 +228,6 @@ const DEMO_USERS = [];
 const PERM_LABELS = { lecture:"Lecture", creation:"Création", modification:"Modification", suppression:"Suppression", validation:"Validation", impression:"Impression", exportation:"Exportation" };
 const ROLE_LABELS = { superadmin:"Super Admin", adminclinique:"Admin Clinique", medecin:"Médecin", infirmier:"Infirmier", sage_femme:"Sage-femme", radiologue:"Radiologue", pharmacien:"Pharmacien", laborantin:"Laborantin", comptable:"Comptable", receptionniste:"Réceptionniste" };
 
-const DEMO_LOGS = [];
-
 // Ticket 0020 — les champs "statut" ci-dessous ne sont plus lus par le rendu
 // (voir AUDIT-03 plus bas : chaque carte affiche "Bientôt disponible" et un
 // bouton désactivé, quelle que soit cette valeur). Corrigés ici pour ne plus
@@ -452,13 +450,20 @@ export default function Settings() {
   };
 
   // ── Chargement logs ───────────────────────────────────────
+  // SET-001 (audit du 11 sept. 2026) — appelait GET /admin/logs, une route
+  // qui n'existe pas côté backend (grep exhaustif sur backend/routes/) :
+  // l'onglet affichait donc toujours "aucun log" (repli sur DEMO_LOGS = []),
+  // silencieusement, jamais une erreur visible. Le système réel de
+  // journalisation est /audit (audit.routes.js, authorize(ADMIN) — mêmes
+  // rôles que cette page Settings), déjà utilisé par le module Audit dédié
+  // (menu Audit) — réutilisé ici plutôt que de fabriquer une route.
   const loadLogs = useCallback(async () => {
     if (logs.length > 0) return;
     setLoadingLogs(true);
     try {
-      const { data } = await api.get("/admin/logs?limit=50");
-      setLogs(data.logs || data.data || DEMO_LOGS);
-    } catch { setLogs(DEMO_LOGS); }
+      const { data } = await api.get("/audit?limit=50");
+      setLogs(data.events || []);
+    } catch { setLogs([]); }
     finally { setLoadingLogs(false); }
   }, [logs.length]);
 
@@ -949,10 +954,27 @@ export default function Settings() {
                     <SaveBtn cle="notif_smtp_pwd" />
                   </div>
                 </div>
-                <button className="sbtn sbtn-ghost sbtn-sm" style={{ alignSelf:"flex-start" }} onClick={async () => {
-                  try { await api.post("/settings/test-smtp"); toast.success("📧 E-mail test envoyé"); }
-                  catch { toast.error("Échec de la connexion SMTP"); }
-                }}>Tester la connexion SMTP</button>
+                {/* SET-002 (audit du 11 sept. 2026) — POST /settings/test-smtp
+                    n'existe pas côté backend (grep exhaustif) : ce bouton
+                    affichait donc systématiquement "Échec de la connexion
+                    SMTP", quelle que soit la configuration réelle du serveur
+                    mail — un faux diagnostic, jamais un vrai test. Désactivé
+                    honnêtement plutôt que de fabriquer une route, ou pire, de
+                    tester le service mail réel (utils/mail.js) sous couvert
+                    de "tester" les 4 champs ci-dessus : ces champs sont
+                    enregistrés dans Setting mais jamais lus par
+                    utils/mail.js::getTransporter(), qui utilise exclusivement
+                    les variables d'environnement du serveur (SMTP_HOST/
+                    SMTP_PORT/SMTP_USER/SMTP_PASS) — un "test réussi" ici
+                    validerait donc la config serveur, pas la saisie de
+                    l'admin. Voir NEW-001 du rapport final. */}
+                <button className="sbtn sbtn-ghost sbtn-sm" style={{ alignSelf:"flex-start" }} disabled
+                  title="Fonctionnalité indisponible : aucune route backend de test SMTP n'existe, et ces champs ne pilotent pas encore l'envoi réel (voir la note ci-dessus).">
+                  Tester la connexion SMTP
+                </button>
+                <p style={{ fontSize:11, color:"var(--muted)", margin:0 }}>
+                  ℹ️ Ces valeurs sont enregistrées mais ne pilotent pas encore l'envoi réel des emails — celui-ci est actuellement configuré via les variables d'environnement du serveur.
+                </p>
               </div>
             </div>
             <div className="set-card">
@@ -1253,7 +1275,7 @@ export default function Settings() {
     case "audit": return (
       <div className="fu">
         <div className="set-section-top">
-          <div><div className="set-section-title">📋 Audit & Journaux</div><div className="set-section-sub">API /admin/logs — Traçabilité complète</div></div>
+          <div><div className="set-section-title">📋 Audit & Journaux</div><div className="set-section-sub">API /audit — Traçabilité complète</div></div>
           <div style={{ display:"flex", gap:8 }}>
             <button className="sbtn sbtn-ghost" disabled title="Fonctionnalité indisponible : aucune route backend d'export de logs n'existe pour cette page — utilisez le module Audit (menu Audit), qui dispose d'un export PDF/Excel/CSV réel.">📄 PDF</button>
             <button className="sbtn sbtn-ghost" disabled title="Fonctionnalité indisponible : aucune route backend d'export de logs n'existe pour cette page — utilisez le module Audit (menu Audit), qui dispose d'un export PDF/Excel/CSV réel.">📊 Excel</button>
@@ -1264,19 +1286,21 @@ export default function Settings() {
           <div className="set-card">
             <div style={{ overflowX:"auto" }}>
               <table className="set-tbl">
-                <thead><tr><th>Utilisateur</th><th>Action</th><th>Type</th><th>Date & Heure</th><th>Adresse IP</th></tr></thead>
+                <thead><tr><th>Utilisateur</th><th>Module</th><th>Action</th><th>Risque</th><th>Date & Heure</th><th>Adresse IP</th></tr></thead>
                 <tbody>
-                  {logs.map((log, i) => {
-                    const typeConf = {
-                      edit:["orange","✏️"], login:["teal","🔑"], add:["green","➕"],
-                      delete:["red","🗑️"], error:["red","❌"], backup:["blue","💾"]
-                    }[log.type] || ["gray","•"];
+                  {logs.length === 0 ? (
+                    <tr><td colSpan={6} style={{ textAlign:"center", color:"var(--muted)", fontSize:13, padding:20 }}>Aucun événement récent.</td></tr>
+                  ) : logs.map((log) => {
+                    const riskConf = {
+                      critique:["red","🔴"], eleve:["orange","🟠"], moyen:["orange","🟡"], faible:["gray","🟢"],
+                    }[log.risque] || ["gray","•"];
                     return (
-                      <tr key={i}>
-                        <td style={{ fontWeight:600, color:"var(--ink)", fontSize:13 }}>{log.user || log.utilisateur}</td>
-                        <td style={{ fontSize:12, color:"var(--muted)" }}>{log.action}</td>
-                        <td><Badge cls={typeConf[0]}>{typeConf[1]} {log.type}</Badge></td>
-                        <td style={{ fontSize:12, color:"var(--muted)", fontFamily:"monospace" }}>{log.date || log.created_at}</td>
+                      <tr key={log._id}>
+                        <td style={{ fontWeight:600, color:"var(--ink)", fontSize:13 }}>{log.utilisateur}</td>
+                        <td style={{ fontSize:12, color:"var(--muted)" }}>{log.module}</td>
+                        <td style={{ fontSize:12, color:"var(--muted)" }}>{log.action} — {log.description}</td>
+                        <td><Badge cls={riskConf[0]}>{riskConf[1]} {log.risque}</Badge></td>
+                        <td style={{ fontSize:12, color:"var(--muted)", fontFamily:"monospace" }}>{log.date ? new Date(log.date).toLocaleString("fr-FR") : "—"}</td>
                         <td style={{ fontSize:12, fontFamily:"monospace", color:"var(--muted)" }}>{log.ip}</td>
                       </tr>
                     );
@@ -1323,17 +1347,24 @@ export default function Settings() {
           ))}
         </div>
 
-        {/* Clé API */}
+        {/* SET-003 (audit du 11 sept. 2026) — la valeur par défaut affichée
+            ("sk_live_••••••••••••••••") n'a jamais été réellement générée
+            (aucun modèle/route/contrôleur de clé API n'existe nulle part
+            dans le backend, grep exhaustif), et POST /settings/regenerate-key
+            n'existe pas non plus : "Régénérer" échouait systématiquement.
+            Même traitement honnête que le reste de cette section
+            "Intégrations API" (AUDIT-03, cartes ci-dessus) plutôt que de
+            fabriquer une route ou une fausse clé. */}
         <div className="set-card" style={{ marginTop:20 }}>
           <div className="set-card-hdr"><h3>{I.key} Clé API de la clinique</h3></div>
           <div className="set-card-body">
+            <div className="al-info" style={{ fontSize:12, marginBottom:12 }}>
+              Aucune clé API n'a encore été émise — cette fonctionnalité n'est pas disponible pour le moment.
+            </div>
             <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
-              <input className="sinp" style={{ flex:1, fontFamily:"monospace", fontSize:12, letterSpacing:1 }} value={val("api_key","sk_live_••••••••••••••••")} readOnly />
-              <button className="sbtn sbtn-ghost" onClick={() => { navigator.clipboard?.writeText(val("api_key","")); toast.success("📋 Clé API copiée"); }}>📋 Copier</button>
-              <button className="sbtn sbtn-danger" onClick={async () => {
-                try { const { data } = await api.post("/settings/regenerate-key"); set("api_key", data.key || "sk_live_new_••••••••"); toast.success("🔄 Nouvelle clé générée"); }
-                catch { toast.error("Erreur lors de la régénération"); }
-              }}>🔄 Régénérer</button>
+              <input className="sinp" style={{ flex:1, fontFamily:"monospace", fontSize:12, letterSpacing:1 }} value="Aucune clé émise" disabled />
+              <button className="sbtn sbtn-ghost" disabled title="Fonctionnalité non disponible pour le moment">📋 Copier</button>
+              <button className="sbtn sbtn-danger" disabled title="Fonctionnalité non disponible pour le moment">🔄 Régénérer</button>
             </div>
             <div style={{ fontSize:11, color:"var(--muted)", marginTop:8 }}>⚠️ Ne partagez jamais votre clé API. Révoquez-la immédiatement si elle est compromise.</div>
           </div>
