@@ -18,6 +18,14 @@ vi.mock('react-hot-toast', () => ({
 }));
 import toast from 'react-hot-toast';
 
+// P1-01 — Administration.jsx appelle désormais useAuth() (garde
+// isSuperadmin sur la gestion des utilisateurs) ; useAuth() lève une
+// exception hors <AuthProvider>. Ce test ne porte pas sur cette garde,
+// un rôle admin quelconque suffit.
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { prenom: 'Test', nom: 'Admin', role: 'superadmin' } }),
+}));
+
 vi.mock('../../api', () => ({
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }));

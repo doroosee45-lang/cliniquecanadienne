@@ -20,6 +20,14 @@ vi.mock('react-hot-toast', () => ({
 }));
 import toast from 'react-hot-toast';
 
+// P1-01 — "Nouvel utilisateur" est désormais réservé à isSuperadmin (le
+// backend l'exige déjà, authorize('superadmin') strict) ; ce test exerce
+// précisément ce flux de création, donc un compte superadmin réel est le
+// bon persona à simuler ici — pas un contournement de la garde.
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { prenom: 'Test', nom: 'Superadmin', role: 'superadmin' } }),
+}));
+
 vi.mock('../../api', () => ({
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }));

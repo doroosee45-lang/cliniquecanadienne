@@ -11,6 +11,7 @@ import toast from "react-hot-toast";
 import { ShieldCheck, Plus, Bell } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import { useAuth } from '../contexts/AuthContext';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -371,6 +372,17 @@ function BarChart({ labels, data, color = "#1B4F9E", height = 200 }) {
 // ═══════════════════════════════════════════════════════════
 export default function Administration() {
   const dispatch = useDispatch();
+  // P1-01 (audit du 11 sept. 2026) — POST/PUT/DELETE /settings/users sont
+  // authorize('superadmin') strict côté backend (settings.routes.js:27-29),
+  // mais cette page (accessible à adminclinique via ROLES.admin, App.jsx)
+  // affichait ces actions sans aucune garde : un(e) adminclinique voyait
+  // "Ajouter utilisateur"/"Modifier"/"Activer-Désactiver" et recevait
+  // systématiquement un 403 au clic. Même garde déjà appliquée à l'identique
+  // pour la même restriction dans Settings.jsx (isSuperadmin) — la lecture
+  // (GET /settings/users, authorize(...ADMIN)) reste accessible aux deux
+  // rôles, seule l'écriture est masquée ici.
+  const { user: authUser } = useAuth() || {};
+  const isSuperadmin = authUser?.role === 'superadmin';
   const reduxUsers = useSelector(selectUsers);
   const reduxServices = useSelector(selectServices);
   const reduxSettings = useSelector(selectSystemSettings);
@@ -810,7 +822,7 @@ export default function Administration() {
               )}
               {tab === "gestion" && section === "utilisateurs" && (
                 <>
-                  <Button icon={Plus} onClick={() => { setFormUser(EMPTY_USER); setEditUser(null); setModalUser(true); }}>Nouvel utilisateur</Button>
+                  {isSuperadmin && <Button icon={Plus} onClick={() => { setFormUser(EMPTY_USER); setEditUser(null); setModalUser(true); }}>Nouvel utilisateur</Button>}
                   <Button icon={Plus} onClick={() => { setFormPatientQuick(EMPTY_PATIENT_QUICK); setModalPatientQuick(true); }}>Nouveau patient</Button>
                 </>
               )}
@@ -1032,9 +1044,11 @@ export default function Administration() {
                         <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9CA3AF" }}>{I.search}</span>
                         <input className="cinp" style={{ paddingLeft:34, width:220 }} placeholder="Nom, email, rôle..." aria-label="Nom, email, rôle" value={search} onChange={e => setSearch(e.target.value)} />
                       </div>
-                      <button className="cbtn cbtn-primary" onClick={() => { setFormUser(EMPTY_USER); setEditUser(null); setModalUser(true); }}>
-                        {I.plus} Ajouter utilisateur
-                      </button>
+                      {isSuperadmin && (
+                        <button className="cbtn cbtn-primary" onClick={() => { setFormUser(EMPTY_USER); setEditUser(null); setModalUser(true); }}>
+                          {I.plus} Ajouter utilisateur
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="adm-card">
@@ -1075,15 +1089,19 @@ export default function Administration() {
                                         du compte), jamais u.service_effectif (dérivé de Staff) : sinon
                                         enregistrer sans rien changer copierait silencieusement la
                                         valeur Staff dans User.service, cassant la source unique. */}
-                                    <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setEditUser(u); setFormUser({ prenom:u.prenom, nom:u.nom, email:u.email, telephone:u.telephone, role:u.role, service:u.service?._id || "", statut:u.statut, mot_de_passe:"", must_change_password:!!u.must_change_password }); setModalUser(true); }}>
-                                      {I.edit}
-                                    </button>
+                                    {isSuperadmin && (
+                                      <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setEditUser(u); setFormUser({ prenom:u.prenom, nom:u.nom, email:u.email, telephone:u.telephone, role:u.role, service:u.service?._id || "", statut:u.statut, mot_de_passe:"", must_change_password:!!u.must_change_password }); setModalUser(true); }}>
+                                        {I.edit}
+                                      </button>
+                                    )}
                                     <button className="cbtn cbtn-ghost cbtn-sm" title="Réinitialiser mot de passe" onClick={() => resetPassword(u)}>
                                       {I.key}
                                     </button>
-                                    <button className={`cbtn cbtn-sm ${u.statut === "actif" ? "cbtn-danger" : "cbtn-success"}`} onClick={() => toggleUserStatus(u)}>
-                                      {u.statut === "actif" ? I.lock : I.check}
-                                    </button>
+                                    {isSuperadmin && (
+                                      <button className={`cbtn cbtn-sm ${u.statut === "actif" ? "cbtn-danger" : "cbtn-success"}`} onClick={() => toggleUserStatus(u)}>
+                                        {u.statut === "actif" ? I.lock : I.check}
+                                      </button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
