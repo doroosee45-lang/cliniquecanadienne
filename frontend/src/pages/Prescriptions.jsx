@@ -250,6 +250,42 @@ function buildOrdonnancesParMois(ordonnances) {
   }
   return { labels, data };
 }
+// Phase 7 (audit du 11 sept. 2026) — "Médicaments les plus prescrits" et
+// "Top prescripteurs" (Dashboard) étaient deux tableaux codés en dur (ex.
+// "Dr. Martin Leblanc" 42, "Paracétamol" 38%), jamais recalculés depuis
+// `ordonnances` — les mêmes chiffres fictifs s'affichaient en permanence,
+// juxtaposés aux vrais KPIs du même tableau de bord. Même principe que
+// buildOrdonnancesParMois ci-dessus : agrégé depuis les vraies ordonnances
+// déjà chargées par loadOrds, jamais inventé.
+const TOP_COLORS = ["var(--success)", "var(--primary)", "var(--accent)", "var(--warning)", "var(--tertiary)"];
+function buildTopMedicaments(ordonnances) {
+  const counts = new Map();
+  ordonnances.forEach(o => (o.medicaments || []).forEach(m => {
+    const nom = (m.medicament || "").trim();
+    if (nom) counts.set(nom, (counts.get(nom) || 0) + 1);
+  }));
+  const total = ordonnances.length || 1;
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([med, count], i) => [med, Math.round(count / total * 100), TOP_COLORS[i % TOP_COLORS.length]]);
+}
+function buildTopPrescripteurs(ordonnances) {
+  const byDoc = new Map();
+  ordonnances.forEach(o => {
+    const nom = (o.medecin || "").trim();
+    if (!nom) return;
+    const entry = byDoc.get(nom) || { count: 0, specialite: o.specialite || "" };
+    entry.count += 1;
+    if (!entry.specialite && o.specialite) entry.specialite = o.specialite;
+    byDoc.set(nom, entry);
+  });
+  return [...byDoc.entries()]
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 4)
+    .map(([dr, { specialite, count }]) => [dr, specialite || "—", count]);
+}
+
 const EMPTY_ORD = {
   patient_id:"", poids:"", allergies:[], medecin:"", specialite:"", consultation_liee:"",
   date_prescription:new Date().toISOString().substring(0,10),
@@ -387,6 +423,8 @@ export default function Ordonnances() {
   const [analyzingIA, setAnalyzingIA] = useState(false);
   const [kpis, setKpis]           = useState({ total:0, actives:0, expirees:0, renouvellements:0, chroniques:0, interactions:0, aujourd_hui:0, dispensees:0, annulees:0, mois:0, renouvellements_effectues:0, repartition_specialite:[] });
   const chartData = useMemo(() => buildOrdonnancesParMois(ordonnances), [ordonnances]);
+  const topMedicaments = useMemo(() => buildTopMedicaments(ordonnances), [ordonnances]);
+  const topPrescripteurs = useMemo(() => buildTopPrescripteurs(ordonnances), [ordonnances]);
 
   // Modals
   const [modalNouv, setModalNouv]   = useState(false);
@@ -891,7 +929,8 @@ export default function Ordonnances() {
                 <div className="ord-card fu">
                   <div className="ord-card-hdr"><h3>{I.pill} Médicaments les plus prescrits</h3></div>
                   <div style={{ padding:20 }}>
-                    {[["Paracétamol",38,"var(--success)"],["Amoxicilline",24,"var(--primary)"],["Oméprazole",21,"var(--accent)"],["Ibuprofène",18,"var(--warning)"],["Metformine",15,"var(--tertiary)"]].map(([med,pct,col]) => (
+                    {topMedicaments.length === 0 && <div style={{ fontSize:12, color:"var(--muted)" }}>Aucune ordonnance enregistrée.</div>}
+                    {topMedicaments.map(([med,pct,col]) => (
                       <div key={med} style={{ marginBottom:10 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3, fontSize:12 }}>
                           <span style={{ color:"var(--muted)", fontWeight:600 }}>{med}</span>
@@ -905,7 +944,8 @@ export default function Ordonnances() {
                 <div className="ord-card fu">
                   <div className="ord-card-hdr"><h3>👨‍⚕️ Top prescripteurs</h3></div>
                   <div style={{ padding:20 }}>
-                    {[["Dr. Martin Leblanc","Chirurgie",42],["Dr. Sophie Pierre","Gynécologie / Med. Gen.",31],["Dr. Amina Diallo","Médecine interne",18],["Dr. Pierre Mouanda","Radiologie",9]].map(([dr,spe,n]) => (
+                    {topPrescripteurs.length === 0 && <div style={{ fontSize:12, color:"var(--muted)" }}>Aucune ordonnance enregistrée.</div>}
+                    {topPrescripteurs.map(([dr,spe,n]) => (
                       <div key={dr} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid var(--border)" }}>
                         <div style={{ width:36, height:36, borderRadius:"50%", background:"var(--tint)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>👨‍⚕️</div>
                         <div style={{ flex:1, minWidth:0 }}>
