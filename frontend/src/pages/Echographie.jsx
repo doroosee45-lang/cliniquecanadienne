@@ -819,6 +819,29 @@ function Planning({ demandes }) {
   const heures = ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"];
   const jours  = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
 
+  // ECH-001 (audit du 11 sept. 2026) — l'en-tête affichait une date codée
+  // en dur ("Semaine du 09 juin 2026", toujours la même) et les boutons
+  // "◀ Préc."/"Suiv. ▶" n'avaient aucun onClick : la navigation semaine
+  // était entièrement factice, alors que d.date_planif (donnée réelle)
+  // contient déjà tout ce qu'il faut pour la construire. La grille
+  // comparait aussi les créneaux par seul jour-de-semaine (dt.getDay()),
+  // sans jamais vérifier la semaine réelle — deux demandes le même jour de
+  // semaine mais dans des semaines différentes se seraient affichées dans
+  // la même cellule. Corrigé : semaine réellement calculée à partir
+  // d'aujourd'hui + weekOffset, navigation réelle, correspondance par date
+  // exacte (pas seulement par jour de semaine).
+  const [weekOffset, setWeekOffset] = useState(0);
+  const weekDates = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay(); // 0=dimanche..6=samedi
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setHours(0,0,0,0);
+    monday.setDate(monday.getDate() + diffToMonday + weekOffset * 7);
+    return jours.map((_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+  }, [weekOffset]);
+  const weekLabel = `${weekDates[0].toLocaleDateString("fr-FR",{day:"2-digit",month:"long"})} au ${weekDates[5].toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}`;
+
   return (
     <div className="fu">
       <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:16, flexWrap:"wrap" }}>
@@ -839,10 +862,11 @@ function Planning({ demandes }) {
 
       <div className="echo-card">
         <div className="echo-card-hdr">
-          <h3>📅 Planning des échographies — Semaine du 09 juin 2026</h3>
+          <h3>📅 Planning des échographies — Semaine du {weekLabel}</h3>
           <div style={{ display:"flex", gap:8 }}>
-            <button className="cbtn cbtn-ghost cbtn-sm">◀ Préc.</button>
-            <button className="cbtn cbtn-ghost cbtn-sm">Suiv. ▶</button>
+            <button className="cbtn cbtn-ghost cbtn-sm" onClick={()=>setWeekOffset(o=>o-1)}>◀ Préc.</button>
+            {weekOffset !== 0 && <button className="cbtn cbtn-ghost cbtn-sm" onClick={()=>setWeekOffset(0)}>Aujourd'hui</button>}
+            <button className="cbtn cbtn-ghost cbtn-sm" onClick={()=>setWeekOffset(o=>o+1)}>Suiv. ▶</button>
           </div>
         </div>
         <div style={{ overflowX:"auto", padding:"0 0 4px" }}>
@@ -864,7 +888,7 @@ function Planning({ demandes }) {
                     const slot = planifiees.find(d => {
                       const dt = new Date(d.date_planif);
                       const hh = `${String(dt.getHours()).padStart(2,"0")}:00`;
-                      return hh===h && dt.getDay()-1===ji;
+                      return hh===h && dt.toDateString()===weekDates[ji].toDateString();
                     });
                     return (
                       <td key={j} style={{ padding:"6px 8px", verticalAlign:"top", minWidth:110 }}>
