@@ -1660,9 +1660,15 @@ export default function Pediatrie() {
                     <button className="pbtn pbtn-green pbtn-sm" onClick={() => openModal("consultation", enfantDossier)}>➕</button>
                   </div>
                   <div style={{ padding:14 }}>
-                    {consultations.filter(c=>(c.enfant?._id||c.enfant)===enfantDossier._id).slice(0,5).length === 0 ? (
+                    {/* PED-001 (audit du 11 sept. 2026) — PediatricConsultation.js
+                        n'a jamais eu de champ `enfant` (schéma réel : `child_id`,
+                        requis, populate('child_id', ...) dans le contrôleur) ; ce
+                        filtre comparait toujours `undefined` à `enfantDossier._id`
+                        et n'affichait donc jamais aucune consultation ici, même
+                        quand des consultations réelles existaient pour l'enfant. */}
+                    {consultations.filter(c=>(c.child_id?._id||c.child_id)===enfantDossier._id).slice(0,5).length === 0 ? (
                       <div style={{ textAlign:"center", color:"var(--pm)", padding:"16px 0", fontSize:12 }}>Aucune consultation enregistrée</div>
-                    ) : consultations.filter(c=>(c.enfant?._id||c.enfant)===enfantDossier._id).slice(0,5).map((c,i)=>(
+                    ) : consultations.filter(c=>(c.child_id?._id||c.child_id)===enfantDossier._id).slice(0,5).map((c,i)=>(
                       <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid var(--pbr)", fontSize:12 }}>
                         <div>
                           <div style={{ fontWeight:700, color:"var(--pn)", fontSize:13 }}>{c.motif||"—"}</div>
