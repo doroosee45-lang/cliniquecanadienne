@@ -1234,7 +1234,7 @@ export default function Urgences() {
                         <label className="ulbl">Niveau de triage *</label>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                           {Object.entries(TRIAGE_NIVEAUX).map(([key, t]) => (
-                            <div key={key} onClick={() => setCurrentUrg(u => ({ ...u, niveau_triage: key }))}
+                            <div key={key} onClick={() => dispatch(patchCurrentUrg({ niveau_triage: key }))}
                               style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer", border: `2px solid ${currentUrg.niveau_triage === key ? t.color : "var(--ucr)"}`, background: currentUrg.niveau_triage === key ? t.color + "15" : "#F4F9FD", transition: "all .2s" }}>
                               <div style={{ fontSize: 13, fontWeight: 700, color: t.color }}>{t.icon} {t.label}</div>
                               <div style={{ fontSize: 10, color: "var(--ucm)" }}>{t.desc}</div>
@@ -1244,24 +1244,24 @@ export default function Urgences() {
                       </div>
                       <div>
                         <label className="ulbl">Statut actuel</label>
-                        <select className="uinp" value={currentUrg.statut} onChange={e => setCurrentUrg(u => ({ ...u, statut: e.target.value }))}>
+                        <select className="uinp" value={currentUrg.statut} onChange={e => dispatch(patchCurrentUrg({ statut: e.target.value }))}>
                           {Object.entries(STATUT_URG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="ulbl">Motif de recours</label>
-                        <select className="uinp" value={currentUrg.motif || ""} onChange={e => setCurrentUrg(u => ({ ...u, motif: e.target.value }))}>
+                        <select className="uinp" value={currentUrg.motif || ""} onChange={e => dispatch(patchCurrentUrg({ motif: e.target.value }))}>
                           <option value="">— Sélectionner —</option>
                           {MOTIFS_URG.map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="ulbl">Médecin responsable</label>
-                        <input className="uinp" value={currentUrg.medecin || ""} onChange={e => setCurrentUrg(u => ({ ...u, medecin: e.target.value }))} placeholder="Dr. Nom Prénom" />
+                        <input className="uinp" value={currentUrg.medecin || ""} onChange={e => dispatch(patchCurrentUrg({ medecin: e.target.value }))} placeholder="Dr. Nom Prénom" />
                       </div>
                       <div>
                         <label className="ulbl">Infirmier(ère)</label>
-                        <input className="uinp" value={currentUrg.infirmier || ""} onChange={e => setCurrentUrg(u => ({ ...u, infirmier: e.target.value }))} placeholder="Inf. Nom Prénom" />
+                        <input className="uinp" value={currentUrg.infirmier || ""} onChange={e => dispatch(patchCurrentUrg({ infirmier: e.target.value }))} placeholder="Inf. Nom Prénom" />
                       </div>
                       <button className="ubtn ubtn-teal" disabled={saving} onClick={() => updateUrgence({ statut: currentUrg.statut, niveau_triage: currentUrg.niveau_triage, motif: currentUrg.motif, medecin: currentUrg.medecin, infirmier: currentUrg.infirmier })}>
                         {I.save} {saving ? "Enregistrement..." : "Enregistrer"}
@@ -1275,27 +1275,27 @@ export default function Urgences() {
                       <div className="urg-g11s">
                         <div>
                           <label className="ulbl">Température (°C)</label>
-                          <input type="number" step="0.1" className="uinp" placeholder="37.0" value={currentUrg.temperature || ""} onChange={e => setCurrentUrg(u => ({ ...u, temperature: e.target.value }))} />
+                          <input type="number" step="0.1" className="uinp" placeholder="37.0" value={currentUrg.temperature || ""} onChange={e => dispatch(patchCurrentUrg({ temperature: e.target.value }))} />
                         </div>
                         <div>
                           <label className="ulbl">Pouls (bpm)</label>
-                          <input type="number" className="uinp" placeholder="72" value={currentUrg.pouls || ""} onChange={e => setCurrentUrg(u => ({ ...u, pouls: e.target.value }))} />
+                          <input type="number" className="uinp" placeholder="72" value={currentUrg.pouls || ""} onChange={e => dispatch(patchCurrentUrg({ pouls: e.target.value }))} />
                         </div>
                         <div>
                           <label className="ulbl">Tension systolique</label>
-                          <input type="number" className="uinp" placeholder="120" value={currentUrg.tension_sys || ""} onChange={e => setCurrentUrg(u => ({ ...u, tension_sys: e.target.value }))} />
+                          <input type="number" className="uinp" placeholder="120" value={currentUrg.tension_sys || ""} onChange={e => dispatch(patchCurrentUrg({ tension_sys: e.target.value }))} />
                         </div>
                         <div>
                           <label className="ulbl">Tension diastolique</label>
-                          <input type="number" className="uinp" placeholder="80" value={currentUrg.tension_dia || ""} onChange={e => setCurrentUrg(u => ({ ...u, tension_dia: e.target.value }))} />
+                          <input type="number" className="uinp" placeholder="80" value={currentUrg.tension_dia || ""} onChange={e => dispatch(patchCurrentUrg({ tension_dia: e.target.value }))} />
                         </div>
                         <div>
                           <label className="ulbl">SpO₂ (%)</label>
-                          <input type="number" className="uinp" placeholder="98" value={currentUrg.spo2 || ""} onChange={e => setCurrentUrg(u => ({ ...u, spo2: e.target.value }))} />
+                          <input type="number" className="uinp" placeholder="98" value={currentUrg.spo2 || ""} onChange={e => dispatch(patchCurrentUrg({ spo2: e.target.value }))} />
                         </div>
                         <div>
                           <label className="ulbl">Glycémie (g/L)</label>
-                          <input type="number" step="0.01" className="uinp" placeholder="1.00" value={currentUrg.glycemie || ""} onChange={e => setCurrentUrg(u => ({ ...u, glycemie: e.target.value }))} />
+                          <input type="number" step="0.01" className="uinp" placeholder="1.00" value={currentUrg.glycemie || ""} onChange={e => dispatch(patchCurrentUrg({ glycemie: e.target.value }))} />
                         </div>
                       </div>
 
@@ -1332,23 +1332,23 @@ export default function Urgences() {
                       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
                         <div>
                           <label className="ulbl">Antécédents médicaux</label>
-                          <textarea className="uinp" rows={2} value={currentUrg.antecedents || ""} onChange={e => setCurrentUrg(u => ({ ...u, antecedents: e.target.value }))} placeholder="Diabète, HTA, ATCD chirurgicaux..." />
+                          <textarea className="uinp" rows={2} value={currentUrg.antecedents || ""} onChange={e => dispatch(patchCurrentUrg({ antecedents: e.target.value }))} placeholder="Diabète, HTA, ATCD chirurgicaux..." />
                         </div>
                         <div>
                           <label className="ulbl">Allergies connues</label>
-                          <input className="uinp" value={currentUrg.allergies || ""} onChange={e => setCurrentUrg(u => ({ ...u, allergies: e.target.value }))} placeholder="Pénicilline, AINS, latex..." />
+                          <input className="uinp" value={currentUrg.allergies || ""} onChange={e => dispatch(patchCurrentUrg({ allergies: e.target.value }))} placeholder="Pénicilline, AINS, latex..." />
                         </div>
                         <div>
                           <label className="ulbl">Traitements en cours</label>
-                          <textarea className="uinp" rows={2} value={currentUrg.traitements_cours || ""} onChange={e => setCurrentUrg(u => ({ ...u, traitements_cours: e.target.value }))} placeholder="Médicaments habituels du patient..." />
+                          <textarea className="uinp" rows={2} value={currentUrg.traitements_cours || ""} onChange={e => dispatch(patchCurrentUrg({ traitements_cours: e.target.value }))} placeholder="Médicaments habituels du patient..." />
                         </div>
                         <div>
                           <label className="ulbl">Observations cliniques</label>
-                          <textarea className="uinp" rows={3} value={currentUrg.observations || ""} onChange={e => setCurrentUrg(u => ({ ...u, observations: e.target.value }))} placeholder="Description de l'état clinique..." />
+                          <textarea className="uinp" rows={3} value={currentUrg.observations || ""} onChange={e => dispatch(patchCurrentUrg({ observations: e.target.value }))} placeholder="Description de l'état clinique..." />
                         </div>
                         <div>
                           <label className="ulbl">Diagnostic provisoire</label>
-                          <input className="uinp" value={currentUrg.diagnostic_provisoire || ""} onChange={e => setCurrentUrg(u => ({ ...u, diagnostic_provisoire: e.target.value }))} placeholder="Ex: Appendicite aiguë suspecte..." />
+                          <input className="uinp" value={currentUrg.diagnostic_provisoire || ""} onChange={e => dispatch(patchCurrentUrg({ diagnostic_provisoire: e.target.value }))} placeholder="Ex: Appendicite aiguë suspecte..." />
                         </div>
                         <button className="ubtn ubtn-teal" disabled={saving} onClick={() => updateUrgence({ antecedents: currentUrg.antecedents, allergies: currentUrg.allergies, traitements_cours: currentUrg.traitements_cours, observations: currentUrg.observations, diagnostic_provisoire: currentUrg.diagnostic_provisoire })}>
                           {I.save} {saving ? "Enregistrement..." : "Enregistrer"}
