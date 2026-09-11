@@ -1704,7 +1704,15 @@ export default function Consultation() {
               {form.prescriptions.length > 0 && (
                 <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
                   <button className="cbtn cbtn-teal" onClick={() => setModalOrd(true)}>{I.print} Imprimer l'ordonnance</button>
-                  <button className="cbtn cbtn-ghost">{I.send} Envoyer à la pharmacie</button>
+                  {/* Phase 7 (audit du 11 sept. 2026) — aucun onClick, et
+                      consultations.routes.js n'expose aucune route d'envoi
+                      dédiée (CRUD seul) : même situation que AUDIT-3.2
+                      ci-dessous (section Facturation), même traitement. La
+                      prescription est de toute façon déjà transmise
+                      réellement à la pharmacie à l'enregistrement de la
+                      consultation (consultations.controller.js::create,
+                      génération automatique de la Prescription). */}
+                  <button className="cbtn cbtn-ghost" disabled title="Fonctionnalité momentanément indisponible — déjà transmis automatiquement à l'enregistrement" style={{ opacity:.5, cursor:"not-allowed" }}>{I.send} Envoyer à la pharmacie</button>
                 </div>
               )}
             </div>
@@ -1748,7 +1756,13 @@ export default function Consultation() {
                         <h3>{label}</h3>
                         <div style={{ display: "flex", gap: 8 }}>
                           <span style={{ fontSize: 12, color: "var(--cm)" }}>{items.length} examen(s)</span>
-                          <button className={`cbtn ${btnCls} cbtn-sm`}>{I.send} Envoyer au service</button>
+                          {/* Phase 7 — même situation que "Envoyer à la
+                              pharmacie" ci-dessus : aucune route d'envoi
+                              dédiée, et consultations.controller.js::create
+                              transmet déjà réellement chaque examen au
+                              service concerné (laboratoire/imagerie/...) à
+                              l'enregistrement de la consultation. */}
+                          <button className={`cbtn ${btnCls} cbtn-sm`} disabled title="Fonctionnalité momentanément indisponible — déjà transmis automatiquement à l'enregistrement" style={{ opacity:.5, cursor:"not-allowed" }}>{I.send} Envoyer au service</button>
                         </div>
                       </div>
                       <table className="cons-tbl">
