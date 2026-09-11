@@ -255,7 +255,7 @@ function mereLabel(record) {
 // celle réellement enregistrée. groupe_sanguin/antécédents restent
 // éditables : le contrôleur ne les écrase qu'en repli (uniquement si vides),
 // jamais inconditionnellement.
-function ModalDossier({ onClose, saving }) {
+function ModalDossier({ onClose, saving, medecins }) {
   const dispatch = useDispatch();
   const [form, setForm] = useState({ ddr:"", groupe_sanguin:"", medecin_responsable:"", antecedents_medicaux:"", facteurs_risque:[] });
   const [patientQuery, setPatientQuery] = useState("");
@@ -376,7 +376,7 @@ function ModalDossier({ onClose, saving }) {
               <label className="mat-label">Médecin responsable</label>
               <select className="mat-select" value={form.medecin_responsable} onChange={e=>setForm({...form,medecin_responsable:e.target.value})}>
                 <option value="">-- Sélectionner --</option>
-                <option>Dr. Koffi</option><option>Dr. Bello</option>
+                {(medecins||[]).map(m => <option key={m._id} value={`${m.prenom} ${m.nom}`}>Dr. {m.prenom} {m.nom}</option>)}
               </select>
             </div>
           </div>
@@ -703,10 +703,13 @@ function ModalPostnatal({ grossesse, patienteNom, onClose, saving }) {
 }
 
 // ─── MODAL Accouchement ──────────────────────────────────────
-function ModalAccouchement({ grossesse, patienteNom, onClose, saving }) {
+function ModalAccouchement({ grossesse, patienteNom, onClose, saving, medecins }) {
   const dispatch = useDispatch();
   const [form, setForm] = useState({
-    date_heure:"", type_accouchement:"voie_basse", obstetricien:"Dr. Koffi",
+    // MAT-002 — "Dr. Koffi" par défaut était le même nom fictif codé en dur
+    // que l'option de liste ; aucun médecin par défaut n'est réel ici, donc
+    // ce champ démarre vide (l'utilisateur choisit dans la vraie liste).
+    date_heure:"", type_accouchement:"voie_basse", obstetricien:"",
     sage_femme:"", complications:[], notes:"",
     bebe_prenom:"", bebe_sexe:"F", poids:"", taille:"", apgar_1:"", apgar_5:""
   });
@@ -781,7 +784,7 @@ function ModalAccouchement({ grossesse, patienteNom, onClose, saving }) {
             </select>
           </div>
           <div className="mat-g2">
-            <div className="mat-field"><label className="mat-label">Obstétricien</label><select className="mat-select" value={form.obstetricien} onChange={e=>setForm({...form,obstetricien:e.target.value})}><option>Dr. Koffi</option><option>Dr. Bello</option></select></div>
+            <div className="mat-field"><label className="mat-label">Obstétricien</label><select className="mat-select" value={form.obstetricien} onChange={e=>setForm({...form,obstetricien:e.target.value})}><option value="">-- Sélectionner --</option>{(medecins||[]).map(m => <option key={m._id} value={`${m.prenom} ${m.nom}`}>Dr. {m.prenom} {m.nom}</option>)}</select></div>
             <div className="mat-field"><label className="mat-label">Sage-femme</label><input className="mat-input" value={form.sage_femme} onChange={e=>setForm({...form,sage_femme:e.target.value})}/></div>
           </div>
           <div className="mat-field">
@@ -841,6 +844,20 @@ export default function Maternite() {
   const [filterRisque, setFilterRisque] = useState("tous");
   const [searchQ, setSearchQ] = useState("");
   const [lastUpdate, setLastUpdate] = useState(new Date());
+  // MAT-002 (audit du 11 sept. 2026) — ModalDossier (médecin responsable) et
+  // ModalAccouchement (obstétricien) proposaient deux noms fictifs codés en dur
+  // ("Dr. Koffi", "Dr. Bello"). Les deux champs backend correspondants
+  // (medecin_responsable/obstetricien, models/Pregnancy.js et Delivery.js)
+  // sont de simples String, pas une référence — même source réelle déjà
+  // utilisée pour le même besoin dans Chirurgie.jsx (GET /admin/users?
+  // role=medecin) : le nom choisi ici est un vrai médecin du personnel,
+  // jamais un autre nom inventé.
+  const [medecins, setMedecins] = useState([]);
+  useEffect(() => {
+    api.get('/admin/users?role=medecin').then(({ data }) => {
+      setMedecins(data.users || data.data || []);
+    }).catch(() => setMedecins([]));
+  }, []);
 
   useEffect(() => {
     const fn = () => setIsMobile(window.innerWidth <= 767);
@@ -1791,7 +1808,7 @@ export default function Maternite() {
 
       {/* ── MODALS ── */}
       {modal==="dossier" && (
-        <ModalDossier onClose={closeModal} saving={saving}/>
+        <ModalDossier onClose={closeModal} saving={saving} medecins={medecins}/>
       )}
       {modal==="cpn" && (
         <ModalCPN
@@ -1807,6 +1824,7 @@ export default function Maternite() {
           patienteNom={selectedGrossesse ? `${selectedGrossesse.patient_prenom||""} ${selectedGrossesse.patient_nom||""}`.trim() : "Patiente"}
           onClose={closeModal}
           saving={saving}
+          medecins={medecins}
         />
       )}
       {modal==="echo" && (
