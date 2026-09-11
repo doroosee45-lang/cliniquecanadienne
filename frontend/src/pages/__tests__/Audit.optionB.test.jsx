@@ -25,6 +25,13 @@ import api from '../../api';
 
 vi.mock('../../hooks/useRealtimeRefresh', () => ({ useRealtimeRefresh: () => {} }));
 
+// P1-02 — Audit.jsx appelle désormais useAuth() (garde isSuperadmin sur le
+// bouton "Sauvegarder") ; useAuth() lève une exception hors <AuthProvider>.
+// Ce test ne porte pas sur cette garde, un rôle admin quelconque suffit.
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { prenom: 'Test', nom: 'Admin', role: 'superadmin' } }),
+}));
+
 const SESSION_FIXTURE = {
   _id: 'sess-1', utilisateur: 'Jean Test', email: 'jean@test.local', role: 'medecin',
   heure_connexion: '2026-09-06T08:00:00.000Z', statut: 'actif',

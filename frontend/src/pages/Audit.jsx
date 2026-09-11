@@ -13,6 +13,7 @@ import { ClipboardCheck, RefreshCw, Download, Archive as ArchiveIcon } from 'luc
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
+import { useAuth } from '../contexts/AuthContext';
 
 // ─── Chart.js loader ─────────────────────────────────────────
 function loadChartJs(cb) {
@@ -531,6 +532,14 @@ function KpiCard({ color, icon, value, label, sub, urgent, onClick }) {
 // ═══════════════════════════════════════════════════════════
 export default function JournalAudit() {
   const dispatch = useDispatch();
+  // P1-02 (audit du 11 sept. 2026) — POST /settings/backup est
+  // authorize('superadmin') strict côté backend (settings.routes.js:22),
+  // mais cette page est accessible à adminclinique aussi (ROLES.audit,
+  // App.jsx) et affichait "Sauvegarder" sans aucune garde : un(e)
+  // adminclinique voyait le bouton puis recevait systématiquement un 403.
+  // Même garde déjà appliquée pour la même restriction dans Settings.jsx.
+  const { user: authUser } = useAuth() || {};
+  const isSuperadmin = authUser?.role === 'superadmin';
   const reduxLogs = useSelector(selectAuditLogs);
   const reduxTotal = useSelector(selectAuditTotal);
 
@@ -1597,7 +1606,8 @@ export default function JournalAudit() {
                       <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} onClick={() => setModalArchive(true)}>
                         {I.archive} Estimer le volume
                       </button>
-                      <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} disabled={backupRunning} onClick={declencherSauvegarde} title="Export complet de la base de données (utils/backup.js)">
+                      <button className="abtn abtn-ghost abtn-sm" style={{ flex: 1 }} disabled={backupRunning || !isSuperadmin} onClick={declencherSauvegarde}
+                        title={isSuperadmin ? "Export complet de la base de données (utils/backup.js)" : "Réservé au Super Admin (POST /settings/backup)"}>
                         {I.dl} {backupRunning ? "Sauvegarde en cours..." : "Sauvegarder"}
                       </button>
                     </div>
