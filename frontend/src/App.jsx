@@ -145,10 +145,16 @@ const ROLES = {
   // qu'empêcher d'atteindre une page qui ne montrerait jamais rien.
   dossiersMedicaux: ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'laborantin', 'radiologue', 'sage_femme', 'pharmacien'],
   pediatrie       : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme'],
-  urgences        : ['superadmin', 'adminclinique', 'medecin', 'infirmier'],
-  laboratoire     : ['superadmin', 'adminclinique', 'medecin', 'laborantin'],
-  imagerie        : ['superadmin', 'adminclinique', 'medecin', 'radiologue'],
-  echographie     : ['superadmin', 'adminclinique', 'medecin', 'radiologue', 'infirmier'],
+  // Phase 3 (audit du 11 sept. 2026, alignement Backend↔Guard↔Sidebar) —
+  // urgences.routes.js::CAN et echographie.routes.js::CAN autorisent déjà
+  // sage_femme ; laboratory.routes.js::CAN_READ et radiology.routes.js::
+  // CAN_READ autorisent déjà infirmier. Ces 4 Guards ne les reflétaient
+  // pas (Sidebar.jsx avait le même écart, corrigé au même endroit) — même
+  // schéma AUDIT-ELEVE-1/P1-03 : accès backend réel jamais atteignable.
+  urgences        : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme'],
+  laboratoire     : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'laborantin'],
+  imagerie        : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'radiologue'],
+  echographie     : ['superadmin', 'adminclinique', 'medecin', 'radiologue', 'infirmier', 'sage_femme'],
   // Correction 1 (relecture du 5 sept. 2026, découverte pendant SEC-004/005) —
   // même liste que STAFF (backend/utils/roles.js), qui exclut explicitement
   // 'patient' : la page Messages.jsx (annuaire du personnel, ouverture de

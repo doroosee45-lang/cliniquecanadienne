@@ -275,21 +275,33 @@ const NAV_SECTIONS = [
     id: 'specialites',
     label: 'Spécialités',
     items: [
-      { to: '/urgences',       label: 'Urgences',        icon: Siren,      roles: withAdmins('medecin','infirmier') },
+      // Phase 3 (audit du 11 sept. 2026, alignement Backend↔Guard↔Sidebar) —
+      // urgences.routes.js::CAN autorise déjà sage_femme ; chirurgieRoutes.js
+      // ::CHIR_ROLES et blocoperatoire.routes.js::BLOC_ROLES autorisent déjà
+      // infirmier — App.jsx (Guard) les incluait déjà (Chirurgie/Bloc) ou a
+      // été corrigé au même moment (Urgences), seul ce Sidebar restait en
+      // retard, cachant un lien vers une page pourtant réellement accessible.
+      { to: '/urgences',       label: 'Urgences',        icon: Siren,      roles: withAdmins('medecin','infirmier','sage_femme') },
       { to: '/pediatrie',      label: 'Pédiatrie',       icon: Baby,       roles: withAdmins('medecin','infirmier','sage_femme') },
       { to: '/maternite',      label: 'Maternité',       icon: HeartPulse, roles: withAdmins('medecin','infirmier','sage_femme') },
-      { to: '/chirurgie',      label: 'Chirurgie',       icon: Scissors,   roles: withAdmins('medecin') },
-      { to: '/blocoperatoire', label: 'Bloc Opératoire', icon: Hospital,   roles: withAdmins('medecin') },
+      { to: '/chirurgie',      label: 'Chirurgie',       icon: Scissors,   roles: withAdmins('medecin','infirmier') },
+      { to: '/blocoperatoire', label: 'Bloc Opératoire', icon: Hospital,   roles: withAdmins('medecin','infirmier') },
     ],
   },
   {
     id: 'paraclinique',
     label: 'Paraclinique',
     items: [
-      { to: '/laboratory',  label: 'Laboratoire', icon: FlaskConical, roles: withAdmins('medecin','laborantin') },
-      { to: '/radiology',   label: 'Imagerie',    icon: ScanLine,     roles: withAdmins('medecin','radiologue') },
-      { to: '/echographie', label: 'Échographie', icon: Activity,     roles: withAdmins('medecin','radiologue','infirmier') },
-      { to: '/pharmacy',    label: 'Pharmacie',   icon: Pill,         roles: withAdmins('pharmacien','medecin') },
+      // Même alignement — laboratory.routes.js::CAN_READ et
+      // radiology.routes.js::CAN_READ autorisent déjà infirmier ;
+      // echographie.routes.js::CAN autorise déjà sage_femme ;
+      // pharmacy.routes.js::CAN_READ autorise déjà infirmier (App.jsx
+      // ROLES.pharmacie l'avait déjà, AUDIT-ELEVE-1 — seul ce Sidebar
+      // restait en retard ici aussi).
+      { to: '/laboratory',  label: 'Laboratoire', icon: FlaskConical, roles: withAdmins('medecin','infirmier','laborantin') },
+      { to: '/radiology',   label: 'Imagerie',    icon: ScanLine,     roles: withAdmins('medecin','infirmier','radiologue') },
+      { to: '/echographie', label: 'Échographie', icon: Activity,     roles: withAdmins('medecin','radiologue','infirmier','sage_femme') },
+      { to: '/pharmacy',    label: 'Pharmacie',   icon: Pill,         roles: withAdmins('pharmacien','medecin','infirmier') },
     ],
   },
   {
@@ -324,7 +336,13 @@ const NAV_SECTIONS = [
       { to: '/archive',        label: 'Archivage',       icon: Archive,         roles: ADMINS },
       { to: '/administration', label: 'Administration',  icon: ShieldCheck,     roles: ADMINS },
       { to: '/settings',       label: 'Paramètres',      icon: Settings,        roles: ADMINS },
-      { to: '/audit',          label: "Journal d'audit", icon: ClipboardCheck, roles: ['superadmin'] },
+      // Phase 3 — audit.routes.js::ADMIN (utils/roles.js) autorise déjà
+      // adminclinique sur /audit, et App.jsx (ROLES.audit) le reflète
+      // depuis AUDIT-ELEVE-1 ; ce lien restait pourtant réservé à
+      // ['superadmin'] seul, cachant à adminclinique une page qu'il pouvait
+      // déjà atteindre en tapant l'URL directement (Guard le laissait
+      // passer sans jamais l'orienter là depuis le menu).
+      { to: '/audit',          label: "Journal d'audit", icon: ClipboardCheck, roles: ADMINS },
     ],
   },
   {
