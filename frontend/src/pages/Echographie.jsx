@@ -1932,6 +1932,13 @@ export default function Echographie() {
   const [mainTab, setMainTab] = useState("dashboard");
   const [modalNouv, setModalNouv] = useState(false);
   const [sendingEmailIds, setSendingEmailIds] = useState({});
+  // ECH-002 (audit du 11 sept. 2026) — le bouton "📄 Rapport" de l'onglet
+  // Résultats n'avait aucun onClick. echographieController.js::getAll ne
+  // restreint aucun champ (pas de .select()) : rapport_texte/conclusion/
+  // recommandations sont déjà présents sur chaque `d` de cette liste, la
+  // même donnée réelle déjà utilisée par sendEchoReportEmail — affichée
+  // ici dans une modale de lecture, sans nouvelle route backend.
+  const [rapportView, setRapportView] = useState(null);
 
   useEffect(() => {
     dispatch(fetchEchographieStats());
@@ -2040,7 +2047,7 @@ export default function Echographie() {
                     <div style={{ fontSize:12, color:"var(--cm)", margin:"4px 0" }}>{TYPES_ECHO.find(t=>t.label===d.type)?.icon} {d.type}</div>
                     <span className="cbdg green">✅ Validé</span>
                     <div style={{ display:"flex", gap:6, marginTop:10 }}>
-                      <button className="cbtn cbtn-teal cbtn-sm">📄 Rapport</button>
+                      <button className="cbtn cbtn-teal cbtn-sm" onClick={()=>setRapportView(d)}>📄 Rapport</button>
                       <button
                         className="cbtn cbtn-ghost cbtn-sm"
                         disabled={!!sendingEmailIds[d.id]}
@@ -2078,6 +2085,30 @@ export default function Echographie() {
           }}
           servicesActifs={servicesActifs}
         />
+
+        {/* ── MODAL VISUALISATION RAPPORT (ECH-002) ── */}
+        <Modal open={!!rapportView} onClose={()=>setRapportView(null)} title={`📄 Rapport — ${rapportView?.patient_nom||""}`} maxWidth={620}>
+          {rapportView && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12, fontSize:13 }}>
+              <div><strong>Type :</strong> {TYPES_ECHO.find(t=>t.label===rapportView.type)?.icon} {rapportView.type}{rapportView.sous_type ? ` — ${rapportView.sous_type}` : ""}</div>
+              <div><strong>Radiologue :</strong> {rapportView.rapport_radiologue || "—"}</div>
+              <div>
+                <strong>Compte rendu</strong>
+                <div style={{ whiteSpace:"pre-wrap", background:"#F8FAFD", borderRadius:8, padding:"10px 12px", marginTop:4, color:"var(--cn)" }}>{rapportView.rapport_texte || "Aucun compte rendu enregistré."}</div>
+              </div>
+              <div>
+                <strong>Conclusion</strong>
+                <div style={{ whiteSpace:"pre-wrap", background:"#F0FDFC", border:"1px solid #99F6E4", borderRadius:8, padding:"10px 12px", marginTop:4, color:"var(--cn)" }}>{rapportView.conclusion || "—"}</div>
+              </div>
+              {rapportView.recommandations && (
+                <div>
+                  <strong>Recommandations</strong>
+                  <div style={{ whiteSpace:"pre-wrap", marginTop:4, color:"var(--cm)" }}>{rapportView.recommandations}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
       </div>
     </>
   );
