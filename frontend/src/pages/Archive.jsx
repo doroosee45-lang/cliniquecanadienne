@@ -5,11 +5,10 @@
 import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchArchives, fetchArchiveStats,
   restoreArchive, deleteArchive, createArchive,
   bulkRestore, bulkDelete, exportArchives, updateAutoConfig, fetchAutoConfig,
-  selectArchives, selectArchiveTotal, selectArchiveLoading, selectArchiveSaving,
-  selectArchiveExporting, selectArchiveKPIs, selectArchiveFilters,
+  selectArchiveSaving,
+  selectArchiveExporting, selectArchiveFilters,
   selectSelectedIds, selectConfigAuto,
   setPage as setReduxPage, setFilters, selectId, deselectId, selectAll, clearSelection,
 } from '../store/slices/archiveSlice';
@@ -406,12 +405,19 @@ function ArchiveTable({ data, onView, onRestore, onDelete, onDownload, onPrint, 
 // ═══════════════════════════════════════════════════════════
 export default function Archivage() {
   const dispatch = useDispatch();
-  const reduxArchives   = useSelector(selectArchives);
-  const reduxTotal      = useSelector(selectArchiveTotal);
-  const reduxLoading    = useSelector(selectArchiveLoading);
+  // ARC-001 (audit du 11 sept. 2026) — loadArchives()/loadStats()
+  // dispatchaient fetchArchives/fetchArchiveStats (Redux) EN PLUS de leur
+  // propre appel api.get() direct, à chaque montage et à chaque changement
+  // de page/recherche/filtre : deux requêtes concurrentes identiques par
+  // chargement. Le résultat Redux n'était en réalité consommé nulle part
+  // d'utile — restoreArchive/deleteArchive mutent déjà directement l'état
+  // local `archives` (setArchives(prev => ...)) après un vrai succès
+  // serveur, jamais via ce state Redux — reduxLoading n'était même jamais
+  // lu. Le fetch direct (avec sa normalisation a.reference||a.titre,
+  // AUDIT-GLOBAL) est la source réellement utilisée par les ~60 lectures
+  // de ce composant ; conservé seul, le dispatch Redux dupliqué est retiré.
   const reduxSaving     = useSelector(selectArchiveSaving);
   const reduxExporting  = useSelector(selectArchiveExporting);
-  const reduxKpis       = useSelector(selectArchiveKPIs);
   const reduxFilters    = useSelector(selectArchiveFilters);
   const reduxSelectedIds = useSelector(selectSelectedIds);
   const reduxConfigAuto = useSelector(selectConfigAuto);
@@ -457,15 +463,6 @@ export default function Archivage() {
     taille_totale: "0 Mo", derniere_op: "—",
   });
 
-  // ── Sync Redux → local state ──────────────────────────────
-  useEffect(() => {
-    if (reduxArchives.length > 0) { setArchives(reduxArchives); setTotal(reduxTotal); setLoading(false); }
-  }, [reduxArchives, reduxTotal]);
-
-  useEffect(() => {
-    setKpis(prev => ({ ...prev, ...reduxKpis }));
-  }, [reduxKpis]);
-
   useEffect(() => {
     if (reduxConfigAuto) setConfigAutoLocal(reduxConfigAuto);
   }, [reduxConfigAuto]);
@@ -484,8 +481,6 @@ export default function Archivage() {
 
   // ── Load ─────────────────────────────────────────────────
   const loadArchives = useCallback(async () => {
-    dispatch(fetchArchives({ page, limit: 15, search, categorie: filterCat, service: filterSvc, date_debut: filterDate1, date_fin: filterDate2 }));
-
     setLoading(true);
     try {
       const p = new URLSearchParams({ page, limit:15 });
@@ -512,15 +507,14 @@ export default function Archivage() {
       setArchives(filtered);
       setTotal(filtered.length);
     } finally { setLoading(false); }
-  }, [dispatch, page, search, filterCat, filterSvc, filterDate1, filterDate2]);
+  }, [page, search, filterCat, filterSvc, filterDate1, filterDate2]);
 
   const loadStats = useCallback(async () => {
-    dispatch(fetchArchiveStats());
     try {
       const { data } = await api.get("/archives/stats");
       setKpis(prev => data.kpis || prev);
     } catch { /* garde les kpis existants (zéros si DB vide) */ }
-  }, [dispatch]);
+  }, []);
 
   const loadRestaurations = useCallback(async () => {
     setLoadingRestaurations(true);
