@@ -118,7 +118,15 @@ const ROLES = {
   audit           : ['superadmin', 'adminclinique'],
   admin           : ['superadmin', 'adminclinique'],
   medical         : ['superadmin', 'medecin', 'infirmier'],
-  medecin         : ['superadmin', 'medecin'],
+  // P1-03 (audit du 11 sept. 2026) — adminclinique manquait ici alors que
+  // les deux autres signaux du même flux l'incluent déjà : le backend
+  // (ai.routes.js) l'autorise explicitement sur toutes les routes /ai, et
+  // le Sidebar (withAdmins('medecin')) affiche déjà le lien "Intelligence
+  // IA" à adminclinique — seule cette Guard route, seule utilisatrice de
+  // cette clé (uniquement /ai), l'excluait, bloquant un accès que le
+  // backend et le Sidebar accordent déjà réellement. Même schéma déjà
+  // corrigé pour ROLES.audit (AUDIT-ELEVE-1).
+  medecin         : ['superadmin', 'adminclinique', 'medecin'],
   // AUDIT-ELEVE-1 — infirmier a déjà un accès backend réel en lecture à ce
   // module (pharmacy.routes.js::CAN_READ) sans jamais avoir pu atteindre la
   // page elle-même.
