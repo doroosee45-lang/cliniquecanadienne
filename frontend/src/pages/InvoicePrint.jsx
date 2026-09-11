@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import api from '../api';
 import Spinner from '../components/UI/Spinner';
 import {
   fetchInvoiceForPrint, clearInvoicePrint,
@@ -15,14 +14,21 @@ export default function InvoicePrint() {
   const dispatch = useDispatch();
   const printRef = useRef();
 
-  const reduxInvoice   = useSelector(selectPrintInvoice);
-  const reduxSettings  = useSelector(selectPrintSettings);
-  const reduxLoading   = useSelector(selectPrintLoading);
-  const reduxError     = useSelector(selectPrintError);
-
-  const [invoice, setInvoice] = useState(null);
-  const [settings, setSettings] = useState({});
-  const [loading, setLoading] = useState(true);
+  // INV-001 (audit du 11 sept. 2026) — deux chargements concurrents
+  // existaient pour la même facture : ce composant appelait directement
+  // Promise.all([api.get(`/finance/${id}`), api.get('/settings')]) dans un
+  // useEffect séparé, alors que dispatch(fetchInvoiceForPrint(id)) exécute
+  // EXACTEMENT le même appel (voir invoicePrintSlice.js::fetchInvoiceForPrint,
+  // code strictement identique) via Redux. Les deux couraient en parallèle
+  // à chaque montage, chacun écrivant dans son propre état local/Redux,
+  // reconciliés par un troisième effet — double charge serveur pour rien,
+  // et deux sources de vérité pouvant diverger. Redux (déjà testable, déjà
+  // pourvu du nettoyage clearInvoicePrint au démontage) reste la seule
+  // source ; l'état local dupliqué et le fetch direct sont supprimés.
+  const invoice   = useSelector(selectPrintInvoice);
+  const settings  = useSelector(selectPrintSettings) || {};
+  const loading   = useSelector(selectPrintLoading);
+  const reduxError = useSelector(selectPrintError);
 
   useEffect(() => {
     dispatch(fetchInvoiceForPrint(id));
@@ -30,29 +36,14 @@ export default function InvoicePrint() {
   }, [dispatch, id]);
 
   useEffect(() => {
-    if (reduxInvoice)  { setInvoice(reduxInvoice);   setLoading(false); }
-    if (reduxSettings) { setSettings(reduxSettings); }
-    if (reduxError)    { navigate('/finance'); }
-    if (!reduxLoading && reduxInvoice !== undefined) setLoading(reduxLoading);
-  }, [reduxInvoice, reduxSettings, reduxLoading, reduxError, navigate]);
+    if (reduxError) navigate('/finance');
+  }, [reduxError, navigate]);
 
-  useEffect(() => {
-    if (reduxInvoice !== null) return;
-    const load = async () => {
-      try {
-        const [invRes, setRes] = await Promise.all([api.get(`/finance/${id}`), api.get('/settings')]);
-        setInvoice(invRes.data.invoice);
-        const s = {};
-        setRes.data.settings?.forEach(x => { s[x.cle] = x.valeur; });
-        setSettings(s);
-      } catch { navigate('/finance'); }
-      finally { setLoading(false); }
-    };
-    load();
-  }, [id, navigate, reduxInvoice]);
-
-  if (loading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
-  if (!invoice) return null;
+  // !invoice couvre aussi l'instant avant que le dispatch (effet ci-dessus)
+  // n'ait mis loading à true — jamais un écran blanc entre le montage et la
+  // réponse réelle du serveur.
+  if (loading || (!invoice && !reduxError)) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
+  if (!invoice) return null; // reduxError → navigate('/finance') est déjà en vol (effet ci-dessus)
 
   const fmt = (n) => (n || 0).toLocaleString('fr-FR');
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' }) : '—';
