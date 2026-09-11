@@ -364,6 +364,9 @@ export default function Imagerie() {
   const [filterStatut, setFilter]   = useState("");
   const [filterType, setFilterType] = useState("");
   const [currentExamen, setCurrent] = useState(null);
+  // Phase 7 (audit du 11 sept. 2026) — cible réelle du bouton "Historique
+  // imagerie" (scroll vers le panneau déjà affiché plus bas, jamais masqué).
+  const historiqueRef = useRef(null);
   const [patients, setPatients]     = useState([]);
   // Correction 12 (relecture du 6 sept. 2026, FLOW-003) — consultations
   // réelles du patient sélectionné, pour un lien volontaire (vérifié côté
@@ -1032,13 +1035,27 @@ export default function Imagerie() {
                         ))}
                       </div>
                       <div style={{ marginTop:14, display:"flex", gap:8 }}>
-                        <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:11 }}>{I.link} Voir dossier complet</button>
-                        <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:11 }}>📋 Historique imagerie</button>
+                        {/* Phase 7 (audit du 11 sept. 2026) — aucun des deux
+                            boutons n'avait de onClick. currentExamen.patient
+                            est le même id brut déjà comparé ailleurs dans ce
+                            fichier (ligne ~1056, x.patient === currentExamen.
+                            patient) — /patients/:id existe déjà (App.jsx). Le
+                            second bouton pointe vers le panneau "Historique
+                            des examens du patient", déjà affiché juste en
+                            dessous (jamais masqué) : un simple défilement. */}
+                        <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:11 }} disabled={!currentExamen.patient}
+                          onClick={() => currentExamen.patient && navigate(`/patients/${currentExamen.patient}`)}>
+                          {I.link} Voir dossier complet
+                        </button>
+                        <button className="ibtn ibtn-ghost ibtn-sm" style={{ fontSize:11 }}
+                          onClick={() => historiqueRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                          📋 Historique imagerie
+                        </button>
                       </div>
                     </div>
                   </div>
                   {/* Historique */}
-                  <div className="img-card" style={{ marginTop:16 }}>
+                  <div ref={historiqueRef} className="img-card" style={{ marginTop:16 }}>
                     <div className="img-card-hdr"><h3>🕐 Historique des examens du patient</h3></div>
                     <div style={{ overflowX:"auto" }}>
                       <table className="img-tbl">
