@@ -67,7 +67,10 @@ const aiSlice = createSlice({
     stats: {
       analyses_mois:    0,
       diagnostics:      0,
-      precision:        0,
+      // AI-01 — renommé depuis "precision" : c'est un taux de traitement
+      // des alertes (statut 'traite' / total), jamais une précision de
+      // modèle IA (aucune vérité terrain n'existe dans ce système).
+      taux_traitement:  0,
       interactions:     0,
       alertes_risque:   0,
       labo_critiques:   0,

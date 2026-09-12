@@ -32,6 +32,8 @@ const Newborn = require('../models/Newborn');
 const Child = require('../models/Child');
 const PediatricConsultation = require('../models/PediatricConsultation');
 const Echographie = require('../models/Echographie');
+const LabResult = require('../models/LabResult');
+const ImagingResult = require('../models/ImagingResult');
 
 // Relève counterKey au max(seq déjà atteint, valeur actuelle du compteur).
 const bump = async (counterKey, currentMax) => {
@@ -90,6 +92,16 @@ const run = async () => {
 
   const echos = await Echographie.find({}, 'numero');
   await bump(`echographie-${year}`, maxSeqFor(echos, 'numero', 'ECH', year));
+
+  // CLIN-04 (correction du 12 sept. 2026) — LabResult/ImagingResult.numero
+  // passent de countDocuments()+1 au compteur atomique ; sans ce bump, le
+  // compteur repartirait de 0 sur une base déjà peuplée et entrerait en
+  // conflit avec l'index unique dès la première création réelle.
+  const labs = await LabResult.find({}, 'numero');
+  await bump(`lab-${year}`, maxSeqFor(labs, 'numero', 'LAB', year));
+
+  const images = await ImagingResult.find({}, 'numero');
+  await bump(`img-${year}`, maxSeqFor(images, 'numero', 'IMG', year));
 
   const staff = await Staff.find({}, 'matricule');
   const staffMax = staff.reduce((max, s) => {

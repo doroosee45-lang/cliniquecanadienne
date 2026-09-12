@@ -1,7 +1,10 @@
 const Child                  = require('../models/Child');
 const PediatricConsultation  = require('../models/PediatricConsultation');
+const Patient                = require('../models/Patient');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction, escapeRegex } = require('../utils/helpers');
+
+const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
 // ── Stats / KPIs ──────────────────────────────────────────────────────────────
 exports.getStats = async (req, res, next) => {
@@ -139,9 +142,29 @@ exports.getOne = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// SPEC-10 (correction du 12 sept. 2026, audit indépendant) — create()
+// persistait ...req.body tel quel (mass-assignment) et patient_id n'était
+// jamais validé, ni même requis, alors que Pediatrie.jsx::ModalDossier
+// exige déjà réellement un patient existant avant tout envoi (aucun
+// dossier enfant anonyme n'est un workflow clinique réel ici, même
+// raisonnement que SPEC-03 pour Pregnancy). Un appel API direct pouvait
+// donc créer un dossier sans lien réel vers un Patient, ou avec un
+// patient_id fabriqué/orphelin.
 exports.create = async (req, res, next) => {
   try {
-    const body = { ...req.body, created_by: req.user._id };
+    if (!req.body.patient_id) return res.status(400).json({ message: 'Patient obligatoire pour créer un dossier pédiatrique.' });
+    if (!isObjectId(req.body.patient_id)) return res.status(400).json({ message: 'Référence patient invalide.' });
+    const patientDoc = await Patient.findById(req.body.patient_id).select('_id');
+    if (!patientDoc) return res.status(404).json({ message: 'Patient introuvable.' });
+
+    // Même liste blanche que CHILD_BLOCKED_FIELDS ci-dessous (les champs
+    // bloqués à l'édition ne doivent pas non plus être fabricables à la
+    // création — numero est déjà auto-généré, vaccinations/mesures/
+    // maladies gérés par leurs propres endpoints dédiés).
+    const body = {};
+    for (const [k, v] of Object.entries(req.body)) { if (!CHILD_BLOCKED_FIELDS.includes(k)) body[k] = v; }
+    body.patient_id = patientDoc._id;
+    body.created_by = req.user._id;
     if (body.date_naissance) body.date_naissance = new Date(body.date_naissance);
     const child = await Child.create(body);
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Nouveau dossier pédiatrique ${child.numero} — ${child.prenom || ''} ${child.nom}`.trim() });

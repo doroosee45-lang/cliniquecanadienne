@@ -80,8 +80,13 @@ io.use(async (socket, next) => {
     // (jusqu'à 7 jours). Revérifié ici, au moment de la connexion, pour la
     // même garantie qu'en REST.
     const User = require('./models/User');
-    const user = await User.findById(decoded.id).select('statut');
+    const user = await User.findById(decoded.id).select('statut tokenVersion');
     if (!user || user.statut !== 'actif') return next(new Error('Utilisateur inactif ou introuvable'));
+    // FORCE-LOGOUT-001 — même vérification que middleware/auth.js::protect :
+    // une NOUVELLE connexion Socket.IO avec un JWT révoqué (tokenVersion
+    // périmée) est refusée dès la poignée de main, jamais acceptée puis
+    // coupée après coup.
+    if ((decoded.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) return next(new Error('Session invalidée'));
 
     socket.userId   = decoded.id;
     socket.userRole = decoded.role || 'inconnu';
@@ -148,7 +153,14 @@ app.use(helmet({
       scriptSrc:  ["'self'", "https://cdnjs.cloudflare.com", "https://accounts.google.com", "https://apis.google.com"],
       styleSrc:   ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc:    ["'self'", "https://fonts.gstatic.com", "data:"],
-      imgSrc:     ["'self'", "data:", "https:", "blob:"],
+      // SEC-B-01 (correction du 12 sept. 2026, audit indépendant) — "https:"
+      // autorisait le chargement d'image depuis N'IMPORTE QUEL hôte HTTPS,
+      // bien au-delà des besoins réels. Vérifié exhaustivement (grep sur
+      // tout frontend/src) : le seul hôte externe réellement utilisé pour
+      // des images est images.unsplash.com (home.jsx, Login.jsx — photos
+      // d'illustration) ; les images patients/médicaments uploadées sont
+      // servies en same-origin (/uploads/...), déjà couvert par 'self'.
+      imgSrc:     ["'self'", "data:", "blob:", "https://images.unsplash.com"],
       connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", ...wsOrigins],
       frameSrc:   ["https://accounts.google.com"],
       workerSrc:  ["'self'", "blob:"],
@@ -200,6 +212,21 @@ app.use(cookieParser());
 
 // Data sanitization
 app.use(mongoSanitize());
+// SEC-B-02 (correction du 12 sept. 2026, audit indépendant) — xss-clean
+// est listé "no longer supported" sur le registre npm (dernière publication
+// 2023, aucune mise à jour depuis). Analysé avant toute décision :
+// (1) utilisation réelle confirmée — seul appel du projet, ici ;
+// (2) compatibilité Express — ce projet est fixé sur Express 4.x
+// (package.json), jamais la v5 où req.query est en lecture seule et casse
+// xss-clean (bug connu de la librairie, non applicable ici) ;
+// (3) `npm audit` ne remonte aucune CVE ouverte pour ce paquet ;
+// (4) alternatives modernes existantes (ex. réécrire la sanitation avec le
+// paquet `xss`, activement maintenu) impliqueraient de remplacer une
+// dépendance qui fonctionne aujourd'hui sans faille connue, pour un gain de
+// sécurité non démontré — un remplacement hâtif risquerait au contraire
+// d'introduire une régression de sanitation (sémantique différente) sur
+// des données cliniques réelles. Décision : CONSERVÉE en l'état, à
+// réévaluer si/quand ce projet migre vers Express 5.
 app.use(xss());
 app.use(hpp());
 

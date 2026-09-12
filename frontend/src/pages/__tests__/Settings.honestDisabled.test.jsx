@@ -3,9 +3,11 @@
 // POST /settings/regenerate-key), chacun échouant systématiquement (ou,
 // pour les logs, retombant silencieusement sur une liste vide). Ce fichier
 // prouve : (a) l'onglet Audit & Journaux interroge désormais le vrai
-// système d'audit (/audit) et affiche ses vrais champs ; (b) le bouton
-// "Tester la connexion SMTP" est réellement désactivé, plus aucun faux
-// diagnostic (succès ou échec) affiché ; (c) la carte "Clé API" affiche
+// système d'audit (/audit) et affiche ses vrais champs ; (b) [mis à jour le
+// 11 sept. 2026, NEW-001] "Tester la connexion SMTP" est désormais réel —
+// POST /settings/test-smtp existe et exécute un vrai transporter.verify() —
+// le bouton reste actif et affiche un vrai succès/échec selon la réponse
+// serveur, jamais un diagnostic fictif ; (c) la carte "Clé API" affiche
 // honnêtement qu'aucune clé n'a jamais été émise, boutons désactivés,
 // jamais un appel vers une route inexistante.
 import { render, screen, waitFor } from '@testing-library/react';
@@ -62,22 +64,39 @@ test('Audit & Journaux interroge le vrai système d\'audit (/audit), jamais /adm
   expect(screen.getByText('patients')).toBeInTheDocument();
 });
 
-test('"Tester la connexion SMTP" est réellement désactivé — jamais de faux diagnostic', async () => {
+test('"Tester la connexion SMTP" exécute un vrai test réseau — succès réel affiché après un vrai succès serveur', async () => {
   const user = userEvent.setup();
+  api.post.mockImplementation((url) => {
+    if (url === '/settings/test-smtp') return Promise.resolve({ data: { success: true, message: 'Connexion SMTP vérifiée avec succès (smtp.test.local).', source: 'settings' } });
+    return Promise.resolve({ data: {} });
+  });
   renderSettings();
 
   await user.click(await screen.findByRole('button', { name: 'Notifications' }));
-
   const btn = await screen.findByRole('button', { name: /Tester la connexion SMTP/ });
-  expect(btn).toBeDisabled();
+  expect(btn).not.toBeDisabled();
 
-  // Un clic sur un bouton disabled ne déclenche aucun handler React — preuve
-  // supplémentaire qu'aucun appel réseau ni toast (succès ou échec) ne peut
-  // en résulter.
   await user.click(btn);
-  expect(api.post).not.toHaveBeenCalledWith('/settings/test-smtp');
-  expect(toast.success).not.toHaveBeenCalled();
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/settings/test-smtp'));
+  await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('vérifiée avec succès')));
   expect(toast.error).not.toHaveBeenCalled();
+});
+
+test('"Tester la connexion SMTP" — un vrai échec serveur affiche une vraie erreur, jamais un succès déguisé', async () => {
+  const user = userEvent.setup();
+  api.post.mockImplementation((url) => {
+    if (url === '/settings/test-smtp') return Promise.resolve({ data: { success: false, message: 'Échec de la connexion SMTP.', source: 'env' } });
+    return Promise.resolve({ data: {} });
+  });
+  renderSettings();
+
+  await user.click(await screen.findByRole('button', { name: 'Notifications' }));
+  const btn = await screen.findByRole('button', { name: /Tester la connexion SMTP/ });
+
+  await user.click(btn);
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/settings/test-smtp'));
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Échec de la connexion SMTP')));
+  expect(toast.success).not.toHaveBeenCalled();
 });
 
 test('la carte "Clé API" n\'affiche aucune clé fabriquée et ses actions sont désactivées', async () => {

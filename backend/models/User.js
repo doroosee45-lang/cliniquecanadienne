@@ -122,6 +122,19 @@ const UserSchema = new mongoose.Schema({
   // Phase 3, qui le fera utiliser patient_id en priorité — non touché ici.
   patient_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', default: null },
 
+  // FORCE-LOGOUT-001 (rapport de clôture du 11 sept. 2026) — la suspension
+  // de compte (statut) bloque déjà toute requête SUIVANTE (middleware/auth.js
+  // relit statut à chaque appel), mais n'invalide pas un JWT déjà émis tant
+  // qu'il n'a pas expiré (jusqu'à JWT_EXPIRE, 7j par défaut) : un
+  // administrateur ne peut pas révoquer IMMÉDIATEMENT une session précise.
+  // tokenVersion, embarqué dans chaque JWT à l'émission (getSignedJWT) et
+  // revérifié à chaque requête (middleware/auth.js::protect) et connexion
+  // Socket.IO (server.js), permet une révocation immédiate et ciblée sans
+  // session store ni dépendance externe (Redis...) : incrémenter ce champ
+  // invalide tous les JWT déjà émis pour ce compte, sans toucher au statut
+  // du compte lui-même (jamais confondu avec une suspension).
+  tokenVersion: { type: Number, default: 0 },
+
 }, { timestamps: true });
 
 // ── Hash password ─────────────────────────────────────────────────────────
@@ -140,7 +153,10 @@ UserSchema.methods.matchPassword = async function(entered) {
 
 UserSchema.methods.getSignedJWT = function() {
   return jwt.sign(
-    { id: this._id, role: this.role },
+    // FORCE-LOGOUT-001 — tokenVersion ?? 0 : un document User relu avant la
+    // migration du schéma (defaults Mongoose non encore appliqués en base)
+    // reste traité comme version 0, jamais `undefined` embarqué dans le JWT.
+    { id: this._id, role: this.role, tokenVersion: this.tokenVersion ?? 0 },
     env.JWT_SECRET,
     { expiresIn: env.JWT_EXPIRE }
   );

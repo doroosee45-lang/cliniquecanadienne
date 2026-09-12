@@ -18,7 +18,9 @@ const path = require('node:path');
 const net = require('node:net');
 const { checkProductionConfig, KNOWN_SEED_EMAILS, JWT_MIN_LENGTH, JWT_PLACEHOLDER_MARKERS } = require('../utils/checkProductionConfig');
 
-const MONGOD_PATH = 'C:\\Program Files\\MongoDB\\Server\\8.2\\bin\\mongod.exe';
+// TEST-01 (correction du 12 sept. 2026) — voir helpers/isolatedServer.js :
+// même résolution robuste réutilisée au lieu d'une seconde copie figée.
+const { MONGOD_PATH } = require('./helpers/isolatedServer');
 
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -121,7 +123,7 @@ test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart 
   });
 });
 
-test('Phase 10.2 — checkProductionConfig() détecte réellement des comptes seed en base (instance MongoDB locale isolée)', { skip: !fs.existsSync(MONGOD_PATH) && `mongod introuvable à ${MONGOD_PATH}` }, async (t) => {
+test('Phase 10.2 — checkProductionConfig() détecte réellement des comptes seed en base (instance MongoDB locale isolée)', { skip: !(MONGOD_PATH && fs.existsSync(MONGOD_PATH)) && `mongod introuvable (ni MONGOD_PATH, ni PATH, ni emplacement d'installation connu)` }, async (t) => {
   const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 't102-mongod-'));
   const port = await findFreePort();
   let mongodProc;

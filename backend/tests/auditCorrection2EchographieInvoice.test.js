@@ -55,6 +55,12 @@ test('Correction 2 (Echographie) — saveRapport() génère une vraie Invoice de
       const demandeId = bCreate.demande._id;
       created.demandes.push(demandeId);
 
+      // SPEC-07 (correction du 12 sept. 2026) — saveRapport() exige
+      // désormais réellement que la demande ait été planifiée au préalable,
+      // jamais une validation directe depuis 'en_attente'.
+      const sPlan = await call(echoC.planifier, { params: { id: demandeId }, body: { date_planif: new Date().toISOString(), echographiste: 'Dr Test', salle: 'Salle 1' }, user: radiologue, ip: '127.0.0.1' });
+      assert.equal(sPlan.status, 200, JSON.stringify(sPlan.body));
+
       const { status, body } = await call(echoC.saveRapport, {
         params: { id: demandeId },
         body: { rapport_texte: 'RAS', conclusion: 'Normal', recommandations: '', rapport_statut: 'valide' },
@@ -87,6 +93,9 @@ test('Correction 2 (Echographie) — saveRapport() génère une vraie Invoice de
       assert.equal(sCreate, 201);
       const demandeId = bCreate.demande._id;
       created.demandes.push(demandeId);
+
+      const sPlan = await call(echoC.planifier, { params: { id: demandeId }, body: { date_planif: new Date().toISOString(), echographiste: 'Dr Test', salle: 'Salle 1' }, user: radiologue, ip: '127.0.0.1' });
+      assert.equal(sPlan.status, 200, JSON.stringify(sPlan.body));
 
       const { status, body } = await call(echoC.saveRapport, {
         params: { id: demandeId },

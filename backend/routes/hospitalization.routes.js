@@ -10,6 +10,20 @@ router.get('/rooms',            protect, authorize(...CAN_WRITE), hospC.getRooms
 router.get('/',                 protect, authorize(...CAN_WRITE), hospC.getAll);
 router.post('/',                protect, authorize(...CAN_WRITE), hospC.create);
 router.post('/:id/notes',       protect, authorize(...CAN_WRITE), hospC.addNote);
+// CLIN-08 (correction du 12 sept. 2026, audit indépendant) — analysé :
+// l'infirmier peut décider seul d'une sortie. Décision documentée :
+// CONSERVÉ tel quel. Vérifié dans ce fichier même que CAN_WRITE régit déjà
+// l'intégralité du cycle de vie du séjour (création, notes, constantes,
+// traitements, examens, visites, prescriptions ET sortie) sans qu'aucune
+// distinction "logistique vs décision médicale" n'existe nulle part ailleurs
+// dans ce module — contrairement, par exemple, à Echographie/Laboratoire où
+// la validation d'un compte-rendu est explicitement réservée à
+// radiologue/superadmin, séparée de la création/mise à jour. Restreindre
+// uniquement discharge() introduirait une incohérence architecturale
+// ponctuelle (le reste du cycle de vie du séjour resterait ouvert à
+// l'infirmier) sans qu'aucune règle métier documentée ne la justifie ici,
+// et casserait le bouton "Sortie" déjà exposé sans garde de rôle côté
+// frontend (Hospitalization.jsx) pour ce rôle.
 router.put('/:id/discharge',    protect, authorize(...CAN_WRITE), hospC.discharge);
 
 // P7-2 — sous-ressources du dossier de séjour

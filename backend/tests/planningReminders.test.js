@@ -15,11 +15,25 @@ test('rappels de planning 2h avant — sélection par fenêtre et idempotence (b
   const AuditLog = require('../models/AuditLog');
   const mailModule = require('../utils/mail');
   const { sendPlanningReminders } = require('../utils/planningReminders');
+  const env = require('../config/env');
 
   const stamp = Date.now();
   const originalSendPlanningReminderEmail = mailModule.sendPlanningReminderEmail;
   let sentEmails = [];
   mailModule.sendPlanningReminderEmail = async (opts) => { sentEmails.push(opts); return { simulated: true }; };
+
+  // Correction (relecture du 11 sept. 2026) — même correctif que
+  // planningPublish.test.js : ce test exerce le VRAI chemin utils/sms.js
+  // (jamais stubbé, volontairement) ; si backend/.env contient de vraies
+  // credentials Twilio, sendPlanningReminders() aurait réellement tenté un
+  // envoi SMS via l'API Twilio pendant ce test. Neutralisé pour la seule
+  // durée de ce test, jamais touché dans .env.
+  const originalTwilio = {
+    TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+    TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+  };
+  env.TWILIO_ACCOUNT_SID = ''; env.TWILIO_AUTH_TOKEN = ''; env.TWILIO_PHONE_NUMBER = '';
 
   // Construit un créneau dont le début réel (date + heure_debut combinés,
   // comme le fait slotStart() dans planningReminders.js) tombe exactement
@@ -91,6 +105,7 @@ test('rappels de planning 2h avant — sélection par fenêtre et idempotence (b
       assert.deepEqual(result, { simulated: true });
     });
   } finally {
+    Object.assign(env, originalTwilio);
     mailModule.sendPlanningReminderEmail = originalSendPlanningReminderEmail;
     await AuditLog.deleteMany({ module: 'hr', action: 'PLANNING_REMINDER_BATCH', createdAt: { $gte: new Date(stamp) } });
     await Staff.findByIdAndDelete(staff._id);

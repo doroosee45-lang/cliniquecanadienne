@@ -11,7 +11,14 @@ const ImagingResultSchema = new Schema({
   radiologue:             { type: Schema.Types.ObjectId, ref: 'User' },
   examen:                 { type: Schema.Types.ObjectId, ref: 'ExamCatalogue' },
 
-  // champs d'affichage (texte libre — évitent les populate côté frontend)
+  // SPEC-11 (correction du 12 sept. 2026, audit indépendant) — champs
+  // d'affichage (texte libre — évitent les populate côté frontend), un
+  // SNAPSHOT figé au moment de la création, jamais recalculé si le Patient
+  // réel change ensuite. `patient` (ObjectId ci-dessus) reste la SEULE
+  // source de vérité référentielle — ces champs ne doivent jamais être lus
+  // comme une donnée patient à jour ni remplacer un .populate('patient')
+  // réel ; scrubés à l'anonymisation (utils/patientAnonymization.js::
+  // CASCADE_TARGETS).
   patient_nom:            String,
   patient_dob:            String,
   patient_dossier:        String,
@@ -32,7 +39,15 @@ const ImagingResultSchema = new Schema({
   operateur:              String,
   date_rdv:               String,
   heure_rdv:              String,
-  numero:                 String,
+  // CLIN-04 (correction du 12 sept. 2026) — numero était généré par
+  // countDocuments()+1 (radiology.controller.js/consultations.controller.js),
+  // sans aucune garantie d'unicité : deux créations concurrentes pouvaient
+  // lire le même compte avant que l'une ou l'autre ne persiste, produisant
+  // un doublon. Généré désormais via le compteur atomique (utils/counter.js,
+  // même mécanisme déjà utilisé par chirurgie/bloc/pregnancy/etc.) ; l'index
+  // unique ci-dessous est le filet de sécurité final si jamais une valeur
+  // fabriquée (ou une donnée historique) entrait en conflit.
+  numero:                 { type: String, unique: true, sparse: true },
 
   date_prescription:      { type: Date, default: Date.now },
   date_realisation:       Date,

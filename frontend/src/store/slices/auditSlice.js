@@ -11,8 +11,13 @@ export const fetchAuditLogs = createAsyncThunk(
       if (resource) params.set('resource', resource);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
+      // FE-ADM-04 (correction du 12 sept. 2026, audit indépendant) — l'API
+      // réelle (audit.controller.js) renvoie toujours `events`, jamais
+      // `logs` (vérifié : Audit.jsx lit déjà data.events dans son propre
+      // chargement local) — data.logs était donc systématiquement
+      // undefined, quel que soit le contenu réel de la réponse.
       const { data } = await api.get(`/audit?${params}`);
-      return { logs: data.logs, total: data.total, page };
+      return { logs: data.events, total: data.total, page };
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Erreur chargement logs audit');
     }

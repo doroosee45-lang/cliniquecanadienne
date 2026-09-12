@@ -227,6 +227,11 @@ export const selectDemandesTotal      = (state) => state.echographie.total;
 export const selectDemandesPage       = (state) => state.echographie.page;
 export const selectDemandesFilters    = (state) => state.echographie.filters;
 export const selectEchographieLoading = (state) => state.echographie.loading;
+// ECHO-04 (correction du 12 sept. 2026, audit indépendant) — state.error
+// était déjà réellement renseigné par fetchDemandes.rejected (et les autres
+// thunks), mais aucun sélecteur ne l'exposait : Echographie.jsx ne pouvait
+// donc jamais distinguer une liste réellement vide d'un échec réseau.
+export const selectEchographieError   = (state) => state.echographie.error;
 export const selectEchographieSaving  = (state) => state.echographie.saving;
 
 export default echographieSlice.reducer;

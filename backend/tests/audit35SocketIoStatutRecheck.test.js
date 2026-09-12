@@ -73,7 +73,10 @@ test('AUDIT-3.5 (SEC-03) — Socket.IO rejette un compte suspendu, accepte un co
 
   try {
     await new Promise((resolve, reject) => {
-      const deadline = Date.now() + 8000;
+      // Correction (relecture du 11 sept. 2026, rapport de correction) —
+      // délai porté de 8s à 30s, même contention réelle documentée dans
+      // isolatedServer.js::startIsolatedServer.
+      const deadline = Date.now() + 30000;
       const check = () => {
         if (out.includes('Serveur démarré')) return resolve();
         if (Date.now() > deadline) return reject(new Error(`démarrage non confirmé\n${out}`));

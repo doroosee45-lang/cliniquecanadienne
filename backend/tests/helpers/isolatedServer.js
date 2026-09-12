@@ -9,13 +9,52 @@
 // similaires : ceux-ci, en l'absence de serveur dédié, ont fini par
 // s'exécuter pour de vrai contre le serveur de développement resté allumé,
 // laissant le résidu nettoyé avant de démarrer cette phase.
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
 
-const MONGOD_PATH = 'C:\\Program Files\\MongoDB\\Server\\8.2\\bin\\mongod.exe';
+// TEST-01 (correction du 12 sept. 2026, audit indépendant) — MONGOD_PATH
+// était codé en dur vers un chemin Windows précis, versionné (8.2). Sur une
+// autre machine, en CI, ou après une mise à jour de MongoDB sur cette même
+// machine, mongodExists() renvoyait false et ~200 tests dépendant de cet
+// helper étaient silencieusement ignorés (skip discret, jamais un échec
+// explicite) au lieu de réellement s'exécuter. Résolu désormais dans
+// l'ordre : (1) override explicite via MONGOD_PATH (variable d'env, pour
+// un chemin non standard) ; (2) `mongod` déjà sur le PATH (cas le plus
+// courant en CI Linux/macOS, et sur toute machine où l'installateur a
+// ajouté MongoDB au PATH) ; (3) emplacements d'installation par défaut
+// connus, PAR PLATEFORME, en énumérant les versions réellement présentes
+// plutôt qu'une seule version figée en dur.
+function resolveMongodPath() {
+  if (process.env.MONGOD_PATH && fs.existsSync(process.env.MONGOD_PATH)) return process.env.MONGOD_PATH;
+
+  const finder = process.platform === 'win32' ? 'where' : 'which';
+  try {
+    const found = execFileSync(finder, ['mongod'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .split(/\r?\n/).map(s => s.trim()).find(Boolean);
+    if (found && fs.existsSync(found)) return found;
+  } catch { /* mongod absent du PATH — on retombe sur les emplacements connus ci-dessous */ }
+
+  const candidates = process.platform === 'win32'
+    ? (() => {
+        const base = 'C:\\Program Files\\MongoDB\\Server';
+        if (!fs.existsSync(base)) return [];
+        // Énumère les versions réellement installées (ex: 6.0, 7.0, 8.2...)
+        // plutôt qu'une seule version figée — triées la plus récente d'abord.
+        return fs.readdirSync(base)
+          .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+          .map(v => path.join(base, v, 'bin', 'mongod.exe'));
+      })()
+    : [
+        '/opt/homebrew/bin/mongod', '/usr/local/bin/mongod',
+        '/usr/bin/mongod', '/snap/bin/mongod',
+      ];
+  return candidates.find(p => fs.existsSync(p)) || null;
+}
+
+const MONGOD_PATH = resolveMongodPath();
 const BACKEND_DIR = path.join(__dirname, '..', '..');
 
 function findFreePort() {
@@ -61,10 +100,25 @@ async function waitForHttpOk(url, timeoutMs = 15000) {
 // clair si mongod n'est pas installé sur la machine, plutôt qu'un échec
 // opaque au démarrage.
 function mongodExists() {
-  return fs.existsSync(MONGOD_PATH);
+  return !!MONGOD_PATH && fs.existsSync(MONGOD_PATH);
 }
 
-async function startIsolatedServer() {
+// httpReadyTimeoutMs configurable (défaut 45s — mesuré ~3s pour ce même
+// serveur lancé seul, donc largement suffisant même en isolation) :
+// accessMatrix.test.js, auditCorrection3RoomCRUD.test.js et d'autres
+// consommateurs de cet helper ont chacun été observés en échec intermittent
+// sur l'ancien délai de 15s en fin de suite complète (1050+ tests, mongod
+// local + processus node.exe déjà nombreux) alors que la même invocation
+// isolée réussit largement en ~3s — flake de contention réelle et
+// récurrente sur cette machine (I/O disque, antivirus scannant les
+// processus mongod.exe/node.exe nouvellement créés), pas un défaut de
+// logique propre à un seul test. Relevé au niveau du défaut partagé plutôt
+// que patché fichier par fichier, pour couvrir tous les appelants actuels
+// et futurs de cet helper (voir aussi auditCorrection2CSPConnectSrc.test.js,
+// qui maintient sa propre copie locale de ce même mécanisme et a reçu le
+// même correctif séparément).
+async function startIsolatedServer({ httpReadyTimeoutMs = 45000 } = {}) {
+  if (!MONGOD_PATH) throw new Error("mongod introuvable (ni MONGOD_PATH, ni PATH, ni emplacement d'installation connu) — utilisez mongodExists() pour ignorer proprement ce test plutôt que d'appeler startIsolatedServer().");
   const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 'p10-mongod-'));
   const mongoPort = await findFreePort();
   const mongod = spawn(MONGOD_PATH, ['--dbpath', dbPath, '--port', String(mongoPort), '--bind_ip', '127.0.0.1', '--quiet', '--noauth'], { stdio: 'ignore' });
@@ -105,7 +159,7 @@ async function startIsolatedServer() {
   });
 
   try {
-    await waitForHttpOk(`http://127.0.0.1:${httpPort}/api/health`);
+    await waitForHttpOk(`http://127.0.0.1:${httpPort}/api/health`, httpReadyTimeoutMs);
   } catch (err) {
     serverProc.kill();
     mongod.kill();

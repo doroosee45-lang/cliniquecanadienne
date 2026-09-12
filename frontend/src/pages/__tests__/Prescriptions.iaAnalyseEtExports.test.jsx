@@ -14,11 +14,8 @@
 // jsPDF/autotable/xlsx sont simulés pour capturer leur contenu réel.
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
-import prescriptionsReducer from '../../store/slices/prescriptionsSlice';
 import Prescriptions from '../Prescriptions.jsx';
 
 vi.mock('react-hot-toast', () => ({
@@ -69,8 +66,7 @@ const ORD_FIXTURE = {
 const STATS_FIXTURE = { mois: 12, chroniques: 3, interactions: 2, dispensees: 9, renouvellements_effectues: 4, annulees: 1 };
 
 function renderPrescriptions() {
-  const store = configureStore({ reducer: { prescriptions: prescriptionsReducer } });
-  return render(<Provider store={store}><MemoryRouter><Prescriptions /></MemoryRouter></Provider>);
+  return render(<MemoryRouter><Prescriptions /></MemoryRouter>);
 }
 
 beforeEach(() => {

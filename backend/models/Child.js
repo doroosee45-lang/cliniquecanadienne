@@ -37,7 +37,22 @@ const MaladieChronSchema = new mongoose.Schema({
 
 const ChildSchema = new mongoose.Schema({
   numero:          { type: String, unique: true, sparse: true },
+  // SPEC-10 (correction du 12 sept. 2026, audit indépendant) — patient_id
+  // n'était jamais validé (client pouvait fournir un ObjectId fabriqué/
+  // orphelin). pediatrieController.js::create l'exige et le vérifie
+  // désormais réellement, comme Pediatrie.jsx::ModalDossier l'exige déjà
+  // côté interface (même raisonnement que SPEC-03 pour Pregnancy) — non
+  // required ici au niveau du schéma, car maternityController.js::
+  // createChildDossier (Newborn→Child) crée légitimement un dossier enfant
+  // avant qu'un Patient dédié n'existe pour ce nouveau-né (aucune création
+  // automatique de Patient à la naissance dans ce système).
   patient_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' },
+  // SPEC-10 — lien de retour direct et fiable vers le Newborn d'origine
+  // (createChildDossier, maternityController.js). Newborn.child_id pointait
+  // déjà Newborn→Child ; l'absence de champ symétrique Child→Newborn
+  // obligeait une requête de recherche inverse (Newborn.findOne({child_id}))
+  // au lieu d'une référence directe stockée.
+  newborn_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'Newborn' },
 
   nom:             { type: String, required: true },
   prenom:          String,

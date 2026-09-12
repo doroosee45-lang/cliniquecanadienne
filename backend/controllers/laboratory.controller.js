@@ -4,6 +4,7 @@ const Consultation = require('../models/Consultation');
 const Invoice = require('../models/Invoice');
 const { logAction, createNotification, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { nextSequence } = require('../utils/counter');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
@@ -42,6 +43,12 @@ exports.getAll = async (req, res, next) => {
     const raw = await LabResult.find(filter)
       .populate('patient',             'nom prenom numero_dossier date_naissance')
       .populate('medecin_prescripteur','nom prenom')
+      // LAB-03 — technicien/biologiste réels (jamais les anciens champs
+      // texte libre jamais persistés) : mêmes flattening + *_nom que
+      // medecin_prescripteur ci-dessous, pour que la liste n'expose jamais
+      // un objet peuplé directement (risque de crash React déjà documenté).
+      .populate('technicien',         'nom prenom')
+      .populate('validateur',         'nom prenom')
       .lean()
       .sort('-date_prescription')
       .skip(skip)
@@ -52,16 +59,22 @@ exports.getAll = async (req, res, next) => {
       const patientDossier  = a.patient_dossier  || a.patient?.numero_dossier || '';
       const medecinNom      = a.medecin_prescripteur_nom
                               || (a.medecin_prescripteur ? `${a.medecin_prescripteur.prenom || ''} ${a.medecin_prescripteur.nom || ''}`.trim() : '');
+      const technicienNom   = a.technicien ? `${a.technicien.prenom || ''} ${a.technicien.nom || ''}`.trim() : '';
+      const validateurNom   = a.validateur ? `${a.validateur.prenom || ''} ${a.validateur.nom || ''}`.trim() : '';
       return {
         ...a,
         patient_nom:              patientNom,
         patient_dossier:          patientDossier,
         medecin_prescripteur_nom: medecinNom,
+        technicien_nom:           technicienNom,
+        validateur_nom:           validateurNom,
         date_demande:             a.date_demande || a.date_prescription,
         // Remplace les objets peuplés par leurs IDs pour éviter tout crash React côté frontend
         patient:              a.patient?._id            ?? a.patient,
         medecin_prescripteur: a.medecin_prescripteur?._id ?? a.medecin_prescripteur,
         examen:               a.examen?._id             ?? a.examen,
+        technicien:            a.technicien?._id          ?? a.technicien,
+        validateur:            a.validateur?._id          ?? a.validateur,
       };
     });
 
@@ -74,7 +87,12 @@ exports.getOne = async (req, res, next) => {
     const result = await LabResult.findById(req.params.id)
       .populate('patient')
       .populate('medecin_prescripteur', 'nom prenom')
-      .populate('examen');
+      .populate('examen')
+      // LAB-03 — technicien/validateur réels (voir saisirResultats/validate
+      // ci-dessous), affichés à la place des anciens champs texte libre
+      // jamais persistés.
+      .populate('technicien', 'nom prenom')
+      .populate('validateur', 'nom prenom');
     if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
     // Correction 5 — vraie facture liée (créée par validate() ci-dessous),
     // jamais un calcul recomposé côté frontend à partir d'un catalogue
@@ -123,9 +141,11 @@ exports.create = async (req, res, next) => {
       consultation = req.body.consultation;
     }
 
-    // numéro auto
-    const count = await LabResult.countDocuments();
-    const numero = `LAB-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    // CLIN-04 — numéro auto via compteur atomique ($inc + upsert), jamais
+    // countDocuments()+1 (condition de course sous créations concurrentes).
+    const year = new Date().getFullYear();
+    const seq = await nextSequence(`lab-${year}`);
+    const numero = `LAB-${year}-${String(seq).padStart(4, '0')}`;
 
     const payload = {
       patient,
@@ -178,11 +198,20 @@ exports.saisirResultats = async (req, res, next) => {
   try {
     const { resultats } = req.body;
     const avant = await LabResult.findById(req.params.id).lean();
+    // LAB-03 (correction du 12 sept. 2026, audit indépendant) — le
+    // formulaire de validation exigeait un "Technicien de laboratoire"
+    // en texte libre, jamais persisté (technicien est un ObjectId ref
+    // User côté schéma, jamais alimenté nulle part). Le vrai technicien
+    // est la personne authentifiée qui saisit les résultats (route
+    // réservée à 'superadmin'/'laborantin' — voir laboratory.routes.js),
+    // exactement le même principe que validateur ci-dessous pour la
+    // validation : dérivé du compte réel, jamais d'un champ texte
+    // fabriquable côté client.
     const result = await LabResult.findByIdAndUpdate(
       req.params.id,
-      { resultats, statut: 'termine', date_resultat: new Date() },
+      { resultats, statut: 'termine', date_resultat: new Date(), technicien: req.user._id },
       { new: true }
-    );
+    ).populate('technicien', 'nom prenom');
     if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'RESULTATS', module: 'laboratory', entite_id: result._id, ip: req.ip, message: 'Résultats saisis', avant, apres: result });
     res.json({ success: true, result });
@@ -193,6 +222,16 @@ exports.validate = async (req, res, next) => {
   try {
     const { resultats, commentaires, est_critique, valeurs_critiques } = req.body;
     const avant = await LabResult.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
+    // SPEC-07 (correction du 12 sept. 2026, audit indépendant) — validate()
+    // ne vérifiait jamais le statut courant : une analyse encore en_attente
+    // (jamais prélevée, jamais testée) pouvait être directement validée et
+    // facturée, sans qu'aucun résultat réel n'ait été saisi. saisirResultats
+    // (ci-dessus) est l'unique chemin réel qui amène le statut à 'termine' —
+    // seule précondition honnête pour autoriser la signature.
+    if (avant.statut !== 'termine') {
+      return res.status(400).json({ success: false, message: `Impossible de valider : les résultats doivent d'abord être saisis (statut actuel : ${avant.statut}).` });
+    }
     const result = await LabResult.findByIdAndUpdate(
       req.params.id,
       { resultats, commentaires, est_critique, valeurs_critiques, statut: 'valide', validateur: req.user._id, date_validation: new Date() },
@@ -207,7 +246,13 @@ exports.validate = async (req, res, next) => {
     // formulaire. Seul destinataire ci-dessous en avait besoin, et un
     // ObjectId brut (déjà présent sur result.medecin_prescripteur) suffit —
     // aucun besoin de populate ici.
-    ).populate('patient', 'nom prenom');
+    ).populate('patient', 'nom prenom')
+      // LAB-03 — technicien (saisi lors de saisirResultats) et validateur
+      // (la personne réelle qui signe ici) : Laboratory.jsx les rend via
+      // .nom/.prenom explicitement, jamais l'objet peuplé directement en
+      // JSX, donc le risque de crash décrit ci-dessus ne s'applique pas.
+      .populate('technicien', 'nom prenom')
+      .populate('validateur', 'nom prenom');
 
     if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
 

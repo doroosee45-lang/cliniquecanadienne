@@ -1,10 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchPrescriptions,
-  selectPrescriptions, selectPrescriptionsLoading, selectPrescriptionsTotal,
-} from '../store/slices/prescriptionsSlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { FileText, Plus, Printer } from 'lucide-react';
@@ -393,12 +388,16 @@ function BarChart({ labels, data, color="#1B4F9E", height=200 }) {
 
 // ─── MAIN ────────────────────────────────────────────────────
 export default function Ordonnances() {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const reduxOrdonnances = useSelector(selectPrescriptions);
-  const reduxTotal = useSelector(selectPrescriptionsTotal);
-
-  useEffect(() => { dispatch(fetchPrescriptions({})); }, [dispatch]);
+  // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchPrescriptions({}))
+  // dupliquait à chaque montage la même requête que loadOrds() (api.get
+  // direct, ci-dessous), sans que reduxOrdonnances/reduxTotal ne soient
+  // jamais lus nulle part — vérifié par recherche projet-wide,
+  // fetchPrescriptions/selectPrescriptions/selectPrescriptionsLoading/
+  // selectPrescriptionsTotal (prescriptionsSlice) ne sont utilisés dans
+  // AUCUN autre fichier. useRealtimeRefresh(loadOrds), plus bas, rafraîchit
+  // déjà correctement la vraie source — le dispatch Redux orphelin est
+  // simplement retiré.
 
   // Détection mobile — inline styles pour les onglets (priorité absolue)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
@@ -512,7 +511,7 @@ export default function Ordonnances() {
         renouvellements: s.renouvellements_a_bientot ?? 0,
         repartition_specialite: s.repartition_specialite || [],
       }));
-    } catch {}
+    } catch { /* stats précédentes conservées en cas d'échec réseau */ }
   }, []);
 
   // Correction 7 (relecture du 6 sept. 2026, FE-BUG-009) — un échec de
@@ -531,7 +530,21 @@ export default function Ordonnances() {
     }
   }, []);
 
-  useEffect(() => { loadOrds(); loadStats(); loadPatients(); }, [loadOrds, loadStats, loadPatients]);
+  // PRESC-01 (correction du 12 sept. 2026, audit indépendant) — "Médecin
+  // prescripteur" était un texte libre, jamais envoyé au backend (create()
+  // attribue de toute façon réellement l'ordonnance à req.user._id/un vrai
+  // ObjectId médecin). Remplacé par un vrai sélecteur, même source déjà
+  // réelle que Consultations.jsx (GET /consultations/medecins) — aucune
+  // deuxième liste de médecins créée.
+  const [medecins, setMedecins] = useState([]);
+  const loadMedecins = useCallback(async () => {
+    try {
+      const { data } = await api.get('/consultations/medecins');
+      setMedecins(data.medecins || []);
+    } catch { setMedecins([]); }
+  }, []);
+
+  useEffect(() => { loadOrds(); loadStats(); loadPatients(); loadMedecins(); }, [loadOrds, loadStats, loadPatients, loadMedecins]);
   useRealtimeRefresh(loadOrds);
 
   const openOrd = (ord) => { setCurrent(ord); setSection("patient"); setTab("ordonnance"); };
@@ -544,8 +557,15 @@ export default function Ordonnances() {
     setSaving(true);
     try {
       // Mapper les champs frontend → backend (Prescription model)
+      // PRESC-01 (correction du 12 sept. 2026, audit indépendant) — medecin/
+      // poids/allergies/consultation liée/chronique/recommandations étaient
+      // saisis puis jamais transmis ; désormais réellement envoyés
+      // (medecin/consultation validés et résolus côté serveur, voir
+      // prescriptions.controller.js::create).
       const payload = {
         patient:          formOrd.patient_id,
+        medecin:          formOrd.medecin || undefined,
+        consultation:     formOrd.consultation_liee || undefined,
         lignes:           (formOrd.medicaments || []).map(m => ({
           medicament_nom: m.medicament,
           posologie:      `${m.dosage} — ${m.frequence}${m.voie ? ` (${m.voie})` : ''}${m.instructions ? ` — ${m.instructions}` : ''}`,
@@ -556,6 +576,11 @@ export default function Ordonnances() {
         diagnostic:       formOrd.diagnostic,
         date_prescription:formOrd.date_prescription,
         date_expiration:  formOrd.date_expiration || undefined,
+        poids_kg:         formOrd.poids ? parseFloat(formOrd.poids) : undefined,
+        allergies_verifiees: formOrd.allergies || [],
+        chronique:        formOrd.chronique || false,
+        maladie_chronique: formOrd.chronique ? (formOrd.maladie_chronique || undefined) : undefined,
+        recommandations:  formOrd.recommandations || undefined,
         statut:           'brouillon',
       };
       const { data } = await api.post("/prescriptions", payload);
@@ -1884,11 +1909,17 @@ export default function Ordonnances() {
               </div>
               <div>
                 <label className="olbl">Médecin prescripteur *</label>
-                <input className="oinp" required value={formOrd.medecin} onChange={e=>setFormOrd(f=>({...f,medecin:e.target.value}))} placeholder="Dr. Nom Prénom" />
+                <select className="oinp" required value={formOrd.medecin} onChange={e=>{
+                  const m = medecins.find(x=>x._id===e.target.value);
+                  setFormOrd(f=>({...f, medecin:e.target.value, specialite: m?.specialite || ""}));
+                }}>
+                  <option value="">— Sélectionner —</option>
+                  {medecins.map(m=><option key={m._id} value={m._id}>Dr. {m.prenom} {m.nom}</option>)}
+                </select>
               </div>
               <div>
                 <label className="olbl">Spécialité</label>
-                <input className="oinp" value={formOrd.specialite} onChange={e=>setFormOrd(f=>({...f,specialite:e.target.value}))} placeholder="Chirurgie, Médecine générale..." />
+                <input className="oinp" value={formOrd.specialite} readOnly disabled placeholder="Dérivée du médecin sélectionné" title="Dérivée automatiquement du médecin sélectionné — non modifiable ici" />
               </div>
               <div>
                 <label className="olbl">Date de prescription</label>

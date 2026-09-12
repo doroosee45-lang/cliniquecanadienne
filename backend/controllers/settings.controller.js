@@ -8,6 +8,7 @@ const Appointment  = require('../models/Appointment');
 const Consultation = require('../models/Consultation');
 const Hospitalization = require('../models/Hospitalization');
 const Invoice      = require('../models/Invoice');
+const Depense      = require('../models/Depense');
 const Room         = require('../models/Room');
 const { logAction, createNotification } = require('../utils/helpers');
 const mail = require('../utils/mail');
@@ -18,11 +19,42 @@ const {
 const path = require('path');
 const { runBackup } = require('../utils/backup');
 const backupState = require('../utils/backupState');
+const { forceDisconnectUser } = require('../utils/socket');
+
+// NEW-001 / SET-002 (rapport de correction du 11 sept. 2026) — le bouton
+// "Tester la connexion SMTP" de Settings.jsx était désactivé, faute de
+// route réelle. mail.testSmtpConnection() effectue un vrai
+// transporter.verify() (connexion + authentification réelles auprès du
+// serveur SMTP effectif, jamais un envoi d'email) — succès/échec reflètent
+// exactement ce qu'un vrai envoi ferait, jamais un résultat simulé.
+exports.testSmtp = async (req, res, next) => {
+  try {
+    const result = await mail.testSmtpConnection();
+    res.json({ success: result.ok, message: result.message, source: result.source });
+  } catch (err) { next(err); }
+};
+
+// NEW-001 (rapport de correction du 11 sept. 2026) — notif_smtp_pwd est
+// désormais réellement consommé par utils/mail.js::getSmtpConfig() pour
+// piloter l'envoi d'email réel : sa valeur ne doit donc plus jamais
+// apparaître en clair dans une réponse API ni dans le journal d'audit
+// (GET /settings la renvoyait intégralement, et upsert() journalisait
+// `${cle} = ${valeur}` sans distinction). Liste extensible si d'autres
+// paramètres secrets (ex. notif_sms_api_key, notif_whatsapp_token —
+// signalés mais non traités ici, hors périmètre de NEW-001) devaient être
+// couverts de la même façon.
+const SECRET_SETTING_KEYS = ['notif_smtp_pwd'];
+const SECRET_MASK = '••••••••';
+const maskSecretSetting = (doc) => {
+  if (!doc || !SECRET_SETTING_KEYS.includes(doc.cle)) return doc;
+  const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  return { ...plain, valeur: plain.valeur ? SECRET_MASK : '' };
+};
 
 exports.getAll = async (req, res, next) => {
   try {
     const settings = await Setting.find().sort('groupe cle');
-    res.json({ success: true, settings });
+    res.json({ success: true, settings: settings.map(maskSecretSetting) });
   } catch (err) { next(err); }
 };
 
@@ -38,11 +70,21 @@ exports.upsert = async (req, res, next) => {
     if (avant && avant.modifiable === false) {
       return res.status(403).json({ success: false, message: `Le paramètre "${cle}" n'est pas modifiable.` });
     }
+    // NEW-001 — un paramètre secret renvoyé masqué (ci-dessus) puis
+    // resoumis SANS modification reviendrait ici littéralement comme
+    // SECRET_MASK : jamais écraser la vraie valeur stockée par le masque
+    // lui-même. Un utilisateur qui n'a pas touché au champ ne modifie rien ;
+    // toute autre valeur (nouveau mot de passe réel, ou chaîne vide pour
+    // l'effacer explicitement) est enregistrée normalement.
+    if (SECRET_SETTING_KEYS.includes(cle) && valeur === SECRET_MASK) {
+      return res.json({ success: true, setting: maskSecretSetting(avant || { cle, valeur: '' }) });
+    }
     const setting = await Setting.findOneAndUpdate(
       { cle }, { valeur, type, groupe, description }, { upsert: true, new: true }
     );
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE_SETTING', module: 'settings', ip: req.ip, message: `${cle} = ${valeur}`, avant, apres: setting });
-    res.json({ success: true, setting });
+    const isSecret = SECRET_SETTING_KEYS.includes(cle);
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE_SETTING', module: 'settings', ip: req.ip, message: `${cle} = ${isSecret ? (valeur ? SECRET_MASK : '') : valeur}`, avant: isSecret ? maskSecretSetting(avant) : avant, apres: isSecret ? maskSecretSetting(setting) : setting });
+    res.json({ success: true, setting: maskSecretSetting(setting) });
   } catch (err) { next(err); }
 };
 
@@ -231,6 +273,41 @@ exports.deactivateUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// FORCE-LOGOUT-001 (rapport de clôture du 11 sept. 2026) — Audit.jsx
+// ("Forcer" sur une session active) avait jusqu'ici aucune vraie révocation
+// de session : le JWT restait valide jusqu'à expiration naturelle malgré le
+// message de succès affiché. Distinct d'une suspension de compte
+// (deactivateUser/updateUser statut) : le compte reste actif, seule la
+// session déjà émise est invalidée — l'utilisateur peut se reconnecter
+// immédiatement avec ses identifiants, contrairement à un compte suspendu.
+// tokenVersion++ invalide tous les JWT déjà émis (middleware/auth.js::
+// protect et server.js::io.use les revérifient désormais tous deux) ;
+// forceDisconnectUser() coupe en plus immédiatement toute connexion
+// Socket.IO déjà ouverte, en réutilisant la room privée existante.
+exports.forceLogout = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
+
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    await user.save({ validateBeforeSave: false });
+
+    // Aucune réponse de succès si l'écriture MongoDB elle-même a échoué —
+    // save() ci-dessus aurait déjà levé une exception (capturée plus bas),
+    // donc atteindre cette ligne garantit que tokenVersion est réellement
+    // persisté avant toute notification/déconnexion.
+    forceDisconnectUser(String(user._id));
+
+    await logAction({
+      utilisateur: req.user._id, action: 'FORCE_LOGOUT', module: 'audit',
+      entite_id: user._id, ip: req.ip,
+      message: `Déconnexion forcée de ${user.email} (tokenVersion → ${user.tokenVersion})`,
+    });
+
+    res.json({ success: true, message: `Session de ${user.email} révoquée — reconnexion requise.`, tokenVersion: user.tokenVersion });
+  } catch (err) { next(err); }
+};
+
 exports.getServices = async (req, res, next) => {
   try {
     const services = await Service.find().populate('chef_service', 'nom prenom').sort('nom');
@@ -246,22 +323,30 @@ exports.createService = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// AUDIT-FAIBLE-H4 — pas de liste blanche de champs sur updateService/
-// updateInsurance ci-dessous : vérifié contre le précédent déjà tranché
-// (tasks.controller.js::updateStatut, AUDIT-11-8) — situation identique,
-// pas une omission. Les deux routes sont déjà réservées à ADMIN
-// (superadmin/adminclinique) en écriture ; STAFF n'y a qu'un accès lecture
-// (getServices/getInsurances). Service et Insurance sont des ressources
-// référentielles (pas des documents cliniques partagés entre plusieurs
-// rôles à niveaux de confiance différents) et n'exposent aucun champ
-// auto-géré/dérivé qu'un admin pourrait corrompre par erreur — le pattern
-// *_BLOCKED_FIELDS protège un champ sensible d'un rôle contre un autre sur
-// un document multi-rôles, pas le cas ici.
+// ADM-01 (correction du 12 sept. 2026, audit indépendant) — l'audit
+// maintient la majeure malgré la restriction ADMIN déjà en place sur ces
+// routes : un accès admin authentifié reste, par exemple, un JWT volé ou un
+// compte compromis — la restriction de rôle n'est pas une raison de se
+// passer d'une liste blanche de champs sur une route d'écriture. Liste
+// blanche ajoutée, même principe que APPT_CREATE_ALLOWED_FIELDS /
+// NEWBORN_CREATE_ALLOWED_FIELDS : seuls les champs métier réellement
+// éditables du formulaire de gestion des services sont acceptés ; _id,
+// createdAt/updatedAt (gérés par { timestamps: true }) ne peuvent plus être
+// écrasés par le corps de la requête.
+const SERVICE_UPDATE_ALLOWED_FIELDS = ['nom', 'code', 'description', 'etage', 'couleur', 'chef_service', 'statut'];
+function pickAllowedFields(body, allowed) {
+  const out = {};
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) out[key] = body[key];
+  }
+  return out;
+}
 exports.updateService = async (req, res, next) => {
   try {
     const avant = await Service.findById(req.params.id).lean();
-    const service = await Service.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!service) return res.status(404).json({ success: false, message: 'Service introuvable.' });
+    if (!avant) return res.status(404).json({ success: false, message: 'Service introuvable.' });
+    const data = pickAllowedFields(req.body, SERVICE_UPDATE_ALLOWED_FIELDS);
+    const service = await Service.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'settings', entite_id: service._id, ip: req.ip, message: `Service modifié : ${service.nom}`, avant, apres: service });
     res.json({ success: true, service });
   } catch (err) { next(err); }
@@ -383,14 +468,17 @@ exports.createInsurance = async (req, res, next) => {
 // fabriqué (5 lignes codées en dur) et un bouton "Modifier" factice, alors
 // que createInsurance/getInsurances existaient déjà réellement. Aucune
 // route de modification n'existait — ajoutée ici, même style que ci-dessus.
-// AUDIT-FAIBLE-H4 — même raisonnement que updateService ci-dessus : pas de
-// liste blanche nécessaire, situation identique au précédent déjà tranché
-// (tasks.controller.js::updateStatut, AUDIT-11-8).
+// ADM-01 (correction du 12 sept. 2026, audit indépendant) — même
+// raisonnement que updateService ci-dessus : liste blanche ajoutée malgré
+// la restriction ADMIN déjà en place.
+const INSURANCE_UPDATE_ALLOWED_FIELDS = ['nom', 'code', 'type', 'taux_prise_en_charge', 'plafond_mensuel', 'contact', 'statut'];
 exports.updateInsurance = async (req, res, next) => {
   try {
-    const insurance = await Insurance.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    if (!insurance) return res.status(404).json({ success: false, message: 'Assurance introuvable.' });
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'settings', entite_id: insurance._id, ip: req.ip, message: `Assurance modifiée : ${insurance.nom}` });
+    const avant = await Insurance.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Assurance introuvable.' });
+    const data = pickAllowedFields(req.body, INSURANCE_UPDATE_ALLOWED_FIELDS);
+    const insurance = await Insurance.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'settings', entite_id: insurance._id, ip: req.ip, message: `Assurance modifiée : ${insurance.nom}`, avant, apres: insurance });
     res.json({ success: true, insurance });
   } catch (err) { next(err); }
 };
@@ -412,6 +500,7 @@ exports.getKpis = async (req, res, next) => {
       factures_impayees,
       revenus_jour_agg,
       revenus_mensuels_agg,
+      depenses_mensuelles_agg,
       rooms,
       users_by_role,
     ] = await Promise.all([
@@ -430,6 +519,17 @@ exports.getKpis = async (req, res, next) => {
         { $group: { _id: { mois: { $month: '$date_facture' } }, total: { $sum: '$montant_ttc' } } },
         { $sort: { '_id.mois': 1 } },
       ]),
+      // FE-ADM-02 (correction du 12 sept. 2026, audit indépendant) —
+      // Administration.jsx affichait des KPI "Revenus/Dépenses/Excédent"
+      // codés en dur (26.8M/18.2M/8.6M, "mai 2025" figé), jamais calculés.
+      // Même agrégation réelle que revenus_mensuels_agg ci-dessus, sur le
+      // vrai modèle Depense (déjà utilisé par analytics.controller.js/
+      // getFinancial, ANL-01).
+      Depense.aggregate([
+        { $match: { date: { $gte: yearStart } } },
+        { $group: { _id: { mois: { $month: '$date' } }, total: { $sum: '$montant' } } },
+        { $sort: { '_id.mois': 1 } },
+      ]),
       // Room.statut (actif/maintenance/ferme) est un statut d'ouverture de la
       // chambre — la disponibilité réelle (libre/occupé) vit au niveau de
       // chaque lit (Room.lits[].statut), jamais sur la chambre elle-même.
@@ -442,6 +542,10 @@ exports.getKpis = async (req, res, next) => {
 
     const revenus_par_mois = Array(12).fill(0);
     revenus_mensuels_agg.forEach(r => { revenus_par_mois[r._id.mois - 1] = r.total; });
+
+    // FE-ADM-02 — voir Depense.aggregate ci-dessus.
+    const depenses_par_mois = Array(12).fill(0);
+    depenses_mensuelles_agg.forEach(d => { depenses_par_mois[d._id.mois - 1] = d.total; });
 
     const roleMap = {};
     users_by_role.forEach(r => { roleMap[r._id] = r.count; });
@@ -457,6 +561,7 @@ exports.getKpis = async (req, res, next) => {
       alertes:            0,
       revenus_jour:       revenus_jour_agg[0]?.total || 0,
       revenus_par_mois,
+      depenses_par_mois,
       rooms: {
         total:        rooms.length,
         // Comptage réel au niveau des lits (Room.lits[].statut), pas de la

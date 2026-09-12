@@ -38,6 +38,7 @@ test('Analytics Phase 8 — rapport hebdomadaire IA (mode simulé, base réelle)
   const openai = require('../utils/openai');
   const mailModule = require('../utils/mail');
   const weekly = require('../utils/weeklyAnalyticsReport');
+  const env = require('../config/env');
 
   const stamp = Date.now();
   const created = { patients: [], labresults: [], users: [] };
@@ -45,6 +46,18 @@ test('Analytics Phase 8 — rapport hebdomadaire IA (mode simulé, base réelle)
   const originalSendWeeklyAnalyticsReportEmail = mailModule.sendWeeklyAnalyticsReportEmail;
   const sentTo = [];
   mailModule.sendWeeklyAnalyticsReportEmail = async ({ email, simulated }) => { sentTo.push({ email, simulated }); return { simulated: true }; };
+
+  // Ce test vérifie le comportement en MODE SIMULÉ (aucune clé OpenAI
+  // configurée) — un vrai comportement métier, pas une caractéristique de
+  // machine. Lire process.env ambiant faisait dépendre le résultat de la
+  // machine d'exécution : si backend/.env contient une vraie clé (utilisée
+  // ailleurs, ex. tests manuels), ce test échouait sur sa propre assertion
+  // de sanity sans que le code testé soit en cause. env.OPENAI_API_KEY
+  // (config/env.js, objet mutable) est donc neutralisé pour la SEULE durée
+  // de ce test, jamais lu ni modifié dans .env — jamais une vraie clé
+  // ajoutée ni supprimée du dépôt ou de l'environnement réel.
+  const originalOpenaiKey = env.OPENAI_API_KEY;
+  env.OPENAI_API_KEY = '';
 
   try {
     await t.test('utils/openai.js — mode simulé réel quand OPENAI_API_KEY est absente (jamais un faux succès)', async () => {
@@ -97,6 +110,7 @@ test('Analytics Phase 8 — rapport hebdomadaire IA (mode simulé, base réelle)
       assert.match(html, /<ul[^>]*><li[^>]*>Item un<\/li><li[^>]*>Item deux<\/li><\/ul>/);
     });
   } finally {
+    env.OPENAI_API_KEY = originalOpenaiKey;
     mailModule.sendWeeklyAnalyticsReportEmail = originalSendWeeklyAnalyticsReportEmail;
     for (const l of created.labresults) await LabResult.findByIdAndDelete(l._id);
     for (const p of created.patients) await Patient.findByIdAndDelete(p._id);

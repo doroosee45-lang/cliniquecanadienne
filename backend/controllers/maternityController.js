@@ -6,6 +6,8 @@ const Patient   = require('../models/Patient');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction, escapeRegex } = require('../utils/helpers');
 
+const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
 // ── Stats / KPIs ─────────────────────────────────────────────────────────────
 exports.getStats = async (req, res, next) => {
   try {
@@ -97,18 +99,22 @@ exports.create = async (req, res, next) => {
     // grossesse était créé silencieusement sans aucun lien patient ni erreur
     // (faute de frappe sur l'ID, ou patient supprimé entre-temps passait
     // inaperçue). Retourne désormais une erreur explicite.
-    if (patient_id) {
-      const pat = await Patient.findById(patient_id);
-      if (!pat) return res.status(400).json({ success: false, message: 'Patient introuvable pour l\'identifiant fourni.' });
-      body.patient_id     = pat._id;
-      body.patient_nom    = pat.nom;
-      body.patient_prenom = pat.prenom;
-      body.telephone      = pat.telephone;
-      body.date_naissance = pat.date_naissance;
-      if (!body.groupe_sanguin) body.groupe_sanguin = pat.groupe_sanguin;
-      if (!body.antecedents_medicaux && pat.antecedents_medicaux) {
-        body.antecedents_medicaux = Array.isArray(pat.antecedents_medicaux) ? pat.antecedents_medicaux.join(', ') : pat.antecedents_medicaux;
-      }
+    // SPEC-03 — patient_id lui-même est désormais obligatoire : Maternite.jsx
+    // exige déjà un patient réel avant tout envoi (aucun dossier grossesse
+    // anonyme n'est un workflow clinique réel ici), donc un appel API direct
+    // sans patient_id du tout doit être refusé au même titre qu'un
+    // patient_id fabriqué, jamais silencieusement accepté.
+    if (!patient_id) return res.status(400).json({ success: false, message: 'Patient obligatoire pour créer un dossier de grossesse.' });
+    const pat = await Patient.findById(patient_id);
+    if (!pat) return res.status(400).json({ success: false, message: 'Patient introuvable pour l\'identifiant fourni.' });
+    body.patient_id     = pat._id;
+    body.patient_nom    = pat.nom;
+    body.patient_prenom = pat.prenom;
+    body.telephone      = pat.telephone;
+    body.date_naissance = pat.date_naissance;
+    if (!body.groupe_sanguin) body.groupe_sanguin = pat.groupe_sanguin;
+    if (!body.antecedents_medicaux && pat.antecedents_medicaux) {
+      body.antecedents_medicaux = Array.isArray(pat.antecedents_medicaux) ? pat.antecedents_medicaux.join(', ') : pat.antecedents_medicaux;
     }
 
     if (facteurs_risque && facteurs_risque.length > 0) body.statut = 'a_risque';
@@ -242,9 +248,43 @@ exports.getNewborns = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// SPEC-02 (correction du 12 sept. 2026, audit indépendant) — createNewborn
+// persistait ...req.body tel quel (mass-assignment, même défaut que
+// CLIN-01/CLIN-02/CLIN-05 ailleurs) ET n'importe quel grossesse_id/
+// accouchement_id fabriqué ou orphelin était accepté sans vérification —
+// jamais rejeté, laissant un Newborn référencer un dossier grossesse ou un
+// accouchement qui n'existe pas. numero/created_by/child_id restent
+// exclusivement server-managed (voir NEWBORN_BLOCKED_FIELDS ci-dessous pour
+// update()) ; patient_id n'est jamais accepté du client, uniquement dérivé
+// d'une grossesse réellement vérifiée.
+const NEWBORN_CREATE_ALLOWED_FIELDS = [
+  'mere_nom', 'prenom', 'nom', 'sexe', 'date_naissance',
+  'poids', 'taille', 'perimetre_cranien', 'apgar_1', 'apgar_5',
+  'respiration', 'coloration', 'reflexes', 'tonus', 'etat',
+  'vaccinations', 'observations',
+];
+
 exports.createNewborn = async (req, res, next) => {
   try {
-    const body = { ...req.body, created_by: req.user._id };
+    let grossesse_id, accouchement_id;
+    if (req.body.grossesse_id) {
+      if (!isObjectId(req.body.grossesse_id)) return res.status(400).json({ success: false, message: 'Référence grossesse invalide.' });
+      const g = await Pregnancy.findById(req.body.grossesse_id);
+      if (!g) return res.status(404).json({ success: false, message: 'Dossier grossesse introuvable.' });
+      grossesse_id = g._id;
+    }
+    if (req.body.accouchement_id) {
+      if (!isObjectId(req.body.accouchement_id)) return res.status(400).json({ success: false, message: 'Référence accouchement invalide.' });
+      const acc = await Delivery.findById(req.body.accouchement_id).select('_id');
+      if (!acc) return res.status(404).json({ success: false, message: 'Accouchement introuvable.' });
+      accouchement_id = acc._id;
+    }
+
+    const body = {};
+    for (const k of NEWBORN_CREATE_ALLOWED_FIELDS) { if (req.body[k] !== undefined) body[k] = req.body[k]; }
+    body.grossesse_id = grossesse_id;
+    body.accouchement_id = accouchement_id;
+    body.created_by = req.user._id;
     if (body.date_naissance) body.date_naissance = new Date(body.date_naissance);
     if (!body.vaccinations) body.vaccinations = [
       { vaccin: 'BCG', date: new Date(), dose: '0,1ml intradermique' },
@@ -322,6 +362,9 @@ exports.createChildDossier = async (req, res, next) => {
       vaccinations: nb.vaccinations,
       notes: nb.observations,
       created_by: req.user._id,
+      // SPEC-10 — lien de retour direct Child→Newborn (voir Child.js), en
+      // complément de Newborn.child_id déjà posé juste après.
+      newborn_id: nb._id,
     });
 
     nb.child_id = child._id;

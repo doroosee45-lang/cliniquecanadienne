@@ -18,7 +18,6 @@ import {
   setFilters,
   selectMaterniteStats,
   selectGrossesses,
-  selectGrossesseTotal,
   selectAccouchements,
   selectNouveauNes,
   selectMaterniteLoading,
@@ -401,9 +400,40 @@ const F = ({label,children}) => (
   <div className="mat-field">{label&&<label className="mat-label">{label}</label>}{children}</div>
 );
 
+// MAT-01 (correction du 12 sept. 2026, audit indépendant) — les boutons
+// génériques "➕ Nouvelle CPN"/"➕ Admettre patiente"/"➕ Déclarer
+// accouchement"/"➕ Nouvelle consultation" (en-tête des onglets, hors
+// tableau patiente-par-patiente) ouvraient la modale déjà silencieusement
+// liée à grossesses[0] — la première grossesse de la base, jamais celle
+// de l'utilisateur — dès qu'au moins une grossesse existait. Un acte
+// clinique pouvait donc être enregistré sur la mauvaise patiente sans
+// aucun avertissement. Ces boutons passent désormais grossesse=null ;
+// ce sélecteur exige une sélection réelle et explicite avant tout envoi.
+function GrossesseSelector({ grossesses, value, onChange }) {
+  return (
+    <F label="Patiente / dossier grossesse *">
+      <select className="mat-select" aria-label="Patiente / dossier grossesse" value={value} onChange={e=>onChange(e.target.value)} required>
+        <option value="">— Sélectionner une patiente —</option>
+        {(grossesses||[]).map(g => (
+          <option key={g._id} value={g._id}>
+            {(g.patient_prenom || g.patient_nom) ? `${g.patient_prenom||""} ${g.patient_nom||""}`.trim() : "Patiente non identifiée"}
+            {g.numero ? ` — ${g.numero}` : ""}
+          </option>
+        ))}
+      </select>
+    </F>
+  );
+}
+
 // ─── MODAL CPN ───────────────────────────────────────────────
-function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
+function ModalCPN({ grossesse, patienteNom, grossesses, onClose, saving }) {
   const dispatch = useDispatch();
+  // MAT-01 — grossesse null (bouton générique d'en-tête) exige une vraie
+  // sélection explicite ci-dessous ; grossesse déjà fournie (bouton par
+  // ligne du tableau patiente) reste inchangée, comme avant ce correctif.
+  const [selectedId, setSelectedId] = useState(grossesse?._id || "");
+  const effectiveGrossesse = grossesse || (grossesses||[]).find(g => g._id === selectedId) || null;
+  const effectiveNom = grossesse ? patienteNom : (effectiveGrossesse ? `${effectiveGrossesse.patient_prenom||""} ${effectiveGrossesse.patient_nom||""}`.trim() : "Patiente");
   const [form, setForm] = useState({
     // MAT-001 (audit du 11 sept. 2026) — `terme` (semaines d'aménorrhée)
     // existe bien dans CPNSchema (backend/models/Pregnancy.js) et est déjà
@@ -433,7 +463,7 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
   }, []);
 
   const handleSubmit = async () => {
-    if (!grossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
+    if (!effectiveGrossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
     const body = { ...form };
     if (form.terme) body.terme = Number(form.terme);
     if (form.tension_sys) body.tension_sys = Number(form.tension_sys);
@@ -444,9 +474,9 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
     if (form.bcf) body.bcf = Number(form.bcf);
     if (form.hemoglobine) body.hemoglobine = Number(form.hemoglobine);
     if (form.glycemie) body.glycemie = Number(form.glycemie);
-    const result = await dispatch(addCPN({ id: grossesse._id, body }));
+    const result = await dispatch(addCPN({ id: effectiveGrossesse._id, body }));
     if (addCPN.fulfilled.match(result)) {
-      toast.success(`✅ CPN enregistrée pour ${patienteNom}`);
+      toast.success(`✅ CPN enregistrée pour ${effectiveNom}`);
       onClose();
     } else {
       toast.error(result.payload || "Erreur enregistrement CPN");
@@ -457,10 +487,11 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
     <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="mat-modal-hdr">
-          <h2 id={titleId}>🩺 Consultation Prénatale — {patienteNom}</h2>
+          <h2 id={titleId}>🩺 Consultation Prénatale — {effectiveNom}</h2>
           <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="mat-modal-body">
+          {!grossesse && <GrossesseSelector grossesses={grossesses} value={selectedId} onChange={setSelectedId} />}
           <div style={{fontSize:13,fontWeight:700,color:"var(--apk)",marginBottom:12}}>📊 Signes vitaux</div>
           <div className="mat-g2">
             <F label="Terme (SA)"><input className="mat-input" placeholder="Ex: 22" value={form.terme} onChange={e=>setForm({...form,terme:e.target.value})}/></F>
@@ -493,7 +524,7 @@ function ModalCPN({ grossesse, patienteNom, onClose, saving }) {
           <F label="Vitamines / Médicaments prescrits"><input className="mat-input" placeholder="Ex: Acide folique, Fer, Vitamine D..." value={form.vitamines} onChange={e=>setForm({...form,vitamines:e.target.value})}/></F>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}}>
             <button className="mbtn mbtn-ghost" onClick={onClose}>Annuler</button>
-            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving}>{saving?"⏳ Enregistrement...":"💾 Enregistrer CPN"}</button>
+            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving || !effectiveGrossesse?._id}>{saving?"⏳ Enregistrement...":"💾 Enregistrer CPN"}</button>
           </div>
         </div>
       </div>
@@ -575,8 +606,12 @@ function ModalEcho({ grossesse, patienteNom, onClose, saving }) {
 // ─── MODAL Salle de travail ──────────────────────────────────
 // AUDIT-P6-3 — updateTravail idem : jamais dispatché, aucun moyen
 // d'admettre une patiente en salle de travail depuis l'interface.
-function ModalTravail({ grossesse, patienteNom, onClose, saving }) {
+function ModalTravail({ grossesse, patienteNom, grossesses, onClose, saving }) {
   const dispatch = useDispatch();
+  // MAT-01 — voir ModalCPN ci-dessus pour le détail du correctif.
+  const [selectedId, setSelectedId] = useState(grossesse?._id || "");
+  const effectiveGrossesse = grossesse || (grossesses||[]).find(g => g._id === selectedId) || null;
+  const effectiveNom = grossesse ? patienteNom : (effectiveGrossesse ? `${effectiveGrossesse.patient_prenom||""} ${effectiveGrossesse.patient_nom||""}`.trim() : "Patiente");
   const [form, setForm] = useState({
     motif_admission:"", etat_patient:"", dilatation:"", frequence_contractions:"",
     rcf:"", rupture_membranes:false, heure_rupture:"",
@@ -593,7 +628,7 @@ function ModalTravail({ grossesse, patienteNom, onClose, saving }) {
   }, []);
 
   const handleSubmit = async () => {
-    if (!grossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
+    if (!effectiveGrossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
     const body = {
       date_admission: new Date().toISOString(),
       motif_admission: form.motif_admission,
@@ -604,9 +639,9 @@ function ModalTravail({ grossesse, patienteNom, onClose, saving }) {
     if (form.frequence_contractions) body.frequence_contractions = Number(form.frequence_contractions);
     if (form.rcf) body.rcf = Number(form.rcf);
     if (form.rupture_membranes && form.heure_rupture) body.heure_rupture = form.heure_rupture;
-    const result = await dispatch(updateTravail({ id: grossesse._id, body }));
+    const result = await dispatch(updateTravail({ id: effectiveGrossesse._id, body }));
     if (updateTravail.fulfilled.match(result)) {
-      toast.success(`✅ ${patienteNom} admise en salle de travail`);
+      toast.success(`✅ ${effectiveNom} admise en salle de travail`);
       onClose();
     } else {
       toast.error(result.payload || "Erreur mise à jour salle de travail");
@@ -617,10 +652,11 @@ function ModalTravail({ grossesse, patienteNom, onClose, saving }) {
     <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="mat-modal-hdr">
-          <h2 id={titleId}>🚨 Admission salle de travail — {patienteNom}</h2>
+          <h2 id={titleId}>🚨 Admission salle de travail — {effectiveNom}</h2>
           <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="mat-modal-body">
+          {!grossesse && <GrossesseSelector grossesses={grossesses} value={selectedId} onChange={setSelectedId} />}
           <F label="Motif d'admission"><input className="mat-input" placeholder="Ex: Contractions régulières" value={form.motif_admission} onChange={e=>setForm({...form,motif_admission:e.target.value})}/></F>
           <F label="État de la patiente"><input className="mat-input" placeholder="Ex: Stable, consciente" value={form.etat_patient} onChange={e=>setForm({...form,etat_patient:e.target.value})}/></F>
           <div className="mat-g2">
@@ -637,7 +673,7 @@ function ModalTravail({ grossesse, patienteNom, onClose, saving }) {
           )}
           <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}}>
             <button className="mbtn mbtn-ghost" onClick={onClose}>Annuler</button>
-            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving}>{saving?"⏳ Admission...":"💾 Admettre en salle de travail"}</button>
+            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving || !effectiveGrossesse?._id}>{saving?"⏳ Admission...":"💾 Admettre en salle de travail"}</button>
           </div>
         </div>
       </div>
@@ -647,8 +683,12 @@ function ModalTravail({ grossesse, patienteNom, onClose, saving }) {
 
 // ─── MODAL Suivi postnatal ─────────────────────────────────────
 // AUDIT-P6-3 — addPostnatal idem : jamais dispatché.
-function ModalPostnatal({ grossesse, patienteNom, onClose, saving }) {
+function ModalPostnatal({ grossesse, patienteNom, grossesses, onClose, saving }) {
   const dispatch = useDispatch();
+  // MAT-01 — voir ModalCPN ci-dessus pour le détail du correctif.
+  const [selectedId, setSelectedId] = useState(grossesse?._id || "");
+  const effectiveGrossesse = grossesse || (grossesses||[]).find(g => g._id === selectedId) || null;
+  const effectiveNom = grossesse ? patienteNom : (effectiveGrossesse ? `${effectiveGrossesse.patient_prenom||""} ${effectiveGrossesse.patient_nom||""}`.trim() : "Patiente");
   const [form, setForm] = useState({
     etat_mere:"", cicatrisation:"", allaitement:true, contraception:"", observations:"",
   });
@@ -664,10 +704,10 @@ function ModalPostnatal({ grossesse, patienteNom, onClose, saving }) {
   }, []);
 
   const handleSubmit = async () => {
-    if (!grossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
-    const result = await dispatch(addPostnatal({ id: grossesse._id, body: { ...form } }));
+    if (!effectiveGrossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
+    const result = await dispatch(addPostnatal({ id: effectiveGrossesse._id, body: { ...form } }));
     if (addPostnatal.fulfilled.match(result)) {
-      toast.success(`✅ Suivi postnatal enregistré pour ${patienteNom}`);
+      toast.success(`✅ Suivi postnatal enregistré pour ${effectiveNom}`);
       onClose();
     } else {
       toast.error(result.payload || "Erreur enregistrement suivi postnatal");
@@ -678,10 +718,11 @@ function ModalPostnatal({ grossesse, patienteNom, onClose, saving }) {
     <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="mat-modal-hdr">
-          <h2 id={titleId}>🤱 Suivi postnatal — {patienteNom}</h2>
+          <h2 id={titleId}>🤱 Suivi postnatal — {effectiveNom}</h2>
           <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="mat-modal-body">
+          {!grossesse && <GrossesseSelector grossesses={grossesses} value={selectedId} onChange={setSelectedId} />}
           <div className="mat-g2">
             <F label="État de la mère"><input className="mat-input" placeholder="Ex: Bon état général" value={form.etat_mere} onChange={e=>setForm({...form,etat_mere:e.target.value})}/></F>
             <F label="Cicatrisation"><input className="mat-input" placeholder="Ex: Bonne, sans signe d'infection" value={form.cicatrisation} onChange={e=>setForm({...form,cicatrisation:e.target.value})}/></F>
@@ -694,7 +735,7 @@ function ModalPostnatal({ grossesse, patienteNom, onClose, saving }) {
           <F label="Observations"><textarea className="mat-input" rows={3} value={form.observations} onChange={e=>setForm({...form,observations:e.target.value})} style={{resize:"vertical"}}/></F>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}}>
             <button className="mbtn mbtn-ghost" onClick={onClose}>Annuler</button>
-            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving}>{saving?"⏳ Enregistrement...":"💾 Enregistrer suivi"}</button>
+            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving || !effectiveGrossesse?._id}>{saving?"⏳ Enregistrement...":"💾 Enregistrer suivi"}</button>
           </div>
         </div>
       </div>
@@ -703,8 +744,15 @@ function ModalPostnatal({ grossesse, patienteNom, onClose, saving }) {
 }
 
 // ─── MODAL Accouchement ──────────────────────────────────────
-function ModalAccouchement({ grossesse, patienteNom, onClose, saving, medecins }) {
+function ModalAccouchement({ grossesse, patienteNom, grossesses, onClose, saving, medecins }) {
   const dispatch = useDispatch();
+  // MAT-01 — voir ModalCPN ci-dessus pour le détail du correctif. Ce
+  // formulaire n'avait de surcroît AUCUNE garde : grossesse_id pouvait
+  // partir undefined (ou, avant ce correctif, silencieusement mal
+  // attribué) sans qu'aucun contrôle ne s'y oppose.
+  const [selectedId, setSelectedId] = useState(grossesse?._id || "");
+  const effectiveGrossesse = grossesse || (grossesses||[]).find(g => g._id === selectedId) || null;
+  const effectiveNom = grossesse ? patienteNom : (effectiveGrossesse ? `${effectiveGrossesse.patient_prenom||""} ${effectiveGrossesse.patient_nom||""}`.trim() : "Patiente");
   const [form, setForm] = useState({
     // MAT-002 — "Dr. Koffi" par défaut était le même nom fictif codé en dur
     // que l'option de liste ; aucun médecin par défaut n'est réel ici, donc
@@ -731,9 +779,10 @@ function ModalAccouchement({ grossesse, patienteNom, onClose, saving, medecins }
   }, []);
 
   const handleSubmit = async () => {
+    if (!effectiveGrossesse?._id) { toast.error("Sélectionnez d'abord un dossier grossesse"); return; }
     if (!form.date_heure) { toast.error("Renseignez la date d'accouchement"); return; }
     const accBody = {
-      grossesse_id: grossesse?._id,
+      grossesse_id: effectiveGrossesse._id,
       date_heure: form.date_heure,
       type_accouchement: form.type_accouchement,
       obstetricien: form.obstetricien,
@@ -749,10 +798,10 @@ function ModalAccouchement({ grossesse, patienteNom, onClose, saving, medecins }
     const accId = result.payload._id;
     if (form.poids || form.taille || form.apgar_1) {
       const nbBody = {
-        grossesse_id: grossesse?._id,
+        grossesse_id: effectiveGrossesse._id,
         accouchement_id: accId,
-        mere_nom: patienteNom,
-        prenom: form.bebe_prenom || `Bébé ${patienteNom?.split(" ").pop() || ""}`,
+        mere_nom: effectiveNom,
+        prenom: form.bebe_prenom || `Bébé ${effectiveNom?.split(" ").pop() || ""}`,
         sexe: form.bebe_sexe,
         poids: form.poids ? Number(form.poids) * 1000 : undefined,
         taille: form.taille ? Number(form.taille) : undefined,
@@ -761,7 +810,7 @@ function ModalAccouchement({ grossesse, patienteNom, onClose, saving, medecins }
       };
       await dispatch(createNouveauNe(nbBody));
     }
-    toast.success(`🍼 Accouchement déclaré pour ${patienteNom}`);
+    toast.success(`🍼 Accouchement déclaré pour ${effectiveNom}`);
     onClose();
   };
 
@@ -769,10 +818,11 @@ function ModalAccouchement({ grossesse, patienteNom, onClose, saving, medecins }
     <div className="mat-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div ref={boxRef} className="mat-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="mat-modal-hdr">
-          <h2 id={titleId}>🍼 Déclaration d'accouchement — {patienteNom}</h2>
+          <h2 id={titleId}>🍼 Déclaration d'accouchement — {effectiveNom}</h2>
           <button className="mbtn mbtn-ghost mbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="mat-modal-body">
+          {!grossesse && <GrossesseSelector grossesses={grossesses} value={selectedId} onChange={setSelectedId} />}
           <div style={{fontSize:13,fontWeight:700,color:"var(--apk)",marginBottom:10}}>📅 Informations accouchement</div>
           <div className="mat-field">
             <label className="mat-label">Date & Heure *</label>
@@ -802,7 +852,7 @@ function ModalAccouchement({ grossesse, patienteNom, onClose, saving, medecins }
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}}>
             <button className="mbtn mbtn-ghost" onClick={onClose}>Annuler</button>
-            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving}>{saving?"⏳ Enregistrement...":"🍼 Enregistrer l'accouchement"}</button>
+            <button className="mbtn mbtn-pink" onClick={handleSubmit} disabled={saving || !effectiveGrossesse?._id}>{saving?"⏳ Enregistrement...":"🍼 Enregistrer l'accouchement"}</button>
           </div>
         </div>
       </div>
@@ -829,12 +879,23 @@ export default function Maternite() {
   const dispatch = useDispatch();
   const stats        = useSelector(selectMaterniteStats);
   const grossesses   = useSelector(selectGrossesses);
-  const grossesseTotal = useSelector(state => state.maternite.grossesseTotal);
+  // MAT-04 (correction du 12 sept. 2026, audit indépendant) — le total de
+  // grossesses était accessible par deux voies redondantes
+  // (selectGrossesseTotal, un sélecteur exporté jamais importé nulle part
+  // ailleurs ; et ce sélecteur brut inline state.maternite.grossesseTotal),
+  // aucune des deux jamais affichée — le vrai total affiché (KpiCard
+  // "Femmes enceintes" plus bas) utilise déjà stats?.totalGrossesses ??
+  // grossesses.length. Les deux voies mortes sont retirées.
   const accouchements = useSelector(selectAccouchements);
   const nouveauNes   = useSelector(selectNouveauNes);
   const loading      = useSelector(selectMaterniteLoading);
   const saving       = useSelector(selectMaterniteSaving);
   const filters      = useSelector(selectMaterniteFilters);
+  // MAT-02 (correction du 12 sept. 2026, audit indépendant) —
+  // selectMaterniteError était importé mais jamais invoqué : un échec réseau
+  // sur fetchGrossesses/fetchAccouchements/fetchNouveauxNes produisait une
+  // liste vide indiscernable d'une base réellement sans donnée.
+  const materniteError = useSelector(selectMaterniteError);
 
   const [tab, setTab] = useState("dashboard");
   const [isMobile, setIsMobile] = useState(false);
@@ -877,6 +938,12 @@ export default function Maternite() {
     dispatch(fetchNouveauxNes());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
+
+  // MAT-02 — voir la déclaration de materniteError ci-dessus : signalé
+  // honnêtement à l'utilisateur, jamais une liste vide silencieuse.
+  useEffect(() => {
+    if (materniteError) toast.error(`Impossible de charger les données de maternité — ${materniteError}`);
+  }, [materniteError]);
 
   const handleRefresh = () => {
     dispatch(fetchMaterniteStats());
@@ -1177,7 +1244,11 @@ export default function Maternite() {
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
                 <div className="sec-label">🩺 Consultations Prénatales</div>
-                <button className="mbtn mbtn-pink" onClick={()=>openModal("cpn", grossesses[0] || null)}>➕ Nouvelle CPN</button>
+                {/* MAT-01 — grossesses[0]||null liait silencieusement ce
+                    bouton générique à la première grossesse de la base ;
+                    null force la sélection explicite exigée par
+                    ModalCPN (GrossesseSelector). */}
+                <button className="mbtn mbtn-pink" onClick={()=>openModal("cpn", null)}>➕ Nouvelle CPN</button>
               </div>
 
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:14,marginBottom:20}}>
@@ -1349,10 +1420,13 @@ export default function Maternite() {
                     vraie admission (dispatch(updateTravail), réel) n'est
                     déclenchée que depuis le dossier d'une grossesse
                     spécifique (openModal("travail", grossesseDossier)).
-                    Réutilise ce même mécanisme réel, même convention déjà
-                    en place pour "Nouvelle CPN"/"Déclarer accouchement"
-                    ci-dessus (grossesses[0]||null). */}
-                <button className="mbtn mbtn-pink" onClick={()=>openModal("travail", grossesses[0]||null)}>➕ Admettre patiente</button>
+                    MAT-01 (correction du 12 sept. 2026) — l'ancienne
+                    convention grossesses[0]||null liait ce bouton
+                    générique à la première grossesse de la base, jamais
+                    celle voulue par l'utilisateur. openModal("travail",
+                    null) force désormais la vraie sélection explicite
+                    exigée par ModalTravail (GrossesseSelector). */}
+                <button className="mbtn mbtn-pink" onClick={()=>openModal("travail", null)}>➕ Admettre patiente</button>
               </div>
 
               {enTravail.length===0 && !loading && (
@@ -1408,7 +1482,8 @@ export default function Maternite() {
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
                 <div className="sec-label">🍼 Gestion des accouchements</div>
-                <button className="mbtn mbtn-pink" onClick={()=>openModal("accouchement", grossesses[0]||null)}>➕ Déclarer accouchement</button>
+                {/* MAT-01 — voir "Nouvelle CPN" ci-dessus pour le détail. */}
+                <button className="mbtn mbtn-pink" onClick={()=>openModal("accouchement", null)}>➕ Déclarer accouchement</button>
               </div>
 
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:14,marginBottom:20}}>
@@ -1538,7 +1613,8 @@ export default function Maternite() {
                     dossier de grossesse spécifique. Réutilise ce même
                     mécanisme réel, même convention déjà en place pour
                     "Nouvelle CPN"/"Admettre patiente" ci-dessus. */}
-                <button className="mbtn mbtn-pink" onClick={()=>openModal("postnatal", grossesses[0]||null)}>➕ Nouvelle consultation</button>
+                {/* MAT-01 — voir "Nouvelle CPN" ci-dessus pour le détail. */}
+                <button className="mbtn mbtn-pink" onClick={()=>openModal("postnatal", null)}>➕ Nouvelle consultation</button>
               </div>
 
               {/* Grossesses en post-natal */}
@@ -1814,6 +1890,7 @@ export default function Maternite() {
         <ModalCPN
           grossesse={selectedGrossesse}
           patienteNom={selectedGrossesse ? `${selectedGrossesse.patient_prenom||""} ${selectedGrossesse.patient_nom||""}`.trim() : "Patiente"}
+          grossesses={grossesses}
           onClose={closeModal}
           saving={saving}
         />
@@ -1822,6 +1899,7 @@ export default function Maternite() {
         <ModalAccouchement
           grossesse={selectedGrossesse}
           patienteNom={selectedGrossesse ? `${selectedGrossesse.patient_prenom||""} ${selectedGrossesse.patient_nom||""}`.trim() : "Patiente"}
+          grossesses={grossesses}
           onClose={closeModal}
           saving={saving}
           medecins={medecins}
@@ -1839,6 +1917,7 @@ export default function Maternite() {
         <ModalTravail
           grossesse={selectedGrossesse}
           patienteNom={selectedGrossesse ? `${selectedGrossesse.patient_prenom||""} ${selectedGrossesse.patient_nom||""}`.trim() : "Patiente"}
+          grossesses={grossesses}
           onClose={closeModal}
           saving={saving}
         />
@@ -1847,6 +1926,7 @@ export default function Maternite() {
         <ModalPostnatal
           grossesse={selectedGrossesse}
           patienteNom={selectedGrossesse ? `${selectedGrossesse.patient_prenom||""} ${selectedGrossesse.patient_nom||""}`.trim() : "Patiente"}
+          grossesses={grossesses}
           onClose={closeModal}
           saving={saving}
         />

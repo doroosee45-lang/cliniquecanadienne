@@ -11,6 +11,12 @@ const { ADMIN, STAFF } = require('../utils/roles');
 router.get('/',         protect, authorize(...ADMIN), settingsC.getAll);
 router.post('/',        protect, authorize(...ADMIN), settingsC.upsert);
 
+// NEW-001 / SET-002 (rapport de correction du 11 sept. 2026) — vérifie
+// réellement la configuration SMTP actuellement effective (Paramètres
+// applicatifs si complets, sinon .env), sans jamais envoyer d'email —
+// même niveau d'accès que le reste de /settings.
+router.post('/test-smtp', protect, authorize(...ADMIN), settingsC.testSmtp);
+
 // ── Rôles & Permissions (Sous-phase 5.5.b) ─────────────────────
 // superadmin uniquement — donnée sensible (contrôle d'accès de tout le
 // personnel), contrairement au reste de /settings ouvert à adminclinique.
@@ -27,6 +33,11 @@ router.get('/users',          protect, authorize(...ADMIN),   settingsC.getUsers
 router.post('/users',         protect, authorize('superadmin'), settingsC.createUser);
 router.put('/users/:id',      protect, authorize('superadmin'), settingsC.updateUser);
 router.delete('/users/:id',   protect, authorize('superadmin'), settingsC.deactivateUser);
+// FORCE-LOGOUT-001 (rapport de clôture du 11 sept. 2026) — révocation
+// immédiate d'une session déjà authentifiée (tokenVersion++), distincte
+// d'une suspension de compte (statut) : même niveau d'accès que le reste
+// des mutations utilisateur ci-dessus (superadmin uniquement).
+router.post('/users/:id/force-logout', protect, authorize('superadmin'), settingsC.forceLogout);
 
 // ── Services médicaux ─────────────────────────────────────────
 router.get('/services',       protect, authorize(...STAFF),   settingsC.getServices);

@@ -26,7 +26,9 @@ const os = require('node:os');
 const BACKEND_DIR = path.join(__dirname, '..');
 const CHILD_SCRIPT = path.join(__dirname, 'helpers', 'sec008LogoutCrashChild.js');
 
-async function waitForHttpOk(url, timeoutMs = 15000) {
+// Défaut porté à 45s (comme tests/helpers/isolatedServer.js, même
+// correctif) — contention réelle et récurrente en fin de suite complète.
+async function waitForHttpOk(url, timeoutMs = 45000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     try {

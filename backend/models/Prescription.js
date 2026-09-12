@@ -8,6 +8,23 @@ const PrescriptionSchema = new Schema({
   consultation: { type: Schema.Types.ObjectId, ref: 'Consultation' },
   date_prescription: { type: Date, default: Date.now },
   date_expiration: Date,
+  // PRESC-01 (correction du 12 sept. 2026, audit indépendant) — le
+  // formulaire "Nouvelle ordonnance" (Prescriptions.jsx) saisit réellement
+  // ces valeurs mais aucune n'atteignait jamais MongoDB (aucun champ
+  // n'existait ici) : poids/allergies vérifiées sont une photographie
+  // clinique au moment de la prescription (même principe déjà établi par
+  // LabResult/ImagingResult qui capturent patient_nom/dob au moment de
+  // l'acte, jamais recalculés depuis Patient a posteriori) — utile même si
+  // Patient.allergies change ensuite, car elle documente ce qui a été
+  // effectivement vérifié par le prescripteur ce jour-là. chronique/
+  // maladie_chronique alimentent réellement l'onglet "Traitements
+  // chroniques" et kpis.chroniques (Prescriptions.jsx), qui affichaient déjà
+  // ces concepts sans qu'aucune donnée réelle ne les nourrisse.
+  poids_kg: Number,
+  allergies_verifiees: [String],
+  chronique: { type: Boolean, default: false },
+  maladie_chronique: String,
+  recommandations: String,
   lignes: [{
     medicament: { type: Schema.Types.ObjectId, ref: 'Medication' },
     medicament_nom: String,

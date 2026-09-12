@@ -143,8 +143,11 @@ test('ai.controller — couverture fonctionnelle des 6 endpoints (base réelle)'
       const { status, body } = await call(aiC.getStats, {});
       assert.equal(status, 200);
       assert.ok(typeof body.stats.analyses_mois === 'number');
-      assert.ok(typeof body.stats.precision === 'number');
-      assert.ok(body.stats.precision >= 0 && body.stats.precision <= 100);
+      // AI-01 (correction du 12 sept. 2026) — renommé depuis "precision" :
+      // c'est un taux de traitement des alertes, jamais une précision de
+      // modèle IA.
+      assert.ok(typeof body.stats.taux_traitement === 'number');
+      assert.ok(body.stats.taux_traitement >= 0 && body.stats.taux_traitement <= 100);
       assert.ok(typeof body.stats.alertes_risque === 'number');
     });
   } finally {

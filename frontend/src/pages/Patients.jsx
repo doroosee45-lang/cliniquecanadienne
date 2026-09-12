@@ -10,9 +10,14 @@ import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import {
-  fetchPatients, createPatient, updatePatient, deletePatient,
+  // PAT-01 (correction du 12 sept. 2026, audit indépendant) — updatePatient/
+  // deletePatient étaient importés mais jamais dispatchés : toutes les
+  // mises à jour/suppressions réelles de cette page passent par des appels
+  // api.put/api.delete directs (vérifié par recherche projet-wide, aucun
+  // autre fichier ne consomme non plus ces deux thunks) — retirés.
+  fetchPatients, createPatient,
   selectPatients, selectPatientsTotal, selectPatientsLoading, selectPatientsSaving,
-  selectPatientsPage, setPage as setReduxPage,
+  selectPatientsPage, setPage as setReduxPage, selectPatientsError,
 } from '../store/slices/patientsSlice';
 
 // ─── Chart.js loader ─────────────────────────────────────────
@@ -300,27 +305,6 @@ const ageCalc = (dob) => {
   return `${y} ans`;
 };
 
-// ─── DEMO DATA ────────────────────────────────────────────────
-const DEMO_PATIENTS = [];
-
-const DEMO_CONSULTATIONS = [];
-
-const DEMO_RDV = [];
-
-const DEMO_ANALYSES = [];
-
-const DEMO_IMAGERIE = [];
-
-const DEMO_HOSPIT = [];
-
-const DEMO_VACCINS = [];
-
-const DEMO_FACTURES = [];
-
-const DEMO_DOCS = [];
-
-const DEMO_AUDIT = [];
-
 // ─── Sub-components ───────────────────────────────────────────
 function Badge({ cls, children }) {
   return <span className={`pbdg ${cls}`}>{children}</span>;
@@ -422,6 +406,19 @@ export default function Patient() {
   const navigate = useNavigate();
   const reduxPatients = useSelector(selectPatients);
   const reduxLoading = useSelector(selectPatientsLoading);
+  // PAT-05b (correction du 12 sept. 2026, audit indépendant) — la liste
+  // patients rechargeait toujours page:1/limit:100 : au-delà de 100
+  // patients réels, rien au-delà n'était jamais accessible, aucune
+  // pagination réelle n'existait dans l'interface. total/page étaient déjà
+  // exposés par patientsSlice.js (jamais lus ici) — câblés désormais à de
+  // vrais contrôles Page précédente/suivante (même convention qu'Archive.jsx).
+  const reduxTotal = useSelector(selectPatientsTotal);
+  const reduxPage  = useSelector(selectPatientsPage);
+  // PAT-04 — selectPatientsError existait déjà dans patientsSlice.js
+  // (réellement renseigné par fetchPatients.rejected) mais n'était jamais
+  // importé ici : un échec réseau produisait une liste vide indiscernable
+  // de "aucun patient réel enregistré". Affiché honnêtement désormais.
+  const reduxError = useSelector(selectPatientsError);
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
@@ -460,14 +457,26 @@ export default function Patient() {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [photoLightbox, setPhotoLightbox] = useState(null);
 
+  // PAT-05b — un changement de recherche/filtre revient réellement à la
+  // page 1 (sinon "page 3" pourrait rester active sur un résultat qui n'a
+  // plus que 5 patients), puis charge la page demandée.
   useEffect(() => {
-    dispatch(fetchPatients({ page: 1, limit: 100, search, statut: filterStatut }));
+    dispatch(setReduxPage(1));
   }, [dispatch, search, filterStatut]);
 
-  // Rafraîchissement automatique (polling 30s + socket dashboard:refresh)
+  useEffect(() => {
+    dispatch(fetchPatients({ page: reduxPage, limit: 100, search, statut: filterStatut }));
+  }, [dispatch, search, filterStatut, reduxPage]);
+
+  useEffect(() => {
+    if (reduxError) toast.error(`Impossible de charger les patients — ${reduxError}`);
+  }, [reduxError]);
+
+  // Rafraîchissement automatique (polling 30s + socket dashboard:refresh) —
+  // recharge la page réellement affichée, jamais silencieusement la page 1.
   const refreshPatients = useCallback(() => {
-    dispatch(fetchPatients({ page: 1, limit: 100, search, statut: filterStatut }));
-  }, [dispatch, search, filterStatut]);
+    dispatch(fetchPatients({ page: reduxPage, limit: 100, search, statut: filterStatut }));
+  }, [dispatch, search, filterStatut, reduxPage]);
   useRealtimeRefresh(refreshPatients);
 
   // ── Load all patient-specific data when currentPatient changes
@@ -538,7 +547,10 @@ export default function Patient() {
     }
   };
 
-  const patients = reduxPatients.length > 0 ? reduxPatients : DEMO_PATIENTS;
+  // PAT-02 (correction du 12 sept. 2026, audit indépendant) — le repli sur
+  // DEMO_PATIENTS (toujours []) était un no-op : reduxPatients.length > 0
+  // ? reduxPatients : [] vaut toujours reduxPatients. Code mort retiré.
+  const patients = reduxPatients;
   const filtered = patients.filter(p => {
     const q = search.toLowerCase();
     const matchSearch = !q || `${p.prenom} ${p.nom} ${p.numero}`.toLowerCase().includes(q);
@@ -563,7 +575,9 @@ export default function Patient() {
         statut: newActif ? 'actif' : 'inactif',
       });
       setCurrentPatient(res.patient);
-      dispatch(fetchPatients({ page: 1, limit: 100 }));
+      // PAT-05b — recharge la page réellement affichée après cette
+      // mutation, jamais un retour silencieux à la page 1.
+      dispatch(fetchPatients({ page: reduxPage, limit: 100 }));
       toast.success(newActif ? '✅ Patient activé' : '🔒 Patient désactivé');
     } catch {
       toast.error('Erreur lors de la mise à jour du statut');
@@ -579,7 +593,9 @@ export default function Patient() {
     try {
       await api.delete(`/patients/${currentPatient._id}`);
       toast.success('Patient supprimé');
-      dispatch(fetchPatients({ page: 1, limit: 100 }));
+      // PAT-05b — recharge la page réellement affichée après cette
+      // mutation, jamais un retour silencieux à la page 1.
+      dispatch(fetchPatients({ page: reduxPage, limit: 100 }));
       setCurrentPatient(null);
       setTab('liste');
     } catch (e) {
@@ -665,7 +681,9 @@ export default function Patient() {
         } catch { /* photo non critique, on continue */ }
       }
 
-      dispatch(fetchPatients({ page: 1, limit: 100 }));
+      // PAT-05b — recharge la page réellement affichée après cette
+      // mutation, jamais un retour silencieux à la page 1.
+      dispatch(fetchPatients({ page: reduxPage, limit: 100 }));
       setModalNouv(false);
       resetForm();
       setCredsModal({
@@ -827,6 +845,19 @@ export default function Patient() {
                     </tbody>
                   </table>
                 </div>
+                {/* PAT-05b — pagination réelle (même convention qu'Archive.jsx) :
+                    au-delà de 100 patients réels, la page suivante est
+                    désormais réellement atteignable, jamais plafonnée en
+                    silence à la première page. */}
+                {reduxTotal > 100 && (
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 20px", borderTop:"1.5px solid var(--cbr)" }}>
+                    <span style={{ fontSize:12, color:"var(--cm)" }}>Page {reduxPage} / {Math.ceil(reduxTotal/100)} · {reduxTotal} patients</span>
+                    <div style={{ display:"flex", gap:8 }}>
+                      {reduxPage > 1 && <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => dispatch(setReduxPage(reduxPage - 1))}>← Précédent</button>}
+                      {reduxPage < Math.ceil(reduxTotal/100) && <button className="pbtn pbtn-primary pbtn-sm" onClick={() => dispatch(setReduxPage(reduxPage + 1))}>Suivant →</button>}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1913,7 +1944,9 @@ export default function Patient() {
                         ? '✅ Dossier activé — un nouveau lien a été envoyé au patient pour définir son mot de passe'
                         : '✅ Compte activé — le patient peut se connecter maintenant');
                       setCredsModal(c => ({ ...c, patient: data.patient }));
-                      dispatch(fetchPatients({ page: 1, limit: 100 }));
+                      // PAT-05b — recharge la page réellement affichée après cette
+      // mutation, jamais un retour silencieux à la page 1.
+      dispatch(fetchPatients({ page: reduxPage, limit: 100 }));
                     } catch (e) {
                       toast.error(e.response?.data?.message || 'Erreur lors de l\'activation');
                     } finally {

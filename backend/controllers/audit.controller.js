@@ -122,6 +122,13 @@ exports.getConnexions = async (req, res, next) => {
         const u = log.utilisateur || {};
         sessions[uid] = {
           _id: String(log._id),
+          // FORCE-LOGOUT-001 (rapport de clôture du 11 sept. 2026) — _id
+          // ci-dessus est l'ID de l'entrée AuditLog (utile comme clé React),
+          // jamais celui de l'utilisateur : Audit.jsx n'avait donc aucun
+          // identifiant réel à transmettre à un appel de révocation de
+          // session. utilisateur_id expose la vraie référence User (absente
+          // pour les entrées sans compte résolu, ex. IP seule).
+          utilisateur_id: u._id ? String(u._id) : null,
           utilisateur: u.prenom ? `${u.prenom} ${u.nom}` : (u.nom || 'Inconnu'),
           email: u.email || '—',
           role: u.role || '—',

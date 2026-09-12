@@ -3,6 +3,7 @@ const Room    = require('../models/Room');
 const User    = require('../models/User');
 const Urgence = require('../models/Urgence');
 const Invoice = require('../models/Invoice');
+const Patient = require('../models/Patient');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate, emitTo } = require('../utils/socket');
 
@@ -162,6 +163,15 @@ exports.create = async (req, res, next) => {
 
     if (!patient)      return res.status(400).json({ success: false, message: 'Patient obligatoire.' });
     if (!motif_entree) return res.status(400).json({ success: false, message: 'Motif d\'hospitalisation obligatoire.' });
+
+    // CLIN-07 (correction du 12 sept. 2026, audit indépendant) — `patient`
+    // n'était vérifié que pour sa présence (truthy), jamais son existence
+    // réelle : un ObjectId fabriqué/orphelin passait tel quel jusqu'à
+    // Hospitalization.create(), créant un dossier d'hospitalisation sans
+    // Patient réel derrière.
+    if (!isObjectId(patient)) return res.status(400).json({ success: false, message: 'Référence patient invalide.' });
+    const patientDoc = await Patient.findById(patient).select('_id');
+    if (!patientDoc) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
 
     // ADR-0005 — workflow complet Urgences → Hospitalisation (remplace
     // l'option 2 du ticket 0018) : lien vers le passage aux urgences
@@ -384,7 +394,10 @@ const constanteRes    = makeSubResource('constantes', 'constante', 'constantes',
 const traitementRes   = makeSubResource('traitements', 'traitement', 'traitements', { updatableFields: ['statut'] });
 const examenRes       = makeSubResource('examens', 'examen', 'examens', { updatableFields: ['statut', 'resultat'] });
 const visiteRes       = makeSubResource('visites', 'visite', 'visites');
-const prescriptionRes = makeSubResource('prescriptions_sejour', 'prescription', 'prescriptions');
+// HOSP-03 — voir PrescriptionSejourSchema (models/Hospitalization.js) :
+// withAuteur capture réellement l'ObjectId User de qui saisit, comme
+// constanteRes le fait déjà pour la même sous-ressource de séjour.
+const prescriptionRes = makeSubResource('prescriptions_sejour', 'prescription', 'prescriptions', { withAuteur: true });
 
 exports.getConstantes          = constanteRes.get;
 exports.addConstante           = constanteRes.add;

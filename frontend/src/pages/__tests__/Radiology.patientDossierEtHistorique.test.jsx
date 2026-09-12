@@ -10,11 +10,8 @@
 // (`../../api`) et useRealtimeRefresh sont simulées.
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom';
 import { vi } from 'vitest';
-import radiologyReducer from '../../store/slices/radiologySlice';
 import Radiology from '../Radiology.jsx';
 
 vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
@@ -38,16 +35,13 @@ function LandedOnPatient() {
 }
 
 function renderRadiology() {
-  const store = configureStore({ reducer: { radiology: radiologyReducer } });
   return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/radiology']}>
-        <Routes>
-          <Route path="/radiology" element={<Radiology />} />
-          <Route path="/patients/:id" element={<LandedOnPatient />} />
-        </Routes>
-      </MemoryRouter>
-    </Provider>
+    <MemoryRouter initialEntries={['/radiology']}>
+      <Routes>
+        <Route path="/radiology" element={<Radiology />} />
+        <Route path="/patients/:id" element={<LandedOnPatient />} />
+      </Routes>
+    </MemoryRouter>
   );
 }
 

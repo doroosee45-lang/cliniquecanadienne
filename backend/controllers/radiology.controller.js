@@ -4,6 +4,7 @@ const Consultation = require('../models/Consultation');
 const Invoice = require('../models/Invoice');
 const { logAction, createNotification, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { nextSequence } = require('../utils/counter');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
@@ -109,8 +110,11 @@ exports.create = async (req, res, next) => {
         || `${req.user.prenom || ''} ${req.user.nom || ''}`.trim();
     }
 
-    const count  = await ImagingResult.countDocuments();
-    const numero = `IMG-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    // CLIN-04 — numéro auto via compteur atomique ($inc + upsert), jamais
+    // countDocuments()+1 (condition de course sous créations concurrentes).
+    const year   = new Date().getFullYear();
+    const seq    = await nextSequence(`img-${year}`);
+    const numero = `IMG-${year}-${String(seq).padStart(4, '0')}`;
 
     // Correction 2 (relecture du 6 sept. 2026) — examen (ObjectId réel
     // ExamCatalogue) n'était jamais accepté ici, seul type_examen (texte
@@ -210,6 +214,16 @@ exports.validation = async (req, res, next) => {
       radiologue_id  = req.user._id;
     }
     const avant = await ImagingResult.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
+    // SPEC-07 (correction du 12 sept. 2026, audit indépendant) — validation()
+    // ne vérifiait jamais le statut courant : un examen encore programme/
+    // en_attente (jamais réalisé) pouvait être directement validé et
+    // facturé. saveCR()/rapport() (ci-dessus) sont les seuls chemins réels
+    // qui amènent le statut à 'realise'/'rapporte' — seule précondition
+    // honnête pour autoriser la validation.
+    if (!['realise', 'rapporte'].includes(avant.statut)) {
+      return res.status(400).json({ success: false, message: `Impossible de valider : l'examen doit d'abord être réellement réalisé (statut actuel : ${avant.statut}).` });
+    }
     const examen = await ImagingResult.findByIdAndUpdate(
       req.params.id,
       { radiologue: radiologue_id, radiologue_nom, date_validation: date_validation || new Date(), signature, statut: 'valide' },

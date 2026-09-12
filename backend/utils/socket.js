@@ -49,9 +49,27 @@ const emitDashboardUpdate = () => {
   _io.emit('dashboard:refresh');
 };
 
+/**
+ * FORCE-LOGOUT-001 (rapport de clôture du 11 sept. 2026) — coupe
+ * immédiatement toute connexion Socket.IO déjà établie pour cet
+ * utilisateur, en réutilisant la room privée déjà rejointe par chaque
+ * socket à la connexion (`user:<id>`, voir server.js::io.on('connection')) —
+ * aucune nouvelle room ni registre de sockets créé pour l'occasion.
+ * disconnectSockets() est une API native de l'adaptateur Socket.IO (v4+),
+ * pas une reconstruction manuelle. Une nouvelle tentative de connexion avec
+ * le même JWT (déjà révoqué) est de toute façon refusée dès la poignée de
+ * main par io.use() (server.js) — cet appel ne fait que raccourcir le délai
+ * pour une socket DÉJÀ ouverte au moment de la révocation.
+ * @param {string} userId
+ */
+const forceDisconnectUser = (userId) => {
+  if (!_io) return;
+  _io.in(`user:${userId}`).disconnectSockets(true);
+};
+
 // CODE-001 (audit indépendant du 6 sept. 2026) — getIO() et broadcast()
 // étaient exportées mais jamais appelées nulle part dans le backend
 // (vérifié exhaustivement : aucune occurrence de "getIO(" ni "broadcast("
 // hors leur propre définition ici, et les ~20 fichiers qui importent ce
 // module ne déstructurent jamais ces deux noms). Retirées.
-module.exports = { setIO, emitTo, emitActivity, emitDashboardUpdate };
+module.exports = { setIO, emitTo, emitActivity, emitDashboardUpdate, forceDisconnectUser };

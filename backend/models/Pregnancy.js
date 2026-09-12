@@ -51,7 +51,16 @@ const PostnatalSchema = new mongoose.Schema({
 
 const PregnancySchema = new mongoose.Schema({
   numero:                  { type: String, unique: true, sparse: true },
-  patient_id:              { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' },
+  // SPEC-03 (correction du 12 sept. 2026, audit indépendant) — patient_id
+  // n'était pas requis côté schéma, et maternityController.js::create ne le
+  // validait que s'il était fourni (AUDIT-3.4 : rejette un patient_id
+  // fabriqué/orphelin, mais laissait passer son absence totale). Or
+  // Maternite.jsx::ModalDossier exige déjà réellement un patient existant
+  // avant tout envoi (aucun "dossier grossesse anonyme" n'est un workflow
+  // clinique réel ici, contrairement à l'accueil urgences) : un appel API
+  // direct pouvait donc créer un dossier sans aucun patient réel derrière,
+  // en contournant une contrainte que l'interface impose déjà.
+  patient_id:              { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
   patient_nom:             String,
   patient_prenom:          String,
   telephone:               String,

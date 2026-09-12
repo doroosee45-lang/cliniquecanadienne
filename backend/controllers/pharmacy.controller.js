@@ -1,6 +1,7 @@
 const Medication = require('../models/Medication');
 const Prescription = require('../models/Prescription');
 const Commande = require('../models/Commande');
+const Invoice = require('../models/Invoice');
 const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
@@ -110,6 +111,15 @@ exports.createVente = async (req, res, next) => {
     // article échoue en cours de boucle, les articles déjà décrémentés dans
     // cette même vente sont recrédités (mouvement de type 'retour', jamais
     // de suppression de l'historique) avant de renvoyer l'erreur.
+    // SPEC-01 (correction du 12 sept. 2026, audit indépendant) —
+    // item.prix_unitaire venait directement du client et déterminait le
+    // montant réellement enregistré dans le ledger (mouvements) ainsi que
+    // ventes_jour/ventes_mois (getStats) : un appel API direct (hors de
+    // l'interface livrée, qui n'expose elle-même aucun prix éditable —
+    // Pharmacy.jsx envoie déjà med.prix_vente) pouvait vendre n'importe quel
+    // médicament à n'importe quel prix. Le prix réel est désormais RELU
+    // depuis le document Medication retourné par le même findOneAndUpdate
+    // atomique — jamais depuis item.prix_unitaire.
     const decrementes = [];
     let echec = null;
     for (const item of items) {
@@ -125,7 +135,8 @@ exports.createVente = async (req, res, next) => {
         echec = `${info?.nom_commercial || item.medicament_id} (stock: ${info?.stock_actuel ?? '—'}, requis: ${quantite})`;
         break;
       }
-      decrementes.push({ id: item.medicament_id, quantite, montant: (item.prix_unitaire || 0) * quantite });
+      const prixReel = Number(med.prix_vente) || 0;
+      decrementes.push({ id: item.medicament_id, nom: med.nom_commercial, quantite, prix_unitaire: prixReel, montant: prixReel * quantite });
     }
     if (echec) {
       for (const d of decrementes) {
@@ -149,10 +160,50 @@ exports.createVente = async (req, res, next) => {
         $push: { mouvements: { type: 'vente', quantite: d.quantite, montant: d.montant, reference: numero, utilisateur: req.user._id, notes: `Vente ${numero}` } },
       });
     }
-    const total = items.reduce((s, i) => s + (i.prix_unitaire || 0) * i.quantite, 0);
+    // SPEC-01 — le total et les lignes renvoyées reflètent les montants
+    // RÉELLEMENT enregistrés (decrementes, prix catalogue), jamais une
+    // ré-agrégation de ce que le client avait envoyé.
+    const total = decrementes.reduce((s, d) => s + d.montant, 0);
     await logAction({ utilisateur: req.user._id, action: 'VENTE', module: 'pharmacy', ip: req.ip, message: `Vente ${numero} — ${total} CFA` });
+
+    // SPEC-13 (correction du 12 sept. 2026, audit indépendant) — une vente
+    // comptoir n'était tracée que dans Medication.mouvements (ledger de
+    // stock) : invisible pour le module Finance/Analytics, qui n'agrège que
+    // la collection Invoice (voir analytics.controller.js::getFinancial).
+    // Une vraie Invoice est désormais créée, réellement réglée à la vente
+    // (paiement comptant, capturé par mode_paiement) — jamais un montant
+    // recalculé séparément : mêmes lignes, même total que decrementes.
+    // Aucun `patient` réel n'est nécessairement associé (client comptoir en
+    // texte libre, Pharmacy.jsx envoie déjà "Comptoir" par défaut) —
+    // patient reste donc optionnel ici, comme le permet déjà le schéma
+    // Invoice pour une facture sans patient identifié.
+    // Pharmacy.jsx envoie des libellés de mode de paiement (carte_bancaire,
+    // assurance) qui ne correspondent pas tous à l'enum de
+    // Invoice.paiements[].mode (especes/carte/mobile_money/virement/cheque)
+    // — mappés ici plutôt que de laisser Invoice.create() échouer en
+    // ValidationError sur une vente par ailleurs valide. Une valeur non
+    // reconnue (ex. "assurance", qui n'est pas un mode de règlement direct
+    // dans ce schéma) est simplement omise, jamais une valeur inventée.
+    const PAIEMENT_MODE_MAP = { especes: 'especes', mobile_money: 'mobile_money', carte_bancaire: 'carte', carte: 'carte', virement: 'virement', cheque: 'cheque' };
+    let factureGeneree = null;
+    if (total > 0) {
+      factureGeneree = await Invoice.create({
+        patient_nom: client || 'Comptoir',
+        service_label: 'Pharmacie — Vente comptoir',
+        lignes: decrementes.map(d => ({ libelle: d.nom, categorie: 'pharmacie', prix_unitaire: d.prix_unitaire, quantite: d.quantite, montant: d.montant })),
+        montant_ht: total,
+        montant_ttc: total,
+        montant_paye: total,
+        montant_restant: 0,
+        statut: 'payee',
+        paiements: [{ montant: total, mode: PAIEMENT_MODE_MAP[mode_paiement], reference: numero, enregistre_par: req.user._id }],
+        notes: `Vente comptoir ${numero}`,
+        created_by: req.user._id,
+      });
+    }
+
     emitDashboardUpdate();
-    res.status(201).json({ success: true, vente: { numero, client, mode_paiement, items, total, date: new Date() } });
+    res.status(201).json({ success: true, vente: { numero, client, mode_paiement, items: decrementes.map(d => ({ medicament_id: d.id, nom: d.nom, quantite: d.quantite, prix_unitaire: d.prix_unitaire, montant: d.montant })), total, date: new Date() }, invoice: factureGeneree });
   } catch (err) { next(err); }
 };
 

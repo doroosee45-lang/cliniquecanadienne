@@ -1199,7 +1199,7 @@ function ComptableDashboard({ data, isMobile }) {
 // ════════════════════════════════════════════════════════════════
 export default function Dashboard() {
   let authData = null;
-  try { authData = useAuth(); } catch {}
+  try { authData = useAuth(); } catch { /* AuthProvider absent (ex. rendu isolé en test) — repli ci-dessous */ }
   const user     = authData?.user || { prenom:"Utilisateur", nom:"", role:"patient" };
   const navigate = useNavigate();
 

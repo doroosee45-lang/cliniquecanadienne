@@ -22,6 +22,17 @@ exports.protect = async (req, res, next) => {
     if (!req.user || req.user.statut !== 'actif') {
       return res.status(401).json({ success: false, message: 'Utilisateur inactif ou introuvable.' });
     }
+    // FORCE-LOGOUT-001 — un JWT émis AVANT la dernière révocation (Audit.jsx
+    // "Forcer") porte une tokenVersion strictement inférieure à celle
+    // actuellement stockée sur le compte : refusé immédiatement, sans
+    // attendre l'expiration naturelle du token. `?? 0` traite un JWT
+    // pré-existant (émis avant ce correctif, sans ce champ) comme version 0,
+    // égal au défaut du compte — aucune session en cours invalidée par
+    // erreur au déploiement de ce correctif.
+    const tokenVersion = decoded.tokenVersion ?? 0;
+    if (tokenVersion !== (req.user.tokenVersion ?? 0)) {
+      return res.status(401).json({ success: false, message: 'Session invalidée — veuillez vous reconnecter.' });
+    }
     next();
   } catch {
     return res.status(401).json({ success: false, message: 'Token invalide ou expiré.' });

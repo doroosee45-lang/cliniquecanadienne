@@ -2,13 +2,21 @@
 
 
 
-import { useState, useEffect, useCallback, useRef, useId } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { BedDouble, Plus, LogOut, Printer } from 'lucide-react';
+// HOSP-02 (correction du 12 sept. 2026, audit indépendant) —
+// fetchHospitalizations/createHospitalization/updateHospitalization/
+// selectHospitalizations/selectHospitalizationLoading/
+// selectOccupationPercentage étaient importés mais jamais dispatchés ni
+// lus : cette page charge/mute réellement ses hospitalisations via des
+// appels api directs (loadHospitalizations/create/discharge plus bas),
+// seul fetchRooms/selectRooms (dérivation des lits, HOSP-01) est
+// réellement utilisé — vérifié par recherche projet-wide.
 import {
-  fetchHospitalizations, fetchRooms, createHospitalization, updateHospitalization,
-  selectHospitalizations, selectRooms, selectHospitalizationLoading, selectOccupationPercentage,
+  fetchRooms,
+  selectRooms,
 } from '../store/slices/hospitalizationSlice';
 import api from "../api";
 import Hero from '../components/UI/Hero';
@@ -437,7 +445,6 @@ export default function Hospitalisation() {
   const [currentEstimation, setCurrentEstimation] = useState(null);
   const [saving, setSaving]   = useState(false);
   const [patients, setPatients] = useState([]);
-  const [lits, setLits]       = useState([]);
 
   // KPIs dérivés automatiquement de hosps
   const [kpis, setKpis] = useState({ total:0, hospitalises:0, observation:0, attente:0, sortis:0, transferes:0, taux_occ:0 });
@@ -457,6 +464,13 @@ export default function Hospitalisation() {
   const [modalVisite, setModalVisite]           = useState(false);
   const [modalSortie, setModalSortie]           = useState(false);
   const [modalPrescription, setModalPrescription] = useState(false);
+  // HOSP-04 (correction du 12 sept. 2026, audit indépendant) — remplace
+  // window.prompt() (aucune validation, non accessible, jamais utilisable
+  // en environnement de test/automatisé) par une vraie modale contrôlée,
+  // même motif que les autres modales de cette page.
+  const [modalResultat, setModalResultat]       = useState(false);
+  const [examenResultat, setExamenResultat]     = useState(null);
+  const [saisieResultat, setSaisieResultat]     = useState("");
 
   // Forms
   const [formHosp, setFormHosp]                 = useState(EMPTY_HOSP);
@@ -549,30 +563,25 @@ export default function Hospitalisation() {
     }
   }, []);
 
-  // AUDIT-P7-4 — /chambres n'existe dans aucune route backend (seul
-  // /hospitalization/rooms existe réellement) : cet appel échouait
-  // systématiquement (catch → []), l'onglet "Chambres & Lits" affichant
-  // en permanence "Aucune chambre configurée". Room.lits est un tableau de
-  // lits par chambre, aplati ici en une liste plate de lits pour ne pas
-  // toucher le rendu existant (regroupement par service, faute de champ
-  // "bâtiment" sur le schéma Room).
-  const loadLits = useCallback(async () => {
-    try {
-      const { data } = await api.get("/hospitalization/rooms");
-      const flat = (data.rooms || []).flatMap(room => (room.lits || []).map(bed => ({
-        _id: bed._id,
-        statut: bed.statut,
-        type: bed.type,
-        chambre: room.numero,
-        lit: bed.numero,
-        batiment: room.service?.nom || "Service non assigné",
-        patient: bed.patient_actuel ? `${bed.patient_actuel.prenom||""} ${bed.patient_actuel.nom||""}`.trim() : null,
-      })));
-      setLits(flat);
-    } catch {
-      setLits([]);
-    }
-  }, []);
+  // HOSP-01 (correction du 12 sept. 2026, audit indépendant) — AUDIT-P7-4
+  // avait ajouté ici un second appel direct à /hospitalization/rooms
+  // (loadLits, état local `lits`), en plus de dispatch(fetchRooms()) déjà
+  // utilisé pour le sélecteur chambre→lit (état Redux `rooms`) : la même
+  // donnée était chargée deux fois par deux chemins indépendants, avec deux
+  // copies d'état qui pouvaient diverger (vérifié réellement : createHosp()
+  // ne rafraîchissait que fetchRooms(), discharge() ne rafraîchissait que
+  // loadLits() — chacune des deux copies pouvait donc rester périmée selon
+  // l'action effectuée). `lits` est désormais dérivé de `rooms` (source
+  // unique), jamais un second fetch ni un second état à synchroniser.
+  const lits = useMemo(() => rooms.flatMap(room => (room.lits || []).map(bed => ({
+    _id: bed._id,
+    statut: bed.statut,
+    type: bed.type,
+    chambre: room.numero,
+    lit: bed.numero,
+    batiment: room.service?.nom || "Service non assigné",
+    patient: bed.patient_actuel ? `${bed.patient_actuel.prenom||""} ${bed.patient_actuel.nom||""}`.trim() : null,
+  }))), [rooms]);
 
   // ── Chargement sous-données d'un dossier ─────────────────
   const loadDossierData = useCallback(async (hospId) => {
@@ -603,14 +612,16 @@ export default function Hospitalisation() {
     loadHosps();
     loadStats();
     loadPatients();
-    loadLits();
     // AUDIT-P7-5 — fetchRooms/selectRooms étaient importés mais jamais
     // utilisés : nécessaire pour bâtir un vrai sélecteur chambre→lit (le
     // champ "Chambre" était en texte libre, jamais un ObjectId réel, donc
     // hospitalization.controller.js::create ne liait jamais réellement de
     // lit — le correctif d'atomicité serait resté inatteignable sans ça).
+    // HOSP-01 — seule source réelle désormais pour les chambres/lits ;
+    // `lits` (onglet "Chambres & Lits") en est dérivé (voir plus haut),
+    // jamais un second fetch séparé.
     dispatch(fetchRooms());
-  }, [loadHosps, loadStats, loadPatients, loadLits, dispatch]);
+  }, [loadHosps, loadStats, loadPatients, dispatch]);
 
   // ── Refresh temps réel ───────────────────────────────────
   // AUDIT-M-E10 (Groupe E, Point 10) — un setInterval(30s) brut appelait ici
@@ -753,19 +764,30 @@ export default function Hospitalisation() {
     }
   };
 
-  // ── SAISIR RÉSULTAT EXAMEN (Correction 3, FE-BUG-005) — auparavant
-  // window.prompt() + setExamens local uniquement : le résultat ne
-  // survivait pas au rechargement, aucune route ne le recevait jamais.
-  const saisirResultatExamen = async (exam) => {
-    const r = prompt("Saisir le résultat :");
-    if (!r) return;
-    const id = exam._id || exam.id;
+  // ── SAISIR RÉSULTAT EXAMEN (Correction 3, FE-BUG-005 ; HOSP-04) —
+  // auparavant window.prompt() + setExamens local uniquement : le résultat
+  // ne survivait pas au rechargement, aucune route ne le recevait jamais.
+  // HOSP-04 remplace ensuite le prompt natif par la modale contrôlée
+  // ci-dessous (submitResultatExamen) — ouvre la modale, ne fait plus
+  // l'appel réseau elle-même.
+  const ouvrirSaisieResultat = (exam) => {
+    setExamenResultat(exam);
+    setSaisieResultat("");
+    setModalResultat(true);
+  };
+
+  const submitResultatExamen = async (e) => {
+    e.preventDefault();
+    const r = saisieResultat.trim();
+    if (!r || !examenResultat) return;
+    const id = examenResultat._id || examenResultat.id;
     const toastId = toast.loading("💾 Enregistrement du résultat...");
     try {
       const { data } = await api.put(`/hospitalization/${currentHosp._id}/examens/${id}`, { resultat: r, statut: "resultat" });
-      const maj = data.examen || { ...exam, resultat: r, statut: "resultat" };
+      const maj = data.examen || { ...examenResultat, resultat: r, statut: "resultat" };
       setExamens(prev => prev.map(x => (x._id||x.id) === id ? maj : x));
       toast.success("✅ Résultat enregistré", { id: toastId });
+      setModalResultat(false);
     } catch {
       toast.error("❌ Échec de l'enregistrement", { id: toastId });
     }
@@ -847,8 +869,9 @@ export default function Hospitalisation() {
       setModalSortie(false);
 
       // Le lit vient d'être libéré côté serveur (discharge()) — recharger
-      // la liste des chambres/lits pour refléter la disponibilité.
-      loadLits();
+      // la liste des chambres/lits (HOSP-01 : source unique `rooms`, `lits`
+      // en est dérivé) pour refléter la disponibilité.
+      dispatch(fetchRooms());
       loadHosps();
       loadAllForKpis();
     } catch(err) {
@@ -1659,7 +1682,7 @@ export default function Hospitalisation() {
                                       {e.resultat ? (
                                         <span style={{ background:"#EAFAF1", borderRadius:6, padding:"3px 8px", fontSize:11 }}>{e.resultat}</span>
                                       ) : (
-                                        <button className="hbtn hbtn-ghost hbtn-sm" onClick={() => saisirResultatExamen(e)}>Saisir résultat</button>
+                                        <button className="hbtn hbtn-ghost hbtn-sm" onClick={() => ouvrirSaisieResultat(e)}>Saisir résultat</button>
                                       )}
                                     </td>
                                   </tr>
@@ -2197,6 +2220,25 @@ export default function Hospitalisation() {
               <div style={{ display:"flex", gap:10 }}>
                 <button type="button" className="hbtn hbtn-ghost" onClick={() => setModalExamen(false)}>Annuler</button>
                 <button type="submit" className="hbtn hbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Demander</button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : RÉSULTAT D'EXAMEN (HOSP-04) ═══ */}
+        <Modal open={modalResultat} onClose={() => setModalResultat(false)} title="🔬 Saisir le résultat" maxWidth={480}>
+          <form onSubmit={submitResultatExamen}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {examenResultat && (
+                <div style={{ fontSize:13, color:"var(--cm)" }}>Examen : <strong>{examenResultat.designation}</strong></div>
+              )}
+              <div>
+                <label className="hlbl">Résultat *</label>
+                <textarea className="hinp" required rows={4} placeholder="Saisir le résultat de l'examen..." value={saisieResultat} onChange={e => setSaisieResultat(e.target.value)} />
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="hbtn hbtn-ghost" onClick={() => setModalResultat(false)}>Annuler</button>
+                <button type="submit" className="hbtn hbtn-teal" style={{ marginLeft:"auto" }} disabled={!saisieResultat.trim()}>{I.save} Enregistrer</button>
               </div>
             </div>
           </form>

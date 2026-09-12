@@ -13,6 +13,25 @@ const { STAFF } = require('../utils/roles');
 router.get('/directory',         protect, authorize(...STAFF), msgC.getDirectory);
 // AUDIT-MESSAGES-PhaseD — routes statiques déclarées avant '/:id' (sinon
 // Express les matcherait comme id de conversation).
+// MSG-01 (correction du 12 sept. 2026, audit indépendant) — TENTATIVE
+// D'AJOUT DE DÉFENSE EN PROFONDEUR ANNULÉE, DÉCISION ARCHITECTURALE
+// ANTÉRIEURE DÉCOUVERTE APRÈS COUP. Une première version de ce correctif
+// ajoutait authorize(...STAFF) sur toutes les routes restantes de ce
+// fichier. Le rejeu complet des tests (tests/baselineChecklistPhase10.test.js)
+// a révélé une régression réelle contre une décision déjà documentée et
+// délibérée (docs/decisions/baseline-checklist-10x23.md, note 6, et
+// section « Écarts trouvés en construisant cette matrice » point 1) :
+// Messagerie/Notifications sont INTENTIONNELLEMENT non restreintes par
+// rôle au niveau route — la portée réelle (un utilisateur ne voit que ses
+// propres conversations) est appliquée au niveau contrôleur
+// (membres: req.user._id), vérifiée et re-confirmée à deux reprises
+// (Phase 1, puis Phase 10.1 où un brouillon de test faisait exactement la
+// même hypothèse erronée et a été corrigé pour refléter ce comportement
+// voulu). Un compte patient obtient donc légitimement 200 sur ces routes
+// (liste vide en pratique, puisqu'il n'est jamais membre d'aucune
+// conversation — confirmé par SEC-005/SEC-010 ci-dessous). Ajouter STAFF
+// ici contredirait cette décision déjà tranchée deux fois : reverti,
+// aucune route de ce bloc n'est modifiée par MSG-01.
 router.get('/historique',        protect, msgC.getHistorique);
 // SEC-001 (audit du 4 sept. 2026) — aucune de ces deux routes n'avait de
 // restriction de rôle : un compte role:'patient' pouvait déclencher un vrai

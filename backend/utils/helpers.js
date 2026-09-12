@@ -1,7 +1,7 @@
 const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
 const { emitTo } = require('./socket');
-const { logger } = require('./logger');
+const { logger, captureException } = require('./logger');
 const env = require('../config/env');
 
 const logAction = async ({ utilisateur, action, module, entite_id, ip, ua, avant, apres, message, statut = 'succes' }) => {
@@ -19,7 +19,17 @@ const logAction = async ({ utilisateur, action, module, entite_id, ip, ua, avant
       statut,
     });
   } catch (e) {
-    logger.error('Audit log error', { error: e.message, action, module });
+    // SEC-B-05 (correction du 12 sept. 2026, audit indépendant) — un échec
+    // d'écriture d'audit-log n'était remonté que par un simple
+    // logger.error, invisible en dehors des logs console/fichier locaux.
+    // Ajout de captureException (même mécanisme déjà utilisé par
+    // errorHandler.js/googleAuth.controller.js/les jobs planifiés pour tout
+    // incident nécessitant une remontée au-delà d'un simple log) — jamais
+    // un throw : la politique de ce système n'exige pas qu'une opération
+    // métier échoue si son audit-log échoue à être persisté, seulement que
+    // l'incident soit réellement visible.
+    logger.error('Audit log error', { error: e.message, action, module, entite_id });
+    captureException(e, { context: 'logAction', action, module, entite_id: entite_id?.toString() });
   }
 };
 

@@ -21,11 +21,9 @@ import {
   retourAmbulance as retourAmbulanceThunk,
   setCurrentUrg,
   patchCurrentUrg,
-  setFilters,
   setPage,
   saisirResultatExamen,
   selectUrgencesKpis,
-  selectUrgencesChart,
   selectUrgencesIssues,
   selectUrgencesRepartitionMotifs,
   selectUrgencesFluxHoraire,
@@ -40,7 +38,8 @@ import {
   selectAmbulances,
   selectUrgencesLoading,
   selectUrgencesSaving,
-  selectUrgencesFilters,
+  selectUrgencesError,
+  selectDossierSectionsEnErreur,
 } from "../store/slices/urgencesSlice";
 
 // ─── Chart.js loader ─────────────────────────────────────────
@@ -511,7 +510,17 @@ export default function Urgences() {
   const ambulances    = useSelector(selectAmbulances);
   const loading       = useSelector(selectUrgencesLoading);
   const saving        = useSelector(selectUrgencesSaving);
-  const filters       = useSelector(selectUrgencesFilters);
+  // URG-05 (correction du 12 sept. 2026, audit indépendant) —
+  // setFilters/selectUrgencesFilters (et selectUrgencesChart ci-dessus)
+  // étaient importés mais jamais dispatchés/utilisés : aucun contrôle de
+  // filtre réel ni de graphique fantôme dans l'interface de cette page
+  // (le graphique flux horaire déjà réel utilise selectUrgencesFluxHoraire,
+  // pas selectUrgencesChart) — retirés, vérifié par recherche projet-wide.
+  // URG-04 (correction du 12 sept. 2026, audit indépendant) — aucune
+  // distinction n'existait entre une liste réellement vide et un échec
+  // réseau : state.error était déjà renseigné mais jamais lu ici.
+  const urgencesError = useSelector(selectUrgencesError);
+  const dossierSectionsEnErreur = useSelector(selectDossierSectionsEnErreur);
 
   // ── UI locale ─────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth <= 599);
@@ -575,6 +584,36 @@ export default function Urgences() {
   }, [catalogueLabo, catalogueImagerie]);
   const medicamentById = useMemo(() => Object.fromEntries(medicaments.map(m => [m._id, m])), [medicaments]);
 
+  // URG-01 (correction du 12 sept. 2026, audit indépendant) — le panneau
+  // "Lits disponibles" affichait 4 zones ("Salle soins"/"Observation"/
+  // "Réanimation"/"Soins intens.") avec des chiffres entièrement inventés
+  // (`libre:3,total:6`...), jamais reliés à aucune donnée réelle. Le modèle
+  // Room (hospitalization.controller.js::getRooms, déjà réel, déjà utilisé
+  // par le module Hospitalisation) ne connaît que 5 vrais types de chambre
+  // (standard/vip/reanimation/pediatrique/maternite) — jamais les 4 zones
+  // fictives ci-dessus, qui n'existent dans aucun modèle. Plutôt que forcer
+  // une correspondance inventée, ce panneau affiche désormais l'occupation
+  // RÉELLE par vrai type de chambre (même source que Hospitalisation), avec
+  // un état honnêtement vide tant que la donnée n'a pas encore été chargée.
+  const [litsParType, setLitsParType] = useState(null); // null = pas encore chargé
+  const ROOM_TYPE_LABELS = { standard: 'Standard', vip: 'VIP', reanimation: 'Réanimation', pediatrique: 'Pédiatrique', maternite: 'Maternité' };
+  useEffect(() => {
+    api.get('/hospitalization/rooms')
+      .then(({ data }) => {
+        const parType = {};
+        for (const room of (data.rooms || [])) {
+          const t = room.type || 'standard';
+          if (!parType[t]) parType[t] = { libre: 0, total: 0 };
+          for (const lit of (room.lits || [])) {
+            parType[t].total += 1;
+            if (lit.statut === 'libre') parType[t].libre += 1;
+          }
+        }
+        setLitsParType(parType);
+      })
+      .catch(() => setLitsParType({}));
+  }, []);
+
   // Vraie facture (Invoice) liée au dossier ouvert — jamais un calcul
   // recomposé côté client. null tant qu'aucune facture réelle n'existe
   // (dossier non clôturé, ou clôturé sans aucun examen/médicament réel lié).
@@ -590,6 +629,20 @@ export default function Urgences() {
     dispatch(fetchUrgences({ page: 1, limit: 20 }));
     dispatch(fetchAmbulances());
   }, [dispatch]);
+
+  // URG-04 — voir la déclaration de urgencesError ci-dessus : signalé
+  // honnêtement à l'utilisateur, jamais une liste vide silencieuse.
+  useEffect(() => {
+    if (urgencesError) toast.error(`Impossible de charger les urgences — ${urgencesError}`);
+  }, [urgencesError]);
+
+  // URG-04 — une section du dossier réellement en échec (réseau/serveur)
+  // n'est plus absorbée en silence dans une liste vide.
+  useEffect(() => {
+    if (dossierSectionsEnErreur?.length) {
+      toast.error(`Certaines sections du dossier n'ont pas pu être chargées : ${dossierSectionsEnErreur.join(', ')}`);
+    }
+  }, [dossierSectionsEnErreur]);
 
   const reloadList = () => {
     dispatch(fetchUrgences({ page: currentPage, limit: 20, q: search, niveau_triage: filterNiveau, statut: filterStatut }));
@@ -856,22 +909,23 @@ export default function Urgences() {
                     </div>
                   </div>
 
-                  {/* Lits urgences */}
+                  {/* Lits urgences — URG-01 : occupation réelle par vrai type de chambre (Room), jamais des zones/chiffres inventés */}
                   <div className="urg-card urgfu">
                     <div className="urg-card-hdr"><h3>🛏 Lits disponibles</h3></div>
                     <div style={{ padding: 16 }}>
-                      {[
-                        { label: "Salle soins", libre: 3, total: 6, color: "var(--ub)" },
-                        { label: "Observation",  libre: 2, total: 4, color: "var(--ut)" },
-                        { label: "Réanimation",  libre: 1, total: 2, color: "var(--ur)" },
-                        { label: "Soins intens.", libre: 0, total: 3, color: "var(--uo)" },
-                      ].map(l => (
-                        <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                          <div style={{ fontSize: 11, color: "var(--ucm)", minWidth: 90 }}>{l.label}</div>
-                          <div style={{ flex: 1 }}><Prog pct={Math.round((l.total - l.libre) / l.total * 100)} color={l.libre === 0 ? "var(--ur)" : l.color} /></div>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: l.libre === 0 ? "var(--ur)" : "var(--ug)", minWidth: 28 }}>{l.libre}/{l.total}</div>
-                        </div>
-                      ))}
+                      {litsParType === null ? (
+                        <div style={{ fontSize: 12, color: "var(--ucm)", textAlign: "center", padding: "8px 0" }}>Chargement…</div>
+                      ) : Object.keys(litsParType).length === 0 ? (
+                        <div style={{ fontSize: 12, color: "var(--ucm)", textAlign: "center", padding: "8px 0" }}>Aucune donnée de lit disponible.</div>
+                      ) : (
+                        Object.entries(litsParType).map(([type, { libre, total }]) => (
+                          <div key={type} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                            <div style={{ fontSize: 11, color: "var(--ucm)", minWidth: 90 }}>{ROOM_TYPE_LABELS[type] || type}</div>
+                            <div style={{ flex: 1 }}><Prog pct={total > 0 ? Math.round((total - libre) / total * 100) : 0} color={libre === 0 ? "var(--ur)" : "var(--ub)"} /></div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: libre === 0 ? "var(--ur)" : "var(--ug)", minWidth: 28 }}>{libre}/{total}</div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1534,11 +1588,25 @@ export default function Urgences() {
                       </div>
                     ))}
                   </div>
+                  {/* URG-02 (correction du 12 sept. 2026, audit indépendant) —
+                      ce graphique affichait 8 points de température
+                      entièrement inventés, dans le dossier réel d'un
+                      patient. Urgence (modèle) ne conserve qu'un instantané
+                      courant des constantes (temperature/pouls/spo2/...),
+                      jamais un historique horodaté — aucune vraie courbe
+                      n'est donc calculable aujourd'hui. Affiché
+                      honnêtement : la seule vraie mesure disponible (déjà
+                      montrée ci-dessus), jamais une valeur fabriquée pour
+                      "remplir" un graphique. */}
                   <div className="urg-card">
-                    <div className="urg-card-hdr"><h3>📈 Courbe d'évolution</h3></div>
-                    <div style={{ padding: 20 }}>
-                      <BarChart labels={["08:00","08:30","09:00","09:30","10:00","10:30","11:00","11:30"]} data={[37.2,37.4,38.1,38.5,38.2,37.9,37.6,37.3]} color="var(--ur)" height={160} />
-                      <div style={{ fontSize: 11, color: "var(--ucm)", marginTop: 8, textAlign: "center" }}>Évolution de la température — Dernières 4 heures</div>
+                    <div className="urg-card-hdr"><h3>📈 Évolution des constantes</h3></div>
+                    <div style={{ padding: 20, textAlign: "center" }}>
+                      <div style={{ fontSize: 13, color: "var(--ucm)" }}>
+                        Aucun historique de constantes disponible — seule la dernière mesure enregistrée est affichée ci-dessus.
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--ucm)", marginTop: 8, fontStyle: "italic" }}>
+                        Le suivi d'une courbe réelle nécessite l'enregistrement horodaté de chaque mesure (non disponible dans le modèle actuel).
+                      </div>
                     </div>
                   </div>
                   <div className="al-info" style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 10 }}>
@@ -1642,10 +1710,11 @@ export default function Urgences() {
               {/* Sous-phase 5.1 (relecture du 6 sept. 2026) — onglet
                   entièrement réécrit depuis GET /urgences/stats, réellement
                   calculé (urgencesController.js::getStats étendu). Le "temps
-                  d'attente moy." et le graphique 6 mois étaient déjà réels
-                  et déjà chargés (fetchUrgencesStats), mais jamais câblés
-                  ici (selectUrgencesChart resté importé sans être utilisé
-                  nulle part dans ce fichier). */}
+                  d'attente moy." est déjà réel et déjà chargé
+                  (fetchUrgencesStats) ; le graphique flux horaire réel
+                  utilise selectUrgencesFluxHoraire (URG-05 : l'ancien
+                  selectUrgencesChart, resté importé sans être utilisé nulle
+                  part, a été retiré). */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 14, marginBottom: 24 }}>
                 {[
                   { color: "red",    val: kpis?.admissions_jour ?? "—",  lbl: "Admissions/jour",       sub: "toutes priorités" },

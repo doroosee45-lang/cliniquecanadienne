@@ -3,11 +3,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchRadiologyExams,
-  selectRadiologyExams, selectRadiologyLoading, selectRadiologyTotal,
-} from '../store/slices/radiologySlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { ScanLine, Plus, Printer } from 'lucide-react';
@@ -340,16 +335,18 @@ const EMPTY_CR = {
   date_realisation:"", operateur:"", observations:"", incidents:"",
   conclusion:"", recommandations:"", radiologue:"", date_validation:"",
 };
-const EMPTY_FACT = { reduction:0, assurance:0 };
 
 // ─── MAIN COMPONENT ────────────────────────────────────────
 export default function Imagerie() {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const reduxExamens = useSelector(selectRadiologyExams);
-  const reduxTotal = useSelector(selectRadiologyTotal);
-
-  useEffect(() => { dispatch(fetchRadiologyExams({})); }, [dispatch]);
+  // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchRadiologyExams({}))
+  // dupliquait à chaque montage la même requête que loadExamens() (api.get
+  // direct, plus bas), sans que reduxExamens/reduxTotal ne soient jamais
+  // lus nulle part — vérifié par recherche projet-wide, aucun autre fichier
+  // ne consomme fetchRadiologyExams/selectRadiologyExams/
+  // selectRadiologyLoading/selectRadiologyTotal. useRealtimeRefresh
+  // (loadExamens), plus bas, rafraîchit déjà correctement la vraie
+  // source — le dispatch Redux orphelin est simplement retiré.
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
@@ -388,14 +385,17 @@ export default function Imagerie() {
   const [modalNouv, setModalNouv]   = useState(false);
   const [modalCR, setModalCR]       = useState(false);
   const [modalImages, setModalImg]  = useState(false);
-  const [modalValid, setModalValid] = useState(false);
-  const [modalFact, setModalFact]   = useState(false);
+  // RADIO-04 (correction du 12 sept. 2026, audit indépendant) —
+  // modalValid/setModalFact/formFact/EMPTY_FACT (états de facturation)
+  // retirés : jamais lus pour afficher une modale réelle, jamais de
+  // formulaire de facturation existant sur cette page — vérifié par
+  // recherche projet-wide. La vraie facture générée à la validation
+  // (currentInvoice) est déjà affichée sans passer par ces états morts.
 
   // Forms
   const [formExamen, setFormExamen] = useState(EMPTY_EXAMEN);
   const [formCR, setFormCR]         = useState(EMPTY_CR);
   const [formValid, setFormValid]   = useState({ radiologue:"", date_validation:"", signature:"" });
-  const [formFact, setFormFact]     = useState(EMPTY_FACT);
   const [uploadedImages, setUploaded] = useState([]);
 
   // ── Load list ─────────────────────────────────────────────
@@ -447,15 +447,18 @@ export default function Imagerie() {
     }
   }, []);
 
+  // RADIO-02 (correction du 12 sept. 2026, audit indépendant) — même
+  // correction que Laboratory.jsx/Prescriptions.jsx : un échec de /patients
+  // injectait silencieusement 2 patients fictifs, sélectionnables comme
+  // réels dans "Nouvelle demande". Repli honnête, jamais une donnée
+  // inventée présentée comme réelle.
   const loadPatients = useCallback(async () => {
     try {
       const { data } = await api.get("/patients?limit=500");
       setPatients(data.patients || data.data || []);
     } catch {
-      setPatients([
-        { _id:"p1", prenom:"Jean", nom:"Dupont", numero_dossier:"PAT-001", date_naissance:"1975-04-12" },
-        { _id:"p2", prenom:"Marie", nom:"Paul", numero_dossier:"PAT-002", date_naissance:"1988-11-03" },
-      ]);
+      setPatients([]);
+      toast.error("Impossible de charger la liste des patients — réessayez ou contactez le support.");
     }
   }, []);
 
@@ -558,7 +561,6 @@ export default function Imagerie() {
       toast.success("🏅 Examen validé par le radiologue");
       setCurrent(prev => ({ ...prev, ...formValid, statut:"valide" }));
       setCurrentInvoice(data.invoice || null);
-      setModalValid(false);
       loadExamens();
     } catch (err) {
       // AUDIT-P6-5 — le pire cas de ce pattern sur cette page : une
@@ -1632,12 +1634,20 @@ export default function Imagerie() {
               <div style={{ fontSize:40, marginBottom:12 }}>🖼</div>
               <div style={{ fontWeight:700, color:"var(--cn)", fontSize:14 }}>Cliquez pour sélectionner des fichiers</div>
               <div style={{ fontSize:12, color:"var(--cm)", marginTop:6 }}>DICOM (.dcm), JPEG, PNG, PDF · Taille max 50 Mo</div>
+              {/* RADIO-03 (correction du 12 sept. 2026, audit indépendant) —
+                  cette sélection est purement locale (aucun appel réseau) :
+                  un toast "✅ importée(s)" ici, et fermer la modale, laissait
+                  croire à un archivage réellement réussi avant même que
+                  archiveImages() (bouton "Archiver" ci-dessous) n'ait
+                  envoyé quoi que ce soit au serveur. La modale reste
+                  désormais ouverte pour laisser l'utilisateur vérifier la
+                  sélection puis déclencher l'archivage réel — seul
+                  archiveImages() affiche un succès, et seulement une fois
+                  la requête réellement aboutie. */}
               <input id="img-upload-input" type="file" multiple accept=".dcm,.jpg,.jpeg,.png,.pdf" style={{ display:"none" }}
                 onChange={e => {
                   const files = Array.from(e.target.files);
                   setUploaded(prev => [...prev, ...files]);
-                  toast.success(`✅ ${files.length} image(s) importée(s)`);
-                  setModalImg(false);
                 }}
               />
             </div>

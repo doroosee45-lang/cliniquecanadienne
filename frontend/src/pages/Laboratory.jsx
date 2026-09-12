@@ -1,14 +1,10 @@
 ﻿import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchLabResults, fetchCriticalResults,
-  selectLabResults, selectCriticalLabResults, selectLabLoading, selectLabTotal,
-} from '../store/slices/laboratorySlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { FlaskConical, Plus, Printer } from 'lucide-react';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import { useAuth } from '../contexts/AuthContext';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import { REF_VALUES, deriveCriticalPayload } from '../utils/labResultats';
@@ -190,6 +186,9 @@ const CSS = `
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : "—";
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString("fr-FR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" }) : "—";
 const fmtDateInput = (d) => d ? new Date(d).toISOString().substring(0, 10) : "";
+// LAB-03 — nom réel d'un User peuplé (technicien/validateur/authUser),
+// jamais un champ texte libre fabriqué côté client.
+const fmtUser = (u) => (u && (u.prenom || u.nom)) ? `${u.prenom || ""} ${u.nom || ""}`.trim() : null;
 const ageCalc = (dob) => {
   if (!dob) return "—";
   const y = Math.floor((Date.now() - new Date(dob)) / (365.25 * 24 * 3600 * 1000));
@@ -437,22 +436,35 @@ const EMPTY_FORM = {
   consultation: "",
 };
 
+// LAB-03 — technicien/biologiste retirés : c'étaient des champs texte
+// libre requis dans le formulaire mais jamais persistés (technicien est
+// un ObjectId ref User côté schéma, biologiste n'existait pas du tout).
+// L'identité réelle est désormais dérivée côté serveur (voir
+// saisirResultats/validate dans laboratory.controller.js) et affichée
+// depuis authUser / currentAnalyse.technicien / currentAnalyse.validateur.
 const EMPTY_RESULTAT_FORM = {
-  commentaire_biologiste: "", technicien: "", biologiste: "", est_critique_confirme: false,
+  commentaire_biologiste: "", est_critique_confirme: false,
 };
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function Laboratoire() {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const reduxAnalyses = useSelector(selectLabResults);
-  const reduxCritical = useSelector(selectCriticalLabResults);
-  const reduxTotal = useSelector(selectLabTotal);
-
-  useEffect(() => {
-    dispatch(fetchLabResults({}));
-    dispatch(fetchCriticalResults());
-  }, [dispatch]);
+  // LAB-03 — identité réelle de l'utilisateur connecté, affichée à la
+  // place des anciens champs "Technicien"/"Biologiste" en texte libre
+  // requis mais jamais persistés (voir validerAnalyse plus bas).
+  let authData = null;
+  try { authData = useAuth(); } catch { /* AuthProvider absent (ex. rendu isolé en test) */ }
+  const authUser = authData?.user || null;
+  // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchLabResults({}))
+  // + dispatch(fetchCriticalResults()) dupliquaient à chaque montage la
+  // même requête que loadAnalyses() (api.get direct, plus bas), sans que
+  // reduxAnalyses/reduxCritical/reduxTotal ne soient jamais lus nulle
+  // part — vérifié par recherche projet-wide, aucun autre fichier ne
+  // consomme fetchLabResults/fetchCriticalResults/selectLabResults/
+  // selectCriticalLabResults/selectLabLoading/selectLabTotal.
+  // useRealtimeRefresh(loadAnalyses), plus bas, rafraîchit déjà
+  // correctement la vraie source — les deux dispatches Redux orphelins
+  // sont simplement retirés.
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
@@ -563,15 +575,20 @@ export default function Laboratoire() {
     }
   }, []);
 
+  // LAB-02 (correction du 12 sept. 2026, audit indépendant) — un échec de
+  // /patients injectait silencieusement 2 patients fictifs ("Jean Dupont",
+  // "Marie Paul"), sélectionnables comme s'ils étaient réels dans la
+  // "Nouvelle demande" — une analyse aurait pu être créée pour l'un de ces
+  // faux patients sans que personne ne s'en aperçoive. Même correction déjà
+  // appliquée à Prescriptions.jsx/Radiology.jsx : repli honnête (liste vide,
+  // erreur explicite), jamais une donnée inventée présentée comme réelle.
   const loadPatients = useCallback(async () => {
     try {
       const { data } = await api.get("/patients?limit=500");
       setPatients(data.patients || data.data || []);
     } catch {
-      setPatients([
-        { _id:"p1", prenom:"Jean",  nom:"Dupont", numero_dossier:"PAT-001", date_naissance:"1975-04-12", sexe:"homme", telephone:"+242 06 123 4567" },
-        { _id:"p2", prenom:"Marie", nom:"Paul",   numero_dossier:"PAT-002", date_naissance:"1988-11-03", sexe:"femme", telephone:"+242 05 987 6543" },
-      ]);
+      setPatients([]);
+      toast.error("Impossible de charger la liste des patients — réessayez ou contactez le support.");
     }
   }, []);
 
@@ -611,7 +628,7 @@ export default function Laboratoire() {
     });
     setFormRes(rf);
     setFormResStatut(rs);
-    setFormValid({ commentaire_biologiste: a.commentaire_biologiste || "", technicien: a.technicien || "", biologiste: a.biologiste || "", est_critique_confirme: false });
+    setFormValid({ commentaire_biologiste: a.commentaire_biologiste || "", est_critique_confirme: false });
   };
 
   // ── Create analyse ────────────────────────────────────────
@@ -686,12 +703,12 @@ export default function Laboratoire() {
     setSaving(true);
     const { valeurs_critiques } = deriveCriticalPayload(asArr(currentAnalyse.resultats), REF_VALUES);
     const est_critique = formValid.est_critique_confirme;
-    // technicien/biologiste restent des champs de formulaire locaux
-    // uniquement : LabResult.validate() ne les persiste pas (technicien est
-    // un ObjectId ref User côté schéma, pas un nom libre ; biologiste n'est
-    // pas déclaré du tout) — les envoyer ne ferait qu'imiter la fausse
-    // persistance qui existait avant ce correctif. Non résolu ici, hors
-    // périmètre du correctif est_critique demandé.
+    // LAB-03 (correction du 12 sept. 2026) — technicien/biologiste ne sont
+    // plus des champs de formulaire texte libre : le vrai technicien a déjà
+    // été dérivé côté serveur à la saisie des résultats (saisirResultats),
+    // et le vrai biologiste signataire est req.user._id, dérivé ici même
+    // par laboratory.controller.js::validate (validateur). Aucun des deux
+    // n'est envoyé par le client — l'identité ne peut pas être fabriquée.
     const payload = {
       resultats: currentAnalyse.resultats,
       commentaires: formValid.commentaire_biologiste,
@@ -1391,8 +1408,8 @@ export default function Laboratoire() {
                             </div>
                             <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
                               {[
-                                ["Technicien de laboratoire", currentAnalyse.technicien || "—"],
-                                ["Biologiste responsable",    currentAnalyse.biologiste || "—"],
+                                ["Technicien de laboratoire", currentAnalyse.technicien_nom || fmtUser(currentAnalyse.technicien) || "—"],
+                                ["Biologiste responsable",    currentAnalyse.validateur_nom || fmtUser(currentAnalyse.validateur) || "—"],
                                 ["Date de validation",        fmtDateTime(currentAnalyse.date_validation)],
                               ].map(([lbl,val]) => (
                                 <div key={lbl} style={{ background:"#F8FAFD", borderRadius:10, padding:"12px 14px" }}>
@@ -1409,14 +1426,19 @@ export default function Laboratoire() {
                               <span style={{ fontSize:13, color:"#92400E" }}>Résultats saisis — En attente de validation biologiste</span>
                             </div>
                             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                              {/* LAB-03 — technicien/biologiste ne sont plus des champs texte
+                                  requis mais jamais persistés. Le technicien réel a déjà été
+                                  enregistré à la saisie des résultats ; le biologiste signataire
+                                  réel est l'utilisateur actuellement connecté (dérivé côté
+                                  serveur à la signature, jamais fabriqué côté client). */}
                               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
-                                <div>
-                                  <label className="llbl">Technicien de laboratoire</label>
-                                  <input className="linp" value={formValid.technicien} onChange={e => setFormValid(f=>({...f,technicien:e.target.value}))} placeholder="Nom du technicien" />
+                                <div style={{ background:"#F8FAFD", borderRadius:10, padding:"12px 14px" }}>
+                                  <div style={{ fontSize:10, fontWeight:600, color:"var(--lm)", textTransform:"uppercase", letterSpacing:.4 }}>Technicien de laboratoire</div>
+                                  <div style={{ fontSize:13, fontWeight:600, color:"var(--ln)", marginTop:4 }}>{currentAnalyse.technicien_nom || fmtUser(currentAnalyse.technicien) || "—"}</div>
                                 </div>
-                                <div>
-                                  <label className="llbl">Biologiste responsable</label>
-                                  <input className="linp" value={formValid.biologiste} onChange={e => setFormValid(f=>({...f,biologiste:e.target.value}))} placeholder="Dr. Nom du biologiste" />
+                                <div style={{ background:"#F8FAFD", borderRadius:10, padding:"12px 14px" }}>
+                                  <div style={{ fontSize:10, fontWeight:600, color:"var(--lm)", textTransform:"uppercase", letterSpacing:.4 }}>Biologiste responsable (vous)</div>
+                                  <div style={{ fontSize:13, fontWeight:600, color:"var(--ln)", marginTop:4 }}>{fmtUser(authUser) || "—"}</div>
                                 </div>
                               </div>
                               <div>
@@ -1424,7 +1446,7 @@ export default function Laboratoire() {
                                 <textarea className="linp" rows={3} value={formValid.commentaire_biologiste} onChange={e => setFormValid(f=>({...f,commentaire_biologiste:e.target.value}))} placeholder="Interprétation, commentaires cliniques..." />
                               </div>
                               <div style={{ background:"#EEF4FF", borderRadius:12, padding:"12px 14px", fontSize:12, color:"var(--lm)" }}>
-                                ✍️ La validation engage la responsabilité du biologiste signataire.
+                                ✍️ La validation engage la responsabilité du biologiste signataire ({fmtUser(authUser) || "vous"}).
                               </div>
                               <button className="lbtn lbtn-green" style={{ alignSelf:"flex-start" }} disabled={saving} onClick={async (e) => { await validerAnalyse(e); }}>
                                 🏷️ {saving ? "Validation..." : "Valider et signer les résultats"}
@@ -1839,13 +1861,17 @@ export default function Laboratoire() {
                     : "Aucun résultat n'a été marqué critique à la saisie — cochez ici si votre relecture clinique justifie tout de même une notification."}
                 </span>
               </label>
-              <div>
-                <label className="llbl">Technicien de laboratoire *</label>
-                <input className="linp" required placeholder="Nom du technicien" value={formValid.technicien} onChange={e => setFormValid(f=>({...f,technicien:e.target.value}))} />
-              </div>
-              <div>
-                <label className="llbl">Biologiste responsable *</label>
-                <input className="linp" required placeholder="Dr. Nom Prénom" value={formValid.biologiste} onChange={e => setFormValid(f=>({...f,biologiste:e.target.value}))} />
+              {/* LAB-03 — mêmes champs texte requis mais jamais persistés retirés
+                  qu'au-dessus, remplacés par l'identité réelle (voir plus haut). */}
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div style={{ background:"#F8FAFD", borderRadius:10, padding:"12px 14px" }}>
+                  <div style={{ fontSize:10, fontWeight:600, color:"var(--lm)", textTransform:"uppercase", letterSpacing:.4 }}>Technicien de laboratoire</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--ln)", marginTop:4 }}>{currentAnalyse?.technicien_nom || fmtUser(currentAnalyse?.technicien) || "—"}</div>
+                </div>
+                <div style={{ background:"#F8FAFD", borderRadius:10, padding:"12px 14px" }}>
+                  <div style={{ fontSize:10, fontWeight:600, color:"var(--lm)", textTransform:"uppercase", letterSpacing:.4 }}>Biologiste responsable (vous)</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--ln)", marginTop:4 }}>{fmtUser(authUser) || "—"}</div>
+                </div>
               </div>
               <div>
                 <label className="llbl">Commentaire / Interprétation clinique</label>

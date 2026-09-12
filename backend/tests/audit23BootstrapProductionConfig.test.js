@@ -79,11 +79,19 @@ test('AUDIT-2.3 — bootstrap() refuse de démarrer en production si la configur
     // passage de cette suite a échoué ici en timeout (6036ms) sans qu'il
     // s'agisse d'une régression du correctif lui-même (le second passage,
     // sans changement de code, est repassé au vert).
+    // Correction (relecture du 11 sept. 2026, rapport de correction) —
+    // même flake réel reconstaté à 20s pendant cette session (le second
+    // passage, toujours sans changement de code, est de nouveau repassé au
+    // vert) : relevé à 35s pour une marge supplémentaire. Il s'agit d'une
+    // latence réseau réelle vers un cluster distant partagé, pas d'un
+    // défaut de logique — objectivement non éliminable à 100% par ce seul
+    // test (dépend de la latence Atlas au moment de l'exécution), documenté
+    // ici plutôt que masqué.
     const { code, out } = await runServer({
       NODE_ENV: 'production',
       PORT: String(port),
       JWT_SECRET: 'trop-court',
-    }, { timeoutMs: 20000 });
+    }, { timeoutMs: 35000 });
     assert.notEqual(code, 0, `le processus doit sortir en erreur (code obtenu: ${code})\n${out}`);
     assert.ok(!out.includes('Serveur démarré'), `le serveur ne doit jamais annoncer un démarrage réussi\n${out}`);
     assert.match(out, /Vérification de configuration production échouée/, `le message d'échec attendu doit apparaître\n${out}`);
@@ -108,7 +116,13 @@ test('AUDIT-2.3 — bootstrap() refuse de démarrer en production si la configur
     child.stderr.on('data', (d) => { out += d.toString(); });
     try {
       await new Promise((resolve, reject) => {
-        const deadline = Date.now() + 8000;
+        // Correction (relecture du 11 sept. 2026, rapport de correction) —
+        // délai porté de 8s à 30s : ce test a été observé en échec
+        // intermittent sur l'ancien délai en fin de suite complète (1050+
+        // tests), la même contention réelle déjà documentée dans
+        // isolatedServer.js::startIsolatedServer (démarrage réel mesuré
+        // ~3s en isolation, largement dépassé sous charge).
+        const deadline = Date.now() + 30000;
         const check = () => {
           if (out.includes('Serveur démarré')) return resolve();
           if (Date.now() > deadline) return reject(new Error(`démarrage non confirmé dans le délai imparti\n${out}`));

@@ -55,6 +55,12 @@ export const updateUrgence = createAsyncThunk(
   }
 );
 
+// URG-04 (correction du 12 sept. 2026, audit indépendant) — Promise.allSettled
+// substituait silencieusement [] à toute section dont le sous-fetch échouait
+// réellement (réseau/serveur) : indiscernable d'un patient qui n'a
+// réellement aucun soin/prescription/examen/timeline enregistré. Les
+// sections réellement en échec sont désormais collectées et exposées
+// (sectionsEnErreur), jamais absorbées en silence dans un simple [].
 export const fetchDossierData = createAsyncThunk(
   'urgences/fetchDossier',
   async (id, { rejectWithValue }) => {
@@ -65,11 +71,17 @@ export const fetchDossierData = createAsyncThunk(
         api.get(`/urgences/${id}/examens`),
         api.get(`/urgences/${id}/timeline`),
       ]);
+      const sectionsEnErreur = [];
+      if (s.status  !== 'fulfilled') sectionsEnErreur.push('soins');
+      if (pr.status !== 'fulfilled') sectionsEnErreur.push('prescriptions');
+      if (ex.status !== 'fulfilled') sectionsEnErreur.push('examens');
+      if (tl.status !== 'fulfilled') sectionsEnErreur.push('historique');
       return {
         soins:         s.status  === 'fulfilled' ? (s.value.data.soins   || []) : [],
         prescriptions: pr.status === 'fulfilled' ? (pr.value.data.prescriptions || []) : [],
         examens:       ex.status === 'fulfilled' ? (ex.value.data.examens || []) : [],
         timeline:      tl.status === 'fulfilled' ? (tl.value.data.timeline || []) : [],
+        sectionsEnErreur,
       };
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Erreur chargement dossier');
@@ -188,6 +200,9 @@ const urgencesSlice = createSlice({
     prescriptions: [],
     examens:       [],
     timeline:      [],
+    // URG-04 — sections du dossier réellement en échec (jamais absorbées
+    // en silence dans un [] vide, voir fetchDossierData ci-dessus).
+    dossierSectionsEnErreur: [],
 
     ambulances:  [],
 
@@ -258,15 +273,20 @@ const urgencesSlice = createSlice({
 
     // Dossier data
     builder
-      .addCase(fetchDossierData.pending,   (state) => { state.loadingDossier = true; })
+      .addCase(fetchDossierData.pending,   (state) => { state.loadingDossier = true; state.dossierSectionsEnErreur = []; })
       .addCase(fetchDossierData.fulfilled, (state, action) => {
         state.loadingDossier  = false;
         state.soins           = action.payload.soins;
         state.prescriptions   = action.payload.prescriptions;
         state.examens         = action.payload.examens;
         state.timeline        = action.payload.timeline;
+        state.dossierSectionsEnErreur = action.payload.sectionsEnErreur || [];
       })
-      .addCase(fetchDossierData.rejected,  (state) => { state.loadingDossier = false; });
+      .addCase(fetchDossierData.rejected,  (state, action) => {
+        state.loadingDossier = false;
+        state.dossierSectionsEnErreur = ['soins', 'prescriptions', 'examens', 'historique'];
+        state.error = action.payload;
+      });
 
     // Soin
     builder
@@ -343,5 +363,15 @@ export const selectUrgencesFilters     = (state) => state.urgences.filters;
 export const selectUrgencesLoading     = (state) => state.urgences.loading;
 export const selectUrgencesSaving      = (state) => state.urgences.saving;
 export const selectUrgencesLoadingDossier = (state) => state.urgences.loadingDossier;
+// URG-04 (correction du 12 sept. 2026, audit indépendant) — state.error
+// était déjà réellement renseigné par fetchUrgences.rejected (et les autres
+// thunks), mais aucun sélecteur ne l'exposait : Urgences.jsx ne pouvait
+// donc jamais distinguer une liste réellement vide d'un échec réseau —
+// l'échec restait invisible.
+export const selectUrgencesError       = (state) => state.urgences.error;
+// URG-04 — sections du dossier réellement en échec (soins/prescriptions/
+// examens/historique) — jamais un [] silencieux indiscernable d'un dossier
+// réellement vide.
+export const selectDossierSectionsEnErreur = (state) => state.urgences.dossierSectionsEnErreur;
 
 export default urgencesSlice.reducer;

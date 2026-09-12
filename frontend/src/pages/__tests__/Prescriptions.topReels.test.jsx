@@ -10,11 +10,8 @@
 // prescriptionsSlice ; seule la frontière réseau (`../../api`) et
 // useRealtimeRefresh sont simulées.
 import { render, screen } from '@testing-library/react';
-import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
-import prescriptionsReducer from '../../store/slices/prescriptionsSlice';
 import Prescriptions from '../Prescriptions.jsx';
 
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }));
@@ -40,8 +37,7 @@ const ORDS_FIXTURE = [
 ];
 
 function renderPrescriptions() {
-  const store = configureStore({ reducer: { prescriptions: prescriptionsReducer } });
-  return render(<Provider store={store}><MemoryRouter><Prescriptions /></MemoryRouter></Provider>);
+  return render(<MemoryRouter><Prescriptions /></MemoryRouter>);
 }
 
 beforeEach(() => {

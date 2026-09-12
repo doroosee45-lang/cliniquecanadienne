@@ -4,11 +4,6 @@
 
 import { useState, useEffect, useCallback, useRef, useId, useMemo, memo } from "react";
 import { useLocation } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchInvoices, fetchFinanceStats, createInvoice, recordPayment,
-  selectInvoices, selectFinanceStats, selectFinanceLoading, selectFinanceSaving,
-} from '../store/slices/financeSlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
@@ -338,19 +333,6 @@ const relancerAssurance = (a) => {
   window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
 };
 
-// ─── Demo data ────────────────────────────────────────────────
-const DEMO_REVENUS = [];
-
-const DEMO_DEPENSES = [];
-
-const DEMO_FACTURES = [];
-
-const DEMO_PAIEMENTS = [];
-
-const DEMO_ASSURANCES = [];
-
-const DEMO_SALAIRES = [];
-
 // ─── SVG Icons ────────────────────────────────────────────────
 const I = {
   money:  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>,
@@ -537,15 +519,18 @@ const EMPTY_PAIEMENT  = { facture_id: "", facture_num: "", patient: "", montant_
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════
 export default function Finance() {
-  const dispatch = useDispatch();
   const location = useLocation();
-  const reduxInvoices = useSelector(selectInvoices);
-  const reduxStats = useSelector(selectFinanceStats);
-
-  useEffect(() => {
-    dispatch(fetchInvoices({}));
-    dispatch(fetchFinanceStats());
-  }, [dispatch]);
+  // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchInvoices({}))
+  // + dispatch(fetchFinanceStats()) dupliquaient à chaque montage des
+  // requêtes déjà couvertes par loadData() (Promise.allSettled d'appels
+  // api.get directs, plus bas), sans que reduxInvoices/reduxStats (ni
+  // createInvoice/recordPayment, également importés mais jamais appelés)
+  // ne soient jamais lus/utilisés nulle part — vérifié par recherche
+  // projet-wide, aucun autre fichier ne consomme fetchInvoices/
+  // fetchFinanceStats/selectInvoices/selectFinanceStats/
+  // selectFinanceLoading/selectFinanceSaving de financeSlice.
+  // useRealtimeRefresh(loadData), plus bas, rafraîchit déjà correctement
+  // la vraie source — les deux dispatches Redux orphelins sont retirés.
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);

@@ -79,5 +79,14 @@ InvoiceSchema.pre('save', async function(next) {
 InvoiceSchema.index({ patient: 1, date_facture: -1 });
 InvoiceSchema.index({ statut: 1 });
 InvoiceSchema.index({ source_module: 1, source_id: 1 });
+// FACTURATION-CONSULTATION-001 (rapport de clôture du 11 sept. 2026) — une
+// consultation ne doit jamais avoir plus d'une facture (consultations.
+// controller.js::create ne devrait déjà en créer qu'une par conception,
+// mais la garantie réelle contre un doublon — requête répétée, appel
+// concurrent — doit vivre côté base, pas seulement dans la logique
+// applicative). `sparse` : la plupart des factures (laboratoire, imagerie,
+// création manuelle...) n'ont pas ce champ du tout, jamais en conflit entre
+// elles.
+InvoiceSchema.index({ consultation: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Invoice', InvoiceSchema);

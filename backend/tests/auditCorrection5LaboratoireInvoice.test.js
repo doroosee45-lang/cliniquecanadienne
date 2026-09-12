@@ -58,6 +58,12 @@ test('Correction 5 (Laboratoire) — validate() génère une vraie Invoice depui
       const labId = bCreate.result._id;
       created.labresults.push(labId);
 
+      // SPEC-07 (correction du 12 sept. 2026) — validate() exige désormais
+      // réellement statut:'termine' (résultats saisis), jamais une
+      // validation directe d'une analyse encore en_attente.
+      const sSaisie = await call(labC.saisirResultats, { params: { id: labId }, body: { resultats: { nfs: 'normal' } }, user: laborantin, ip: '127.0.0.1' });
+      assert.equal(sSaisie.status, 200, JSON.stringify(sSaisie.body));
+
       const { status, body } = await call(labC.validate, {
         params: { id: labId }, body: { resultats: { nfs: 'normal' }, est_critique: false }, user: laborantin, ip: '127.0.0.1',
       });
@@ -89,6 +95,9 @@ test('Correction 5 (Laboratoire) — validate() génère une vraie Invoice depui
       assert.equal(sCreate, 201);
       const labId = bCreate.result._id;
       created.labresults.push(labId);
+
+      const sSaisie = await call(labC.saisirResultats, { params: { id: labId }, body: { resultats: {} }, user: laborantin, ip: '127.0.0.1' });
+      assert.equal(sSaisie.status, 200, JSON.stringify(sSaisie.body));
 
       const { status, body } = await call(labC.validate, {
         params: { id: labId }, body: { resultats: {}, est_critique: false }, user: laborantin, ip: '127.0.0.1',

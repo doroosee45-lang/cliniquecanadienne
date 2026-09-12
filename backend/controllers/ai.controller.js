@@ -156,10 +156,15 @@ exports.getStats = async (req, res, next) => {
       AIPrediction.distinct('patient', { createdAt: { $gte: startOfMonth } }),
     ]);
 
-    // Précision estimée : ratio prédictions traitées / total
+    // AI-01 (correction du 12 sept. 2026, audit indépendant) — ce ratio
+    // (prédictions au statut 'traite' / total) était nommé/étiqueté
+    // "precision" : un taux de traitement des alertes, pas une précision de
+    // modèle (aucune vérité terrain, aucune mesure de justesse des
+    // prédictions n'existe dans ce système). Renommé pour refléter
+    // honnêtement ce qui est réellement mesuré.
     const traites = await AIPrediction.countDocuments({ statut: 'traite' });
     const total   = await AIPrediction.countDocuments();
-    const precision = total > 0 ? Math.round((traites / total) * 100) : 0;
+    const taux_traitement = total > 0 ? Math.round((traites / total) * 100) : 0;
 
     // R-10c — conflit_rdv retiré de l'enum AIPrediction.type (jamais alimenté) ;
     // alertes_risque ne compte plus que les deux sources réellement produites.
@@ -170,7 +175,7 @@ exports.getStats = async (req, res, next) => {
       stats: {
         analyses_mois,
         diagnostics: diagnostics_mois,
-        precision,
+        taux_traitement,
         interactions: interactions_mois,
         alertes_risque,
         labo_critiques,
@@ -369,11 +374,23 @@ exports.checkInteractions = async (req, res, next) => {
 
     // Sauvegarder si des interactions détectées
     if (allWarnings.length > 0) {
+      // AI-02 (correction du 12 sept. 2026, audit indépendant) — 95 fixe,
+      // jamais une confiance réellement calculée. Ce détecteur n'est pas un
+      // modèle probabiliste (aucun entraînement, aucune probabilité de
+      // sortie) : c'est un appariement déterministe (allergie du patient
+      // réellement documentée, ou paire de médicaments d'une table de
+      // référence statique, detectInteractions()). Un score réel et
+      // honnête ici reflète donc la NATURE de l'appariement plutôt qu'un
+      // nombre inventé : une allergie patient documentée est un signal
+      // certain et spécifique à ce patient (100) ; une interaction
+      // médicamenteuse générique (table de référence, non spécifique au
+      // patient) reste un signal fort mais moins spécifique (85).
+      const score_confiance = allergieWarnings.length > 0 ? 100 : 85;
       const prediction = await AIPrediction.create({
         type: 'interaction_medicament',
         patient: patientId || undefined,
         resultat: { medications: medNames, warnings: allWarnings },
-        score_confiance: 95,
+        score_confiance,
         statut: 'en_attente',
       });
       await logAction({ utilisateur: req.user?._id, action: 'IA_INTERACTION_DETECTEE', module: 'ia', entite_id: prediction._id, ip: req.ip, message: `${allWarnings.length} interaction(s)/allergie(s) détectée(s)` });
@@ -420,6 +437,56 @@ exports.getAlerts = async (req, res, next) => {
       },
     });
   } catch (err) { next(err); }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// POST /api/ai/chat  — Chat Assistant IA (AI.jsx, panneau Header)
+// CHAT-001 (rapport de clôture du 11 sept. 2026) — les autres actions IA de
+// ce fichier (diagnose/interactions/predictions ci-dessus) forment un moteur
+// déterministe local (SYMPTOM_MAP, utils/drugInteractions.js), jamais un
+// appel LLM. utils/openai.js::generateReport() existe déjà, réel (appel
+// OpenAI + repli simulé honnête si OPENAI_API_KEY absente, jamais un faux
+// succès), mais n'était utilisé que par le rapport hebdomadaire Analytics
+// (utils/weeklyAnalyticsReport.js) — même service réutilisé tel quel ici,
+// aucune seconde intégration OpenAI créée.
+const openai = require('../utils/openai');
+const CHAT_SYSTEM_PROMPT = "Tu es l'assistant IA de MediSync, le système d'information de la Clinique Canadienne de Souanké. Tu réponds au personnel médical connecté (jamais directement à un patient) de façon concise et utile, en français. Tu ne fournis JAMAIS de diagnostic définitif ni de prescription : rappelle que la décision clinique reste la responsabilité du professionnel de santé. Tes réponses sont informatives uniquement.";
+const CHAT_MAX_MESSAGE_LEN = 2000;
+const CHAT_MAX_HISTORY = 6;
+
+exports.chat = async (req, res) => {
+  const { message, history } = req.body;
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ success: false, message: 'Message vide.' });
+  }
+  if (message.length > CHAT_MAX_MESSAGE_LEN) {
+    return res.status(400).json({ success: false, message: `Message trop long (max ${CHAT_MAX_MESSAGE_LEN} caractères).` });
+  }
+  // Historique replié dans le userPrompt (plutôt qu'un tableau messages[])
+  // pour réutiliser generateReport() sans modifier sa signature — aucun
+  // autre appelant (weeklyAnalyticsReport.js) n'est affecté.
+  const histArr = Array.isArray(history) ? history.slice(-CHAT_MAX_HISTORY) : [];
+  const transcript = histArr
+    .filter(h => h && typeof h.content === 'string' && (h.role === 'user' || h.role === 'bot'))
+    .map(h => `${h.role === 'user' ? 'Utilisateur' : 'Assistant'}: ${h.content}`)
+    .join('\n');
+  const userPrompt = transcript ? `${transcript}\nUtilisateur: ${message}` : message;
+
+  try {
+    const result = await openai.generateReport({ systemPrompt: CHAT_SYSTEM_PROMPT, userPrompt });
+    if (result.simulated) {
+      // Jamais une réponse fictive présentée comme réelle : le simulé est
+      // annoncé comme une indisponibilité, pas comme une réponse IA.
+      return res.json({ success: false, simulated: true, message: 'Assistant IA indisponible — OPENAI_API_KEY non configurée sur le serveur.' });
+    }
+    res.json({
+      success: true,
+      reply: result.content,
+      disclaimer: 'Réponse générée par IA — à titre informatif — non validée médicalement.',
+    });
+  } catch (err) {
+    res.status(502).json({ success: false, message: err.message || "Échec de l'appel à l'assistant IA." });
+  }
 };
 
 // ═══════════════════════════════════════════════════════════════

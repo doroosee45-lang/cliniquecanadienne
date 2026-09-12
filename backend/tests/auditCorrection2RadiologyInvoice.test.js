@@ -53,6 +53,12 @@ test('Correction 2 (Radiology) — validation() génère une vraie Invoice depui
       const examenId = bCreate.examen._id;
       created.examens.push(examenId);
 
+      // SPEC-07 (correction du 12 sept. 2026) — validation() exige
+      // désormais réellement que l'examen ait été réalisé (saveCR), jamais
+      // une validation directe d'un examen encore programme.
+      const sCR = await call(radioC.saveCR, { params: { id: examenId }, body: { compte_rendu: 'RAS' }, user: radiologue, ip: '127.0.0.1' });
+      assert.equal(sCR.status, 200, JSON.stringify(sCR.body));
+
       const { status, body } = await call(radioC.validation, {
         params: { id: examenId }, body: { radiologue: radiologue._id.toString(), signature: 'sig-test' }, user: radiologue, ip: '127.0.0.1',
       });
@@ -80,6 +86,9 @@ test('Correction 2 (Radiology) — validation() génère une vraie Invoice depui
       assert.equal(sCreate, 201);
       const examenId = bCreate.examen._id;
       created.examens.push(examenId);
+
+      const sCR = await call(radioC.saveCR, { params: { id: examenId }, body: { compte_rendu: 'RAS' }, user: radiologue, ip: '127.0.0.1' });
+      assert.equal(sCR.status, 200, JSON.stringify(sCR.body));
 
       const { status, body } = await call(radioC.validation, {
         params: { id: examenId }, body: { radiologue: radiologue._id.toString(), signature: 'sig-test' }, user: radiologue, ip: '127.0.0.1',

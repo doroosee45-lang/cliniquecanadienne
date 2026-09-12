@@ -176,9 +176,10 @@ function groupMessagesByConversation(messages) {
 // Analytics.jsx (6 cartes statiques codées en dur, aucun appel IA nulle
 // part dans ce projet — même constat que le chantier Planning : pas de
 // module de génération de texte). Règles seuil simples sur les KPI déjà
-// réellement agrégés par getStats() ci-dessous — jamais sur une valeur
-// elle-même déjà fake (ex. chirurgie_annulees, dette technique connue,
-// volontairement exclu de toute règle ici). Le nombre de recommandations
+// réellement agrégés par getStats() ci-dessous. chirurgie_annulees est
+// réel depuis ANL-03 (12 sept. 2026, date_annulation) mais volontairement
+// non intégré ici : décision produit (seuil pertinent, formulation) hors
+// périmètre technique de ce correctif. Le nombre de recommandations
 // varie réellement selon les données (aucune n'est déclenchée = tableau
 // vide, pas une liste fixe de 6 toujours affichée), et chaque libellé
 // interpole la vraie valeur observée — jamais le même texte statique
@@ -298,7 +299,7 @@ exports.getStats = async (req, res, next) => {
       hospit_admissions, hospit_sorties, hospit_en_cours,
       total_rooms,
       // Chirurgie
-      chir_total, chir_realisees,
+      chir_total, chir_realisees, chir_annulees_reel,
       // Bloc opératoire (AUDIT-ANALYTICS-P5 — interventions à venir, angle
       // prospectif distinct de la carte "Chirurgie" déjà existante ; taux
       // d'occupation salle en instantané, réel, via salle_entree_at/
@@ -362,6 +363,13 @@ exports.getStats = async (req, res, next) => {
       // ── Chirurgie
       safeCount(DossierChirurgical, { createdAt: { $gte: depuis, $lte: fin }, ...fChir }),
       safeCount(DossierChirurgical, { statut: 'opere', date_intervention_reelle: { $gte: depuis, $lte: fin }, ...fChir }),
+      // ANL-03 — voir DossierChirurgical.js/blocoperatoireController.js pour
+      // le détail : date_annulation est le seul signal réel distinguant une
+      // annulation effective d'un dossier simplement jamais programmé (les
+      // deux partagent le statut modèle 'consultation'). Ne compte que les
+      // annulations survenues après l'introduction de ce champ — jamais un
+      // pourcentage inventé pour combler l'historique antérieur.
+      safeCount(DossierChirurgical, { date_annulation: { $gte: depuis, $lte: fin }, ...fChir }),
       // ── Bloc opératoire
       safeCount(DossierChirurgical, { statut: 'preoperatoire', date_intervention_prev: { $gte: new Date() }, ...fChir }),
       safeCount(DossierChirurgical, { salle_entree_at: { $ne: null }, salle_sortie_at: null }),
@@ -510,7 +518,14 @@ exports.getStats = async (req, res, next) => {
       consultations_total:     consult_total,
       consultations_terminees: consult_terminees,
       consultations_annulees:  consult_annulees,
-      temps_moyen_consult:     22,
+      // ANL-02 (correction du 12 sept. 2026, audit indépendant) — valeur
+      // codée en dur (22), jamais calculée. Consultation ne modélise aucune
+      // durée réelle de l'acte (aucun champ start/end, aucune date de fin —
+      // vérifié dans models/Consultation.js ; le seul champ `duree` existant
+      // est celui d'une ligne de prescription, sans rapport). Donnée
+      // honnêtement absente plutôt qu'une estimation inventée — null,
+      // jamais un nombre fabriqué.
+      temps_moyen_consult:     null,
       // Labo
       labo_demandes: labo_total, labo_realises, labo_attente,
       // Imagerie
@@ -520,7 +535,9 @@ exports.getStats = async (req, res, next) => {
       // Chirurgie
       chirurgie_programmees: chir_total,
       chirurgie_realisees:   chir_realisees,
-      chirurgie_annulees:    Math.max(0, chir_total - chir_realisees - Math.round(chir_total * 0.15)),
+      // ANL-03 — voir la requête ci-dessus : donnée réelle (date_annulation),
+      // jamais un pourcentage arbitraire du volume total.
+      chirurgie_annulees:    chir_annulees_reel,
       // Bloc opératoire
       bloc_interventions_a_venir: chir_a_venir,
       bloc_taux_occupation_salle: bloc_taux_occupation_salle,
@@ -826,15 +843,29 @@ exports.getReport = async (req, res, next) => {
 exports.getFinancial = async (req, res, next) => {
   try {
     const year = new Date().getFullYear();
-    const raw = await Invoice.aggregate([
-      { $match: { statut: { $nin: ['annulee','brouillon'] }, date_facture: { $gte: new Date(year, 0, 1) } } },
-      { $group: { _id: { $month: '$date_facture' }, ca: { $sum: '$montant_ttc' }, paye: { $sum: '$montant_paye' } } },
-      { $sort: { _id: 1 } },
-    ]).catch(()=>[]);
+    const [raw, depRaw] = await Promise.all([
+      Invoice.aggregate([
+        { $match: { statut: { $nin: ['annulee','brouillon'] }, date_facture: { $gte: new Date(year, 0, 1) } } },
+        { $group: { _id: { $month: '$date_facture' }, ca: { $sum: '$montant_ttc' }, paye: { $sum: '$montant_paye' } } },
+        { $sort: { _id: 1 } },
+      ]).catch(()=>[]),
+      // ANL-01 (correction du 12 sept. 2026, audit indépendant) —
+      // depenses_par_mois était Math.round(ca*0.28), une estimation
+      // arbitraire jamais liée aux vraies dépenses. Même correctif déjà
+      // appliqué à getStats/getGlobalStats (voir commentaires AUDIT-
+      // ANALYTICS-P2/AUDIT-DASHBOARD-GLOBAL plus haut/bas dans ce fichier),
+      // ici étendu à getFinancial qui en était resté à l'ancienne formule.
+      Depense.aggregate([
+        { $match: { date: { $gte: new Date(year, 0, 1) } } },
+        { $group: { _id: { $month: '$date' }, total: { $sum: '$montant' } } },
+        { $sort: { _id: 1 } },
+      ]).catch(()=>[]),
+    ]);
     const ca_par_mois   = Array(12).fill(0);
     const paye_par_mois = Array(12).fill(0);
     raw.forEach(({ _id, ca, paye }) => { ca_par_mois[_id-1]=ca; paye_par_mois[_id-1]=paye; });
-    const depenses_par_mois = ca_par_mois.map(v => Math.round(v*0.28));
+    const depenses_par_mois = Array(12).fill(0);
+    depRaw.forEach(({ _id, total }) => { depenses_par_mois[_id-1] = total; });
     const benefice_par_mois = ca_par_mois.map((v,i) => v - depenses_par_mois[i]);
 
     res.json({

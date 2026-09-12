@@ -15,7 +15,12 @@ const path = require('node:path');
 const net = require('node:net');
 const { MongoClient, ObjectId } = require('mongodb');
 
-const MONGOD_PATH = 'C:\\Program Files\\MongoDB\\Server\\8.2\\bin\\mongod.exe';
+// TEST-01 (correction du 12 sept. 2026) — chemin auparavant codé en dur ici
+// (une copie indépendante de celui déjà corrigé dans helpers/isolatedServer.js) ;
+// réutilise désormais la même résolution robuste (override MONGOD_PATH,
+// PATH, emplacements connus par plateforme) au lieu d'une seconde copie
+// figée sur une version précise.
+const { MONGOD_PATH } = require('./helpers/isolatedServer');
 
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -44,7 +49,7 @@ function waitForPort(port, timeoutMs = 15000) {
   });
 }
 
-test('T9.11 — sauvegarde puis restauration réelle sur instance MongoDB locale isolée', { skip: !fs.existsSync(MONGOD_PATH) && `mongod introuvable à ${MONGOD_PATH}` }, async (t) => {
+test('T9.11 — sauvegarde puis restauration réelle sur instance MongoDB locale isolée', { skip: !(MONGOD_PATH && fs.existsSync(MONGOD_PATH)) && `mongod introuvable (ni MONGOD_PATH, ni PATH, ni emplacement d'installation connu)` }, async (t) => {
   const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 't911-mongod-'));
   const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), 't911-backup-'));
   const port = await findFreePort();

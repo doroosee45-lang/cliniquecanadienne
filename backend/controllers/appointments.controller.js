@@ -68,8 +68,38 @@ exports.getOne = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// CLIN-05 (correction du 12 sept. 2026, audit indépendant) — create()
+// persistait ...req.body tel quel : un client pouvait fabriquer
+// rappels_envoyes (compteur de rappels réels) ou created_by (déjà
+// réécrasé plus bas, donc sans risque réel, mais l'ancien spread aurait
+// laissé passer n'importe quel autre champ ajouté un jour au schéma sans
+// qu'on y pense). Liste blanche stricte des champs qu'un client peut
+// réellement fournir à la création — seuls les deux flux de création
+// réels (Appointments.jsx, Patients.jsx) ont été vérifiés pour établir
+// cette liste.
+const APPT_CREATE_ALLOWED_FIELDS = [
+  'patient', 'medecin', 'service', 'date_heure', 'duree_minutes',
+  'type', 'motif', 'notes', 'salle',
+];
+// statut à la création : uniquement les deux valeurs réellement envoyées
+// par les flux de création existants (jamais un statut terminal/avancé
+// fabriqué dès la création, qui contournerait le vrai workflow salle
+// d'attente → consultation → terminé).
+const APPT_CREATE_ALLOWED_STATUTS = ['planifie', 'en_attente'];
+const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
 exports.create = async (req, res, next) => {
   try {
+    // CLIN-07 (correction du 12 sept. 2026, audit indépendant) — `patient`
+    // n'était jamais vérifié comme référençant un vrai Patient avant
+    // écriture : un ObjectId fabriqué/orphelin produisait un rendez-vous
+    // durablement rattaché à aucun dossier réel.
+    if (!req.body.patient || !isObjectId(req.body.patient)) {
+      return res.status(400).json({ success: false, message: 'Référence patient invalide.' });
+    }
+    const patientDoc = await Patient.findById(req.body.patient).select('_id');
+    if (!patientDoc) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+
     // Conflict detection
     const { medecin, date_heure, duree_minutes = 30 } = req.body;
     const conflict = await checkAppointmentConflict({ medecin, date_heure, duree_minutes });
@@ -78,13 +108,18 @@ exports.create = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Conflit: le médecin a déjà un rendez-vous à cette heure.' });
     }
 
+    const data = {};
+    for (const k of APPT_CREATE_ALLOWED_FIELDS) { if (req.body[k] !== undefined) data[k] = req.body[k]; }
+    data.statut = APPT_CREATE_ALLOWED_STATUTS.includes(req.body.statut) ? req.body.statut : 'planifie';
+    data.created_by = req.user._id;
+
     // AUDIT-2.1 — la vérification ci-dessus n'est pas atomique avec l'écriture
     // qui suit : l'index unique partiel du modèle (medecin+date_heure) ferme
     // la course pour une requête concurrente sur le créneau exact, remontée
     // ici en 409 plutôt qu'en erreur serveur brute.
     let appt;
     try {
-      appt = await Appointment.create({ ...req.body, created_by: req.user._id });
+      appt = await Appointment.create(data);
     } catch (err) {
       if (err.code === 11000) {
         await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'appointments', ip: req.ip, statut: 'echec', message: `Création refusée — conflit de créneau détecté à l'écriture (médecin ${medecin})` });

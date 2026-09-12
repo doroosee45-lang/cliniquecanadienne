@@ -44,16 +44,73 @@ exports.getOne = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// CLIN-01 (correction du 12 sept. 2026, audit indépendant) — create()
+// passait `...req.body` tel quel : un client pouvait fabriquer directement
+// `statut:'dispensee'`, `patient`/`consultation` arbitraires, ou même
+// `dispensee_par`/`publie_at`, contournant entièrement le vrai circuit
+// pharmacie (pharmacy.controller.js::dispenser, seul endroit qui décrémente
+// réellement le stock) — une ordonnance pouvait donc se déclarer "déjà
+// dispensée" sans qu'aucun médicament n'ait jamais quitté le stock. Liste
+// blanche stricte, même principe que RX_BLOCKED_FIELDS déjà utilisé par
+// update() ci-dessous, mais appliquée ici en LISTE POSITIVE (plus sûr par
+// défaut qu'une liste négative pour une création).
+const RX_CREATE_ALLOWED_FIELDS = [
+  'lignes', 'diagnostic', 'date_prescription', 'date_expiration',
+  'poids_kg', 'allergies_verifiees', 'chronique', 'maladie_chronique', 'recommandations',
+];
+const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
 exports.create = async (req, res, next) => {
   try {
+    if (!req.body.patient || !isObjectId(req.body.patient)) {
+      return res.status(400).json({ success: false, message: 'Patient réel obligatoire (référence invalide).' });
+    }
+    const patientDoc = await Patient.findById(req.body.patient).select('_id');
+    if (!patientDoc) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+
+    // PRESC-01 — médecin réel : un ObjectId de User réellement médecin,
+    // jamais un texte libre (même principe que consultations.controller.js).
+    // Se rabat sur req.user._id (le compte réellement connecté) si absent
+    // ou invalide — jamais un nom fabriqué par le client.
+    let medecinId = req.user._id;
+    if (req.body.medecin && isObjectId(req.body.medecin)) {
+      const medecinDoc = await User.findById(req.body.medecin).select('role');
+      if (medecinDoc && medecinDoc.role === 'medecin') medecinId = medecinDoc._id;
+    }
+
+    // PRESC-01 — "Consultation liée" (Prescriptions.jsx) est saisie comme un
+    // numéro humain (Consultation.numero, ex. "CONS-2026-0001"), jamais un
+    // ObjectId — recherchée ici par numero+patient, jamais par simple
+    // ObjectId de confiance ni par un numéro inventé/orphelin.
+    let consultationId;
+    if (req.body.consultation) {
+      const Consultation = require('../models/Consultation');
+      const consultDoc = isObjectId(req.body.consultation)
+        ? await Consultation.findById(req.body.consultation).select('patient')
+        : await Consultation.findOne({ numero: String(req.body.consultation).trim() }).select('patient');
+      if (!consultDoc || String(consultDoc.patient) !== String(patientDoc._id)) {
+        return res.status(400).json({ success: false, message: 'Cette consultation ne correspond pas au patient sélectionné (numéro introuvable ou patient différent).' });
+      }
+      consultationId = consultDoc._id;
+    }
+
+    const data = {};
+    for (const k of RX_CREATE_ALLOWED_FIELDS) { if (req.body[k] !== undefined) data[k] = req.body[k]; }
+
     // Détection interactions médicamenteuses — base partagée avec le module
     // IA et la pharmacie (utils/drugInteractions.js), 15 règles au lieu de 2.
-    const meds = (req.body.lignes || []).map(l => (l.medicament_nom || '').toLowerCase());
+    const meds = (data.lignes || []).map(l => (l.medicament_nom || '').toLowerCase());
     const interactions = detectInteractions(meds);
 
     const prescription = await Prescription.create({
-      ...req.body,
-      medecin: req.user._id,
+      ...data,
+      patient: patientDoc._id,
+      consultation: consultationId,
+      medecin: medecinId,
+      // Jamais accepté du client : une ordonnance ne peut naître que
+      // brouillon ou active — 'dispensee'/'publiee'/'annulee' exigent de
+      // passer par leur vrai circuit dédié (publier/cancel/dispenser).
+      statut: ['brouillon', 'active'].includes(req.body.statut) ? req.body.statut : 'brouillon',
       interactions_detectees: interactions,
     });
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'prescriptions', entite_id: prescription._id, ip: req.ip, message: `Ordonnance ${prescription.numero_rx}` });
@@ -258,11 +315,16 @@ exports.getStats = async (req, res, next) => {
     // interactions médicamenteuses potentielles").
     const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
     const dansSeptJours = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const [mois, interactions, renouvellements_effectues, renouvellements_a_bientot, specialiteAgg] = await Promise.all([
+    const [mois, interactions, renouvellements_effectues, renouvellements_a_bientot, chroniques, specialiteAgg] = await Promise.all([
       Prescription.countDocuments({ date_prescription: { $gte: debutMois } }),
       Prescription.countDocuments({ 'interactions_detectees.0': { $exists: true } }),
       Prescription.countDocuments({ note_renouvellement: { $exists: true, $ne: null } }),
       Prescription.countDocuments({ statut: { $in: ['active', 'publiee'] }, date_expiration: { $ne: null, $lte: dansSeptJours } }),
+      // PRESC-01 (correction du 12 sept. 2026) — chronique n'existait pas
+      // sur le modèle avant ce correctif : kpis.chroniques (Prescriptions.jsx)
+      // était donc câblé sur une valeur jamais renvoyée par l'API, restée
+      // bloquée à 0 en permanence — désormais un vrai comptage.
+      Prescription.countDocuments({ chronique: true }),
       Prescription.aggregate([
         { $lookup: { from: 'users', localField: 'medecin', foreignField: '_id', as: 'medecinDoc' } },
         { $unwind: { path: '$medecinDoc', preserveNullAndEmptyArrays: false } },
@@ -276,7 +338,7 @@ exports.getStats = async (req, res, next) => {
 
     res.json({ success: true, stats: {
       total, actives, publiees, dispensees, expirees, annulees, brouillons, aujourd_hui,
-      mois, interactions, renouvellements_effectues, renouvellements_a_bientot, repartition_specialite,
+      mois, interactions, renouvellements_effectues, renouvellements_a_bientot, chroniques, repartition_specialite,
     } });
   } catch (err) { next(err); }
 };

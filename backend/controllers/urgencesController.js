@@ -210,10 +210,45 @@ exports.getOne = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// CLIN-02 (correction du 12 sept. 2026, audit indépendant) — create()
+// passait `...req.body` tel quel : un client pouvait fabriquer directement
+// `numero` (collision possible avec l'index unique), `statut`/
+// `admission_status` (contournant la machine à états que update() protège
+// pourtant explicitement, ADR-0005), ou un `patient` arbitraire jamais
+// vérifié. Liste blanche stricte des champs réellement saisis à l'accueil
+// (Urgences.jsx, modale "Nouveau patient") — jamais numero/statut/
+// admission_status/medecin_responsable/soins/prescriptions/examens/
+// timeline/decision/diagnostic_final, tous réservés au workflow dédié.
+const URG_CREATE_ALLOWED_FIELDS = [
+  'patient_nom', 'patient_dob', 'patient_sexe', 'patient_tel',
+  'contact_urgence', 'tel_urgence', 'motif', 'niveau_triage',
+  'temperature', 'tension_sys', 'tension_dia', 'pouls', 'spo2', 'glycemie',
+  'medecin', 'infirmier', 'service',
+  'antecedents', 'allergies', 'traitements_cours', 'observations',
+  'diagnostic_provisoire', 'date_arrivee',
+];
+
 // POST /urgences
 exports.create = async (req, res, next) => {
   try {
-    const body = { ...req.body };
+    // URG-03 — un `patient` fourni doit référencer un Patient réellement
+    // existant, jamais un ObjectId fabriqué/orphelin ; absent, l'accueil
+    // par nom seul (patient_nom, requis par le schéma) reste un intake ER
+    // légitime (arrivée non identifiée), jamais un blocage artificiel.
+    let patientId;
+    if (req.body.patient) {
+      if (!isObjectId(req.body.patient)) {
+        return res.status(400).json({ success: false, message: 'Référence patient invalide.' });
+      }
+      const Patient = require('../models/Patient');
+      const patientDoc = await Patient.findById(req.body.patient).select('_id');
+      if (!patientDoc) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+      patientId = patientDoc._id;
+    }
+
+    const body = {};
+    for (const k of URG_CREATE_ALLOWED_FIELDS) { if (req.body[k] !== undefined) body[k] = req.body[k]; }
+    body.patient = patientId;
     if (!body.date_arrivee) body.date_arrivee = new Date();
     const u = new Urgence(body);
 
@@ -243,7 +278,10 @@ exports.update = async (req, res, next) => {
     // examens/timeline ci-dessous) : il ne suit que decision (transitions
     // automatiques ci-après) ou la création réelle d'une hospitalisation
     // (hospitalization.controller.js::create).
-    const { soins, prescriptions, examens, timeline, admission_status, ...fields } = req.body;
+    // CLIN-03 (correction du 12 sept. 2026) — patient/numero identifient le
+    // dossier : jamais réassignables après création (même principe que
+    // *_BLOCKED_FIELDS déjà utilisé par les autres contrôleurs cliniques).
+    const { soins, prescriptions, examens, timeline, admission_status, patient, numero, ...fields } = req.body;
     const decisionAvant = u.decision;
     const statutAvant   = u.statut;
     // AUDIT-URG-STATUT-BUG — la comparaison `fields.statut !== u.statut` ci-

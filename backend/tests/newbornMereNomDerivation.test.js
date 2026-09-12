@@ -57,7 +57,16 @@ test('maternityController.createNewborn — dérivation réelle de mere_nom/pati
     });
 
     await t.test('grossesse liée sans patient_id (dossier non résolu) → mere_nom reste tel quel, aucune tentative de deviner', async () => {
-      const grossesseNonResolue = await Pregnancy.create({ ddr: new Date(), created_by: agent._id }); // pas de patient_id, comme les 2 dossiers historiques
+      // SPEC-03 (correction du 12 sept. 2026) — patient_id est désormais
+      // requis côté schéma pour toute NOUVELLE grossesse (Pregnancy.create
+      // rejetterait ce fixture). Mais 2 dossiers historiques réels, créés
+      // avant ce correctif, existent encore sans patient_id — la logique de
+      // createNewborn doit continuer à les gérer sans deviner. insertOne
+      // (driver Mongo brut, contourne la validation Mongoose) reproduit
+      // fidèlement cet état légataire toujours présent en base, sans quoi
+      // ce scénario réel ne serait plus du tout testable.
+      const { insertedId } = await Pregnancy.collection.insertOne({ ddr: new Date(), created_by: agent._id, createdAt: new Date(), updatedAt: new Date() });
+      const grossesseNonResolue = { _id: insertedId };
       cleanup.push(() => Pregnancy.findByIdAndDelete(grossesseNonResolue._id));
 
       const { status, body } = await call(maternityC.createNewborn, {

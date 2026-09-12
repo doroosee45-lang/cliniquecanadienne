@@ -1,10 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchSurgeries, createSurgery, updateSurgery,
-  selectSurgeries, selectChirurgieLoading, selectChirurgieTotal, selectChirurgieStats,
-} from '../store/slices/chirurgieSlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { Scissors, Plus, Printer } from 'lucide-react';
@@ -336,13 +331,18 @@ const EMPTY_COMPLIC = { type_complication: "infection", date_survenue: "", descr
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function Chirurgie() {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const reduxSurgeries = useSelector(selectSurgeries);
-  const reduxTotal = useSelector(selectChirurgieTotal);
-  const reduxStats = useSelector(selectChirurgieStats);
-
-  useEffect(() => { dispatch(fetchSurgeries({})); }, [dispatch]);
+  // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchSurgeries({}))
+  // dupliquait à chaque montage la même requête que loadDossiers()/loadStats()
+  // (api.get direct, ci-dessous), sans que reduxSurgeries/reduxTotal/
+  // reduxStats/createSurgery/updateSurgery ne soient jamais lus ni appelés
+  // nulle part dans ce fichier — vérifié par recherche projet-wide,
+  // fetchSurgeries/selectSurgeries/selectChirurgieTotal/selectChirurgieStats/
+  // createSurgery/updateSurgery ne sont utilisés dans AUCUN autre fichier du
+  // frontend. L'état local (loadDossiers/loadStats, déjà pourvu de
+  // pagination/recherche/filtre/erreur) est la source réellement conçue
+  // pour cette page — le dispatch Redux orphelin est retiré, pas l'état
+  // local.
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
@@ -373,6 +373,14 @@ export default function Chirurgie() {
   const [tauxCompl, setTauxCompl] = useState(0);
   const [patients, setPatients]   = useState([]);
   const [chirurgiens, setChirurgiens] = useState([]);
+  // CHIR-04 (correction du 12 sept. 2026, audit indépendant) — le
+  // sélecteur "Salle opératoire prévue" envoyait "Bloc 1".."Bloc 4"/
+  // "Salle urgences" comme salle_prevue, des valeurs qui ne correspondent
+  // à AUCUNE salle réelle (SALLES_BLOC/getSalles n'a que BO-1/BO-2/BO-3,
+  // dette technique déjà documentée dans Blocoperatoire.jsx). Charge
+  // désormais la même vraie liste (GET /blocoperatoire/salles), même
+  // repli statique que Blocoperatoire.jsx si la liste est indisponible.
+  const [salles, setSalles] = useState([]);
   const [saving, setSaving]       = useState(false);
   // Correction 11 (relecture du 6 sept. 2026, FLOW-001) — séjours
   // d'hospitalisation réellement en cours pour le patient sélectionné dans
@@ -403,7 +411,12 @@ export default function Chirurgie() {
       setDossiers(data.dossiers || data.surgeries || data.data || []);
       setTotal(data.total || 0);
     } catch (err) {
+      // CHIR-03 (correction du 12 sept. 2026, audit indépendant) — cet
+      // échec restait entièrement silencieux (console.error seul, jamais
+      // visible pour l'utilisateur) : une liste vide sur échec réseau était
+      // indiscernable d'un service réellement sans dossier chirurgical.
       console.error("Erreur chargement dossiers chirurgie:", err);
+      toast.error("Impossible de charger les dossiers chirurgicaux.");
       setDossiers([]);
       setTotal(0);
     } finally { setLoading(false); }
@@ -424,7 +437,11 @@ export default function Chirurgie() {
       // fictif présenté comme réel sur un simple échec réseau. Aucune
       // fabrication désormais — état vide honnête, comme loadDossiers()
       // juste au-dessus sur le même type d'échec.
+      // CHIR-03 — même échec silencieux que loadDossiers() : un 0 partout
+      // sur échec réseau était indiscernable de statistiques réellement à
+      // zéro.
       console.error("Erreur chargement stats chirurgie:", err);
+      toast.error("Impossible de charger les statistiques chirurgicales.");
       setKpis({ total: 0, consultations: 0, preoperatoires: 0, operes: 0, suivis_nb: 0, clotures: 0, risques_eleves: 0, score_moyen: 0 });
       setTauxCompl(0);
     }
@@ -465,11 +482,13 @@ export default function Chirurgie() {
   // ── Load patients + chirurgiens ────────────────────────────
   const loadSelects = useCallback(async () => {
     try {
-      const [pRes, cRes] = await Promise.allSettled([api.get("/patients?limit=500"), api.get("/admin/users?role=medecin")]);
+      const [pRes, cRes, sRes] = await Promise.allSettled([api.get("/patients?limit=500"), api.get("/admin/users?role=medecin"), api.get("/blocoperatoire/salles")]);
       if (pRes.status === "fulfilled") setPatients(pRes.value.data.patients || pRes.value.data.data || []);
       else { console.error("Erreur chargement patients:", pRes.reason); setPatients([]); }
       if (cRes.status === "fulfilled") setChirurgiens(cRes.value.data.users || []);
       else { console.error("Erreur chargement chirurgiens:", cRes.reason); setChirurgiens([]); }
+      if (sRes.status === "fulfilled") setSalles(sRes.value.data.salles || []);
+      else { console.error("Erreur chargement salles:", sRes.reason); setSalles([]); }
     } catch (err) {
       // Phase 7 (audit du 11 sept. 2026) — sur échec des deux requêtes,
       // le formulaire "Nouveau dossier" proposait un patient fictif
@@ -534,6 +553,35 @@ export default function Chirurgie() {
       loadDossiers();
     } catch { toast.error("Erreur mise à jour"); }
     finally { setSaving(false); }
+  };
+
+  // CHIR-01 (correction du 12 sept. 2026, audit indépendant) — "Transmettre
+  // au bloc" n'avait aucun onClick. Réutilise le vrai mécanisme de
+  // planification déjà construit et fonctionnel côté bloc opératoire
+  // (blocoperatoireController.js::createIntervention, branche dossier_id —
+  // même détection de conflit/atomicité que SPEC-05), plutôt que d'en
+  // fabriquer un second : programme réellement ce dossier existant dans la
+  // salle/à la date déjà saisies dans le formulaire ci-dessus.
+  const transmettreAuBloc = async () => {
+    if (!currentDossier) return;
+    if (!currentDossier.salle_prevue || !currentDossier.date_intervention_prev) {
+      toast.error("Renseignez la salle et la date prévue avant de transmettre au bloc.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post('/blocoperatoire', {
+        dossier_id: currentDossier._id,
+        salle: currentDossier.salle_prevue,
+        date_heure_op: currentDossier.date_intervention_prev,
+        type_intervention: currentDossier.type_intervention,
+        niveau_urgence: currentDossier.niveau_urgence,
+      });
+      toast.success("✅ Dossier transmis au bloc opératoire");
+      loadDossiers();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de la transmission au bloc");
+    } finally { setSaving(false); }
   };
 
   // ── Add bilan ──────────────────────────────────────────────
@@ -1164,14 +1212,20 @@ export default function Chirurgie() {
                         <label className="clbl">Salle opératoire prévue</label>
                         <select className="cinp" value={currentDossier.salle_prevue || ""} onChange={e => setCurrentDossier(d => ({ ...d, salle_prevue:e.target.value }))}>
                           <option value="">— Sélectionner —</option>
-                          {[1,2,3,4].map(n => <option key={n} value={`Bloc ${n}`}>Bloc {n}</option>)}
-                          <option value="Salle urgences">Salle urgences</option>
+                          {salles && salles.length > 0
+                            ? salles.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)
+                            : [
+                                <option key="BO-1" value="BO-1">Salle 1 — Chirurgie générale</option>,
+                                <option key="BO-2" value="BO-2">Salle 2 — Orthopédie</option>,
+                                <option key="BO-3" value="BO-3">Salle 3 — Urgences / Polyvalent</option>,
+                              ]
+                          }
                         </select>
                       </div>
                       <div style={{ gridColumn:"1/-1", background:"linear-gradient(135deg,#F0FDFC,#CCFBF1)", border:"1.5px solid #99F6E4", borderRadius:12, padding:"14px 16px" }}>
                         <div style={{ fontSize:12, fontWeight:700, color:"var(--ct)", marginBottom:8 }}>🏥 Liaison — Bloc Opératoire</div>
                         <div style={{ fontSize:12, color:"var(--cm)" }}>Après confirmation, le dossier sera transmis au bloc pour planification des ressources.</div>
-                        <button className="cbtn cbtn-teal cbtn-sm" style={{ marginTop:10 }}>{I.link} Transmettre au bloc →</button>
+                        <button className="cbtn cbtn-teal cbtn-sm" style={{ marginTop:10 }} disabled={saving} onClick={transmettreAuBloc}>{I.link} {saving ? "Transmission..." : "Transmettre au bloc →"}</button>
                       </div>
                     </div>
                   </div>

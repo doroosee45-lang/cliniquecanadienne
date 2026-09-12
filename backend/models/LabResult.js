@@ -37,7 +37,15 @@ const LabResultSchema = new Schema({
   ia_anomalie:          { type: Boolean, default: false },
   ia_details:           String,
 
-  // champs d'affichage du formulaire
+  // SPEC-11 (correction du 12 sept. 2026, audit indépendant) — champs
+  // d'affichage du formulaire, un SNAPSHOT figé au moment de la création
+  // (jamais recalculé si le Patient réel change ensuite : nom, dossier).
+  // `patient` (ObjectId ci-dessus) reste la SEULE source de vérité
+  // référentielle — ces 3 champs ne doivent jamais être lus comme une
+  // donnée patient à jour ni utilisés à la place d'un .populate('patient')
+  // réel ; ils existent uniquement pour un affichage rapide de listes et
+  // pour l'historique (scrubés à l'anonymisation, voir
+  // utils/patientAnonymization.js::CASCADE_TARGETS).
   patient_nom:          String,
   patient_dossier:      String,
   patient_gs:           String,
@@ -49,7 +57,11 @@ const LabResultSchema = new Schema({
   sexe:                 String,
   date_naissance:       String,
   telephone:            String,
-  numero:               String,
+  // CLIN-04 (correction du 12 sept. 2026) — voir ImagingResult.js pour le
+  // détail : numero généré par countDocuments()+1, sans garantie d'unicité
+  // sous concurrence. Compteur atomique désormais utilisé (utils/counter.js)
+  // ; index unique en filet de sécurité final.
+  numero:               { type: String, unique: true, sparse: true },
 }, { timestamps: true });
 
 LabResultSchema.index({ patient: 1, date_prescription: -1 });

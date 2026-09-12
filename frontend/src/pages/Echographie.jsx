@@ -5,6 +5,8 @@ import {
   fetchEchographieStats, fetchDemandes, createDemande,
   planifierDemande, saveRapport, uploadEchoImages, annulerDemande,
   selectDemandesList, selectEchographieSaving, selectEchographieChart,
+  selectDemandesTotal, selectDemandesPage, setPage,
+  selectEchographieLoading, selectEchographieError,
 } from "../store/slices/echographieSlice";
 import { Activity, Plus } from 'lucide-react';
 import Hero from '../components/UI/Hero';
@@ -330,9 +332,10 @@ const now = () => new Date().toISOString().substring(0, 16);
 const genNum = (prefix) => `${prefix}-${new Date().getFullYear()}-${String(Math.floor(Math.random()*9000)+1000)}`;
 
 // ─── Data constants ──────────────────────────────────────────
-const ECHOGRAPHISTES = ["Dr. Amina Cherif", "Dr. Paul Nkoma", "Dr. Sophie Pierre", "Dr. Marie Koné"];
+// Phase 7 (audit du 11 sept. 2026) — ECHOGRAPHISTES/RADIOLOGUES (listes de
+// noms fictifs) retirées ; remplacées par la vraie liste `radiologues`
+// (GET /admin/users?role=radiologue, chargée dans le composant principal).
 const SALLES = ["Salle Écho 1", "Salle Écho 2", "Salle Doppler", "Salle Maternité"];
-const RADIOLOGUES = ["Dr. Jean-Pierre Mbemba", "Dr. Fatou Diallo", "Dr. André Leblanc"];
 
 const TYPES_ECHO = [
   { id:"obstet",   label:"Obstétricale",  icon:"🤰", color:"#BE185D", bg:"#FDF2F8", border:"#FBCFE8",
@@ -378,29 +381,9 @@ const STATUTS_RAPPORT = [
   { v:"rejete",       l:"Rejeté",            cls:"red"   },
 ];
 
-// ─── Sample data ──────────────────────────────────────────────
-const SAMPLE_DEMANDES = [
-  { id:1, numero:"ECH-2026-1042", patient:"Aïssatou DIALLO", dossier:"DOS-2024-0034", age:28, sexe:"F",
-    source:"Maternité", medecin_presc:"Dr. Sophie Pierre", date_prescription:"2026-06-08",
-    type:"Obstétricale", sous_type:"3e trimestre", motif:"Contrôle croissance fœtale – terme 36 SA",
-    priorite:"normale", statut:"planifiee", date_planif:"2026-06-09T10:00",
-    echographiste:"Dr. Amina Cherif", salle:"Salle Maternité" },
-  { id:2, numero:"ECH-2026-1043", patient:"Mamadou KONÉ", dossier:"DOS-2024-0078", age:52, sexe:"M",
-    source:"Consultation générale", medecin_presc:"Dr. Martin Leblanc", date_prescription:"2026-06-09",
-    type:"Abdominale", sous_type:"Foie", motif:"Hépatomégalie – bilan cirrhose",
-    priorite:"semi_urgent", statut:"en_attente" },
-  { id:3, numero:"ECH-2026-1040", patient:"Fatima BAMBA", dossier:"DOS-2024-0091", age:35, sexe:"F",
-    source:"Gynécologie", medecin_presc:"Dr. Fatou Diallo", date_prescription:"2026-06-07",
-    type:"Gynécologique", sous_type:"Ovaires", motif:"Douleur pelvienne – kyste ovarien ?",
-    priorite:"normale", statut:"realisee", date_planif:"2026-06-08T14:30",
-    echographiste:"Dr. Paul Nkoma", salle:"Salle Écho 2",
-    rapport_statut:"valide", rapport_radiologue:"Dr. Jean-Pierre Mbemba" },
-  { id:4, numero:"ECH-2026-1039", patient:"Ibrahim TOURÉ", dossier:"DOS-2024-0055", age:44, sexe:"M",
-    source:"Urgences", medecin_presc:"Dr. André Mbemba", date_prescription:"2026-06-09",
-    type:"Abdominale", sous_type:"Vésicule biliaire", motif:"Douleur abdominale aiguë – colique hépatique",
-    priorite:"urgente", statut:"planifiee", date_planif:"2026-06-09T08:30",
-    echographiste:"Dr. Amina Cherif", salle:"Salle Écho 1" },
-];
+// Phase 7 (audit du 11 sept. 2026) — SAMPLE_DEMANDES (fixture de démonstration
+// avec noms de patients/médecins entièrement fictifs) retirée : déclarée
+// mais jamais référencée nulle part dans ce fichier, code mort.
 
 // ─── Modal ───────────────────────────────────────────────────
 function Modal({ open, onClose, title, children, maxWidth=640 }) {
@@ -594,10 +577,18 @@ function Dashboard({ demandes }) {
 }
 
 // ─── DEMANDES D'EXAMEN ────────────────────────────────────────
-function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
+function Demandes({ demandes, setDemandes, onNewDemande, setMainTab, setRapportView }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const saving   = useSelector(selectEchographieSaving);
+  // ECHO-03 — voir la déclaration dans Echographie() : pagination réelle,
+  // jamais plafonnée en silence à la première page de 100.
+  const demandesTotal = useSelector(selectDemandesTotal);
+  const demandesPage  = useSelector(selectDemandesPage);
+  // ECHO-04 — distingue réellement chargement / échec réseau / liste
+  // réellement vide, jamais un seul et même "Aucune demande trouvée".
+  const echographieLoading = useSelector(selectEchographieLoading);
+  const echographieError   = useSelector(selectEchographieError);
   const [filtre, setFiltre] = useState("tous");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
@@ -660,7 +651,9 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
             </thead>
             <tbody>
               {filtered.length===0 ? (
-                <tr><td colSpan={8} style={{ textAlign:"center", padding:40, color:"var(--cm)", fontSize:13 }}>Aucune demande trouvée</td></tr>
+                <tr><td colSpan={8} style={{ textAlign:"center", padding:40, color:"var(--cm)", fontSize:13 }}>
+                  {echographieLoading ? "⏳ Chargement…" : echographieError ? "❌ Erreur de chargement — réessayez" : "Aucune demande trouvée"}
+                </td></tr>
               ) : filtered.map(d => {
                 const pr = PRIORITES.find(p=>p.v===d.priorite)||PRIORITES[0];
                 const st = STATUTS_DEMANDE.find(s=>s.v===d.statut)||STATUTS_DEMANDE[0];
@@ -700,6 +693,18 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
             </tbody>
           </table>
         </div>
+        {/* ECHO-03 — pagination réelle (même convention qu'Archive.jsx) : au-delà
+            de 100 demandes réelles, la page suivante est désormais réellement
+            atteignable, jamais plafonnée en silence à la première page. */}
+        {demandesTotal > 100 && (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 20px", borderTop:"1.5px solid var(--cbr)" }}>
+            <span style={{ fontSize:12, color:"var(--cm)" }}>Page {demandesPage} / {Math.ceil(demandesTotal/100)} · {demandesTotal} demandes</span>
+            <div style={{ display:"flex", gap:8 }}>
+              {demandesPage > 1 && <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => dispatch(setPage(demandesPage - 1))}>← Précédent</button>}
+              {demandesPage < Math.ceil(demandesTotal/100) && <button className="cbtn cbtn-primary cbtn-sm" onClick={() => dispatch(setPage(demandesPage + 1))}>Suivant →</button>}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal détail */}
@@ -731,7 +736,12 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
           <div style={{ display:"flex", gap:8, marginTop:16, flexWrap:"wrap" }}>
             <button className="cbtn cbtn-ghost cbtn-sm" onClick={()=>setSelected(null)}>Fermer</button>
             {selected.statut==="planifiee" && <button className="cbtn cbtn-teal cbtn-sm" onClick={()=>{setSelected(null);setMainTab("realisation");}}>▶ Commencer l'examen</button>}
-            {selected.rapport_statut==="valide" && <button className="cbtn cbtn-green cbtn-sm">📄 Voir le rapport</button>}
+            {/* ECHO-01 (correction du 12 sept. 2026, audit indépendant) —
+                aucun onClick : deux clics sans effet. Réutilise le vrai
+                visualiseur de rapport déjà construit et fonctionnel
+                (setRapportView, Modal plus bas dans ce fichier), plutôt que
+                d'en fabriquer un second. */}
+            {selected.rapport_statut==="valide" && <button className="cbtn cbtn-green cbtn-sm" onClick={()=>{setSelected(null);setRapportView(selected);}}>📄 Voir le rapport</button>}
             {selected.statut!=="annulee" && selected.statut!=="validee" && (
               <button className="cbtn cbtn-danger cbtn-sm" disabled={saving} onClick={()=>handleAnnuler(selected)} style={{ marginLeft:"auto" }}>🚫 Annuler la demande</button>
             )}
@@ -743,11 +753,11 @@ function Demandes({ demandes, setDemandes, onNewDemande, setMainTab }) {
 }
 
 // ─── MODAL PLANIFIER EXAMEN ────────────────────────────────────
-function PlanifierModal({ open, onClose, candidats, saving }) {
+function PlanifierModal({ open, onClose, candidats, saving, radiologues = [] }) {
   const dispatch = useDispatch();
   const [demandeId, setDemandeId]   = useState("");
   const [datePlanif, setDatePlanif] = useState(now());
-  const [echographiste, setEchographiste] = useState(ECHOGRAPHISTES[0]);
+  const [echographiste, setEchographiste] = useState("");
   const [salle, setSalle]           = useState(SALLES[0]);
 
   useEffect(() => {
@@ -788,8 +798,9 @@ function PlanifierModal({ open, onClose, candidats, saving }) {
         <div className="echo-g2-sm" style={{ marginBottom:14 }}>
           <div>
             <label className="clbl req">Échographiste</label>
-            <select className="cinp" value={echographiste} onChange={e=>setEchographiste(e.target.value)}>
-              {ECHOGRAPHISTES.map(e=><option key={e} value={e}>{e}</option>)}
+            <select className="cinp" required value={echographiste} onChange={e=>setEchographiste(e.target.value)}>
+              <option value="">— Sélectionner —</option>
+              {radiologues.map(r=><option key={r._id} value={`${r.prenom} ${r.nom}`}>Dr. {r.prenom} {r.nom}</option>)}
             </select>
           </div>
           <div>
@@ -809,7 +820,7 @@ function PlanifierModal({ open, onClose, candidats, saving }) {
 }
 
 // ─── PLANNING ─────────────────────────────────────────────────
-function Planning({ demandes }) {
+function Planning({ demandes, radiologues = [] }) {
   const saving = useSelector(selectEchographieSaving);
   const [vue, setVue] = useState("semaine");
   const [modalPlan, setModalPlan] = useState(false);
@@ -858,7 +869,7 @@ function Planning({ demandes }) {
         <button className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} onClick={()=>setModalPlan(true)}>+ Planifier examen</button>
       </div>
 
-      <PlanifierModal open={modalPlan} onClose={()=>setModalPlan(false)} candidats={candidats} saving={saving} />
+      <PlanifierModal open={modalPlan} onClose={()=>setModalPlan(false)} candidats={candidats} saving={saving} radiologues={radiologues} />
 
       <div className="echo-card">
         <div className="echo-card-hdr">
@@ -930,7 +941,7 @@ function Planning({ demandes }) {
 }
 
 // ─── RÉALISATION EXAMEN ───────────────────────────────────────
-function Realisation({ demandes }) {
+function Realisation({ demandes, radiologues = [] }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const saving   = useSelector(selectEchographieSaving);
@@ -944,6 +955,14 @@ function Realisation({ demandes }) {
   const [observations, setObservations] = useState({});
   const [sendingEmail, setSendingEmail] = useState(false);
   const dragRef = useRef(false);
+  // PARAM-ECHO-001 (rapport de clôture du 11 sept. 2026) — echographiste/
+  // salle sont de vrais champs du modèle Echographie, déjà positionnés à la
+  // planification ; ce formulaire permet de corriger qui a RÉELLEMENT
+  // réalisé l'examen (peut différer de l'assignation initiale), persisté à
+  // la soumission du rapport (handleSoumettreRapport). Réinitialisé sur la
+  // valeur déjà réelle de la demande à chaque changement de sélection.
+  const [echographisteReel, setEchographisteReel] = useState("");
+  const [salleReelle, setSalleReelle] = useState("");
 
   const STEPS_R = [
     { label:"Sélection demande", icon:"📋" },
@@ -966,6 +985,10 @@ function Realisation({ demandes }) {
   // sélectionnée — repartir de zéro en changeant de demande évite d'envoyer
   // par erreur des images vers le mauvais dossier.
   useEffect(() => { setPendingFiles([]); }, [selDem?._id]);
+  useEffect(() => {
+    setEchographisteReel(selDem?.echographiste || "");
+    setSalleReelle(selDem?.salle || "");
+  }, [selDem?._id, selDem?.echographiste, selDem?.salle]);
 
   const addPendingFiles = (fileList) => {
     const files = Array.from(fileList).filter(f=>f.type.startsWith("image/"));
@@ -1014,6 +1037,10 @@ function Realisation({ demandes }) {
         conclusion:      observations.conclusion || "",
         recommandations: [observations.recommandations, observations.examens_compl].filter(Boolean).join(" | "),
         rapport_statut:  "en_validation",
+        // PARAM-ECHO-001 — n'envoyés que s'ils diffèrent réellement de la
+        // valeur déjà assignée, jamais un champ vide n'écrase une valeur réelle.
+        ...(echographisteReel && echographisteReel !== selDem.echographiste ? { echographiste: echographisteReel } : {}),
+        ...(salleReelle && salleReelle !== selDem.salle ? { salle: salleReelle } : {}),
       },
     }));
     if (saveRapport.fulfilled.match(result)) {
@@ -1147,23 +1174,37 @@ function Realisation({ demandes }) {
               <div style={{ padding:20, display:"flex", flexDirection:"column", gap:14 }}>
                 <div>
                   <label className="clbl req">Échographiste réalisant</label>
-                  <select className="cinp">
-                    {ECHOGRAPHISTES.map(e=><option key={e} value={e}>{e}</option>)}
+                  {/* PARAM-ECHO-001 (rapport de clôture du 11 sept. 2026) —
+                      réellement câblé : echographiste/salle sont de vrais
+                      champs du modèle Echographie (déjà positionnés à la
+                      planification), corrigibles ici si le réalisateur
+                      effectif diffère de l'assignation initiale, persistés à
+                      la soumission du rapport (handleSoumettreRapport). */}
+                  <select className="cinp" value={echographisteReel} onChange={e=>setEchographisteReel(e.target.value)}>
+                    <option value="">— Sélectionner —</option>
+                    {radiologues.map(r=><option key={r._id} value={`${r.prenom} ${r.nom}`}>Dr. {r.prenom} {r.nom}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="clbl req">Salle d'échographie</label>
-                  <select className="cinp">
+                  <select className="cinp" value={salleReelle} onChange={e=>setSalleReelle(e.target.value)}>
+                    <option value="">— Sélectionner —</option>
                     {SALLES.map(s=><option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="clbl">Appareillage utilisé</label>
-                  <input className="cinp" placeholder="Echographe GE Logiq, Philips Affiniti..." />
+                  {/* NEW-008 (signalé, non déterminé) — le modèle Echographie
+                      n'a aucun champ pour l'appareillage/l'heure de début
+                      réelle : contrairement à echographiste/salle ci-dessus,
+                      rien n'existe ici à persister sans créer un nouveau
+                      champ MongoDB juste pour satisfaire l'UI — désactivé
+                      honnêtement plutôt que silencieusement ignoré. */}
+                  <input className="cinp" disabled placeholder="Non persisté — aucun champ correspondant dans le modèle actuel" title="Non persisté — aucun champ correspondant dans le modèle Echographie actuel" />
                 </div>
                 <div>
                   <label className="clbl">Heure de début</label>
-                  <input type="datetime-local" className="cinp" defaultValue={now()} />
+                  <input type="datetime-local" className="cinp" disabled defaultValue={now()} title="Non persisté — aucun champ correspondant dans le modèle Echographie actuel" />
                 </div>
               </div>
             </div>
@@ -1313,7 +1354,7 @@ function Realisation({ demandes }) {
               {/* Infos de l'examen */}
               <div style={{ background:"#F8FAFD", border:"1.5px solid var(--cbr)", borderRadius:12, padding:"12px 16px", marginBottom:20, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12 }}>
                 <DField label="Date de l'examen" value={fmtDate(new Date())} />
-                <DField label="Échographiste" value={selDem?.echographiste||ECHOGRAPHISTES[0]} />
+                <DField label="Échographiste" value={selDem?.echographiste||"—"} />
                 <DField label="Type" value={`${te?.icon||""} ${selDem?.type||""}`} />
                 <DField label="Salle" value={selDem?.salle||SALLES[0]} />
               </div>
@@ -1372,8 +1413,9 @@ function Realisation({ demandes }) {
                   <div>
                     <div style={{ fontSize:12, fontWeight:700, color:"var(--cn)", marginBottom:4 }}>Signature électronique du radiologue</div>
                     <div style={{ display:"flex", gap:8, marginTop:8 }}>
-                      <select className="cinp" style={{ width:"auto" }}>
-                        {RADIOLOGUES.map(r=><option key={r}>{r}</option>)}
+                      <select className="cinp" style={{ width:"auto" }} disabled title="Fonctionnalité de signature indisponible — voir le bouton ci-contre">
+                        <option value="">— Aucun —</option>
+                        {radiologues.map(r=><option key={r._id}>Dr. {r.prenom} {r.nom}</option>)}
                       </select>
                       <button className="cbtn cbtn-primary cbtn-sm" disabled title="Signature électronique indisponible : le modèle Echographie ne comporte aucun champ de signature côté backend (contrairement à ImagingResult.signature) et le contrôleur ne l'accepte pas. Utilisez la validation du rapport à l'étape suivante.">🔐 Signer</button>
                     </div>
@@ -1747,10 +1789,10 @@ const sendEchoReportEmail = async (d) => {
 // `patient` (devenu la vraie référence, required), le libellé texte vit
 // désormais sous `patient_nom`.
 // ─── COMPOSANT NOUVELLE DEMANDE (Modal) ───────────────────────
-function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [] }) {
+function NouvelleDemandeModal({ open, onClose, onAdd, servicesActifs = [], radiologues = [] }) {
   const [form, setForm] = useState({
     dossier:"",
-    source:"", medecin_presc:ECHOGRAPHISTES[0],
+    source:"", medecin_presc:"",
     type:"obstet", sous_type:"", examen:"",
     motif:"", priorite:"normale",
   });
@@ -1929,6 +1971,20 @@ export default function Echographie() {
   const dispatch  = useDispatch();
   const demandes  = useSelector(selectDemandesList);
   const chart     = useSelector(selectEchographieChart);
+  // ECHO-03 (correction du 12 sept. 2026, audit indépendant) — la liste
+  // rechargeait toujours limit:100 sans page réelle : au-delà de 100
+  // demandes réelles, rien au-delà n'était jamais accessible. total/page
+  // étaient déjà exposés par echographieSlice.js (jamais lus ici).
+  // ECHO-05 (correction du 12 sept. 2026, audit indépendant) — cette copie
+  // de demandesTotal (portée du composant principal) était assignée mais
+  // jamais lue : la vraie pagination affichée vit dans le composant
+  // Demandes ci-dessous, qui a sa propre lecture réelle de
+  // selectDemandesTotal. demandesPage seul est nécessaire ici (dépendance
+  // du fetch réel plus bas).
+  const demandesPage  = useSelector(selectDemandesPage);
+  // ECHO-04 — voir la déclaration dans echographieSlice.js : signalé
+  // honnêtement à l'utilisateur, jamais une liste vide silencieuse.
+  const echographieError = useSelector(selectEchographieError);
   const [mainTab, setMainTab] = useState("dashboard");
   const [modalNouv, setModalNouv] = useState(false);
   const [sendingEmailIds, setSendingEmailIds] = useState({});
@@ -1942,8 +1998,12 @@ export default function Echographie() {
 
   useEffect(() => {
     dispatch(fetchEchographieStats());
-    dispatch(fetchDemandes({ limit: 100 }));
-  }, [dispatch]);
+    dispatch(fetchDemandes({ page: demandesPage, limit: 100 }));
+  }, [dispatch, demandesPage]);
+
+  useEffect(() => {
+    if (echographieError) toast.error(`Impossible de charger les demandes d'échographie — ${echographieError}`);
+  }, [echographieError]);
 
   // AUDIT-PHASE4-G1 — seule page du projet sans aucun mécanisme de
   // rafraîchissement : ni useRealtimeRefresh ni polling de secours.
@@ -1954,7 +2014,7 @@ export default function Echographie() {
   // le chargement initial ci-dessus, réutilisé tel quel.
   useRealtimeRefresh(() => {
     dispatch(fetchEchographieStats());
-    dispatch(fetchDemandes({ limit: 100 }));
+    dispatch(fetchDemandes({ page: demandesPage, limit: 100 }));
   });
 
   // AUDIT-M-PHASE3-5 — source (service prescripteur) était une liste codée
@@ -1966,6 +2026,23 @@ export default function Echographie() {
     api.get('/settings/services')
       .then(({ data }) => setServicesActifs((data.services || []).filter(s => s.statut === 'actif')))
       .catch(() => setServicesActifs([]));
+  }, []);
+
+  // Phase 7 (audit du 11 sept. 2026) — ECHOGRAPHISTES/RADIOLOGUES étaient
+  // deux listes de noms fictifs codées en dur ("Dr. Amina Cherif", "Dr.
+  // Jean-Pierre Mbemba"...), utilisées comme options réelles de sélecteur
+  // ET comme valeur par défaut (ECHOGRAPHISTES[0]) d'un formulaire qui écrit
+  // réellement en base — même classe de bug déjà corrigée pour MAT-002
+  // (Maternite.jsx). Il n'existe pas de rôle "échographiste" distinct côté
+  // backend (models/User.js) : "radiologue" couvre déjà réellement
+  // l'imagerie médicale (radiology.routes.js ET echographie.routes.js::CAN
+  // l'autorisent tous deux) — une seule vraie liste, même source que
+  // MAT-002 (GET /admin/users?role=...), utilisée pour les deux sélecteurs.
+  const [radiologues, setRadiologues] = useState([]);
+  useEffect(() => {
+    api.get('/admin/users?role=radiologue')
+      .then(({ data }) => setRadiologues(data.users || []))
+      .catch(() => setRadiologues([]));
   }, []);
 
   const TABS = [
@@ -2027,9 +2104,9 @@ export default function Echographie() {
         {/* ── CONTENT ── */}
         <div style={{ padding:24 }}>
           {mainTab==="dashboard"    && <Dashboard demandes={demandes} />}
-          {mainTab==="demandes"     && <Demandes demandes={demandes} onNewDemande={()=>setModalNouv(true)} setMainTab={setMainTab} />}
-          {mainTab==="planning"     && <Planning demandes={demandes} />}
-          {mainTab==="realisation"  && <Realisation demandes={demandes} />}
+          {mainTab==="demandes"     && <Demandes demandes={demandes} onNewDemande={()=>setModalNouv(true)} setMainTab={setMainTab} setRapportView={setRapportView} />}
+          {mainTab==="planning"     && <Planning demandes={demandes} radiologues={radiologues} />}
+          {mainTab==="realisation"  && <Realisation demandes={demandes} radiologues={radiologues} />}
           {mainTab==="facturation"  && <Facturation demandes={demandes} />}
           {mainTab==="statistiques" && <Statistiques demandes={demandes} chart={chart} servicesActifs={servicesActifs} />}
           {mainTab==="resultats"    && (
@@ -2084,6 +2161,7 @@ export default function Echographie() {
             return false;
           }}
           servicesActifs={servicesActifs}
+          radiologues={radiologues}
         />
 
         {/* ── MODAL VISUALISATION RAPPORT (ECH-002) ── */}

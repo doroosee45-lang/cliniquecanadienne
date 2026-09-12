@@ -13,6 +13,12 @@ router.get('/',       protect, authorize(...CAN_READ),                       con
 router.get('/medecins', protect, authorize('superadmin','medecin','infirmier'), consultC.getMedecins);
 router.post('/',      protect, authorize('superadmin','medecin','infirmier'), consultC.create);
 router.get('/:id',    protect, authorize(...CAN_READ),                       consultC.getOne);
+// FACTURATION-CONSULTATION-001 (rapport de clôture du 11 sept. 2026) — même
+// niveau d'accès que le reste du module (CAN_READ) : consulter/envoyer une
+// facture déjà générée n'est pas plus sensible que consulter la consultation
+// elle-même, qui l'inclut déjà (getOne).
+router.get('/:id/facture',          protect, authorize(...CAN_READ), consultC.getFacture);
+router.post('/:id/facture/envoyer', protect, authorize(...CAN_READ), consultC.envoyerFacture);
 router.put('/:id',    protect, authorize('superadmin','medecin'),             consultC.update);
 router.delete('/:id', protect, authorize('superadmin','adminclinique'),       consultC.remove);
 

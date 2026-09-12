@@ -1227,9 +1227,14 @@ export default function MonEspacePatient() {
               </select>
             </div>
             <div><label className="elbl">Médecin</label>
-              <select className="einp">
+              {/* Phase 7 (audit du 11 sept. 2026) — noms fictifs retirés.
+                  Cette modale n'a de toute façon aucun déclencheur réel
+                  (setModalRdv(true) n'est appelé nulle part) et son bouton
+                  de soumission est déjà honnêtement désactivé ci-dessous —
+                  désactivé également pour ne jamais présenter de choix
+                  fictif, même dans une modale inatteignable. */}
+              <select className="einp" disabled>
                 <option>— Sélectionner un médecin —</option>
-                {["Dr. Claire Fontaine","Dr. Alain Dupont","Dr. Yasmine Benali"].map(m=><option key={m}>{m}</option>)}
               </select>
             </div>
             <div className="ep-g11s">
@@ -1261,9 +1266,12 @@ export default function MonEspacePatient() {
         <Modal open={modalMsg} onClose={() => setModalMsg(false)} title="✉️ Nouveau message">
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             <div><label className="elbl">Destinataire *</label>
-              <select className="einp">
+              {/* Phase 7 — même correctif que le sélecteur "Médecin" de la
+                  modale RDV ci-dessus : noms fictifs retirés, jamais un
+                  déclencheur réel pour cette modale non plus
+                  (setModalMsg(true) n'est appelé nulle part). */}
+              <select className="einp" disabled>
                 <option>— Sélectionner —</option>
-                {["Dr. Claire Fontaine – Cardiologie","Dr. Alain Dupont – Pneumologie","Administration – Clinique"].map(d=><option key={d}>{d}</option>)}
               </select>
             </div>
             <div><label className="elbl">Objet *</label><input className="einp" placeholder="Sujet de votre message..." /></div>

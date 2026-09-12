@@ -51,4 +51,44 @@ export default defineConfig([
       'react-hooks/rules-of-hooks': 'warn',
     },
   },
+  {
+    // Correction (rapport de correction du 11 sept. 2026, Priorité P2 —
+    // configuration ESLint) — languageOptions.globals ne déclarait que
+    // globals.browser : test/expect/beforeEach/vi/describe (Vitest) n'étaient
+    // déclarés nulle part, provoquant un no-undef sur CHAQUE assertion de
+    // CHAQUE fichier de test du dépôt (343 des 598 problèmes rapportés
+    // n'étaient qu'un défaut de configuration, pas de vrais bugs). Étendu
+    // aux globales navigateur déjà en vigueur (les tests montent de vrais
+    // composants React, donc window/document restent nécessaires) ET à
+    // globals.node (Vitest exécute les tests dans un vrai processus Node —
+    // `global.URL.createObjectURL = ...` dans
+    // Prescriptions.iaAnalyseEtExports.test.jsx, par exemple, patch
+    // délibérément l'API jsdom incomplète via le `global` Node réel) —
+    // jamais de règle de qualité/sécurité désactivée, uniquement les
+    // globales manquantes déclarées.
+    files: ['**/__tests__/**/*.{js,jsx}', '**/*.test.{js,jsx}'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node, ...globals.vitest },
+    },
+  },
+  {
+    // vite.config.js s'exécute sous Node (jamais bundlé, jamais servi au
+    // navigateur) — process n'y est pas une variable non déclarée.
+    files: ['vite.config.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
+    // src/utils/labResultats.js est un cas d'interop CommonJS délibéré (voir
+    // commentaire en fin de fichier) : `module` y est lu derrière un garde
+    // `typeof module !== 'undefined'` pour rester exploitable tel quel par
+    // un test backend (node:test/require()), en plus de son usage normal
+    // côté navigateur — les deux jeux de globales sont donc légitimement
+    // nécessaires ici, pas ailleurs dans src/.
+    files: ['src/utils/labResultats.js'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+    },
+  },
 ])

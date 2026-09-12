@@ -259,7 +259,7 @@ exports.addBilan = async (req, res, next) => {
 // Ajout d'un suivi postopératoire
 exports.addSuivi = async (req, res, next) => {
   try {
-    const dossier = await DossierChirurgical.findById(req.params.id);
+    const dossier = await DossierChirurgical.findById(req.params.id).select('_id numero');
     if (!dossier) return res.status(404).json({ success: false, message: 'Dossier non trouvé' });
 
     const suivi = new SuiviPostop({
@@ -268,9 +268,13 @@ exports.addSuivi = async (req, res, next) => {
     });
     await suivi.save();
 
-    // Incrémenter le compteur de suivis
-    dossier.nb_suivis += 1;
-    await dossier.save();
+    // SPEC-04 (correction du 12 sept. 2026, audit indépendant) — lecture
+    // (dossier.nb_suivis) puis écriture séparée (+=1, save()) : deux ajouts
+    // de suivi concurrents sur le même dossier pouvaient tous deux lire la
+    // même valeur avant que l'un ou l'autre n'écrive, perdant un
+    // incrément. $inc est atomique côté MongoDB, immunisé contre cette
+    // course, quel que soit le nombre d'écritures concurrentes.
+    await DossierChirurgical.findByIdAndUpdate(dossier._id, { $inc: { nb_suivis: 1 } });
 
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Suivi postopératoire ajouté au dossier ${dossier.numero}` });
     res.status(201).json({ success: true, suivi });
@@ -280,7 +284,7 @@ exports.addSuivi = async (req, res, next) => {
 // Ajout d'une complication
 exports.addComplication = async (req, res, next) => {
   try {
-    const dossier = await DossierChirurgical.findById(req.params.id);
+    const dossier = await DossierChirurgical.findById(req.params.id).select('_id numero');
     if (!dossier) return res.status(404).json({ success: false, message: 'Dossier non trouvé' });
 
     const complication = new Complication({
@@ -289,14 +293,33 @@ exports.addComplication = async (req, res, next) => {
     });
     await complication.save();
 
-    // Incrémenter le compteur de complications
-    dossier.nb_complications += 1;
-    // Optionnel : ajuster le score IA
-    let newScore = (dossier.ia_risque_score || 0) + 15;
-    if (newScore > 100) newScore = 100;
-    dossier.ia_risque_score = newScore;
-    dossier.ia_risque_niveau = updateIaNiveau(newScore);
-    await dossier.save();
+    // SPEC-04 — même correctif qu'addSuivi ci-dessus : nb_complications ET
+    // ia_risque_score/niveau (dérivé du score) étaient lus puis réécrits
+    // séparément, perdant un incrément sous concurrence. Pipeline d'update
+    // atomique (MongoDB 4.2+) : deux étapes séquentielles dans la même
+    // opération — la 2e ($risque_niveau) lit la valeur déjà mise à jour par
+    // la 1re ($nb_complications/$ia_risque_score) au sein de la même
+    // écriture atomique, jamais de lecture séparée sujette à la course.
+    await DossierChirurgical.findByIdAndUpdate(dossier._id, [
+      { $set: {
+          nb_complications: { $add: [{ $ifNull: ['$nb_complications', 0] }, 1] },
+          ia_risque_score:  { $min: [{ $add: [{ $ifNull: ['$ia_risque_score', 0] }, 15] }, 100] },
+        },
+      },
+      { $set: {
+          ia_risque_niveau: {
+            $switch: {
+              branches: [
+                { case: { $gte: ['$ia_risque_score', 70] }, then: 'critique' },
+                { case: { $gte: ['$ia_risque_score', 50] }, then: 'eleve' },
+                { case: { $gte: ['$ia_risque_score', 30] }, then: 'modere' },
+              ],
+              default: 'faible',
+            },
+          },
+        },
+      },
+    ]);
 
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'chirurgie', entite_id: dossier._id, ip: req.ip, message: `Complication (${complication.type_complication}) enregistrée pour le dossier ${dossier.numero}` });
     res.status(201).json({ success: true, complication });

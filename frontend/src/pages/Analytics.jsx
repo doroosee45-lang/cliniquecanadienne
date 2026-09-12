@@ -954,7 +954,11 @@ export default function Analytics() {
                   <KpiCard color="teal" icon={I.consult} value={kpi.consultations_total} label={<>Total consultations{filterNote('consultations_total')}</>} {...trendProps('consultations_total')} />
                   <KpiCard color="green" icon={I.consult} value={kpi.consultations_terminees} label={<>Terminées{filterNote('consultations_terminees')}</>} sub={`${Math.round(kpi.consultations_terminees/kpi.consultations_total*100)}% de taux de complétion`} {...trendProps('consultations_terminees')} />
                   <KpiCard color="orange" icon={I.consult} value={kpi.consultations_annulees} label={<>Annulées{filterNote('consultations_annulees')}</>} {...trendProps('consultations_annulees')} urgent />
-                  <KpiCard color="blue" icon={I.consult} value={`${kpi.temps_moyen_consult}min`} label="Durée moyenne" sub="Par consultation" />
+                  {/* ANL-02 — aucune donnée réelle de durée de consultation
+                      n'est modélisée (pas de champ start/end sur
+                      Consultation) : état honnête plutôt qu'un chiffre
+                      inventé (l'ancien "22min" codé en dur, jamais calculé). */}
+                  <KpiCard color="blue" icon={I.consult} value={kpi.temps_moyen_consult != null ? `${kpi.temps_moyen_consult}min` : "N/D"} label="Durée moyenne" sub={kpi.temps_moyen_consult != null ? "Par consultation" : "Non trackée par le système"} />
                 </div>
               </div>
 

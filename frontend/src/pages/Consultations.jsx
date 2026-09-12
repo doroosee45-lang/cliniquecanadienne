@@ -8,13 +8,19 @@ import api from '../api';
 import toast from 'react-hot-toast';
 import { Stethoscope, Plus, Save, ArrowLeft, List, CheckCircle2 } from 'lucide-react';
 import {
+  // CONS-02 (correction du 12 sept. 2026, audit indépendant) — setVitals
+  // était importé mais jamais dispatché ; selectVitals était lu
+  // (reduxVitals) mais cette valeur n'était ensuite jamais utilisée nulle
+  // part dans le fichier — vérifié par recherche projet-wide. Les vraies
+  // constantes de cette page vivent en état local, alimenté par api
+  // directement.
   fetchConsultations, createConsultation,
   selectConsultations, selectConsultationsLoading, selectConsultationsTotal,
-  selectVitals, setVitals,
 } from '../store/slices/consultationsSlice';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import Hero, { HeroStatus } from '../components/UI/Hero';
 import Button from '../components/UI/Button';
+import { printReceipt58mm } from '../utils/receipt58mm';
 
 // ─── CSS Medical Navy + Teal (same design system) ─────────────
 const CSS = `
@@ -403,6 +409,57 @@ const DETAIL_SECTIONS = [
 // ─── CONSULTATION DETAIL VIEW ─────────────────────────────────
 function ConsultationDetail({ c, isMobile, onBack, examCatalogue }) {
   const [detailSec, setDetailSec] = useState("all");
+
+  // FACTURATION-CONSULTATION-001 (rapport de clôture du 11 sept. 2026) —
+  // consultations.controller.js::create génère déjà réellement une Invoice
+  // à la clôture (FLOW-002, antérieur à cette session) depuis le vrai tarif
+  // Consultation.frais_consultation, mais rien ne permettait jusqu'ici de la
+  // retrouver ensuite pour l'imprimer/l'envoyer — jamais recalculée ici,
+  // uniquement relue telle que réellement persistée.
+  const [invoice, setInvoice] = useState(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [sendingInvoice, setSendingInvoice] = useState(false);
+  useEffect(() => {
+    if (!c?._id || c.statut !== "terminee") { setInvoice(null); return; }
+    setInvoiceLoading(true);
+    api.get(`/consultations/${c._id}/facture`)
+      .then(({ data }) => setInvoice(data.invoice || null))
+      .catch(() => setInvoice(null))
+      .finally(() => setInvoiceLoading(false));
+  }, [c?._id, c?.statut]);
+
+  const handlePrintInvoice = async () => {
+    if (!invoice) return;
+    const statutLabels = { payee: 'Payée', partiellement_payee: 'Partiellement payée', emise: 'Non payée', annulee: 'Annulée', contentieux: 'Contentieux', brouillon: 'Brouillon' };
+    await printReceipt58mm({
+      docType: 'FACTURE',
+      docNumber: invoice.numero_facture,
+      date: fmtDate(invoice.date_facture),
+      billedTo: { label: 'Facturé à', name: `${c.patient?.nom || ''} ${c.patient?.prenom || ''}`.trim() || 'N/A', sub: c.patient?.numero_dossier },
+      meta: [{ label: 'Statut', value: statutLabels[invoice.statut] || invoice.statut || '—' }],
+      lines: (invoice.lignes || []).map(l => ({ label: l.libelle, sub: l.categorie, qty: l.quantite, unitPrice: l.prix_unitaire, amount: l.montant })),
+      totals: [
+        { label: 'TOTAL TTC', value: invoice.montant_ttc, emphasis: true },
+        ...(invoice.montant_paye > 0 ? [{ label: 'Montant payé', value: invoice.montant_paye }] : []),
+        ...(invoice.montant_restant > 0 ? [{ label: 'Solde restant dû', value: invoice.montant_restant, emphasis: true }] : []),
+      ],
+      note: invoice.montant_restant > 0 ? 'Merci de régler le solde restant.' : 'Facture réglée intégralement. Merci pour votre confiance.',
+      qrData: invoice.numero_facture,
+    });
+  };
+
+  const handleSendInvoice = async () => {
+    if (!invoice || sendingInvoice) return;
+    setSendingInvoice(true);
+    try {
+      const { data } = await api.post(`/consultations/${c._id}/facture/envoyer`);
+      toast.success(`✅ ${data.message}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Échec de l'envoi de la facture.");
+    } finally {
+      setSendingInvoice(false);
+    }
+  };
 
   // Calculs
   const sv = c.signes_vitaux || {};
@@ -822,6 +879,28 @@ function ConsultationDetail({ c, isMobile, onBack, examCatalogue }) {
                   <strong style={{ color: "#065F46", fontSize: 13 }}>✅ Paiement intégral enregistré — {totalFacture.toLocaleString("fr-FR")} CFA</strong>
                 </div>
               )}
+
+              {/* FACTURATION-CONSULTATION-001 — la facture officielle est
+                  déjà réellement générée par le backend à la clôture de la
+                  consultation (consultations.controller.js::create,
+                  FLOW-002) ; ces boutons agissent sur cette VRAIE facture
+                  déjà persistée, jamais un nouveau montant recalculé ici. */}
+              <div className="no-print" style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                {invoiceLoading ? (
+                  <span style={{ fontSize: 12, color: "var(--cm)" }}>Vérification de la facture…</span>
+                ) : invoice ? (
+                  <>
+                    <button className="cbtn cbtn-teal cbtn-sm" onClick={handlePrintInvoice}>{I.print} Imprimer la facture {invoice.numero_facture}</button>
+                    <button className="cbtn cbtn-ghost cbtn-sm" disabled={sendingInvoice || !c.patient?.email} title={!c.patient?.email ? "Ce patient n'a pas d'email enregistré." : "Envoyer la facture par email au patient."} onClick={handleSendInvoice}>
+                      {I.send} {sendingInvoice ? "Envoi…" : "Envoyer au patient"}
+                    </button>
+                  </>
+                ) : c.statut === "terminee" ? (
+                  <span style={{ fontSize: 12, color: "var(--cm)", fontStyle: "italic" }}>Aucune facture — aucun tarif n'avait été configuré à la clôture de cette consultation.</span>
+                ) : (
+                  <span style={{ fontSize: 12, color: "var(--cm)", fontStyle: "italic" }}>La facture officielle sera générée à la clôture de la consultation.</span>
+                )}
+              </div>
             </div>
           </DSection>
         )}
@@ -851,7 +930,6 @@ export default function Consultation() {
   const navigate = useNavigate();
   const reduxConsultations = useSelector(selectConsultations);
   const reduxTotal         = useSelector(selectConsultationsTotal);
-  const reduxVitals        = useSelector(selectVitals);
 
   // Chargement initial + refresh temps réel (polling 30s + socket)
   const refreshConsultations = useCallback(() => {
@@ -954,6 +1032,83 @@ export default function Consultation() {
   const medecinLabel = (id) => {
     const m = medecins.find(x => x._id === id);
     return m ? `Dr. ${m.prenom || ''} ${m.nom || ''}`.trim() : "";
+  };
+
+  // PDF-ORD-001 (rapport de clôture du 11 sept. 2026) — "Télécharger PDF"
+  // était désactivé (AUDIT-3.2 ne concernait que la facturation/impression,
+  // hors périmètre ici) alors que jsPDF est déjà une dépendance réelle du
+  // projet (AI.jsx::exportHistoriqueIA, Analytics.jsx). Génère le PDF à
+  // partir des mêmes données réelles que l'aperçu écran/l'impression
+  // ci-dessus (form.prescriptions, form.patient_*, medecinLabel(form.medecin))
+  // — jamais une donnée inventée. Import dynamique (même pattern que
+  // AI.jsx) pour ne pas alourdir le bundle initial de la page.
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const downloadOrdonnancePdf = async () => {
+    if (pdfDownloading) return;
+    setPdfDownloading(true);
+    try {
+      const { default: jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      let y = 20;
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+      doc.text('CLINIQUE CANADIENNE DE SOUANKÉ', pageW / 2, y, { align: 'center' });
+      y += 6;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+      doc.text('Médecine · Chirurgie · Gynécologie · Pédiatrie', pageW / 2, y, { align: 'center' });
+      y += 10;
+      doc.setDrawColor(180); doc.line(14, y, pageW - 14, y); y += 8;
+
+      doc.setFontSize(10);
+      doc.text(`${medecinLabel(form.medecin) || '—'} — ${form.service || '—'}`, 14, y);
+      doc.text(String(form.numero || ''), pageW - 14, y, { align: 'right' });
+      y += 8;
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+      doc.text(`Patient : ${form.patient_prenom || ''} ${form.patient_nom || ''}`.trim(), 14, y);
+      y += 6;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+      doc.text(`${age ? `${age} ans` : '—'} · ${form.patient_sexe === 'femme' ? 'F' : 'M'} · ${form.patient_groupe_sanguin || 'Gr. ?'} · ${fmtDate(form.date_heure)}`, 14, y);
+      y += 6;
+      if (form.diagnostic_principal) { doc.text(`Diagnostic : ${form.diagnostic_principal}`, 14, y); y += 6; }
+
+      y += 4; doc.setDrawColor(220); doc.line(14, y, pageW - 14, y, 'S'); y += 8;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('Rp', 14, y); y += 7;
+
+      doc.setFontSize(10);
+      if (!form.prescriptions.length) {
+        doc.setFont('helvetica', 'italic'); doc.text('Aucune prescription', 14, y); y += 6;
+      } else {
+        form.prescriptions.forEach((rx, i) => {
+          if (y > 265) { doc.addPage(); y = 20; }
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${i + 1}. ${rx.medicament}`, 14, y); y += 5;
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+          doc.text(`${rx.posologie}${rx.duree ? ` — Pendant ${rx.duree}` : ''}`, 18, y); y += 5;
+          if (rx.conseils) { doc.setFont('helvetica', 'italic'); doc.text(rx.conseils, 18, y); y += 5; }
+          doc.setFontSize(10);
+          y += 3;
+        });
+      }
+
+      if (form.rdv_date) {
+        y += 4;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+        doc.text(`Prochain rendez-vous : ${fmtDate(form.rdv_date)}${form.rdv_note ? ` — ${form.rdv_note}` : ''}`, 14, y);
+        y += 6;
+      }
+
+      y = Math.max(y + 20, 250);
+      doc.setDrawColor(0); doc.line(pageW - 74, y, pageW - 14, y);
+      doc.setFontSize(8); doc.text('Signature & cachet du médecin', pageW - 44, y + 4, { align: 'center' });
+
+      doc.save(`ordonnance-${form.numero || Date.now()}.pdf`);
+    } catch {
+      toast.error("Échec de la génération du PDF de l'ordonnance.");
+    } finally {
+      setPdfDownloading(false);
+    }
   };
 
   // Sous-phase 5.7 — vrai catalogue d'examens (laboratoire + imagerie),
@@ -1906,12 +2061,17 @@ export default function Consultation() {
                     </div>
                   </div>
                   <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                    {/* AUDIT-3.2 — aucune route backend de facturation/envoi n'existe pour ce
-                        module (Finance gère les factures séparément) ; neutralisé comme le
-                        reste de l'application plutôt que laissé actif sans effet. */}
-                    <button className="cbtn cbtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Générer la facture officielle</button>
-                    <button className="cbtn cbtn-ghost" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.print} Imprimer reçu</button>
-                    <button className="cbtn cbtn-ghost" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.send} Envoyer au patient</button>
+                    {/* FACTURATION-CONSULTATION-001 (rapport de clôture du 11 sept. 2026) —
+                        AUDIT-3.2 est désormais dépassé : POST /consultations génère réellement
+                        une facture à la clôture (frais_consultation>0), et GET .../facture +
+                        POST .../facture/envoyer existent (voir ConsultationDetail ci-dessus,
+                        après enregistrement). Mais TANT QUE ce formulaire n'a pas été soumis
+                        (bouton "Finaliser la consultation" plus bas), aucune Invoice n'existe
+                        encore pour CETTE consultation — rien à générer/imprimer/envoyer ici,
+                        honnêtement désactivé plutôt que déclenché sur une facture inexistante. */}
+                    <button className="cbtn cbtn-teal" disabled title="Enregistrez d'abord la consultation (Finaliser) — la facture est générée à ce moment-là." style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Générer la facture officielle</button>
+                    <button className="cbtn cbtn-ghost" disabled title="Disponible après l'enregistrement, depuis la fiche détaillée de la consultation." style={{ opacity:.5, cursor:"not-allowed" }}>{I.print} Imprimer reçu</button>
+                    <button className="cbtn cbtn-ghost" disabled title="Disponible après l'enregistrement, depuis la fiche détaillée de la consultation." style={{ opacity:.5, cursor:"not-allowed" }}>{I.send} Envoyer au patient</button>
                   </div>
                   {form.statut_paiement==="paye" && (
                     <div className="al-success" style={{ marginTop:16, display:"flex", gap:12, alignItems:"center" }}>
@@ -2085,7 +2245,7 @@ export default function Consultation() {
           </div>
           <div style={{ display:"flex", gap:10, marginTop:16, justifyContent:"center" }}>
             <button className="cbtn cbtn-teal" onClick={() => window.print()}>{I.print} Imprimer l'ordonnance</button>
-            <button className="cbtn cbtn-ghost" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Télécharger PDF</button>
+            <button className="cbtn cbtn-ghost" onClick={downloadOrdonnancePdf} disabled={pdfDownloading}>{I.dl} {pdfDownloading ? "Génération…" : "Télécharger PDF"}</button>
           </div>
         </Modal>
 

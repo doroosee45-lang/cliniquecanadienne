@@ -440,27 +440,18 @@ exports.remove = async (req, res, next) => {
     // CASCADE_TARGETS (utils/patientAnonymization.js) — inventaire déjà le
     // plus complet du projet pour ce besoin — complétée des 4 modèles qui n'y
     // figurent pas (Invoice y figure déjà, non dupliqué ici).
-    // AUDIT-CRIT-3 — 5 modèles référençant réellement Patient manquaient
-    // encore ici (AIPrediction, Child, Document, Echographie via patient_ref,
-    // Newborn) : un patient dont la seule trace clinique était l'un de
-    // ceux-ci pouvait être supprimé physiquement, laissant une référence
-    // orpheline (ex. un lien de dossier pédiatrique qui disparaît en cours
-    // de suivi). Room est délibérément absent d'ici — voir le refus dédié
-    // ci-dessus, plus strict qu'une simple désactivation.
-    const HISTORY_CHECKS = [
-      { model: require('../models/Appointment'),     refField: 'patient' },
-      { model: require('../models/Consultation'),    refField: 'patient' },
-      { model: require('../models/Hospitalization'), refField: 'patient' },
-      { model: require('../models/Prescription'),    refField: 'patient' },
-      { model: require('../models/AIPrediction'),    refField: 'patient' },
-      { model: require('../models/Child'),           refField: 'patient_id' },
-      { model: require('../models/Document'),        refField: 'patient' },
-      // Correction 13 (DATA-001) — patient_ref fusionné dans patient (devenu
-      // la vraie référence ObjectId, plus une String libre).
-      { model: require('../models/Echographie'),     refField: 'patient' },
-      { model: require('../models/Newborn'),         refField: 'patient_id' },
-      ...CASCADE_TARGETS,
-    ];
+    // CLIN-09 (correction du 12 sept. 2026, audit indépendant) — cette
+    // liste dupliquait manuellement 9 des modèles déjà présents dans
+    // CASCADE_TARGETS (utils/patientAnonymization.js, inventaire déjà le
+    // plus complet du projet des modèles référençant réellement Patient),
+    // PUIS re-listait CASCADE_TARGETS en entier via spread : ces 9 modèles
+    // étaient donc comptés deux fois (sans changer le résultat booléen
+    // `hasHistory`, mais doublant inutilement les requêtes, et exactement
+    // le genre de dérive qu'une liste maintenue à la main à deux endroits
+    // finit par produire). Dérivée désormais directement de CASCADE_TARGETS
+    // — source unique — en excluant seulement Room (refus dédié ci-dessus,
+    // plus strict qu'une simple désactivation, cf. commentaire).
+    const HISTORY_CHECKS = CASCADE_TARGETS.filter(({ model }) => model !== require('../models/Room'));
     const counts = await Promise.all(
       HISTORY_CHECKS.map(({ model, refField }) => model.countDocuments({ [refField]: patient._id }))
     );

@@ -39,6 +39,18 @@ const dossierChirurgicalSchema = new mongoose.Schema({
 
   date_intervention_prev: Date,
   date_intervention_reelle: Date,
+  // ANL-03 (correction du 12 sept. 2026, audit indépendant) — une
+  // annulation (UI: 'annulee') fait réellement revenir statut à
+  // 'consultation' (toModelStatut, blocoperatoireController.js), la même
+  // valeur qu'un dossier jamais encore programmé : impossible de distinguer
+  // les deux rien qu'avec statut, donc impossible de compter les
+  // interventions réellement annulées (analytics.controller.js utilisait
+  // une estimation à 15%, jamais une vraie donnée). Horodatage réel posé au
+  // moment de l'annulation (updateIntervention) — ne peut identifier que
+  // les annulations survenues après ce correctif, jamais reconstituer
+  // l'historique déjà collapsé, mais rend la métrique honnête à partir de
+  // maintenant plutôt qu'inventée indéfiniment.
+  date_annulation: Date,
   salle_prevue: String,
   // AUDIT-CRIT-2 — saisi depuis longtemps dans les formulaires de création
   // et de replanification (Blocoperatoire.jsx) et affiché en retour sur la

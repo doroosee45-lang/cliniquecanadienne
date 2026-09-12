@@ -11,11 +11,8 @@
 // (`../../api`) et useRealtimeRefresh sont simulées.
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
-import radiologyReducer from '../../store/slices/radiologySlice';
 import Radiology from '../Radiology.jsx';
 
 vi.mock('react-hot-toast', () => {
@@ -43,8 +40,7 @@ const EXAMEN_DETAIL = {
 };
 
 function renderRadiology() {
-  const store = configureStore({ reducer: { radiology: radiologyReducer } });
-  return render(<Provider store={store}><MemoryRouter><Radiology /></MemoryRouter></Provider>);
+  return render(<MemoryRouter><Radiology /></MemoryRouter>);
 }
 
 beforeEach(() => {

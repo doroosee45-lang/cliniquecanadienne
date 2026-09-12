@@ -3,6 +3,18 @@ const boC    = require('../controllers/blocoperatoireController');
 const { protect, authorize } = require('../middleware/auth');
 
 const BLOC_ROLES    = ['superadmin', 'adminclinique', 'medecin', 'infirmier'];
+// SPEC-14 (correction du 12 sept. 2026, audit indépendant) — analysé :
+// l'infirmier est exclu de BLOC_MANAGE (planification, compte-rendu
+// opératoire, entrée/sortie de salle). Décision documentée : CONSERVÉ tel
+// quel. Contrairement à hospitalization.routes.js (CLIN-08, où le même
+// groupe large gère tout le cycle de vie du séjour sans distinction), ce
+// module sépare déjà délibérément lecture (BLOC_ROLES, infirmier inclus)
+// et actes de décision opératoire (BLOC_MANAGE, réservé à
+// medecin/adminclinique/superadmin) — cohérent avec un contexte
+// chirurgical à risque plus élevé. Aucune preuve dans ce projet qu'un rôle
+// infirmier de bloc spécialisé (IBODE) distinct soit modélisé ici ; ouvrir
+// ces permissions élargirait l'accès sans justification métier
+// documentée, contrairement à l'instruction reçue.
 const BLOC_MANAGE   = ['superadmin', 'adminclinique', 'medecin'];
 
 // Salles & planning

@@ -1,10 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useLocation } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchMedications, fetchInventory, fetchStockAlerts, createMedication, updateMedication, addStockMovement,
-  selectMedications, selectPharmacyInventory, selectStockAlerts, selectPharmacyLoading,
-} from '../store/slices/pharmacySlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
@@ -383,17 +378,16 @@ function CmdBadge({ statut }) {
 
 // ─── MAIN ────────────────────────────────────────────────────
 export default function Pharmacie() {
-  const dispatch = useDispatch();
   const location = useLocation();
-  const reduxMeds = useSelector(selectMedications);
-  const reduxInventory = useSelector(selectPharmacyInventory);
-  const reduxAlerts = useSelector(selectStockAlerts);
-
-  useEffect(() => {
-    dispatch(fetchMedications({}));
-    dispatch(fetchInventory());
-    dispatch(fetchStockAlerts());
-  }, [dispatch]);
+  // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchMedications({}))
+  // + dispatch(fetchInventory()) + dispatch(fetchStockAlerts()) dupliquaient
+  // à chaque montage la même requête que loadMeds() (api.get direct, plus
+  // bas) — trois requêtes réseau gaspillées, sans que reduxMeds/
+  // reduxInventory/reduxAlerts (ni createMedication/updateMedication/
+  // addStockMovement, également importés mais jamais appelés) ne soient
+  // jamais lus/utilisés nulle part — vérifié par recherche projet-wide.
+  // useRealtimeRefresh(loadMeds), plus bas, rafraîchit déjà correctement
+  // la vraie source — les trois dispatches Redux orphelins sont retirés.
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);

@@ -91,7 +91,9 @@ test('couverture fonctionnelle — échographie, maternité, pédiatrie (base r�
     });
 
     await t.test('pediatrieController.create persiste un dossier enfant', async () => {
-      const { status, body } = await call(pedC.create, { body: { nom: `T95G2Enfant${stamp}`, prenom: 'Bébé', date_naissance: '2025-01-01', sexe: 'F' }, user });
+      // SPEC-10 (correction du 12 sept. 2026) — create() exige désormais
+      // réellement un patient_id existant, comme Pediatrie.jsx l'exige déjà.
+      const { status, body } = await call(pedC.create, { body: { patient_id: patient._id.toString(), nom: `T95G2Enfant${stamp}`, prenom: 'Bébé', date_naissance: '2025-01-01', sexe: 'F' }, user });
       assert.equal(status, 201);
       cleanup.push(() => Child.findByIdAndDelete(body.enfant._id));
       assert.ok(body.enfant.numero, 'un numéro doit être généré');

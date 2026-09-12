@@ -10,6 +10,8 @@ const { logAction, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
 const { matchExamCatalogue } = require('../utils/examLibelleVersCatalogue');
+const { nextSequence } = require('../utils/counter');
+const mail = require('../utils/mail');
 
 // Correction 4 — priorité de l'examen saisi en consultation (normal/
 // semi_urgent/urgent) vers la priorité réelle attendue par LabResult/
@@ -102,8 +104,57 @@ exports.getOne = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// FACTURATION-CONSULTATION-001 (rapport de clôture du 11 sept. 2026) — la
+// facture est déjà réellement créée par create() (FLOW-002, ci-dessous) via
+// le champ dédié Invoice.consultation — jamais un montant recalculé/inventé
+// ici. Ce qui manquait réellement : aucune route ne permettait de la
+// RETROUVER ensuite pour l'afficher/l'imprimer (Consultations.jsx —
+// ConsultationDetail). Même convention que blocoperatoireController.js::
+// getFacture / echographieController (recherche par référence directe,
+// jamais un montant recomposé côté client).
+exports.getFacture = async (req, res, next) => {
+  try {
+    const invoice = await Invoice.findOne({ consultation: req.params.id });
+    res.json({ success: true, invoice });
+  } catch (err) { next(err); }
+};
+
+// POST /consultations/:id/facture/envoyer — envoie la facture RÉELLEMENT
+// déjà générée par email au patient (utils/mail.js, même service que
+// sendPrescriptionEmail/sendAppointmentEmail ci-dessous — aucune seconde
+// intégration email créée). Jamais un « succès » si aucune facture n'existe
+// ou si le patient n'a pas d'email réel enregistré.
+exports.envoyerFacture = async (req, res, next) => {
+  try {
+    const invoice = await Invoice.findOne({ consultation: req.params.id });
+    if (!invoice) return res.status(404).json({ success: false, message: "Aucune facture n'a été générée pour cette consultation." });
+
+    const patient = await Patient.findById(invoice.patient).select('nom prenom email').lean();
+    if (!patient?.email) return res.status(400).json({ success: false, message: "Ce patient n'a pas d'adresse email enregistrée — impossible d'envoyer la facture." });
+
+    await mail.sendInvoiceEmail({
+      email: patient.email, prenom: patient.prenom, nom: patient.nom,
+      numero_facture: invoice.numero_facture, montant_ttc: invoice.montant_ttc,
+      lignes: invoice.lignes, date_facture: invoice.date_facture,
+    });
+
+    await logAction({ utilisateur: req.user._id, action: 'SEND_INVOICE_EMAIL', module: 'consultations', entite_id: invoice._id, ip: req.ip, message: `Facture ${invoice.numero_facture} envoyée par email à ${patient.email}` });
+    res.json({ success: true, message: `Facture envoyée à ${patient.email}.` });
+  } catch (err) { next(err); }
+};
+
 exports.create = async (req, res, next) => {
   try {
+    // CLIN-07 (correction du 12 sept. 2026, audit indépendant) — `patient`
+    // n'était jamais vérifié comme référençant un vrai Patient avant
+    // écriture : un ObjectId fabriqué/orphelin produisait une consultation
+    // durablement rattachée à aucun dossier réel.
+    if (!req.body.patient || !isObjectId(req.body.patient)) {
+      return res.status(400).json({ success: false, message: 'Référence patient invalide.' });
+    }
+    const patientDoc = await Patient.findById(req.body.patient).select('_id');
+    if (!patientDoc) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+
     const iaSuggestions = [];
     const sv = req.body.signes_vitaux || {};
     if (sv.temperature > 38.5) iaSuggestions.push({ diagnostic: 'Syndrome fébrile probable', confidence: 85 });
@@ -206,8 +257,6 @@ exports.create = async (req, res, next) => {
     const examensNonPontes = [];
     if (consultation.statut === 'terminee' && consultation.examens_complementaires?.length) {
       const catalogue = await ExamCatalogue.find({ statut: 'actif' }).lean();
-      let labCount = await LabResult.countDocuments();
-      let imgCount = await ImagingResult.countDocuments();
       const year = new Date().getFullYear();
 
       for (const exam of consultation.examens_complementaires) {
@@ -215,7 +264,13 @@ exports.create = async (req, res, next) => {
         if (!match) { examensNonPontes.push(exam.libelle); continue; }
 
         if (match.type === 'laboratoire') {
-          labCount += 1;
+          // CLIN-04 — numéro auto via compteur atomique, jamais
+          // countDocuments()+incrément en mémoire (condition de course :
+          // deux consultations clôturées en même temps pouvaient générer le
+          // même numéro). Même compteur (`lab-${year}`) que
+          // laboratory.controller.js::create, pour une séquence unique
+          // partagée entre les deux voies de création.
+          const seq = await nextSequence(`lab-${year}`);
           const lab = await LabResult.create({
             patient: consultation.patient,
             consultation: consultation._id,
@@ -224,13 +279,15 @@ exports.create = async (req, res, next) => {
             examens_demandes: [match._id],
             priorite: PRIORITE_LABO[exam.priorite] || 'normale',
             statut: 'en_attente',
-            numero: `LAB-${year}-${String(labCount).padStart(4, '0')}`,
+            numero: `LAB-${year}-${String(seq).padStart(4, '0')}`,
             date_demande: new Date(),
             commentaires: exam.note || undefined,
           });
           labsGeneres.push(lab._id);
         } else if (match.type === 'imagerie') {
-          imgCount += 1;
+          // CLIN-04 — voir ci-dessus ; même compteur (`img-${year}`) que
+          // radiology.controller.js::create.
+          const seq = await nextSequence(`img-${year}`);
           const img = await ImagingResult.create({
             patient: consultation.patient,
             consultation: consultation._id,
@@ -239,7 +296,7 @@ exports.create = async (req, res, next) => {
             type_examen: exam.libelle,
             priorite: PRIORITE_IMAGERIE[exam.priorite] || 'normale',
             statut: 'programme',
-            numero: `IMG-${year}-${String(imgCount).padStart(4, '0')}`,
+            numero: `IMG-${year}-${String(seq).padStart(4, '0')}`,
             motif: exam.note || undefined,
           });
           imagesGenerees.push(img._id);

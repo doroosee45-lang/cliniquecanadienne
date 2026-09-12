@@ -79,9 +79,13 @@ test('donnees_avant/donnees_apres — chirurgie, bloc opératoire, laboratoire, 
       const lab = await LabResult.create({ patient: patient._id, patient_nom: 'T93 P', statut: 'en_attente', type_analyse: 'NFS' });
       cleanup.push(() => LabResult.findByIdAndDelete(lab._id));
 
+      // SPEC-07 (correction du 12 sept. 2026) — validate() exige désormais
+      // réellement statut:'termine' (résultats saisis) avant de valider.
+      await call(labC.saisirResultats, { params: { id: lab._id }, body: { resultats: 'Normal' }, user });
+
       await call(labC.validate, { params: { id: lab._id }, body: { resultats: 'Normal', est_critique: false }, user });
       let log = await AuditLog.findOne({ module: 'laboratory', action: 'VALIDATE', entite_id: lab._id.toString() }).sort('-createdAt');
-      assert.equal(log.donnees_avant.statut, 'en_attente');
+      assert.equal(log.donnees_avant.statut, 'termine');
       assert.equal(log.donnees_apres.statut, 'valide');
 
       await call(labC.acquit, { params: { id: lab._id }, user });

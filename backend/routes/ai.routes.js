@@ -9,6 +9,7 @@ router.get('/predictions',      protect, authorize(...roles),            aiC.get
 router.get('/alerts',           protect, authorize(...roles),            aiC.getAlerts);
 router.post('/diagnose',        protect, authorize(...roles),            aiC.runDiagnosis);
 router.post('/interactions',    protect, authorize(...roles),            aiC.checkInteractions);
+router.post('/chat',            protect, authorize(...roles),            aiC.chat);
 router.put('/predictions/:id',  protect, authorize(...roles, 'infirmier'), aiC.updatePrediction);
 
 module.exports = router;

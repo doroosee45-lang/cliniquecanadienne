@@ -41,7 +41,11 @@ test('Sous-phase 5.1 (Pharmacy) — ventes réellement persistées et agrégées
 
   try {
     await t.test('createVente() — persiste un vrai mouvement type:vente avec le montant exact', async () => {
-      const med = await Medication.create({ nom_commercial: `T51-Med-${stamp}`, forme: 'comprime', stock_actuel: 100, statut: 'disponible' });
+      // SPEC-01 (correction du 12 sept. 2026) — createVente() lit désormais
+      // le prix réellement facturé depuis Medication.prix_vente, jamais
+      // depuis item.prix_unitaire (fourni par le client) : le fixture doit
+      // porter le vrai prix catalogue attendu par les assertions ci-dessous.
+      const med = await Medication.create({ nom_commercial: `T51-Med-${stamp}`, forme: 'comprime', stock_actuel: 100, statut: 'disponible', prix_vente: 500 });
       created.meds.push(med._id);
 
       const { status, body } = await call(pharmaC.createVente, {
@@ -80,7 +84,7 @@ test('Sous-phase 5.1 (Pharmacy) — ventes réellement persistées et agrégées
     });
 
     await t.test('getStats() — ventes_jour/ventes_mois calculés réellement depuis les vrais mouvements vente, jamais figés à 0', async () => {
-      const med = await Medication.create({ nom_commercial: `T51-Stats-${stamp}`, forme: 'comprime', stock_actuel: 50, statut: 'disponible' });
+      const med = await Medication.create({ nom_commercial: `T51-Stats-${stamp}`, forme: 'comprime', stock_actuel: 50, statut: 'disponible', prix_vente: 1000 });
       created.meds.push(med._id);
 
       await call(pharmaC.createVente, {

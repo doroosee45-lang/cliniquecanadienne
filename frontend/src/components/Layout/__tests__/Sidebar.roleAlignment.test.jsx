@@ -59,3 +59,23 @@ test('contrôle négatif — un rôle non concerné (comptable) ne voit toujours
   expect(screen.queryByText('Chirurgie')).not.toBeInTheDocument();
   expect(screen.queryByText("Journal d'audit")).not.toBeInTheDocument();
 });
+
+// FE-INFRA-03 (correction du 12 sept. 2026, audit indépendant) — le lien
+// "Patients" était resté sur une liste plus étroite que
+// patients.routes.js::CAN_READ (backend) : sage_femme/laborantin/
+// radiologue/pharmacien/comptable avaient déjà un accès backend réel en
+// lecture au dossier patient, sans jamais pouvoir atteindre ce lien.
+test('FE-INFRA-03 — sage_femme, laborantin, radiologue, pharmacien et comptable voient désormais Patients', () => {
+  for (const role of ['sage_femme', 'laborantin', 'radiologue', 'pharmacien', 'comptable']) {
+    mockRole = role;
+    const { unmount } = renderSidebar();
+    expect(screen.getByText('Patients')).toBeInTheDocument();
+    unmount();
+  }
+});
+
+test('FE-INFRA-03 — un rôle réellement sans accès backend (patient) ne voit toujours pas Patients (non-régression)', () => {
+  mockRole = 'patient';
+  renderSidebar();
+  expect(screen.queryByText('Patients')).not.toBeInTheDocument();
+});

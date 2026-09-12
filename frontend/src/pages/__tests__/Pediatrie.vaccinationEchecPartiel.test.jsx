@@ -64,6 +64,11 @@ test('un échec partiel réel (1 vaccin sur 2) affiche un compte-rendu honnête,
   await user.click(await screen.findByRole('button', { name: /Nouvelle vaccination/ }));
 
   const dialog = await screen.findByRole('dialog');
+  // PEDI-01 (correction du 12 sept. 2026) — le bouton générique "Nouvelle
+  // vaccination" n'attribue plus jamais silencieusement l'acte à
+  // enfants[0] : une sélection explicite est désormais exigée, même
+  // lorsqu'un seul enfant existe en base.
+  await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Enfant' }), 'enfant-1');
   await user.click(within(dialog).getByText('BCG').closest('.vacc-cell'));
   await user.click(within(dialog).getByText('Polio').closest('.vacc-cell'));
   await user.click(within(dialog).getByRole('button', { name: /Enregistrer/ }));

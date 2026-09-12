@@ -367,10 +367,44 @@ export default function IntelligenceArtificielle() {
   const [section, setSection] = useState("assistant");
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
-  const [chatMessages] = useState([
-    { role:"bot", content:"Cette fonctionnalité est en cours de développement. Aucune donnée réelle n'est utilisée dans cette démonstration.", time:"09:00" },
+  // CHAT-001 (rapport de clôture du 11 sept. 2026) — POST /ai/chat réutilise
+  // utils/openai.js::generateReport(), déjà réel (déjà utilisé par le
+  // rapport hebdomadaire Analytics), jamais une seconde intégration IA.
+  const nowLabel = () => new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+  const [chatMessages, setChatMessages] = useState([
+    { role:"bot", content:"Bonjour, je suis l'assistant IA de MediSync. Posez-moi une question — mes réponses sont informatives uniquement, jamais un diagnostic validé.", time: nowLabel() },
   ]);
   const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+
+  const sendChatMessage = async () => {
+    const message = chatInput.trim();
+    if (!message || chatSending) return;
+    const history = chatMessages
+      .filter(m => m.role === "user" || m.role === "bot")
+      .slice(-6)
+      .map(m => ({ role: m.role, content: m.content }));
+    setChatMessages(prev => [...prev, { role:"user", content: message, time: nowLabel() }]);
+    setChatInput("");
+    setChatSending(true);
+    try {
+      const { data } = await api.post('/ai/chat', { message, history });
+      if (data.success) {
+        setChatMessages(prev => [...prev, { role:"bot", content: `${data.reply}\n\n${data.disclaimer}`, time: nowLabel() }]);
+      } else {
+        // Mode simulé (clé OpenAI absente) ou erreur métier (ex. message
+        // trop long) — jamais une réponse IA fictive, le message réel du
+        // serveur est affiché tel quel.
+        setChatMessages(prev => [...prev, { role:"bot", content: `⚠️ ${data.message}`, time: nowLabel() }]);
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || "Erreur réseau — impossible de contacter l'assistant IA.";
+      setChatMessages(prev => [...prev, { role:"bot", content: `⚠️ ${msg}`, time: nowLabel() }]);
+    } finally {
+      setChatSending(false);
+    }
+  };
+  const handleChatKeyDown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } };
   const [kbSearch, setKbSearch] = useState("");
   const chatEndRef = useRef(null);
 
@@ -1133,12 +1167,12 @@ export default function IntelligenceArtificielle() {
                         <div ref={chatEndRef} />
                       </div>
                       <div className="chat-input-row">
-                        <input className="chat-input" placeholder="Fonctionnalité en cours de développement — aucune donnée réelle" aria-label="Fonctionnalité en cours de développement — aucune donnée réelle" value={chatInput} onChange={e => setChatInput(e.target.value)} disabled title="Fonctionnalité en cours de développement — aucune donnée réelle" />
-                        <button className="ibtn ibtn-teal ibtn-sm" disabled title="Fonctionnalité en cours de développement — aucune donnée réelle">{I.send}</button>
+                        <input className="chat-input" placeholder="Posez votre question…" aria-label="Message pour l'assistant IA" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={handleChatKeyDown} disabled={chatSending} />
+                        <button className="ibtn ibtn-teal ibtn-sm" onClick={sendChatMessage} disabled={chatSending || !chatInput.trim()} title="Envoyer">{chatSending ? "…" : I.send}</button>
                       </div>
                     </div>
                     <div style={{ padding:"10px 16px 16px", fontSize:12, color:"var(--cm)" }}>
-                      🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.
+                      ℹ️ Réponses générées par IA — à titre informatif, jamais un diagnostic validé.
                     </div>
                   </div>
                 )}
@@ -1167,12 +1201,12 @@ export default function IntelligenceArtificielle() {
                     <div ref={chatEndRef} />
                   </div>
                   <div className="chat-input-row">
-                    <input className="chat-input" placeholder="Fonctionnalité en cours de développement — aucune donnée réelle" value={chatInput} onChange={e => setChatInput(e.target.value)} disabled title="Fonctionnalité en cours de développement — aucune donnée réelle" />
-                    <button className="ibtn ibtn-teal" disabled title="Fonctionnalité en cours de développement — aucune donnée réelle">{I.send} Envoyer</button>
+                    <input className="chat-input" placeholder="Posez votre question…" aria-label="Message pour l'assistant IA" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={handleChatKeyDown} disabled={chatSending} />
+                    <button className="ibtn ibtn-teal" onClick={sendChatMessage} disabled={chatSending || !chatInput.trim()}>{chatSending ? "Envoi…" : <>{I.send} Envoyer</>}</button>
                   </div>
                 </div>
                 <div style={{ padding:"10px 16px 16px", fontSize:12, color:"var(--cm)" }}>
-                  🚧 Cette fonctionnalité est en cours de développement. Aucune donnée réelle n'est utilisée dans cette démonstration.
+                  ℹ️ Réponses générées par IA — à titre informatif, jamais un diagnostic validé.
                 </div>
               </div>
             </div>

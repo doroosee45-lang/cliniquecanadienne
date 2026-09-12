@@ -5,8 +5,21 @@ const { logAction, paginate } = require('../utils/helpers');
 
 // R-10b / ticket 0006 — périmètre volontairement minimal : upload, hash,
 // consultation, statut par défaut 'actif'. Les transitions de cycle de vie
-// (archive_chaud, archive_froid, purge_planifiee) ne sont pas implémentées
+// (archive_chaud, archive_froid, purge_permise) ne sont pas implémentées
 // ici — ticket séparé si le besoin se confirme à l'usage.
+//
+// SEC-B-04 (correction du 12 sept. 2026, audit indépendant) — absence de
+// scoping patient au-delà du rôle sur getAll/getOne : analysé, décision
+// documentée. Vérifié dans document.routes.js : les 3 routes (GET /, POST
+// /, GET /:id) sont déjà exclusivement réservées à ADMIN
+// (superadmin/adminclinique, utils/roles.js), jamais accessibles à un rôle
+// clinique (médecin/infirmier/etc.) qui pourrait avoir un intérêt légitime
+// à contourner un scoping par patient. Un scoping supplémentaire par
+// patient irait ici CONTRE le besoin métier réel : un administrateur gère
+// le dépôt documentaire à travers TOUS les patients par nature de son rôle
+// (conformité, archivage). Aucune restriction supplémentaire ajoutée —
+// correction purement théorique dans ce contexte précis, RBAC déjà
+// suffisant.
 
 // POST /documents
 exports.create = async (req, res, next) => {

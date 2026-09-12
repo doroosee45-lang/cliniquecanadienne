@@ -302,6 +302,7 @@ export default function Settings() {
   const [saved, setSaved]         = useState({});    // { cle: true } pour l'animation
   const [users, setUsers]         = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false); // NEW-001 / SET-002
   const [insurances, setInsurances] = useState([]);
   const [loadingInsurances, setLoadingInsurances] = useState(false);
   const [logs, setLogs]           = useState([]);
@@ -569,6 +570,22 @@ export default function Settings() {
       }, 3000);
     } catch { toast.error("Erreur lors de la sauvegarde"); }
     finally { setSaving(false); }
+  };
+
+  // NEW-001 / SET-002 — POST /settings/test-smtp effectue un vrai
+  // transporter.verify() côté serveur (connexion + authentification SMTP
+  // réelles, jamais un envoi d'email) contre la configuration réellement
+  // effective (Paramètres applicatifs si complets, sinon les variables
+  // d'environnement du serveur) — jamais un succès/échec simulé.
+  const testSmtp = async () => {
+    setTestingSmtp(true);
+    try {
+      const { data } = await api.post("/settings/test-smtp");
+      if (data.success) toast.success(`✅ ${data.message}`);
+      else toast.error(`❌ ${data.message}`);
+    } catch (err) {
+      toast.error(`❌ ${err.response?.data?.message || "Échec du test de connexion SMTP."}`);
+    } finally { setTestingSmtp(false); }
   };
 
   // ─────────────────────────────────────────────────────────
@@ -954,26 +971,18 @@ export default function Settings() {
                     <SaveBtn cle="notif_smtp_pwd" />
                   </div>
                 </div>
-                {/* SET-002 (audit du 11 sept. 2026) — POST /settings/test-smtp
-                    n'existe pas côté backend (grep exhaustif) : ce bouton
-                    affichait donc systématiquement "Échec de la connexion
-                    SMTP", quelle que soit la configuration réelle du serveur
-                    mail — un faux diagnostic, jamais un vrai test. Désactivé
-                    honnêtement plutôt que de fabriquer une route, ou pire, de
-                    tester le service mail réel (utils/mail.js) sous couvert
-                    de "tester" les 4 champs ci-dessus : ces champs sont
-                    enregistrés dans Setting mais jamais lus par
-                    utils/mail.js::getTransporter(), qui utilise exclusivement
-                    les variables d'environnement du serveur (SMTP_HOST/
-                    SMTP_PORT/SMTP_USER/SMTP_PASS) — un "test réussi" ici
-                    validerait donc la config serveur, pas la saisie de
-                    l'admin. Voir NEW-001 du rapport final. */}
-                <button className="sbtn sbtn-ghost sbtn-sm" style={{ alignSelf:"flex-start" }} disabled
-                  title="Fonctionnalité indisponible : aucune route backend de test SMTP n'existe, et ces champs ne pilotent pas encore l'envoi réel (voir la note ci-dessus).">
-                  Tester la connexion SMTP
+                {/* NEW-001 / SET-002 (rapport de correction du 11 sept. 2026)
+                    — utils/mail.js::getSmtpConfig() lit désormais réellement
+                    ces 4 champs (prioritaires sur les variables
+                    d'environnement du serveur quand les 3 requis host/user/
+                    pass sont tous présents) ; POST /settings/test-smtp
+                    exécute un vrai transporter.verify() contre la
+                    configuration réellement effective. */}
+                <button className="sbtn sbtn-ghost sbtn-sm" style={{ alignSelf:"flex-start" }} disabled={testingSmtp} onClick={testSmtp}>
+                  {testingSmtp ? "Test en cours..." : "Tester la connexion SMTP"}
                 </button>
                 <p style={{ fontSize:11, color:"var(--muted)", margin:0 }}>
-                  ℹ️ Ces valeurs sont enregistrées mais ne pilotent pas encore l'envoi réel des emails — celui-ci est actuellement configuré via les variables d'environnement du serveur.
+                  ℹ️ Si ces 4 champs sont tous renseignés, ils pilotent réellement l'envoi des emails. Sinon, le serveur retombe sur sa configuration par variables d'environnement.
                 </p>
               </div>
             </div>

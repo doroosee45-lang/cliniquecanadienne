@@ -4,11 +4,6 @@
 
 import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useNavigate } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchBlocPlanning, fetchSalles,
-  selectBlocPlanning, selectSalles, selectBlocLoading, selectBlocStats,
-} from '../store/slices/blocoperatoireSlice';
 import { Hospital, Plus, Printer } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
@@ -429,16 +424,26 @@ function DoughnutChart({ labels, data, colors, height = 200 }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════
 export default function BlocOperatoire() {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const reduxPlanning = useSelector(selectBlocPlanning);
-  const reduxSalles = useSelector(selectSalles);
-  const reduxStats = useSelector(selectBlocStats);
-
-  useEffect(() => {
-    dispatch(fetchBlocPlanning({}));
-    dispatch(fetchSalles());
-  }, [dispatch]);
+  // NEW-007 (rapport de correction du 11 sept. 2026) — dispatch(fetchBlocPlanning({}))
+  // dupliquait la même requête que loadInterventions() (api.get direct,
+  // plus bas) sans que reduxPlanning/reduxStats ne soient jamais lus nulle
+  // part — même famille que NEW-006, retiré à l'identique.
+  //
+  // dispatch(fetchSalles()) était un cas différent : il appelait le MÊME
+  // endpoint (/blocoperatoire/salles) que loadStats() (état local `salles`,
+  // plus bas), mais reduxSalles ÉTAIT réellement lu à 3 endroits (le
+  // sélecteur de salle de deux modales, et un repli du tableau de bord) —
+  // pas un simple import mort. Analyse : loadStats() est la source
+  // réellement tenue à jour (rappelée après chaque mutation réelle — lignes
+  // ~565/598/611), alors que fetchSalles() n'était dispatché qu'une seule
+  // fois au montage, jamais rafraîchi ensuite (ni par useRealtimeRefresh,
+  // qui ne cible que loadInterventions, ni par aucune mutation) — un risque
+  // réel de divergence (ex. une salle libérée resterait "occupée" dans les
+  // sélecteurs de salle bien après l'être redevenue disponible dans le
+  // panneau "Occupation des salles (temps réel)"). `salles` (état local)
+  // est donc la seule source conservée ; les 3 lectures de reduxSalles sont
+  // rebranchées dessus plus bas.
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
@@ -507,7 +512,12 @@ export default function BlocOperatoire() {
         setKpis(prev => ({ ...prev, ...data.stats }));
       }
     } catch (err) {
+      // BLOC-02 (correction du 12 sept. 2026, audit indépendant) — cet
+      // échec restait entièrement silencieux (console.error seul) : une
+      // liste vide sur échec réseau était indiscernable d'un bloc
+      // réellement sans intervention planifiée.
       console.error("Erreur chargement planning bloc:", err);
+      toast.error("Impossible de charger le planning du bloc opératoire.");
       setInterventions([]);
       setTotal(0);
     } finally { setLoading(false); }
@@ -520,7 +530,11 @@ export default function BlocOperatoire() {
       if (data.stats) setKpis(prev => ({ ...prev, ...data.stats }));
       if (data.salles) setSalles(data.salles);
     } catch (err) {
+      // BLOC-02 — même échec silencieux que loadInterventions() : aucune
+      // salle affichée sur échec réseau était indiscernable d'un bloc
+      // réellement sans salle configurée.
       console.error("Erreur chargement stats bloc:", err);
+      toast.error("Impossible de charger les salles du bloc opératoire.");
     }
   }, []);
 
@@ -543,6 +557,16 @@ export default function BlocOperatoire() {
 
   useEffect(() => { loadInterventions(); loadStats(); loadPatients(); }, [loadInterventions, loadStats, loadPatients]);
   useRealtimeRefresh(loadInterventions);
+  // REALTIME-SALLES-001 (rapport de clôture du 11 sept. 2026) — NEW-007 a
+  // unifié la source des salles sur loadStats()/`salles` (état local), déjà
+  // rafraîchie après chaque mutation faite DEPUIS ce poste (lignes ~565/
+  // 598/611 plus bas), mais jamais quand l'occupation change depuis un
+  // AUTRE poste (entrée/sortie de salle). blocoperatoireController.js::
+  // entreeSalle/sortieSalle émettent désormais dashboard:refresh (même
+  // mécanisme Socket.IO déjà utilisé par toutes les pages consommatrices de
+  // ce hook, aucun second système temps réel, aucun doublon de fetch —
+  // loadStats() reste une fonction distincte de loadInterventions()).
+  useRealtimeRefresh(loadStats);
 
   // ── Open intervention ──────────────────────────────────────
   const openInterv = (d) => {
@@ -838,11 +862,11 @@ export default function BlocOperatoire() {
               {/* Timeline par salle — Sous-phase 5.1 : filtrait
                   DEMO_INTERVENTIONS (toujours vide) par des labels "Bloc 1/2/3"
                   qui ne correspondent à aucune salle réelle (les vraies salles
-                  sont BO-1/BO-2/BO-3, cf. SALLES_BLOC côté backend et
-                  reduxSalles déjà chargé plus haut) : cette section n'affichait
+                  sont BO-1/BO-2/BO-3, cf. SALLES_BLOC côté backend et `salles`
+                  déjà chargé plus haut, NEW-007) : cette section n'affichait
                   donc jamais aucune intervention réelle, quelle que soit la
                   salle. */}
-              {(reduxSalles && reduxSalles.length > 0 ? reduxSalles : [
+              {(salles && salles.length > 0 ? salles : [
                 { id:"BO-1", nom:"Salle 1 — Chirurgie générale" },
                 { id:"BO-2", nom:"Salle 2 — Orthopédie" },
                 { id:"BO-3", nom:"Salle 3 — Urgences / Polyvalent" },
@@ -1138,8 +1162,8 @@ export default function BlocOperatoire() {
                             d'occupation réel et la détection de conflit. */}
                         <select className="binp" value={currentInterv.salle || ""} onChange={e => setCurrentInterv(d => ({ ...d, salle:e.target.value }))}>
                           <option value="">— Non attribuée —</option>
-                          {reduxSalles && reduxSalles.length > 0
-                            ? reduxSalles.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)
+                          {salles && salles.length > 0
+                            ? salles.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)
                             : [
                                 <option key="BO-1" value="BO-1">Salle 1 — Chirurgie générale</option>,
                                 <option key="BO-2" value="BO-2">Salle 2 — Orthopédie</option>,
@@ -1168,14 +1192,12 @@ export default function BlocOperatoire() {
 
                       {/* AUDIT-ANALYTICS-P5 — occupation réelle de salle :
                           gaté sur une salle réellement suivie (BO-1/BO-2/BO-3,
-                          même config que Blocoperatoire.jsx/getSalles). Le
-                          sélecteur "Salle attribuée" ci-dessus propose encore
-                          "Bloc 1..4"/"Salle urgences" — une incohérence
-                          préexistante (dette technique suivie séparément) :
-                          une salle assignée via ce sélecteur ne peut donc pas
-                          être suivie ici tant qu'elle n'est pas l'un des 3 ID
-                          réels (assignée via le formulaire de création, qui
-                          utilise déjà BO-1/BO-2/BO-3). */}
+                          même config que Blocoperatoire.jsx/getSalles). CHIR-04
+                          (correction du 12 sept. 2026, audit indépendant) — le
+                          sélecteur "Salle attribuée" ci-dessus utilise
+                          désormais la même vraie liste (salles/BO-1/BO-2/BO-3),
+                          tout comme Chirurgie.jsx (incohérence de nommage
+                          désormais uniformisée entre les deux modules). */}
                       {['BO-1','BO-2','BO-3'].includes(currentInterv.salle) ? (
                         <div style={{ display:"flex", gap:10, marginTop:4 }}>
                           <button className="bbtn bbtn-teal" disabled={saving || !!currentInterv.salle_entree_at} onClick={entreeSalle}>
@@ -1908,8 +1930,8 @@ export default function BlocOperatoire() {
                 <label className="blbl">Salle attribuée</label>
                 <select className="binp" value={formInterv.salle} onChange={e => setFormInterv(f=>({...f,salle:e.target.value}))}>
                   <option value="">— Non attribuée —</option>
-                  {reduxSalles && reduxSalles.length > 0
-                    ? reduxSalles.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)
+                  {salles && salles.length > 0
+                    ? salles.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)
                     : [
                         <option key="BO-1" value="BO-1">Salle 1 — Chirurgie générale</option>,
                         <option key="BO-2" value="BO-2">Salle 2 — Orthopédie</option>,

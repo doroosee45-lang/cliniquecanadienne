@@ -1,11 +1,6 @@
 ﻿
 
 import { useState, useEffect, useCallback, useRef, useId } from "react";
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchUsers, createUser, updateUser, toggleUserStatus, fetchServices, fetchSystemSettings,
-  selectUsers, selectServices, selectSystemSettings, selectAdminLoading, selectAdminTotal,
-} from '../store/slices/administrationSlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { ShieldCheck, Plus, Bell } from 'lucide-react';
@@ -371,7 +366,6 @@ function BarChart({ labels, data, color = "#1B4F9E", height = 200 }) {
 
 // ═══════════════════════════════════════════════════════════
 export default function Administration() {
-  const dispatch = useDispatch();
   // P1-01 (audit du 11 sept. 2026) — POST/PUT/DELETE /settings/users sont
   // authorize('superadmin') strict côté backend (settings.routes.js:27-29),
   // mais cette page (accessible à adminclinique via ROLES.admin, App.jsx)
@@ -383,16 +377,20 @@ export default function Administration() {
   // rôles, seule l'écriture est masquée ici.
   const { user: authUser } = useAuth() || {};
   const isSuperadmin = authUser?.role === 'superadmin';
-  const reduxUsers = useSelector(selectUsers);
-  const reduxServices = useSelector(selectServices);
-  const reduxSettings = useSelector(selectSystemSettings);
-
-  useEffect(() => {
-    dispatch(fetchUsers({}));
-    dispatch(fetchServices());
-    dispatch(fetchSystemSettings());
-  }, [dispatch]);
-
+  // FE-ADM-01 (correction du 12 sept. 2026, audit indépendant) — cette page
+  // dispatchait fetchUsers/fetchServices/fetchSystemSettings (Redux) en plus
+  // de loadAll() ci-dessous (état local, seule source réellement lue par
+  // tout le reste du fichier) : double récupération pure. fetchSystemSettings
+  // ciblait en plus /admin/settings, une route qui n'a jamais existé (déjà
+  // documenté par Correction 4 plus bas : le vrai mécanisme est /settings,
+  // key-value) — un 404 systématique à chaque montage, jamais lu nulle
+  // part, jamais signalé. reduxUsers/reduxServices/reduxSettings et le
+  // dispatch tout entier n'étaient lus par aucun autre code de ce fichier
+  // (vérifié par recherche complète) : retirés, ainsi que
+  // createUser/updateUser/toggleUserStatus (thunks) et
+  // selectAdminLoading/selectAdminTotal, également importés mais jamais
+  // utilisés (toggleUserStatus est ici une vraie fonction locale distincte,
+  // qui masquait déjà le thunk importé de même nom).
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
 
@@ -1394,14 +1392,14 @@ export default function Administration() {
                   <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Gestion documentaire</div>
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:14 }}>
                     {[
-                      { icon:"📜", titre:"Contrats",            desc:"Contrats de travail et fournisseurs",  nb:12 },
-                      { icon:"🏛️", titre:"Agréments",           desc:"Autorisations et agréments officiels", nb:5  },
-                      { icon:"📋", titre:"Licences",            desc:"Licences médicales et logicielles",    nb:8  },
-                      { icon:"📖", titre:"Procédures internes", desc:"Protocoles et procédures cliniques",   nb:34 },
-                      { icon:"📝", titre:"Notes de service",    desc:"Communications internes officielles",  nb:17 },
-                      { icon:"💰", titre:"Rapports financiers", desc:"Bilans et rapports comptables",        nb:6  },
-                      { icon:"👥", titre:"Dossiers RH",         desc:"Dossiers du personnel",               nb:42 },
-                      { icon:"🏥", titre:"Registres médicaux",  desc:"Registres d'activité médicale",        nb:9  },
+                      { icon:"📜", titre:"Contrats",            desc:"Contrats de travail et fournisseurs" },
+                      { icon:"🏛️", titre:"Agréments",           desc:"Autorisations et agréments officiels" },
+                      { icon:"📋", titre:"Licences",            desc:"Licences médicales et logicielles" },
+                      { icon:"📖", titre:"Procédures internes", desc:"Protocoles et procédures cliniques" },
+                      { icon:"📝", titre:"Notes de service",    desc:"Communications internes officielles" },
+                      { icon:"💰", titre:"Rapports financiers", desc:"Bilans et rapports comptables" },
+                      { icon:"👥", titre:"Dossiers RH",         desc:"Dossiers du personnel" },
+                      { icon:"🏥", titre:"Registres médicaux",  desc:"Registres d'activité médicale" },
                     ].map(doc => (
                       // AUDIT-GLOBAL — cette carte ouvrait un faux succès et
                       // ses 2 boutons ne faisaient littéralement rien
@@ -1409,6 +1407,13 @@ export default function Administration() {
                       // par catégorie n'a pas de contrepartie backend (le
                       // modèle Document réel n'a pas cette taxonomie) — rendu
                       // honnêtement non interactif plutôt que simulé.
+                      // FE-ADM-05 (correction du 12 sept. 2026, audit
+                      // indépendant) — chaque catégorie portait un compteur
+                      // `nb` entièrement fictif (jamais affiché dans ce rendu,
+                      // mais laissé dans les données — un risque réel qu'un
+                      // futur ajout l'affiche par erreur comme un vrai
+                      // chiffre). Retiré : aucune donnée fictive ne doit
+                      // jamais pouvoir être confondue avec une donnée réelle.
                       <div key={doc.titre} className="adm-card" title="Classement par catégorie non connecté au stockage de documents réel — consultez le module Archives pour les dossiers réellement enregistrés.">
                         <div style={{ padding:16, opacity:0.75 }}>
                           <div style={{ fontSize:28, marginBottom:10 }}>{doc.icon}</div>
@@ -1428,9 +1433,29 @@ export default function Administration() {
             <div>
               {/* KPIs financiers */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:14, marginBottom:24 }}>
-                <KpiCard color="teal"   icon={I.trend}  value="26.8M" label="Revenus mai 2025"      sub="+ 21% vs avril" />
-                <KpiCard color="blue"   icon={I.dollar} value="18.2M" label="Dépenses mai 2025"     sub="salaires + fournisseurs" />
-                <KpiCard color="green"  icon={I.check}  value="8.6M"  label="Excédent mai 2025"     sub="résultat net" />
+                {/* FE-ADM-02 (correction du 12 sept. 2026, audit indépendant) —
+                    ces 3 cartes affichaient 26.8M/18.2M/8.6M codés en dur,
+                    avec un mois figé ("mai 2025", déjà passé) jamais recalculé.
+                    Calculées désormais depuis les vraies données déjà chargées
+                    par loadAll() (kpis.revenus_par_mois / kpis.depenses_par_mois,
+                    même agrégation réelle Invoice/Depense que
+                    analytics.controller.js::getFinancial, ANL-01), pour le mois
+                    réellement en cours. */}
+                {(() => {
+                  const moisIdx = new Date().getMonth();
+                  const revenusMois = kpis?.revenus_par_mois?.[moisIdx] ?? 0;
+                  const depensesMois = kpis?.depenses_par_mois?.[moisIdx] ?? 0;
+                  const excedentMois = revenusMois - depensesMois;
+                  const fmtM = (v) => Math.abs(v) >= 1000000 ? `${(v/1000000).toFixed(1)}M` : Math.abs(v) >= 1000 ? `${(v/1000).toFixed(0)}K` : `${v}`;
+                  const libelleMois = `${MONTHS[moisIdx]} ${new Date().getFullYear()}`;
+                  return (
+                    <>
+                      <KpiCard color="teal"   icon={I.trend}  value={fmtM(revenusMois)}  label={`Revenus ${libelleMois}`}   sub="factures payées (réel)" />
+                      <KpiCard color="blue"   icon={I.dollar} value={fmtM(depensesMois)} label={`Dépenses ${libelleMois}`}  sub="dépenses réelles enregistrées" />
+                      <KpiCard color={excedentMois >= 0 ? "green" : "red"} icon={I.check} value={fmtM(excedentMois)} label={`Excédent ${libelleMois}`} sub="résultat net réel" />
+                    </>
+                  );
+                })()}
                 <KpiCard color={impayesCount > 10 ? "red" : "orange"} icon={I.alert} value={impayesCount} label="Factures impayées" sub="à recouvrer" urgent={impayesCount > 10} />
               </div>
 

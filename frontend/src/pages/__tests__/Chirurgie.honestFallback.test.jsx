@@ -14,11 +14,8 @@
 // (`../../api`) et useRealtimeRefresh sont simulées.
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
-import chirurgieReducer from '../../store/slices/chirurgieSlice';
 import Chirurgie from '../Chirurgie.jsx';
 
 vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
@@ -36,8 +33,7 @@ const DOSSIER_FIXTURE = {
 };
 
 function renderChirurgie() {
-  const store = configureStore({ reducer: { chirurgie: chirurgieReducer } });
-  return render(<Provider store={store}><MemoryRouter><Chirurgie /></MemoryRouter></Provider>);
+  return render(<MemoryRouter><Chirurgie /></MemoryRouter>);
 }
 
 beforeEach(() => {

@@ -122,6 +122,15 @@ test('Audit élevé 2 — PUT /:id/rapport restreint à radiologue/superadmin (s
     for (const role of ['radiologue', 'superadmin']) {
       await t.test(`PUT /echographie/:id/rapport — ${role} continue de fonctionner normalement (non-régression)`, async () => {
         const demande = await Echographie.create({ patient: new mongoose.Types.ObjectId(), patient_nom: `T-ELEVE2-ROUTE-OK-${stamp}-${role}` });
+        // SPEC-07 (correction du 12 sept. 2026, audit indépendant) —
+        // saveRapport() refuse désormais de valider une demande encore
+        // 'en_attente' (jamais planifiée/réalisée) : une vraie planification
+        // préalable est requise pour que ce scénario de non-régression reste
+        // représentatif du vrai workflow (PlanifierModal → Realisation).
+        await fetch(`${server.baseUrl}/echographie/${demande._id}/planifier`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookies[role] },
+          body: JSON.stringify({ date_planif: new Date().toISOString(), echographiste: 'Dr. Réel', salle: 'Salle Écho 1' }),
+        });
         const res = await fetch(`${server.baseUrl}/echographie/${demande._id}/rapport`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookies[role] },
           body: JSON.stringify({ rapport_statut: 'valide', conclusion: 'Conclusion réelle' }),

@@ -10,11 +10,8 @@
 // est simulée.
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
-import financeReducer from '../../store/slices/financeSlice';
 import Finance from '../Finance.jsx';
 
 vi.mock('react-hot-toast', () => ({
@@ -35,8 +32,7 @@ const FACTURE_FIXTURE = {
 };
 
 function renderFinance() {
-  const store = configureStore({ reducer: { finance: financeReducer } });
-  return render(<Provider store={store}><MemoryRouter><Finance /></MemoryRouter></Provider>);
+  return render(<MemoryRouter><Finance /></MemoryRouter>);
 }
 
 async function openFacturationTab(user) {

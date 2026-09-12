@@ -123,5 +123,11 @@ export const selectAppointmentsLoading = (state) => state.appointments.loading;
 export const selectAppointmentsSaving = (state) => state.appointments.saving;
 export const selectAppointmentsPage = (state) => state.appointments.page;
 export const selectAppointmentsFilters = (state) => state.appointments.filters;
+// APPT-04 (correction du 12 sept. 2026, audit indépendant) — state.error
+// était déjà réellement renseigné par fetchAppointments.rejected (et les
+// autres thunks), mais aucun sélecteur ne l'exposait : Appointments.jsx ne
+// pouvait donc jamais distinguer "aucun rendez-vous" d'un échec de
+// chargement réel — l'échec restait invisible, la liste semblait juste vide.
+export const selectAppointmentsError = (state) => state.appointments.error;
 
 export default appointmentsSlice.reducer;

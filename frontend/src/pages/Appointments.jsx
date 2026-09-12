@@ -9,8 +9,14 @@ import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import {
-  fetchAppointments, createAppointment, updateAppointment, cancelAppointment,
+  // APPT-02 (correction du 12 sept. 2026, audit indépendant) —
+  // cancelAppointment était importé mais jamais dispatché : l'annulation
+  // réelle de cette page passe par un appel api.put direct (vérifié par
+  // recherche projet-wide, aucun autre fichier ne consomme non plus ce
+  // thunk) — retiré.
+  fetchAppointments, createAppointment, updateAppointment,
   selectAppointments, selectAppointmentsLoading, selectAppointmentsTotal,
+  selectAppointmentsError,
 } from '../store/slices/appointmentsSlice';
 import api from "../api";
 import toast from "react-hot-toast";
@@ -935,16 +941,31 @@ export default function RendezVous() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const reduxRdvs = useSelector(selectAppointments);
+  // APPT-04 (correction du 12 sept. 2026, audit indépendant) — state.error
+  // était déjà réellement renseigné par fetchAppointments.rejected, mais
+  // jamais lu ici : un échec réseau produisait une liste vide indiscernable
+  // de "aucun rendez-vous réel aujourd'hui". Affiché honnêtement désormais.
+  const reduxError = useSelector(selectAppointmentsError);
 
   useEffect(() => { dispatch(fetchAppointments({})); }, [dispatch]);
   const refreshRdvs = useCallback(() => { dispatch(fetchAppointments({})); }, [dispatch]);
   useRealtimeRefresh(refreshRdvs);
 
-  // ── Sync les RDV réels depuis Redux vers le state local ──────
   useEffect(() => {
-    if (reduxRdvs && reduxRdvs.length > 0) {
-      setRdvs(reduxRdvs.map(normalizeRdv));
-    }
+    if (reduxError) toast.error(`Impossible de charger les rendez-vous — ${reduxError}`);
+  }, [reduxError]);
+
+  // ── Sync les RDV réels depuis Redux vers le state local ──────
+  // APPT-01 (correction du 12 sept. 2026, audit indépendant) — la garde
+  // `reduxRdvs.length > 0` empêchait toute resynchronisation quand un
+  // rafraîchissement légitime renvoyait une liste vide (RDV réellement
+  // supprimés/déplacés) : l'ancien contenu local restait affiché comme
+  // actuel indéfiniment. Une liste vide réelle doit se traduire par un
+  // affichage réellement vide — `reduxRdvs` est toujours un tableau (jamais
+  // undefined, déjà initialisé à [] dans le slice), la garde ne protégeait
+  // donc contre rien de réel.
+  useEffect(() => {
+    setRdvs(reduxRdvs.map(normalizeRdv));
   }, [reduxRdvs]);
 
   // ── Chargement des médecins depuis l'API ─────────────────────
@@ -1513,11 +1534,11 @@ export default function RendezVous() {
                   <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>Suivi en temps réel — {new Date().toLocaleDateString("fr-FR", { weekday:"long", day:"numeric", month:"long" })}</div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  {/* Sous-phase 5.3 — onClick vide (littéralement { /* refresh
-                      */ }), aucun rechargement réel. refreshRdvs() existe déjà
-                      (dispatch(fetchAppointments({})), utilisé ailleurs dans ce
-                      fichier — ex. rollback optimiste) mais n'était jamais
-                      appelé par ce bouton. */}
+                  {/* Sous-phase 5.3 — onClick vide (une fonction fléchée ne
+                      faisant rien), aucun rechargement réel. refreshRdvs()
+                      existe déjà (dispatch(fetchAppointments({})), utilisé
+                      ailleurs dans ce fichier — ex. rollback optimiste) mais
+                      n'était jamais appelé par ce bouton. */}
                   <button className="cbtn cbtn-ghost cbtn-sm" onClick={refreshRdvs}>🔄 Actualiser</button>
                   <button className="cbtn cbtn-primary cbtn-sm" onClick={() => { setFormRdv(makeEmptyRdv()); setModalNouv(true); }}>
                     {I.plus} Enregistrer arrivée

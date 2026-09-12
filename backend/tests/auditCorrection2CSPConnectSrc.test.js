@@ -25,7 +25,12 @@ const { findFreePort, waitForPort, mongodExists, MONGOD_PATH } = require('./help
 
 const BACKEND_DIR = path.join(__dirname, '..');
 
-async function waitForHttpOk(url, timeoutMs = 15000) {
+// Défaut porté à 45s (comme tests/helpers/isolatedServer.js::
+// startIsolatedServer, même correctif) — ce fichier démarre son propre
+// serveur isolé via sa copie locale de ce mécanisme plutôt que l'helper
+// partagé (contrat différent : renvoie false plutôt que de lever), mais
+// reste exposé à la même contention réelle en fin de suite complète.
+async function waitForHttpOk(url, timeoutMs = 45000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     try { const res = await fetch(url); if (res.ok) return true; } catch { /* pas prêt */ }

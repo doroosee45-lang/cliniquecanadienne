@@ -48,6 +48,9 @@ async function call(base, cookie, method, path) {
 }
 
 test('matrice d\'accès route × rôle (HTTP réel, 14 fichiers touchés par d7a3d58)', { skip: !mongodExists() && 'mongod introuvable — impossible de démarrer un serveur isolé pour ce test' }, async (t) => {
+  // Le défaut partagé de startIsolatedServer (45s, voir isolatedServer.js)
+  // couvre déjà la contention observée sur ce test en fin de suite
+  // complète — pas de marge supplémentaire nécessaire ici.
   const server = await startIsolatedServer();
   const BASE = server.baseUrl;
 

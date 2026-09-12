@@ -131,10 +131,10 @@ test('donnees_avant/donnees_apres — ambulances, hr, pharmacy, recurring, setti
 
       const service = await Service.create({ nom: `T93G4-Service-${stamp}` });
       cleanup.push(() => Service.findByIdAndDelete(service._id));
-      await call(settingsC.updateService, { params: { id: service._id }, body: { statut: 'inactif' }, user, ip: '127.0.0.1' });
+      await call(settingsC.updateService, { params: { id: service._id }, body: { statut: 'ferme' }, user, ip: '127.0.0.1' });
       log = await AuditLog.findOne({ module: 'settings', action: 'UPDATE', entite_id: service._id.toString() }).sort('-createdAt');
-      assert.notEqual(log.donnees_avant.statut, 'inactif');
-      assert.equal(log.donnees_apres.statut, 'inactif');
+      assert.notEqual(log.donnees_avant.statut, 'ferme');
+      assert.equal(log.donnees_apres.statut, 'ferme');
     });
   } finally {
     for (const fn of cleanup) await fn();

@@ -43,7 +43,9 @@ test('couverture fonctionnelle — pharmacie, hospitalisation (base réelle)', {
     });
 
     await t.test('pharmacy.controller.createVente décrémente le stock pour chaque article vendu', async () => {
-      const med = await Medication.create({ nom_commercial: `T95G3-Vente-${stamp}`, stock_actuel: 30, forme: 'comprime' });
+      // SPEC-01 (correction du 12 sept. 2026) — le montant facturé vient
+      // désormais de Medication.prix_vente, jamais de item.prix_unitaire.
+      const med = await Medication.create({ nom_commercial: `T95G3-Vente-${stamp}`, stock_actuel: 30, forme: 'comprime', prix_vente: 200 });
       cleanup.push(() => Medication.findByIdAndDelete(med._id));
 
       const { status, body } = await call(pharmaC.createVente, { body: { client: 'T95G3 Client', mode_paiement: 'especes', items: [{ medicament_id: med._id, quantite: 5, prix_unitaire: 200 }] }, user });

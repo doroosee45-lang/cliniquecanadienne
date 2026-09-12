@@ -1,11 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
-import { useDispatch, useSelector } from 'react-redux';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  fetchStaff,
-  selectStaff, selectHRLoading,
-} from '../store/slices/hrSlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { Briefcase, Plus, Download } from 'lucide-react';
@@ -365,9 +360,6 @@ function Stars({ note, max = 5 }) {
 }
 
 // ─── DEMO DATA ───────────────────────────────────────────────
-const DEMO_EMPLOYES = [];
-
-
 const DEMO_EVALUATIONS = [];
 
 const DEMO_AUDIT = [];
@@ -419,13 +411,19 @@ const normalizeEmp = (s) => {
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function RessourcesHumaines() {
-  const dispatch = useDispatch();
-  const reduxStaff = useSelector(selectStaff);
   const { user: authUser } = useAuth() || {};
-
-  useEffect(() => {
-    dispatch(fetchStaff({}));
-  }, [dispatch]);
+  // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchStaff({}))
+  // dupliquait au montage la même requête que loadEmployes() (api.get
+  // direct, ci-dessous) sans que reduxStaff ne soit jamais lu nulle part —
+  // vérifié par recherche projet-wide, fetchStaff/selectStaff/
+  // selectHRLoading ne sont utilisés dans AUCUN autre fichier du frontend.
+  // Pire : refreshHR (réel mécanisme de rafraîchissement temps réel,
+  // ci-dessous) redispatchait ce même thunk mort au lieu d'appeler
+  // loadEmployes() — la vraie liste d'employés n'était donc jamais
+  // rafraîchie par le temps réel, seule la donnée Redux orpheline
+  // l'était. Corrigé : le dispatch mort au montage est retiré (loadEmployes
+  // a déjà son propre effet de montage plus bas) et refreshHR appelle
+  // désormais réellement loadEmployes().
 
   // Fermer le menu export en cliquant dehors
   useEffect(() => {
@@ -612,14 +610,14 @@ export default function RessourcesHumaines() {
   // deux) plutôt qu'avant avec un dep array incomplet — la position d'origine
   // aurait causé une ReferenceError en TDZ si les deux avaient été ajoutées.
   const refreshHR = useCallback(() => {
-    dispatch(fetchStaff({}));
+    loadEmployes();
     loadConges();
     loadSchedules();
     loadCandidatures();
     loadEvaluations();
     loadFormations();
     loadSanctions();
-  }, [dispatch, loadConges, loadSchedules, loadCandidatures, loadEvaluations, loadFormations, loadSanctions]);
+  }, [loadEmployes, loadConges, loadSchedules, loadCandidatures, loadEvaluations, loadFormations, loadSanctions]);
   useRealtimeRefresh(refreshHR);
 
   // AUDIT-M-E9 (Groupe E, Point 9) — KPIs, pivot planning, filtrage et

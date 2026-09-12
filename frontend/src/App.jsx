@@ -164,6 +164,18 @@ const ROLES = {
   // situ), jamais cette page-ci.
   messages        : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme',
                       'laborantin', 'radiologue', 'pharmacien', 'comptable', 'receptionniste'],
+  // FE-INFRA-02 (correction du 12 sept. 2026, audit indépendant) —
+  // /patients, /patients/:id et /appointments n'avaient aucun Guard :
+  // n'importe quel compte authentifié (y compris role:'patient') pouvait
+  // naviguer vers ces pages, qui échouaient alors silencieusement sur
+  // chaque appel API (403 réel côté backend, jamais un vrai blocage de
+  // navigation). Alignés sur les vraies permissions backend :
+  // patients.routes.js::CAN_READ (lecture, le plus large des 3 groupes
+  // réels de ce fichier) et appointments.routes.js::CAN_WRITE (seul groupe
+  // réel, lecture ET écriture).
+  patients        : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'sage_femme',
+                      'receptionniste', 'laborantin', 'radiologue', 'pharmacien', 'comptable'],
+  appointments    : ['superadmin', 'adminclinique', 'medecin', 'infirmier', 'receptionniste'],
 };
 
 // Composant raccourci pour éviter la répétition
@@ -203,12 +215,12 @@ const AppRoutes = () => {
         <Route index element={<Dashboard />} />
 
         {/* ── Patients ─────────────────────────────────────────────────── */}
-        <Route path="patients"      element={<Patients />} />
-        <Route path="patients/:id"  element={<PatientDetail />} />
+        <Route path="patients"      element={<Guard roles={ROLES.patients}><Patients /></Guard>} />
+        <Route path="patients/:id"  element={<Guard roles={ROLES.patients}><PatientDetail /></Guard>} />
         <Route path="dossiers-medicaux" element={<Guard roles={ROLES.dossiersMedicaux}><DossiersMedicaux /></Guard>} />
 
         {/* ── Agenda & Consultations ───────────────────────────────────── */}
-        <Route path="appointments"  element={<Appointments />} />
+        <Route path="appointments"  element={<Guard roles={ROLES.appointments}><Appointments /></Guard>} />
         <Route path="consultations" element={<Guard roles={ROLES.consultation}><Consultations /></Guard>} />
         <Route path="prescriptions" element={<Guard roles={ROLES.prescription}><Prescriptions /></Guard>} />
 

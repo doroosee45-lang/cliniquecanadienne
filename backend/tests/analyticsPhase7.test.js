@@ -86,7 +86,12 @@ test('Analytics Phase 7 — filtres Service/Médecin réels sur getStats (base r
     });
 
     await t.test('Pregnancy (Maternité) — medecin_responsable String libre, correspondance approximative sur le nom réel', async () => {
-      const p1 = await Pregnancy.create({ patient: patient._id, statut: 'active', medecin_responsable: `Dr ${medA.prenom} ${medA.nom}` });
+      // SPEC-03 (correction du 12 sept. 2026) — patient_id (pas `patient`,
+      // qui n'a jamais été un champ réel du schéma — corrigé ici) est
+      // désormais requis. Ce fixture utilisait par erreur un nom de champ
+      // inexistant, silencieusement ignoré par Mongoose avant ce correctif ;
+      // corrigé pour utiliser le vrai champ, désormais également requis.
+      const p1 = await Pregnancy.create({ patient_id: patient._id, statut: 'active', medecin_responsable: `Dr ${medA.prenom} ${medA.nom}` });
       created.pregnancies.push(p1);
 
       const { body: bodyA } = await call(analyticsC.getStats, { query: { medecin: medA._id.toString() } });

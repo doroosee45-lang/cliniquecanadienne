@@ -17,11 +17,29 @@ test('publication de planning — notification par créneau, idempotence (base r
   const AuditLog = require('../models/AuditLog');
   const hrC = require('../controllers/hr.controller');
   const mailModule = require('../utils/mail');
+  const env = require('../config/env');
 
   const stamp = Date.now();
   const originalSendPlanningEmail = mailModule.sendPlanningPublishedEmail;
   const sentEmails = [];
   mailModule.sendPlanningPublishedEmail = async (opts) => { sentEmails.push(opts); return { simulated: true }; };
+
+  // Correction (relecture du 11 sept. 2026) — ce test exerce le VRAI chemin
+  // utils/sms.js (jamais stubbé, volontairement, pour vérifier le mode
+  // simulé réel), mais lisait process.env ambiant : si backend/.env contient
+  // de vraies credentials Twilio (utilisées ailleurs, ex. tests manuels),
+  // publishSchedules() aurait réellement tenté d'envoyer un SMS via l'API
+  // Twilio à chaque créneau publié pendant CE test — exactement ce que la
+  // mission interdit ("aucun test ne doit jamais déclencher un envoi SMS/
+  // SMTP réel de manière incontrôlée"). Neutralisé pour la seule durée de ce
+  // test (jamais lu ni modifié dans .env, jamais une vraie credential
+  // supprimée de l'environnement réel).
+  const originalTwilio = {
+    TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+    TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+  };
+  env.TWILIO_ACCOUNT_SID = ''; env.TWILIO_AUTH_TOKEN = ''; env.TWILIO_PHONE_NUMBER = '';
 
   const staff = await Staff.create({
     prenom: 'T-RH-Plan', nom: `Notif${stamp}`, poste: 'infirmier',
@@ -96,6 +114,7 @@ test('publication de planning — notification par créneau, idempotence (base r
       assert.deepEqual(result, { simulated: true });
     });
   } finally {
+    Object.assign(env, originalTwilio);
     mailModule.sendPlanningPublishedEmail = originalSendPlanningEmail;
     await AuditLog.deleteMany({ module: 'hr', entite_id: staff._id.toString() });
     await Staff.findByIdAndDelete(staff._id);

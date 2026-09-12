@@ -16,18 +16,40 @@ export default function Header({ title, onMenuToggle }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showAI, setShowAI] = useState(false);
-  // ARCH-004 (audit du 11 sept. 2026) — ce panneau répondait via un
-  // setTimeout() et un dictionnaire de mots-clés codés en dur (ex. "stock"
-  // → de faux chiffres de stock pharmacie précis et plausibles), sans jamais
-  // interroger le moindre backend, et sans aucune mention "démonstration" —
-  // contrairement au Chat Assistant IA de AI.jsx (même fonctionnalité),
-  // honnêtement désactivé. Aucun endpoint de question-réponse en langage
-  // libre n'existe côté backend (ai.routes.js n'expose que des actions
-  // structurées : diagnose/interactions/predictions) — pas de vraie source à
-  // connecter ici sans fabriquer une route. Désactivé honnêtement, même
-  // texte que AI.jsx, plutôt que remplacer de faux chiffres par d'autres.
-  const AI_DISABLED_MSG = "Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.";
-  const [aiMessages] = useState([{ role: 'ai', content: AI_DISABLED_MSG }]);
+  // CHAT-001 (rapport de clôture du 11 sept. 2026) — ARCH-004 avait
+  // honnêtement désactivé ce panneau (il répondait jusque-là via un
+  // setTimeout() et un dictionnaire de mots-clés codés en dur, sans jamais
+  // interroger de backend). POST /ai/chat existe désormais réellement (même
+  // service utils/openai.js::generateReport() que le Chat Assistant IA de
+  // AI.jsx) — ce mini-panneau appelle la même route, aucune seconde
+  // intégration IA créée.
+  const [aiMessages, setAiMessages] = useState([
+    { role: 'ai', content: "Bonjour, je suis l'assistant IA de MediSync. Mes réponses sont informatives uniquement, jamais un diagnostic validé." },
+  ]);
+  const [aiInput, setAiInput] = useState('');
+  const [aiSending, setAiSending] = useState(false);
+  const sendAiMessage = async () => {
+    const message = aiInput.trim();
+    if (!message || aiSending) return;
+    const history = aiMessages
+      .filter(m => m.role === 'user' || m.role === 'ai')
+      .slice(-6)
+      .map(m => ({ role: m.role === 'ai' ? 'bot' : 'user', content: m.content }));
+    setAiMessages(prev => [...prev, { role: 'user', content: message }]);
+    setAiInput('');
+    setAiSending(true);
+    try {
+      const { data } = await api.post('/ai/chat', { message, history });
+      const content = data.success ? data.reply : `⚠️ ${data.message}`;
+      setAiMessages(prev => [...prev, { role: 'ai', content }]);
+    } catch (err) {
+      const msg = err.response?.data?.message || "Erreur réseau — impossible de contacter l'assistant IA.";
+      setAiMessages(prev => [...prev, { role: 'ai', content: `⚠️ ${msg}` }]);
+    } finally {
+      setAiSending(false);
+    }
+  };
+  const handleAiKeyDown = (e) => { if (e.key === 'Enter') { e.preventDefault(); sendAiMessage(); } };
   const notifRef = useRef(null);
 
   // Chargement initial
@@ -36,7 +58,7 @@ export default function Header({ title, onMenuToggle }) {
       const { data } = await api.get('/notifications');
       setNotifications(data.notifications || []);
       setUnread(data.unread || 0);
-    } catch {}
+    } catch { /* liste vide conservée en cas d'échec réseau */ }
   };
   useEffect(() => { load(); }, []);
 
@@ -81,7 +103,7 @@ export default function Header({ title, onMenuToggle }) {
     try {
       const { data } = await api.get(`/patients/search?q=${encodeURIComponent(q)}`);
       setSearchResults(data.patients || []);
-    } catch {}
+    } catch { /* résultats vides conservés en cas d'échec réseau */ }
   };
 
   const markAllRead = async () => {
@@ -89,7 +111,7 @@ export default function Header({ title, onMenuToggle }) {
       await api.put('/notifications/read-all');
       setNotifications(n => n.map(x => ({ ...x, lu: true })));
       setUnread(0);
-    } catch {}
+    } catch { /* état local déjà mis à jour de manière optimiste */ }
   };
 
   const notifIcons = { critical: '🚨', warning: '⚠️', info: 'ℹ️', success: '✅', ai_alert: '🤖', rappel: '🔔' };
@@ -243,16 +265,18 @@ export default function Header({ title, onMenuToggle }) {
               ))}
             </div>
             <div className="p-3 border-t border-gray-100 bg-white flex gap-2">
-              <label htmlFor="header-ai-input" className="sr-only">{AI_DISABLED_MSG}</label>
+              <label htmlFor="header-ai-input" className="sr-only">Message pour l'assistant IA</label>
               <input
                 id="header-ai-input"
                 type="text"
-                disabled
-                placeholder={AI_DISABLED_MSG}
-                title={AI_DISABLED_MSG}
-                className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm border border-gray-200 cursor-not-allowed"
+                value={aiInput}
+                onChange={e => setAiInput(e.target.value)}
+                onKeyDown={handleAiKeyDown}
+                disabled={aiSending}
+                placeholder="Posez votre question…"
+                className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm border border-gray-200 disabled:cursor-not-allowed"
               />
-              <button disabled aria-label="Envoyer" title={AI_DISABLED_MSG} className="bg-gray-300 text-white rounded-xl px-3 py-2 text-sm font-semibold cursor-not-allowed">→</button>
+              <button onClick={sendAiMessage} disabled={aiSending || !aiInput.trim()} aria-label="Envoyer" className="bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl px-3 py-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed">{aiSending ? '…' : '→'}</button>
             </div>
           </div>
         </div>

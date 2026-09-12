@@ -12,7 +12,11 @@ import {
   addVaccination,
   addMesureCroissance,
   addMaladieChronique,
-  setFilters,
+  // PEDI-04 (correction du 12 sept. 2026, audit indépendant) — setFilters
+  // était importé mais jamais dispatché : aucun filtre réel côté Redux
+  // n'existe sur cette page (les filtres visibles sont en état local,
+  // appliqués directement aux appels api) — vérifié par recherche
+  // projet-wide.
   selectPediatrieStats,
   selectRepartitionAge,
   selectTopPatho,
@@ -22,6 +26,7 @@ import {
   selectUrgences,
   selectPediatrieLoading,
   selectPediatrieSaving,
+  selectPediatrieError,
 } from "../store/slices/pediatrieSlice";
 import { Baby, Plus, Printer } from 'lucide-react';
 import Hero, { HeroButton } from '../components/UI/Hero';
@@ -409,8 +414,17 @@ function ModalDossier({ onClose, saving }) {
 }
 
 // ─── MODAL Consultation pédiatrique ─────────────────────────
-function ModalConsultation({ enfant, patientNom, onClose, saving }) {
+function ModalConsultation({ enfant, patientNom, enfants, onClose, saving }) {
   const dispatch = useDispatch();
+  // PEDI-01 (correction du 12 sept. 2026, audit indépendant) — les boutons
+  // génériques ("➕ Nouvelle consultation", "🚨 Admettre en urgence")
+  // ouvraient cette modale déjà silencieusement liée à enfants[0] — le
+  // premier enfant de la base, jamais celui voulu par l'utilisateur — dès
+  // qu'au moins un enfant existait. Même correctif, même convention déjà
+  // en place ci-dessus pour ModalMaladieChron : sélection explicite requise.
+  const [enfantId, setEnfantId] = useState(enfant?._id || "");
+  const enfantSelectionne = (enfants||[]).find(e => e._id === enfantId);
+  const cibleNom = enfant ? patientNom : (enfantSelectionne ? `${enfantSelectionne.prenom||""} ${enfantSelectionne.nom||""}`.trim() : "");
   const [form, setForm] = useState({ motif:"Fièvre", type:"consultation", temp:"", fc:"", fr:"", spo2:"", tension_sys:"", tension_dia:"", poids:"", etat_general:"bon", diagnostic:"", gravite:"normal", medicaments:"", posologie:"", conseils:"" });
   const boxRef = useRef(null);
   const titleId = useId();
@@ -431,9 +445,9 @@ function ModalConsultation({ enfant, patientNom, onClose, saving }) {
 
   const submit = async () => {
     if (!form.diagnostic) { toast.error("Veuillez saisir un diagnostic"); return; }
-    if (!enfant?._id) { toast.error("Sélectionnez d'abord un patient"); return; }
+    if (!enfantId) { toast.error("Sélectionnez d'abord un patient"); return; }
     const body = {
-      child_id: enfant._id,
+      child_id: enfantId,
       motif: form.motif, type: form.type,
       diagnostic: form.diagnostic, gravite: form.gravite,
       etat_general: form.etat_general,
@@ -448,7 +462,7 @@ function ModalConsultation({ enfant, patientNom, onClose, saving }) {
     };
     const result = await dispatch(createConsultation(body));
     if (createConsultation.fulfilled.match(result)) {
-      toast.success(`✅ Consultation enregistrée pour ${patientNom}`);
+      toast.success(`✅ Consultation enregistrée pour ${cibleNom || "l'enfant"}`);
       onClose();
     } else {
       toast.error(result.payload || "Erreur enregistrement");
@@ -459,10 +473,19 @@ function ModalConsultation({ enfant, patientNom, onClose, saving }) {
     <div className="ped-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div ref={boxRef} className="ped-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="ped-modal-hdr">
-          <h2 id={titleId}>🩺 Consultation — {patientNom}</h2>
+          <h2 id={titleId}>🩺 Consultation{cibleNom ? ` — ${cibleNom}` : ""}</h2>
           <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="ped-modal-body">
+          {!enfant && (
+            <div className="pfield">
+              <label className="plabel">Enfant *</label>
+              <select className="pinput" aria-label="Enfant" value={enfantId} onChange={e=>setEnfantId(e.target.value)}>
+                <option value="">— Sélectionner —</option>
+                {(enfants||[]).map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
+              </select>
+            </div>
+          )}
           <div className="pg2">
             <div className="pfield"><label className="plabel">Motif</label>
               <select className="pselect" value={form.motif} onChange={e => setForm({...form,motif:e.target.value})}>
@@ -506,7 +529,7 @@ function ModalConsultation({ enfant, patientNom, onClose, saving }) {
           <div className="pfield"><label className="plabel">Conseils aux parents</label><textarea className="pinput" rows={2} value={form.conseils} onChange={e=>setForm({...form,conseils:e.target.value})} style={{resize:"vertical"}}/></div>
           <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:8 }}>
             <button className="pbtn pbtn-ghost" onClick={onClose}>Annuler</button>
-            <button className="pbtn pbtn-green" onClick={submit} disabled={saving}>{saving?"⏳ Enregistrement...":"💾 Enregistrer"}</button>
+            <button className="pbtn pbtn-green" onClick={submit} disabled={saving || !enfantId}>{saving?"⏳ Enregistrement...":"💾 Enregistrer"}</button>
           </div>
         </div>
       </div>
@@ -515,9 +538,13 @@ function ModalConsultation({ enfant, patientNom, onClose, saving }) {
 }
 
 // ─── MODAL Vaccination ───────────────────────────────────────
-function ModalVaccination({ enfant, patientNom, onClose, saving }) {
+function ModalVaccination({ enfant, patientNom, enfants, onClose, saving }) {
   const dispatch = useDispatch();
-  const vaccinesAdministres = new Set((enfant?.vaccinations || []).map(v => v.vaccin));
+  // PEDI-01 — voir ModalConsultation ci-dessus pour le détail du correctif.
+  const [enfantId, setEnfantId] = useState(enfant?._id || "");
+  const enfantSelectionne = enfant || (enfants||[]).find(e => e._id === enfantId) || null;
+  const cibleNom = enfant ? patientNom : (enfantSelectionne ? `${enfantSelectionne.prenom||""} ${enfantSelectionne.nom||""}`.trim() : "");
+  const vaccinesAdministres = new Set((enfantSelectionne?.vaccinations || []).map(v => v.vaccin));
   const [doses, setDoses] = useState(() => {
     const init = {};
     VACCINS_REF.forEach(v => { init[v.nom] = vaccinesAdministres.has(v.nom); });
@@ -539,9 +566,18 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
     boxRef.current?.focus();
     return () => window.removeEventListener("keydown", h);
   }, []);
+  // PEDI-01 — quand l'enfant choisi change (sélection explicite ci-dessous),
+  // les cases "déjà administré" doivent refléter le carnet du NOUVEL enfant,
+  // jamais rester calées sur l'état calculé à l'ouverture de la modale.
+  useEffect(() => {
+    const init = {};
+    VACCINS_REF.forEach(v => { init[v.nom] = vaccinesAdministres.has(v.nom); });
+    setDoses(init);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enfantSelectionne?._id]);
 
   const submit = async () => {
-    if (!enfant?._id) { toast.error("Sélectionnez un patient"); return; }
+    if (!enfantSelectionne?._id) { toast.error("Sélectionnez un patient"); return; }
     const newVaccins = VACCINS_REF.filter(v => doses[v.nom] && !vaccinesAdministres.has(v.nom));
     if (newVaccins.length === 0) { toast.success("Aucun nouveau vaccin à enregistrer"); onClose(); return; }
     // Correction 5 (FE-BUG-020) — chaque dispatch de la boucle était
@@ -552,12 +588,12 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
     let succes = 0;
     const echecs = [];
     for (const v of newVaccins) {
-      const result = await dispatch(addVaccination({ id: enfant._id, body: { vaccin: v.nom, dose: `${v.doses} dose(s)` } }));
+      const result = await dispatch(addVaccination({ id: enfantSelectionne._id, body: { vaccin: v.nom, dose: `${v.doses} dose(s)` } }));
       if (addVaccination.fulfilled.match(result)) succes++;
       else echecs.push(v.nom);
     }
     if (echecs.length === 0) {
-      toast.success(`💉 ${succes} vaccination(s) enregistrée(s) pour ${patientNom}`);
+      toast.success(`💉 ${succes} vaccination(s) enregistrée(s) pour ${cibleNom || "l'enfant"}`);
       onClose();
     } else if (succes === 0) {
       toast.error(`Échec de l'enregistrement des ${echecs.length} vaccination(s) : ${echecs.join(', ')}`);
@@ -571,10 +607,19 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
     <div className="ped-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div ref={boxRef} className="ped-modal nice-scroll" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="ped-modal-hdr">
-          <h2 id={titleId}>💉 Carnet vaccinal — {patientNom}</h2>
+          <h2 id={titleId}>💉 Carnet vaccinal{cibleNom ? ` — ${cibleNom}` : ""}</h2>
           <button className="pbtn pbtn-ghost pbtn-sm" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
         <div className="ped-modal-body">
+          {!enfant && (
+            <div className="pfield">
+              <label className="plabel">Enfant *</label>
+              <select className="pinput" aria-label="Enfant" value={enfantId} onChange={e=>setEnfantId(e.target.value)}>
+                <option value="">— Sélectionner —</option>
+                {(enfants||[]).map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
             {VACCINS_REF.map(v => (
               <div key={v.nom} className={`vacc-cell ${doses[v.nom]?"vacc-done":"vacc-plan"}`}
@@ -590,7 +635,7 @@ function ModalVaccination({ enfant, patientNom, onClose, saving }) {
           </div>
           <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
             <button className="pbtn pbtn-ghost" onClick={onClose}>Annuler</button>
-            <button className="pbtn pbtn-green" onClick={submit} disabled={saving}>{saving?"⏳ Enregistrement...":"💾 Enregistrer"}</button>
+            <button className="pbtn pbtn-green" onClick={submit} disabled={saving || !enfantSelectionne?._id}>{saving?"⏳ Enregistrement...":"💾 Enregistrer"}</button>
           </div>
         </div>
       </div>
@@ -719,7 +764,7 @@ function ModalMaladieChron({ enfant, enfants, onClose, saving }) {
           {!enfant && (
             <div className="pfield">
               <label className="plabel">Enfant *</label>
-              <select className="pinput" value={enfantId} onChange={e=>setEnfantId(e.target.value)}>
+              <select className="pinput" aria-label="Enfant" value={enfantId} onChange={e=>setEnfantId(e.target.value)}>
                 <option value="">— Sélectionner —</option>
                 {enfants.map(e => <option key={e._id} value={e._id}>{e.prenom} {e.nom}</option>)}
               </select>
@@ -763,6 +808,11 @@ export default function Pediatrie() {
   const urgences      = useSelector(selectUrgences);
   const loading       = useSelector(selectPediatrieLoading);
   const saving        = useSelector(selectPediatrieSaving);
+  // PEDI-02 (correction du 12 sept. 2026, audit indépendant) —
+  // selectPediatrieError n'était même pas importé : un échec réseau sur
+  // fetchEnfants/fetchConsultations/fetchUrgences produisait une liste
+  // vide indiscernable d'une base réellement sans donnée.
+  const pediatrieError = useSelector(selectPediatrieError);
 
   const [tab, setTab]               = useState("dashboard");
   const [isMobile, setIsMobile]     = useState(false);
@@ -770,6 +820,16 @@ export default function Pediatrie() {
   const [mesureModalOpen, setMesureModalOpen] = useState(false);
   const [selectedEnfant, setSelectedEnfant] = useState(null);
   const [enfantDossier, setEnfantDossier]   = useState(null);
+  // PEDI-03 (correction du 12 sept. 2026, audit indépendant) — le panneau
+  // "Consultations récentes" du dossier d'un enfant filtrait le snapshot
+  // global des 50 dernières consultations de TOUTE la clinique
+  // (dispatch(fetchConsultations({limit:50})), ci-dessous) : une
+  // consultation réelle plus ancienne de CET enfant, poussée hors des 50
+  // plus récentes par d'autres enfants, n'apparaissait alors jamais, alors
+  // qu'elle existe réellement en base. Chargées séparément ici, réellement
+  // scopées à cet enfant (GET /pediatrie/consultations?child_id=...),
+  // jamais un filtre local sur un snapshot global tronqué.
+  const [dossierConsultations, setDossierConsultations] = useState([]);
   const [filterAge, setFilterAge]   = useState("tous");
   const [filterStatut, setFilterStatut] = useState("tous");
   const [searchQ, setSearchQ]       = useState("");
@@ -787,6 +847,12 @@ export default function Pediatrie() {
     dispatch(fetchConsultations({ limit: 50 }));
     dispatch(fetchUrgences());
   }, [dispatch]);
+
+  // PEDI-02 — voir la déclaration de pediatrieError ci-dessus : signalé
+  // honnêtement à l'utilisateur, jamais une liste vide silencieuse.
+  useEffect(() => {
+    if (pediatrieError) toast.error(`Impossible de charger les données de pédiatrie — ${pediatrieError}`);
+  }, [pediatrieError]);
 
   const handleRefresh = () => {
     dispatch(fetchPediatrieStats());
@@ -816,8 +882,30 @@ export default function Pediatrie() {
       toast.error(err?.response?.data?.message || "Erreur lors de l'envoi du rappel.");
     }
   };
-  const closeModal = () => { setModal(null); setSelectedEnfant(null); };
-  const openDossier = (e) => { setEnfantDossier(e); setTab("dossier"); };
+  const closeModal = () => {
+    setModal(null);
+    setSelectedEnfant(null);
+    // PEDI-03 — une consultation/vaccination vient potentiellement d'être
+    // ajoutée pour l'enfant du dossier actuellement ouvert : recharge le
+    // panneau "Consultations récentes" réellement scopé à cet enfant,
+    // jamais dépendant d'un rafraîchissement du snapshot global.
+    if (enfantDossier?._id) {
+      api.get(`/pediatrie/consultations?child_id=${enfantDossier._id}&limit=50`)
+        .then(({ data }) => setDossierConsultations(data.consultations || []))
+        .catch(() => {});
+    }
+  };
+  const openDossier = (e) => {
+    setEnfantDossier(e);
+    setTab("dossier");
+    setDossierConsultations([]);
+    // PEDI-03 — voir la déclaration de dossierConsultations ci-dessus :
+    // scopé réellement à cet enfant côté serveur, jamais un filtre local
+    // sur les 50 dernières consultations globales.
+    api.get(`/pediatrie/consultations?child_id=${e._id}&limit=50`)
+      .then(({ data }) => setDossierConsultations(data.consultations || []))
+      .catch(() => setDossierConsultations([]));
+  };
 
   // Filtrage local
   const enfantsFiltres = enfants.filter(e => {
@@ -1099,7 +1187,10 @@ export default function Pediatrie() {
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                 <div className="sec-lbl">🩺 Consultations pédiatriques</div>
-                <button className="pbtn pbtn-green" onClick={() => openModal("consultation", enfants[0]||null)}>➕ Nouvelle consultation</button>
+                {/* PEDI-01 — enfants[0]||null liait silencieusement ce bouton
+                    générique au premier enfant de la base ; null force la
+                    sélection explicite exigée par ModalConsultation. */}
+                <button className="pbtn pbtn-green" onClick={() => openModal("consultation", null)}>➕ Nouvelle consultation</button>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:14, marginBottom:20 }}>
@@ -1246,7 +1337,8 @@ export default function Pediatrie() {
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                 <div className="sec-lbl">💉 Gestion des vaccinations</div>
-                <button className="pbtn pbtn-green" onClick={() => openModal("vaccination", enfants[0]||null)}>➕ Nouvelle vaccination</button>
+                {/* PEDI-01 — voir "Nouvelle consultation" pour le détail. */}
+                <button className="pbtn pbtn-green" onClick={() => openModal("vaccination", null)}>➕ Nouvelle vaccination</button>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:14, marginBottom:20 }}>
@@ -1449,7 +1541,11 @@ export default function Pediatrie() {
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                 <div className="sec-lbl">🚨 Urgences pédiatriques</div>
-                <button className="pbtn pbtn-danger" onClick={() => openModal("consultation", enfants[0]||null)}>🚨 Admettre en urgence</button>
+                {/* PEDI-01 — voir "Nouvelle consultation" pour le détail. Une
+                    admission d'urgence sur le mauvais enfant serait
+                    particulièrement grave : sélection explicite exigée ici
+                    comme partout ailleurs, jamais de repli silencieux. */}
+                <button className="pbtn pbtn-danger" onClick={() => openModal("consultation", null)}>🚨 Admettre en urgence</button>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:14, marginBottom:20 }}>
@@ -1665,10 +1761,17 @@ export default function Pediatrie() {
                         requis, populate('child_id', ...) dans le contrôleur) ; ce
                         filtre comparait toujours `undefined` à `enfantDossier._id`
                         et n'affichait donc jamais aucune consultation ici, même
-                        quand des consultations réelles existaient pour l'enfant. */}
-                    {consultations.filter(c=>(c.child_id?._id||c.child_id)===enfantDossier._id).slice(0,5).length === 0 ? (
+                        quand des consultations réelles existaient pour l'enfant.
+                        PEDI-03 (correction du 12 sept. 2026) — remplacé le filtre
+                        sur le snapshot global des 50 dernières consultations
+                        (toute la clinique) par dossierConsultations, réellement
+                        chargé scopé à cet enfant (child_id côté serveur) : une
+                        consultation plus ancienne de cet enfant, poussée hors des
+                        50 plus récentes globales par d'autres enfants, apparaît
+                        désormais toujours. */}
+                    {dossierConsultations.slice(0,5).length === 0 ? (
                       <div style={{ textAlign:"center", color:"var(--pm)", padding:"16px 0", fontSize:12 }}>Aucune consultation enregistrée</div>
-                    ) : consultations.filter(c=>(c.child_id?._id||c.child_id)===enfantDossier._id).slice(0,5).map((c,i)=>(
+                    ) : dossierConsultations.slice(0,5).map((c,i)=>(
                       <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid var(--pbr)", fontSize:12 }}>
                         <div>
                           <div style={{ fontWeight:700, color:"var(--pn)", fontSize:13 }}>{c.motif||"—"}</div>
@@ -1735,6 +1838,7 @@ export default function Pediatrie() {
         <ModalConsultation
           enfant={selectedEnfant}
           patientNom={selectedEnfant ? `${selectedEnfant.prenom||""} ${selectedEnfant.nom}`.trim() : "Patient"}
+          enfants={enfants}
           onClose={closeModal}
           saving={saving}
         />
@@ -1743,6 +1847,7 @@ export default function Pediatrie() {
         <ModalVaccination
           enfant={selectedEnfant}
           patientNom={selectedEnfant ? `${selectedEnfant.prenom||""} ${selectedEnfant.nom}`.trim() : "Patient"}
+          enfants={enfants}
           onClose={closeModal}
           saving={saving}
         />

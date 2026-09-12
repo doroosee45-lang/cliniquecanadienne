@@ -78,6 +78,53 @@ async function checkBlocConflict({ salle, date_intervention_prev, duree_interven
   return DossierChirurgical.findOne(filter);
 }
 
+// SPEC-05 (correction du 12 sept. 2026, audit indépendant) —
+// checkBlocConflict() ci-dessus reste une lecture avant écriture séparée
+// (TOCTOU) : deux planifications sur des créneaux DIFFÉRENTS mais qui se
+// chevauchent partiellement pouvaient toutes deux la franchir avant que
+// l'une n'ait écrit — l'index unique partiel du modèle (salle_prevue +
+// date_intervention_prev) ne protège que le créneau EXACT, jamais un
+// chevauchement partiel. Même correctif que AUDIT-M-B4 pour les rendez-vous
+// (utils/helpers.js::isAppointmentRaceWinner) : écriture optimiste +
+// relecture + élimination déterministe. DossierChirurgical porte tout
+// l'historique clinique du patient (contrairement à Appointment) : le
+// perdant ne doit jamais être supprimé, seulement ses champs de
+// planification restaurés à leur état d'avant cet appel — fourni par
+// l'appelant (avantPlanning), jamais deviné ici.
+async function isBlocRaceWinner(dossierId) {
+  const dossier = await DossierChirurgical.findById(dossierId).select('salle_prevue date_intervention_prev duree_intervention_min statut').lean();
+  if (!dossier || !dossier.salle_prevue || !dossier.date_intervention_prev || !['preoperatoire', 'opere'].includes(dossier.statut)) return true;
+  const start = new Date(dossier.date_intervention_prev);
+  const end = new Date(start.getTime() + (dossier.duree_intervention_min || 60) * 60000);
+  const overlapping = await DossierChirurgical.find({
+    salle_prevue: dossier.salle_prevue,
+    statut: { $in: ['preoperatoire', 'opere'] },
+    date_intervention_prev: { $lt: end },
+    $expr: { $gt: [{ $add: ['$date_intervention_prev', { $multiply: [{ $ifNull: ['$duree_intervention_min', 60] }, 60000] }] }, start] },
+  }).select('_id').lean();
+  if (overlapping.length <= 1) return true;
+  const survivorId = overlapping.reduce((min, o) => (o._id.toString() < min ? o._id.toString() : min), overlapping[0]._id.toString());
+  return survivorId === dossierId.toString();
+}
+
+// SPEC-05 — restaure un snapshot de champs de planification pour le
+// perdant de la course. { salle_prevue: undefined } via $set ne ferait
+// RIEN : Mongoose/MongoDB ignorent silencieusement les valeurs undefined
+// dans une mise à jour, laissant l'ancienne valeur en place (bogue vérifié
+// empiriquement lors de l'écriture de ce correctif). $unset est requis
+// pour réellement effacer un champ auparavant renseigné.
+async function revertPlanning(dossierId, avantPlanning) {
+  const toSet = {};
+  const toUnset = {};
+  for (const [k, v] of Object.entries(avantPlanning)) {
+    if (v === undefined) toUnset[k] = ''; else toSet[k] = v;
+  }
+  const update = {};
+  if (Object.keys(toSet).length)   update.$set   = toSet;
+  if (Object.keys(toUnset).length) update.$unset = toUnset;
+  await DossierChirurgical.findByIdAndUpdate(dossierId, update);
+}
+
 // Numéro d'intervention bloc — compteur atomique (voir chirurgieController.js)
 async function generateNumeroBloc() {
   const yr = new Date().getFullYear();
@@ -242,6 +289,17 @@ exports.createIntervention = async (req, res, next) => {
       });
     }
 
+    // SPEC-05 — snapshot des champs de planification AVANT modification, pour
+    // pouvoir les restaurer si cette écriture perd la course déterministe
+    // ci-dessous (isBlocRaceWinner). Pour un nouveau dossier (branche
+    // ci-dessus), ces champs sont simplement absents — "avant" = non planifié.
+    const avantPlanning = {
+      salle_prevue: dossier.salle_prevue,
+      date_intervention_prev: dossier.date_intervention_prev,
+      duree_intervention_min: dossier.duree_intervention_min,
+      statut: dossier.statut,
+    };
+
     // Champs planning
     if (salle)            dossier.salle_prevue            = salle;
     if (date_heure_op)    dossier.date_intervention_prev  = new Date(date_heure_op);
@@ -279,6 +337,15 @@ exports.createIntervention = async (req, res, next) => {
     } catch (err) {
       if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit : cette salle vient d\'être réservée par une autre requête à ce créneau. Veuillez réessayer.' });
       throw err;
+    }
+
+    // SPEC-05 — élimination déterministe pour un chevauchement PARTIEL
+    // (l'index unique ci-dessus ne couvre que le créneau exact). AVANT tout
+    // effet de bord (log, Socket.IO, réponse), pour qu'une planification
+    // finalement annulée n'ait jamais notifié personne.
+    if (!(await isBlocRaceWinner(dossier._id))) {
+      await revertPlanning(dossier._id, avantPlanning);
+      return res.status(409).json({ success: false, message: 'Conflit : ce créneau chevauche une intervention qui vient d\'être réservée par une autre requête. Veuillez réessayer.' });
     }
 
     await logAction({
@@ -399,6 +466,13 @@ exports.entreeSalle = async (req, res, next) => {
       message: `Entrée en salle ${dossier.salle_prevue} — ${dossier.patient_nom}`,
       avant, apres: dossier,
     });
+    // REALTIME-SALLES-001 (rapport de clôture du 11 sept. 2026) — c'est ici,
+    // pas dans create() (déjà émis ligne ~290), que l'occupation réelle
+    // d'une salle change (getSalles() la calcule depuis salle_entree_at/
+    // salle_sortie_at). Réutilise le mécanisme Socket.IO déjà existant
+    // (dashboard:refresh, déjà écouté par défaut par useRealtimeRefresh sur
+    // toutes les pages consommatrices) — aucun second système temps réel.
+    emitDashboardUpdate();
 
     res.json({ success: true, intervention: dossier });
   } catch (err) { next(err); }
@@ -422,6 +496,8 @@ exports.sortieSalle = async (req, res, next) => {
       message: `Sortie de salle ${dossier.salle_prevue} — ${dossier.patient_nom}`,
       avant, apres: dossier,
     });
+    // REALTIME-SALLES-001 — voir le même commentaire dans entreeSalle().
+    emitDashboardUpdate();
 
     res.json({ success: true, intervention: dossier });
   } catch (err) { next(err); }
@@ -466,6 +542,20 @@ exports.scheduleIntervention = async (req, res, next) => {
     } catch (err) {
       if (err.code === 11000) return res.status(409).json({ success: false, message: 'Conflit : cette salle vient d\'être réservée par une autre requête à ce créneau. Veuillez réessayer.' });
       throw err;
+    }
+
+    // SPEC-05 — même élimination déterministe que createIntervention
+    // ci-dessus, pour un chevauchement partiel non couvert par l'index
+    // unique. Restaure les champs de planification d'origine (avant),
+    // jamais une suppression du dossier (tout son historique clinique).
+    if (!(await isBlocRaceWinner(dossier._id))) {
+      await revertPlanning(dossier._id, {
+        salle_prevue: avant.salle_prevue,
+        date_intervention_prev: avant.date_intervention_prev,
+        duree_intervention_min: avant.duree_intervention_min,
+        statut: avant.statut,
+      });
+      return res.status(409).json({ success: false, message: 'Conflit : ce créneau chevauche une intervention qui vient d\'être réservée par une autre requête. Veuillez réessayer.' });
     }
 
     await logAction({
@@ -530,6 +620,11 @@ exports.updateIntervention = async (req, res, next) => {
     if (update.statut === 'annulee' && !['consultation', 'preoperatoire'].includes(avant.statut)) {
       return res.status(400).json({ success: false, message: "Impossible d'annuler une intervention déjà opérée, en suivi post-opératoire ou clôturée." });
     }
+    // ANL-03 — voir DossierChirurgical.js pour le détail : horodatage réel
+    // posé ici, seul moyen de distinguer après coup une annulation réelle
+    // d'un dossier simplement jamais encore programmé (les deux partagent
+    // le même statut modèle 'consultation').
+    if (update.statut === 'annulee') update.date_annulation = new Date();
     if (update.statut !== undefined) update.statut = toModelStatut(update.statut);
 
     // AUDIT-CRIT-2 — même détection de conflit que createIntervention/
@@ -565,6 +660,19 @@ exports.updateIntervention = async (req, res, next) => {
     }
 
     if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
+
+    // SPEC-05 — même élimination déterministe que createIntervention/
+    // scheduleIntervention ci-dessus, pour un chevauchement partiel non
+    // couvert par l'index unique.
+    if (!(await isBlocRaceWinner(dossier._id))) {
+      await revertPlanning(dossier._id, {
+        salle_prevue: avant.salle_prevue,
+        date_intervention_prev: avant.date_intervention_prev,
+        duree_intervention_min: avant.duree_intervention_min,
+        statut: avant.statut,
+      });
+      return res.status(409).json({ success: false, message: 'Conflit : ce créneau chevauche une intervention qui vient d\'être réservée par une autre requête. Veuillez réessayer.' });
+    }
 
     await logAction({
       utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire',

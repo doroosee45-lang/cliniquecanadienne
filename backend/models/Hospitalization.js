@@ -63,7 +63,15 @@ const PrescriptionSejourSchema = new Schema({
   type:        String,
   designation: String,
   posologie:   String,
+  // HOSP-03 (correction du 12 sept. 2026, audit indépendant) — medecin
+  // restait un texte libre fabriquable par le client, sans aucune référence
+  // vérifiable vers un vrai compte utilisateur — contrairement à
+  // ConstanteSchema.auteur (même sous-ressource de séjour) qui capture déjà
+  // l'identité réelle de l'auteur. Même convention reprise ici : medecin
+  // reste le libellé affiché (ex: un médecin non connecté qui prescrit par
+  // téléphone), auteur capture réellement qui a saisi cette prescription.
   medecin:     String,
+  auteur:      { type: Schema.Types.ObjectId, ref: 'User' },
 });
 
 const HospitalizationSchema = new Schema({

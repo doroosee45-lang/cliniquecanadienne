@@ -96,6 +96,20 @@ const ANONYMOUS_LABEL = 'Patient anonymisé';
 // ANONYMOUS_LABEL plutôt qu'à retirer — même principe que Patient.nom /
 // User.nom déjà traités ainsi plus haut — pour satisfaire la contrainte
 // `required` sans réintroduire de donnée identifiante.
+//
+// SPEC-12 (correction du 12 sept. 2026, audit indépendant) — incohérence
+// de nommage `patient` vs `patient_id` à travers les modèles (visible
+// ci-dessous via `refField`). Vérifié : ce n'est pas un oubli isolé mais
+// une convention divergente historique et cohérente au sein de chaque
+// famille de modèles — la chaîne maternité/pédiatrie (Delivery, Pregnancy,
+// Child, Newborn) utilise systématiquement `patient_id`, tous les autres
+// modules cliniques/administratifs utilisent systématiquement `patient`.
+// Un renommage de masse toucherait des dizaines de fichiers (contrôleurs,
+// tests, payloads frontend) pour un gain purement cosmétique — risque
+// disproportionné pour une anomalie mineure. Non migré ici, conformément à
+// l'interdiction de migration destructive ; documenté pour qu'un futur
+// renommage, si entrepris, le soit consciemment et un seul module à la
+// fois (jamais une bascule globale en un seul commit).
 const CASCADE_TARGETS = [
   { model: require('../models/ArchiveEntry'),        refField: 'patient',    piiFields: ['patient_nom'] },
   { model: require('../models/Delivery'),             refField: 'patient_id', piiFields: ['patient_nom'] },

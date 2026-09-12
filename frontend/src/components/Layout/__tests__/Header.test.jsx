@@ -1,18 +1,20 @@
-// ARCH-004 (audit du 11 sept. 2026) — le widget "Assistant IA" du Header
-// (monté sur TOUTES les pages authentifiées du personnel) répondait via un
-// setTimeout() et un dictionnaire de mots-clés codés en dur, sans jamais
-// interroger le moindre backend, et sans aucune mention "démonstration" —
-// un utilisateur tapant "stock" recevait de faux chiffres précis et
-// plausibles (stock pharmacie, occupation de lits) présentés comme réels.
-// Ce test prouve : (a) le panneau ne présente plus aucune réponse fabriquée
-// quel que soit le texte tapé (impossible d'ailleurs, le champ est
-// désactivé), (b) le message honnête "en cours de développement" est bien
-// affiché, à l'identique du traitement déjà appliqué à la même
-// fonctionnalité dans AI.jsx.
-import { render, screen } from '@testing-library/react';
+// CHAT-001 (rapport de clôture du 11 sept. 2026) — ARCH-004 (audit du 11
+// sept. 2026) avait honnêtement désactivé ce panneau : il répondait
+// auparavant via un setTimeout() et un dictionnaire de mots-clés codés en
+// dur (un utilisateur tapant "stock" recevait de faux chiffres précis et
+// plausibles présentés comme réels), sans jamais interroger de backend.
+// POST /ai/chat existe désormais réellement (backend/controllers/
+// ai.controller.js::chat, réutilise utils/openai.js::generateReport()) — ce
+// test prouve que le panneau appelle réellement cette route (jamais un
+// setTimeout ni une réponse fabriquée côté client), affiche la vraie
+// réponse renvoyée par le serveur, et affiche le message réel du serveur
+// (jamais un succès inventé) quand celui-ci signale un échec/mode simulé.
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import Header from '../Header.jsx';
+import api from '../../../api';
 
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { prenom: 'Test', nom: 'Medecin', role: 'medecin' } }),
@@ -23,31 +25,45 @@ vi.mock('../../../contexts/SocketContext', () => ({
 vi.mock('../../../hooks/useRealtimeRefresh', () => ({ useRealtimeRefresh: () => {} }));
 
 vi.mock('../../../api', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: { notifications: [], unread: 0 } })), put: vi.fn() },
+  default: { get: vi.fn(() => Promise.resolve({ data: { notifications: [], unread: 0 } })), post: vi.fn(), put: vi.fn() },
 }));
 
 function renderHeader() {
   return render(<MemoryRouter><Header title="Tableau de bord" onMenuToggle={() => {}} /></MemoryRouter>);
 }
 
-test('le panneau IA n\'affiche aucune donnée fabriquée — champ désactivé, message honnête', async () => {
+afterEach(() => { api.post.mockReset(); });
+
+test('le panneau IA envoie réellement la question à POST /ai/chat et affiche la vraie réponse du serveur', async () => {
+  const user = userEvent.setup();
+  api.post.mockResolvedValue({ data: { success: true, reply: 'Le paludisme se manifeste par fièvre et frissons.', disclaimer: 'Réponse générée par IA — à titre informatif — non validée médicalement.' } });
   renderHeader();
 
   await screen.findByLabelText('Assistant IA');
-  await screen.getByLabelText('Assistant IA').click();
+  await user.click(screen.getByLabelText('Assistant IA'));
 
-  // Le seul message présent est l'aveu explicite d'absence de vraie donnée —
-  // jamais un chiffre de stock/lits/RDV inventé.
-  const disclaimer = "Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.";
-  expect((await screen.findAllByText(disclaimer)).length).toBeGreaterThan(0);
+  const input = screen.getByPlaceholderText('Posez votre question…');
+  expect(input).not.toBeDisabled();
+  await user.type(input, 'Quels sont les signes du paludisme ?');
+  await user.click(screen.getByRole('button', { name: 'Envoyer' }));
+
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/ai/chat', expect.objectContaining({ message: 'Quels sont les signes du paludisme ?' })));
+  expect(await screen.findByText('Le paludisme se manifeste par fièvre et frissons.')).toBeInTheDocument();
+  // Le champ se vide réellement après un envoi réussi — jamais un envoi factice.
+  expect(input).toHaveValue('');
+});
+
+test('le panneau IA affiche le vrai message du serveur (jamais un succès inventé) quand le service IA est indisponible', async () => {
+  const user = userEvent.setup();
+  api.post.mockResolvedValue({ data: { success: false, simulated: true, message: 'Assistant IA indisponible — OPENAI_API_KEY non configurée sur le serveur.' } });
+  renderHeader();
+
+  await user.click(await screen.findByLabelText('Assistant IA'));
+  await user.type(screen.getByPlaceholderText('Posez votre question…'), 'Test');
+  await user.click(screen.getByRole('button', { name: 'Envoyer' }));
+
+  expect(await screen.findByText(/Assistant IA indisponible — OPENAI_API_KEY non configurée/)).toBeInTheDocument();
+  // Jamais un chiffre fabriqué (stock/lits/RDV) présenté comme réel.
   expect(screen.queryByText(/Alertes stock actives/)).not.toBeInTheDocument();
   expect(screen.queryByText(/lits occupés/)).not.toBeInTheDocument();
-  expect(screen.queryByText(/rendez-vous planifiés/)).not.toBeInTheDocument();
-
-  // Le champ de saisie et le bouton d'envoi sont réellement désactivés —
-  // aucune interaction ne peut jamais produire de contenu fabriqué.
-  const input = screen.getByPlaceholderText(disclaimer);
-  expect(input).toBeDisabled();
-  const sendBtn = screen.getByRole('button', { name: 'Envoyer' });
-  expect(sendBtn).toBeDisabled();
 });

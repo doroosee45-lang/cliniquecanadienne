@@ -43,9 +43,26 @@ exports.getConversations = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// SEC-B-06 (correction du 12 sept. 2026, audit indépendant) — getOrCreate()
+// n'a jamais vérifié que `userId` référence un vrai collègue : un staff
+// pouvait ouvrir une conversation directe avec n'importe quel ID connu,
+// y compris un compte role:'patient' (le modèle métier réel exclut déjà
+// les patients de cette messagerie — getDirectory() les filtre
+// explicitement, "annuaire collègues" ; la communication patient dédiée
+// passe par sendPatientSms/sendPatientEmail, jamais par ce canal). Aucun
+// lien clinique n'est par ailleurs jamais prévu ni vérifiable ici (aucune
+// notion d'assignation staff↔patient n'existe sur ces modèles) — la
+// politique d'appartenance réelle est donc simplement : l'autre membre
+// doit être un vrai membre du personnel actif, jamais un patient, jamais
+// un ID fabriqué.
 exports.getOrCreate = async (req, res, next) => {
   try {
     const { userId } = req.body;
+    if (!userId) return res.status(400).json({ success: false, message: 'userId requis.' });
+    const cible = await User.findById(userId).select('role statut');
+    if (!cible) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
+    if (cible.role === 'patient') return res.status(403).json({ success: false, message: 'Cette messagerie est réservée aux échanges entre membres du personnel.' });
+
     let conv = await Conversation.findOne({
       type: 'direct',
       membres: { $all: [req.user._id, userId], $size: 2 },

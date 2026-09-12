@@ -226,13 +226,43 @@ exports.planifier = async (req, res, next) => {
 // ── PUT /echographie/:id/rapport
 exports.saveRapport = async (req, res, next) => {
   try {
-    const { rapport_texte, conclusion, recommandations, rapport_statut } = req.body;
+    const { rapport_texte, conclusion, recommandations, rapport_statut, echographiste, salle } = req.body;
     const update = { rapport_texte, conclusion, recommandations };
+    // PARAM-ECHO-001 (rapport de clôture du 11 sept. 2026) — echographiste/
+    // salle sont déjà de vrais champs du modèle (positionnés à la
+    // planification, PlanifierModal). Le formulaire "Paramètres d'examen" de
+    // Realisation permet de corriger qui a RÉELLEMENT réalisé l'examen/dans
+    // quelle salle (peut différer de l'assignation initiale) — persisté ici
+    // uniquement si explicitement fourni, jamais un champ vide n'écrase une
+    // valeur déjà réelle.
+    if (echographiste) update.echographiste = echographiste;
+    if (salle) update.salle = salle;
     if (rapport_statut) {
       update.rapport_statut = rapport_statut;
       if (rapport_statut === 'valide') update.statut = 'validee';
     }
     const avant = await Echographie.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ message: 'Demande non trouvée' });
+    // SPEC-07 (correction du 12 sept. 2026, audit indépendant) — saveRapport
+    // pouvait valider (statut→'validee') et facturer une demande encore
+    // 'en_attente' (jamais planifiée, donc jamais réellement réalisée), et
+    // sans le moindre contenu clinique réel (rapport_texte/conclusion vides)
+    // — aucune fonction ne fait ici transiter le statut vers un équivalent
+    // "réalisée" distinct (l'enum 'realisee' existe sur le schéma mais
+    // n'est positionné par aucun contrôleur, vérifié par recherche
+    // projet-wide) : les deux seuls signaux réels disponibles pour honorer
+    // l'intention de l'audit sont donc (1) la demande a bien été planifiée
+    // au préalable, et (2) un contenu de rapport réel accompagne la
+    // validation — jamais une simple validation à vide.
+    if (rapport_statut === 'valide') {
+      if (avant.statut === 'en_attente') {
+        return res.status(400).json({ message: "Impossible de valider : la demande doit d'abord être planifiée et réalisée." });
+      }
+      const contenuReel = (rapport_texte ?? avant.rapport_texte) || (conclusion ?? avant.conclusion);
+      if (!contenuReel) {
+        return res.status(400).json({ message: 'Impossible de valider : aucun compte-rendu réel (rapport ou conclusion) n\'a été saisi.' });
+      }
+    }
     const demande = await Echographie.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
 
@@ -300,11 +330,34 @@ exports.uploadImages = async (req, res, next) => {
 exports.annuler = async (req, res, next) => {
   try {
     const avant = await Echographie.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ message: 'Demande non trouvée' });
     const demande = await Echographie.findByIdAndUpdate(
       req.params.id, { statut: 'annulee' }, { new: true }
     );
-    if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
-    await logAction({ utilisateur: req.user?._id, action: 'CANCEL', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Demande d'échographie ${demande.numero} annulée`, avant, apres: demande });
-    res.json({ success: true, demande });
+
+    // SPEC-09 (correction du 12 sept. 2026, audit indépendant) — annuler()
+    // ne touchait jamais une facture réelle déjà générée (saveRapport,
+    // rapport_statut:'valide') pour cette demande : une demande annulée
+    // après facturation laissait une facture active pour un acte qui
+    // n'aura jamais lieu. Contrepassée ici uniquement si rien n'a encore
+    // été réellement encaissé (brouillon/emise) — un acompte déjà réglé
+    // (partiellement_payee/payee) implique un vrai remboursement, une
+    // décision de politique financière non déterminable depuis le code
+    // actuel : jamais annulée automatiquement dans ce cas (signalé
+    // explicitement dans la réponse plutôt que silencieusement ignoré).
+    let factureAnnulee = null;
+    let factureNonAnnuleeDejaReglee = false;
+    const invoice = await Invoice.findOne({ source_module: 'echographie', source_id: demande._id });
+    if (invoice) {
+      if (['brouillon', 'emise'].includes(invoice.statut)) {
+        factureAnnulee = await Invoice.findByIdAndUpdate(invoice._id, { statut: 'annulee' }, { new: true });
+        await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'finance', entite_id: invoice._id, ip: req.ip, message: `Facture ${invoice.numero_facture} annulée suite à l'annulation de la demande d'échographie ${demande.numero}` });
+      } else {
+        factureNonAnnuleeDejaReglee = true;
+      }
+    }
+
+    await logAction({ utilisateur: req.user?._id, action: 'CANCEL', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Demande d'échographie ${demande.numero} annulée${factureAnnulee ? ` — facture ${factureAnnulee.numero_facture} contrepassée` : ''}`, avant, apres: demande });
+    res.json({ success: true, demande, facture_annulee: factureAnnulee, facture_non_annulee_deja_reglee: factureNonAnnuleeDejaReglee });
   } catch (err) { next(err); }
 };

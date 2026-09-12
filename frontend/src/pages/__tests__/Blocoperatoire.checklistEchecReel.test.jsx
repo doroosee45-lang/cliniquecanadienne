@@ -13,11 +13,8 @@
 // (`../../api`) est simulée.
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
-import blocoperatoireReducer from '../../store/slices/blocoperatoireSlice';
 import Blocoperatoire from '../Blocoperatoire.jsx';
 
 vi.mock('react-hot-toast', () => ({
@@ -49,8 +46,7 @@ beforeEach(() => {
 });
 
 function renderBloc() {
-  const store = configureStore({ reducer: { blocoperatoire: blocoperatoireReducer } });
-  return render(<Provider store={store}><MemoryRouter><Blocoperatoire /></MemoryRouter></Provider>);
+  return render(<MemoryRouter><Blocoperatoire /></MemoryRouter>);
 }
 
 async function openChecklist(user) {

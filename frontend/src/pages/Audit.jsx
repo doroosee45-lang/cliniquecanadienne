@@ -1,11 +1,6 @@
 ﻿
 
 import { useState, useEffect, useCallback, useRef, useId } from "react";
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  fetchAuditLogs,
-  selectAuditLogs, selectAuditTotal, selectAuditLoading, selectAuditPage,
-} from '../store/slices/auditSlice';
 import api from "../api";
 import toast from "react-hot-toast";
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
@@ -531,7 +526,17 @@ function KpiCard({ color, icon, value, label, sub, urgent, onClick }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════
 export default function JournalAudit() {
-  const dispatch = useDispatch();
+  // FE-ADM-04 (correction du 12 sept. 2026, audit indépendant) — cette page
+  // dispatchait fetchAuditLogs (Redux) en plus du vrai chargement local
+  // (loadEvents ci-dessous, data.events, seule source réellement lue par le
+  // reste du fichier) : double récupération de /audit à chaque montage. Le
+  // thunk lui-même attendait en plus un champ `logs` que l'API réelle ne
+  // renvoie jamais (toujours `events`, voir data.events plus bas) — même
+  // après correction du champ, resterait un second fetch pur, jamais lu
+  // nulle part (reduxLogs/reduxTotal, vérifié par recherche complète dans
+  // ce fichier). Retiré entièrement ; le champ `logs`→`events` est
+  // également corrigé dans auditSlice.js pour que ce thunk reste correct
+  // s'il est un jour réutilisé ailleurs.
   // P1-02 (audit du 11 sept. 2026) — POST /settings/backup est
   // authorize('superadmin') strict côté backend (settings.routes.js:22),
   // mais cette page est accessible à adminclinique aussi (ROLES.audit,
@@ -540,10 +545,6 @@ export default function JournalAudit() {
   // Même garde déjà appliquée pour la même restriction dans Settings.jsx.
   const { user: authUser } = useAuth() || {};
   const isSuperadmin = authUser?.role === 'superadmin';
-  const reduxLogs = useSelector(selectAuditLogs);
-  const reduxTotal = useSelector(selectAuditTotal);
-
-  useEffect(() => { dispatch(fetchAuditLogs({})); }, [dispatch]);
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 599);
   useEffect(() => { const fn = () => setIsMobile(window.innerWidth <= 599); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn); }, []);
@@ -617,6 +618,25 @@ export default function JournalAudit() {
   }, []);
 
   useEffect(() => { loadOtherData(); }, [loadOtherData]);
+
+  // FORCE-LOGOUT-001 (rapport de clôture du 11 sept. 2026) — appelle
+  // réellement POST /settings/users/:id/force-logout (tokenVersion++,
+  // déconnexion Socket.IO immédiate) — jamais un simple setConnexions local
+  // sans effet réel sur la vraie session.
+  const [forcingLogoutId, setForcingLogoutId] = useState(null);
+  const handleForceLogout = async (c) => {
+    if (!c.utilisateur_id || forcingLogoutId) return;
+    setForcingLogoutId(c.utilisateur_id);
+    try {
+      const { data } = await api.post(`/settings/users/${c.utilisateur_id}/force-logout`);
+      toast.success(`✅ ${data.message}`);
+      await loadOtherData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Échec de la révocation de session.");
+    } finally {
+      setForcingLogoutId(null);
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -1290,23 +1310,28 @@ export default function JournalAudit() {
                             </ABadge>
                           </td>
                           <td>
-                            {/* Sous-phase 5.7 — mutait uniquement l'état
-                                local (setConnexions), sans jamais invalider
-                                la vraie session : le token JWT de
-                                l'utilisateur restait valide, il n'était pas
-                                réellement déconnecté malgré le message de
-                                succès. Aucun mécanisme réel de révocation
-                                de session/JWT individuelle n'existe dans ce
-                                système (middleware/auth.js ne vérifie que la
-                                signature et User.statut) — construire une
-                                vraie révocation par session dépasse le
-                                périmètre de cette sous-phase. Désactivé
-                                honnêtement ; seule la suspension du compte
-                                entier (module Administration, déjà réelle)
-                                empêche réellement tout accès futur. */}
-                            {c.statut === "actif" && (
-                              <button className="abtn abtn-danger abtn-sm" style={{ fontSize: 11 }} disabled title="Fonctionnalité en cours de développement — aucune révocation réelle de session n'existe encore. Utilisez la suspension de compte (module Administration) pour bloquer réellement l'accès." onClick={() => toast("🚧 Déconnexion forcée non disponible — suspendez le compte via le module Administration pour bloquer réellement l'accès.")}>
-                                {I.ban} Forcer
+                            {/* FORCE-LOGOUT-001 (rapport de clôture du 11
+                                sept. 2026) — POST /settings/users/:id/
+                                force-logout incrémente réellement
+                                User.tokenVersion (JWT déjà émis refusés dès
+                                la requête suivante par middleware/auth.js et
+                                dès la poignée de main Socket.IO par
+                                server.js) et coupe immédiatement toute
+                                connexion Socket.IO déjà ouverte
+                                (forceDisconnectUser). Réservé au superadmin
+                                (même niveau d'accès que les autres mutations
+                                utilisateur — createUser/updateUser/
+                                deactivateUser, settings.routes.js), jamais
+                                exposé à adminclinique même si la page Audit
+                                lui reste accessible en lecture. */}
+                            {c.statut === "actif" && authUser?.role === "superadmin" && (
+                              <button
+                                className="abtn abtn-danger abtn-sm" style={{ fontSize: 11 }}
+                                disabled={!c.utilisateur_id || (!!forcingLogoutId && forcingLogoutId === c.utilisateur_id)}
+                                title={!c.utilisateur_id ? "Aucun compte utilisateur résolu pour cette session (IP seule)." : "Révoquer immédiatement cette session."}
+                                onClick={() => handleForceLogout(c)}
+                              >
+                                {I.ban} {(!!forcingLogoutId && forcingLogoutId === c.utilisateur_id) ? "Révocation…" : "Forcer"}
                               </button>
                             )}
                           </td>
