@@ -3,17 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
+import { useSocket } from '../contexts/SocketContext';
 import {
   fetchPortalMe, fetchPortalAppointments, fetchPortalPrescriptions,
   fetchPortalLabResults, fetchPortalImaging, fetchPortalInvoices,
   fetchPortalNotifications, fetchPortalDashboard, fetchPortalVaccinations, markAllNotificationsRead,
   updatePortalProfile, changePortalPassword,
+  fetchPortalBookingOptions, createPortalAppointment, cancelPortalAppointment,
+  fetchPortalConsultations, fetchPortalHospitalizations, fetchPortalDocuments,
   selectPortalPatient, selectPortalStats, selectMustChangePassword,
   selectPortalAppointments, selectPortalPrescriptions, selectPortalLabResults,
   selectPortalImaging, selectPortalInvoices, selectPortalNotifications,
   selectPortalConstantes, selectPortalConstantesHistorique, selectPortalVaccinations,
+  selectPortalConsultations, selectPortalHospitalizations, selectPortalDocuments,
+  selectPortalBookingOptions,
   selectPortalLoading, selectPortalSaving, selectPortalError, clearPortalError,
 } from '../store/slices/portalSlice';
+import api from '../api';
 import { User, Calendar, Pencil } from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
@@ -336,6 +342,7 @@ export default function MonEspacePatient() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const { socket } = useSocket();
   const { isMobile, isSmall } = useScreenSize();
   const RCSS = buildResponsiveCSS({ isMobile, isSmall });
 
@@ -352,6 +359,10 @@ export default function MonEspacePatient() {
   const constantes         = useSelector(selectPortalConstantes);
   const constantesHistorique = useSelector(selectPortalConstantesHistorique);
   const vaccinations       = useSelector(selectPortalVaccinations);
+  const consultations      = useSelector(selectPortalConsultations);
+  const hospitalizations   = useSelector(selectPortalHospitalizations);
+  const documents          = useSelector(selectPortalDocuments);
+  const bookingOptions     = useSelector(selectPortalBookingOptions);
   const loading            = useSelector(selectPortalLoading);
   const saving             = useSelector(selectPortalSaving);
   const portalError        = useSelector(selectPortalError);
@@ -370,6 +381,9 @@ export default function MonEspacePatient() {
     dispatch(fetchPortalNotifications());
     dispatch(fetchPortalDashboard());
     dispatch(fetchPortalVaccinations());
+    dispatch(fetchPortalConsultations());
+    dispatch(fetchPortalHospitalizations());
+    dispatch(fetchPortalDocuments());
   }, [dispatch]);
   useEffect(() => { refreshPortal(); }, [refreshPortal]);
   useRealtimeRefresh(refreshPortal);
@@ -393,7 +407,31 @@ export default function MonEspacePatient() {
   const getRdvDate   = (r) => r.date_heure   || `${r.date}T${r.heure || "00:00"}`;
   const getRdvMedecin= (r) => r.medecin?.nom ? `Dr. ${r.medecin.prenom} ${r.medecin.nom}` : r.medecin;
   const getRdvService= (r) => r.service?.nom || r.service;
-  const getRdvStatut = (r) => r.statut === 'confirme' || r.statut === 'planifie' ? 'confirme' : 'passe';
+  // PORTAL-RDV-001 — élargi de ['confirme','planifie'] à la même liste
+  // RDV_ACTIFS que portal.controller.js::getDashboard : un RDV demandé par le
+  // patient (statut réel 'en_attente', en attente de confirmation par la
+  // clinique) tombait auparavant dans le seau "passe" faute d'un statut géré,
+  // ce qui l'aurait affiché comme un rendez-vous déjà passé dès sa création.
+  const RDV_ACTIFS = ['planifie','en_attente','confirme','arrive','en_consultation','en_cours','reporte'];
+  const getRdvStatut = (r) => RDV_ACTIFS.includes(r.statut) ? 'a_venir' : 'passe';
+  const RDV_STATUT_BADGE = {
+    confirme:        ['teal',   '✓ Confirmé'],
+    planifie:        ['blue',   '📅 Planifié'],
+    en_attente:      ['orange', '⏳ En attente de confirmation'],
+    arrive:          ['blue',   'Arrivé'],
+    en_consultation: ['purple', 'En consultation'],
+    en_cours:        ['purple', 'En cours'],
+    reporte:         ['orange', '🔄 Reporté'],
+    termine:         ['gray',   'Terminé'],
+    annule:          ['red',    '✗ Annulé'],
+    absent:          ['gray',   'Absent'],
+  };
+  const getRdvBadge = (r) => RDV_STATUT_BADGE[r.statut] || ['gray', r.statut || '—'];
+  // Annulable par le patient uniquement tant qu'il est réellement à venir et
+  // pas déjà arrivé/en cours de prise en charge (mêmes statuts que
+  // portal.controller.js::cancelAppointment, APPT_CANCEL_BLOCKED_STATUTS +
+  // règle "déjà passé").
+  const isRdvCancellable = (r) => ['planifie','en_attente','confirme','reporte'].includes(r.statut) && new Date(getRdvDate(r)).getTime() > Date.now();
   const getOrdMedecin= (o) => o.medecin?.nom ? `Dr. ${o.medecin.prenom} ${o.medecin.nom}` : o.medecin;
   const getOrdDate   = (o) => o.date_prescription || o.date;
   const getOrdExpire = (o) => o.date_expiration || o.expire;
@@ -416,6 +454,13 @@ export default function MonEspacePatient() {
   const getFacStatut = (f) => ['payee'].includes(f.statut) ? 'payee' : 'impayee';
   const getFacDetail = (f) => f.lignes?.[0]?.libelle || f.detail || '—';
   const getNotifLu   = (n) => n.lu ?? n.lu;
+  // PORTAL-DOSSIER-001 — accesseurs pour les 3 nouvelles sources réelles de
+  // "Mon dossier" (mêmes conventions que les accesseurs ci-dessus).
+  const getConsMedecin = (c) => c.medecin?.nom ? `Dr. ${c.medecin.prenom} ${c.medecin.nom}${c.medecin.specialite ? ` — ${c.medecin.specialite}` : ''}` : '—';
+  const getConsDate     = (c) => c.date_consultation;
+  const CONS_STATUT_BADGE = { terminee: ['green','Terminée'], en_cours: ['orange','En cours'], suspendue: ['gray','Suspendue'] };
+  const DOC_TYPE_LABEL = { dossier_medical:'Dossier médical', ordonnance:'Ordonnance', resultat_labo:'Résultat labo', imagerie:'Imagerie', facture:'Facture', rapport:'Rapport', certificat:'Certificat', autre:'Document' };
+  const fmtTaille = (o) => { const n = Number(o); if (!n) return '—'; if (n < 1024*1024) return `${(n/1024).toFixed(0)} Ko`; return `${(n/(1024*1024)).toFixed(1)} Mo`; };
 
   // ── UI state ──────────────────────────────────────────────
   const [tab, setTab] = useState("dashboard");
@@ -428,6 +473,34 @@ export default function MonEspacePatient() {
   const [pwdSuccess, setPwdSuccess]       = useState("");
   const [profilForm, setProfilForm]       = useState({});
   const [profilSuccess, setProfilSuccess] = useState("");
+  // PORTAL-RDV-001 — état réel du formulaire de prise de RDV (auparavant une
+  // modale sans state ni handler, AUDIT-11 : aucun de ces champs n'était lié
+  // à quoi que ce soit).
+  const [rdvForm, setRdvForm] = useState({ service:"", medecin:"", date:"", heure:"09:00", motif:"" });
+  const [rdvError, setRdvError] = useState("");
+  // PORTAL-IA-001 — état réel de la conversation avec l'assistant IA
+  // (POST /portal/ai/chat), local à la page (pas besoin de persister le fil
+  // au-delà de la session, comme AI.jsx::chat côté personnel).
+  const [iaMessages, setIaMessages] = useState([]);
+  const [iaInput, setIaInput]       = useState("");
+  const [iaSending, setIaSending]   = useState(false);
+  // PORTAL-MSG-001 — messagerie réelle : conversations/contacts réellement
+  // chargés depuis l'API (GET /messages, GET /portal/messages/contacts),
+  // aucune donnée fabriquée. non_lus est un compteur purement client, mis à
+  // jour par les événements temps réel message:new — même mécanisme déjà
+  // utilisé côté personnel (Messages.jsx), pas une simulation inventée ici.
+  const [msgConversations, setMsgConversations] = useState([]);
+  const [msgContacts, setMsgContacts] = useState([]);
+  const [msgSelected, setMsgSelected] = useState(null);
+  const [msgThread, setMsgThread] = useState([]);
+  const [msgInput, setMsgInput] = useState("");
+  const [msgLoadingList, setMsgLoadingList] = useState(false);
+  const [msgLoadingThread, setMsgLoadingThread] = useState(false);
+  const [msgSendingMsg, setMsgSendingMsg] = useState(false);
+  const [msgNewContact, setMsgNewContact] = useState("");
+  const [msgError, setMsgError] = useState("");
+  const msgSelectedRef = useRef(null);
+  useEffect(() => { msgSelectedRef.current = msgSelected; }, [msgSelected]);
 
   useEffect(() => { if (mustChangePwd) setModalChangePwd(true); }, [mustChangePwd]);
   useEffect(() => { if (reduxPatient) setProfilForm({
@@ -458,6 +531,268 @@ export default function MonEspacePatient() {
       navigate('/login');
     } catch {
       toast.error('Erreur lors de la déconnexion.');
+    }
+  };
+
+  // PORTAL-RDV-001 — la modale n'a jamais chargé d'options réelles avant ce
+  // correctif (aucune route n'existait) : on les récupère à l'ouverture
+  // plutôt qu'au montage de la page, pour ne pas alourdir le chargement
+  // initial de tout patient qui ne prend pas RDV pendant sa session.
+  const handleOpenRdvModal = () => {
+    setRdvForm({ service:"", medecin:"", date:"", heure:"09:00", motif:"" });
+    setRdvError("");
+    dispatch(fetchPortalBookingOptions());
+    setModalRdv(true);
+  };
+
+  const handleSubmitRdv = async () => {
+    setRdvError("");
+    if (!rdvForm.medecin) { setRdvError("Veuillez sélectionner un médecin."); return; }
+    if (!rdvForm.date)    { setRdvError("Veuillez choisir une date."); return; }
+    if (!rdvForm.motif.trim()) { setRdvError("Veuillez indiquer le motif de consultation."); return; }
+    const date_heure = `${rdvForm.date}T${rdvForm.heure || "09:00"}`;
+    if (new Date(date_heure).getTime() <= Date.now()) { setRdvError("Merci de choisir une date et une heure futures."); return; }
+
+    const res = await dispatch(createPortalAppointment({
+      medecin: rdvForm.medecin,
+      service: rdvForm.service || undefined,
+      date_heure,
+      motif: rdvForm.motif.trim(),
+    }));
+    if (!res.error) {
+      toast.success("Demande de rendez-vous envoyée — en attente de confirmation par la clinique.");
+      setModalRdv(false);
+      dispatch(fetchPortalDashboard());
+    } else {
+      setRdvError(res.payload || "Erreur lors de la demande de rendez-vous.");
+    }
+  };
+
+  const handleCancelRdv = async (rdv) => {
+    if (!window.confirm("Confirmez-vous l'annulation de ce rendez-vous ?")) return;
+    const res = await dispatch(cancelPortalAppointment(rdv._id || rdv.id));
+    if (!res.error) { toast.success("Rendez-vous annulé."); dispatch(fetchPortalDashboard()); }
+    else toast.error(res.payload || "Erreur lors de l'annulation.");
+  };
+
+  // PORTAL-PDF-001 (audit du 12 sept. 2026, mission Portail Patient) —
+  // "Télécharger"/"PDF"/"Rapport"/"Facture" étaient honnêtement désactivés
+  // (Sous-phases précédentes, Phase 7) faute de générateur réel câblé. jsPDF
+  // est déjà une dépendance réelle du projet, utilisée pour la même sorte de
+  // document par Consultations.jsx::downloadOrdonnancePdf (PDF-ORD-001) —
+  // même approche reprise ici (import dynamique, mêmes polices/mise en
+  // page), jamais un second mécanisme de génération PDF inventé. SÉCURITÉ :
+  // aucune de ces fonctions n'appelle de route serveur avec un identifiant —
+  // elles impriment exclusivement les données déjà reçues via GET
+  // /portal/prescriptions|lab-results|imaging|invoices, elles-mêmes
+  // strictement filtrées côté serveur sur le patient connecté
+  // (portal.controller.js::findPatient) : impossible d'obtenir par ce biais
+  // le PDF d'un autre patient, quelle que soit la manipulation côté client.
+  const genPatientPdf = async ({ heading, subtitle, lines, filename }) => {
+    const { default: jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    let y = 20;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+    doc.text('CLINIQUE CANADIENNE DE SOUANKÉ', pageW / 2, y, { align: 'center' }); y += 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.text(heading, pageW / 2, y, { align: 'center' }); y += 10;
+    doc.setDrawColor(180); doc.line(14, y, pageW - 14, y); y += 8;
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.text(`Patient : ${patient.prenom || ''} ${patient.nom || ''}`.trim(), 14, y); y += 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.text(`${patient.numero_dossier || '—'} · ${ageCalc(patient.date_naissance)} · ${patient.groupe_sanguin || 'Gr. ?'}`, 14, y); y += 6;
+    if (subtitle) { doc.text(subtitle, 14, y); y += 6; }
+
+    y += 4; doc.setDrawColor(220); doc.line(14, y, pageW - 14, y); y += 8;
+    doc.setFontSize(10);
+    lines.forEach(l => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.setFont('helvetica', l.bold ? 'bold' : (l.italic ? 'italic' : 'normal'));
+      doc.text(typeof l === 'string' ? l : l.text, 14, y);
+      y += 6;
+    });
+    doc.save(filename);
+  };
+
+  const downloadOrdonnancePdf = (o) => {
+    const meds = getOrdMeds(o);
+    genPatientPdf({
+      heading: 'ORDONNANCE MÉDICALE',
+      subtitle: `Prescripteur : ${getOrdMedecin(o) || '—'} · Prescrite le ${fmtDate(getOrdDate(o))} · Expire le ${fmtDate(getOrdExpire(o))}`,
+      lines: [
+        { text: 'Rp', bold: true },
+        ...(meds.length ? meds.map((m, i) => `${i + 1}. ${m}`) : [{ text: 'Aucun médicament enregistré', italic: true }]),
+      ],
+      filename: `ordonnance-${o.numero_rx || o._id || o.id || Date.now()}.pdf`,
+    }).catch(() => toast.error("Échec de la génération du PDF de l'ordonnance."));
+  };
+
+  const downloadLabResultPdf = (a) => {
+    const examens = getLabResultats(a);
+    genPatientPdf({
+      heading: "RÉSULTATS D'ANALYSE DE LABORATOIRE",
+      subtitle: `Examen : ${getLabNom(a)} · Résultat du ${fmtDate(getLabDate(a))}`,
+      lines: examens.length
+        ? examens.map(e => `${e.nom} : ${e.val}${e.statut === 'anormal' ? '  ⚠ Anormal' : ''}`)
+        : [{ text: a.commentaires || 'Résultats disponibles sur demande', italic: true }],
+      filename: `analyse-${a._id || a.id || Date.now()}.pdf`,
+    }).catch(() => toast.error('Échec de la génération du PDF des résultats.'));
+  };
+
+  const downloadImagingReportPdf = (im) => {
+    genPatientPdf({
+      heading: "COMPTE-RENDU D'IMAGERIE MÉDICALE",
+      subtitle: `${getImgType(im) || '—'} · ${getImgZone(im) || ''} · le ${fmtDate(getImgDate(im))} · ${getImgRadio(im) || '—'}`,
+      lines: [{ text: 'Conclusion :', bold: true }, getImgConclusion(im)],
+      filename: `imagerie-${im._id || im.id || Date.now()}.pdf`,
+    }).catch(() => toast.error('Échec de la génération du PDF du compte-rendu.'));
+  };
+
+  const downloadInvoicePdf = (f) => {
+    genPatientPdf({
+      heading: 'FACTURE',
+      subtitle: `N° ${getFacNum(f)} · le ${fmtDate(getFacDate(f))}`,
+      lines: [
+        getFacDetail(f),
+        `Montant : ${getFacMontant(f)?.toLocaleString('fr-FR') ?? '—'} CFA`,
+        `Statut : ${getFacStatut(f) === 'payee' ? 'Payée' : 'Impayée'}`,
+      ],
+      filename: `facture-${getFacNum(f) || Date.now()}.pdf`,
+    }).catch(() => toast.error('Échec de la génération du PDF de la facture.'));
+  };
+
+  const sendIaMessage = async (presetText) => {
+    const msg = (presetText ?? iaInput).trim();
+    if (!msg || iaSending) return;
+    const history = iaMessages.slice(-6).map(m => ({ role: m.role, content: m.content }));
+    setIaMessages(m => [...m, { role: 'user', content: msg }]);
+    setIaInput("");
+    setIaSending(true);
+    try {
+      const { data } = await api.post('/portal/ai/chat', { message: msg, history });
+      if (data.success) {
+        setIaMessages(m => [...m, { role: 'bot', content: data.reply, disclaimer: data.disclaimer }]);
+      } else {
+        setIaMessages(m => [...m, { role: 'bot', content: data.message || "Assistant IA indisponible.", error: true }]);
+      }
+    } catch (err) {
+      setIaMessages(m => [...m, { role: 'bot', content: err.response?.data?.message || "Échec de l'appel à l'assistant IA.", error: true }]);
+    } finally {
+      setIaSending(false);
+    }
+  };
+
+  // PORTAL-DOSSIER-001 — téléchargement réel d'un document du patient
+  // connecté (GET /portal/documents/:id/download, authentifié par cookie —
+  // même mécanisme que le reste de l'app, jamais un identifiant construit
+  // côté client au-delà de l'_id du document déjà reçu de l'API). Une
+  // simple navigation (window.open) suffit : le cookie de session est
+  // envoyé automatiquement (même origine), et le serveur répond avec
+  // Content-Disposition: attachment (res.download), donc pas besoin de
+  // manipuler un blob côté client.
+  const downloadDocument = (doc) => {
+    const base = api.defaults.baseURL || '/api';
+    window.open(`${base}/portal/documents/${doc._id || doc.id}/download`, '_blank');
+  };
+
+  // PORTAL-MSG-001 — réutilise les routes existantes /messages (jamais
+  // restreintes par rôle, messages.routes.js — MSG-01/SEC-005, décision déjà
+  // documentée et non modifiée) : un patient membre d'une conversation les
+  // appelle exactement comme le personnel, sans aucun changement de ces
+  // routes/contrôleurs.
+  const loadMsgConversations = useCallback(async () => {
+    setMsgLoadingList(true);
+    try {
+      const { data } = await api.get('/messages');
+      setMsgConversations(data.conversations || []);
+    } catch {
+      setMsgConversations([]);
+    } finally {
+      setMsgLoadingList(false);
+    }
+  }, []);
+
+  const loadMsgContacts = useCallback(async () => {
+    try {
+      const { data } = await api.get('/portal/messages/contacts');
+      setMsgContacts(data.contacts || []);
+    } catch {
+      setMsgContacts([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'messagerie') { loadMsgConversations(); loadMsgContacts(); }
+  }, [tab, loadMsgConversations, loadMsgContacts]);
+
+  // Temps réel — même pattern que Messages.jsx (personnel) : rejoint la room
+  // de la conversation ouverte, ajoute au fil si c'est la conversation
+  // affichée, sinon incrémente un compteur local non-lus et rafraîchit la
+  // liste (aperçu/tri à jour).
+  useEffect(() => {
+    if (!socket) return;
+    const handleNewMsg = ({ conversationId, message }) => {
+      if (msgSelectedRef.current?._id === conversationId) {
+        setMsgThread(m => [...m, message]);
+      } else {
+        setMsgConversations(prev => prev.map(c => c._id === conversationId
+          ? { ...c, non_lus: (c.non_lus || 0) + 1, dernier_message_apercu: message.contenu, dernier_message: message.date_envoi }
+          : c));
+        toast('💬 Nouveau message', { duration: 2500 });
+      }
+    };
+    socket.on('message:new', handleNewMsg);
+    return () => socket.off('message:new', handleNewMsg);
+  }, [socket]);
+
+  const openMsgConversation = async (conv) => {
+    if (socket) {
+      if (msgSelected) socket.emit('leave:conversation', msgSelected._id);
+      socket.emit('join:conversation', conv._id);
+    }
+    setMsgSelected(conv);
+    setMsgThread([]);
+    setMsgLoadingThread(true);
+    try {
+      const { data } = await api.get(`/messages/${conv._id}`);
+      setMsgThread(data.messages || []);
+    } catch {
+      toast.error('Impossible de charger cette conversation.');
+    } finally {
+      setMsgLoadingThread(false);
+    }
+    setMsgConversations(prev => prev.map(c => c._id === conv._id ? { ...c, non_lus: 0 } : c));
+  };
+
+  const sendMsgMessage = async () => {
+    const contenu = msgInput.trim();
+    if (!contenu || !msgSelected || msgSendingMsg) return;
+    setMsgSendingMsg(true);
+    setMsgInput("");
+    try {
+      const { data } = await api.post(`/messages/${msgSelected._id}/send`, { contenu });
+      setMsgThread(m => [...m, data.message]);
+    } catch {
+      toast.error("Échec de l'envoi du message.");
+    } finally {
+      setMsgSendingMsg(false);
+    }
+  };
+
+  const handleStartConversation = async () => {
+    if (!msgNewContact) { setMsgError('Veuillez sélectionner un destinataire.'); return; }
+    setMsgError("");
+    try {
+      const { data } = await api.post('/portal/messages', { userId: msgNewContact });
+      const conv = data.conversation;
+      setMsgConversations(prev => prev.some(c => c._id === conv._id) ? prev : [conv, ...prev]);
+      setModalMsg(false);
+      setMsgNewContact("");
+      await openMsgConversation(conv);
+    } catch (err) {
+      setMsgError(err.response?.data?.message || 'Erreur lors de la création de la conversation.');
     }
   };
 
@@ -535,12 +870,13 @@ export default function MonEspacePatient() {
               <button className="hero-btn-ghost" onClick={() => setModalProfil(true)} aria-label="Profil">
                 <Pencil size={14} /> {!isSmall && "Profil"}
               </button>
-              {/* AUDIT-11 (Vague 2, W1) — prise de RDV désactivée : la
-                  modale ne postait vers aucune route réelle (pas de champs
-                  liés à un état, aucun POST /appointments côté portail).
-                  Câblage réel hors périmètre de cette vague (nouveaux
-                  endpoints, conflits de créneaux) — voir décision W1. */}
-              <Button icon={Calendar} disabled title="Fonctionnalité momentanément indisponible" aria-label={isSmall ? "Prendre RDV" : undefined}>{!isSmall ? "Prendre RDV" : ""}</Button>
+              {/* PORTAL-RDV-001 (audit du 12 sept. 2026, mission Portail
+                  Patient) — auparavant désactivé (AUDIT-11, Vague 2 : la
+                  modale ne postait vers aucune route réelle). Réellement
+                  câblé désormais sur POST /portal/appointments, avec
+                  détection de conflit et confinement strict au dossier du
+                  patient connecté (voir portal.controller.js::createAppointment). */}
+              <Button icon={Calendar} onClick={handleOpenRdvModal} aria-label={isSmall ? "Prendre RDV" : undefined}>{!isSmall ? "Prendre RDV" : ""}</Button>
             </>
           }
         />
@@ -581,19 +917,36 @@ export default function MonEspacePatient() {
                 </div>
               )}
 
-              {/* Alerte vaccin */}
-              <div className="al-warn fu" style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20, flexWrap:"wrap" }}>
-                <div style={{ width:40, height:40, background:"#FEF3C7", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>💉</div>
-                <div style={{ flex:1 }}>
-                  <strong style={{ color:"#92400E", fontSize:13 }}>Rappel vaccinal</strong>
-                  <div style={{ fontSize:12, color:"#B45309", marginTop:2 }}>Vérification sérologique Hépatite B recommandée. Consultez votre médecin.</div>
-                </div>
-                <button className="ebtn ebtn-ghost ebtn-sm" style={{ borderColor:"#FCD34D", color:"#92400E" }} onClick={() => setTab("vaccinations")}>Voir vaccinations →</button>
-              </div>
+              {/* PORTAL-VAC-002 (audit du 12 sept. 2026, mission Portail
+                  Patient) — cette alerte était affichée inconditionnellement
+                  à TOUT patient connecté, avec un contenu clinique codé en
+                  dur ("Vérification sérologique Hépatite B recommandée"),
+                  sans aucun rapport avec les vraies données vaccinales du
+                  patient (déjà correctement rendues réelles dans l'onglet
+                  Vaccinations depuis Sous-phase 5.4). Un patient sans aucun
+                  retard réel voyait donc un faux rappel médical. N'apparaît
+                  désormais que si `vaccinations` (Child.vaccinations[], la
+                  même source réelle que l'onglet Vaccinations) contient
+                  effectivement un rappel réellement dépassé, avec le(s) vrai
+                  nom(s) de vaccin concerné(s). */}
+              {(() => {
+                const vaccinsEnRetard = vaccinations.filter(v => v.rappel_prevu && new Date(v.rappel_prevu) < new Date());
+                if (!vaccinsEnRetard.length) return null;
+                return (
+                  <div className="al-warn fu" style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20, flexWrap:"wrap" }}>
+                    <div style={{ width:40, height:40, background:"#FEF3C7", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>💉</div>
+                    <div style={{ flex:1 }}>
+                      <strong style={{ color:"#92400E", fontSize:13 }}>Rappel vaccinal en retard</strong>
+                      <div style={{ fontSize:12, color:"#B45309", marginTop:2 }}>{vaccinsEnRetard.map(v => v.vaccin).join(', ')} — consultez votre médecin.</div>
+                    </div>
+                    <button className="ebtn ebtn-ghost ebtn-sm" style={{ borderColor:"#FCD34D", color:"#92400E" }} onClick={() => setTab("vaccinations")}>Voir vaccinations →</button>
+                  </div>
+                );
+              })()}
 
               {/* KPIs */}
               <div className="ep-kpi-grid" style={{ marginBottom:20 }}>
-                <KpiCard color="teal"   icon={I.calendar} value={stats.nbRdv  || rdvs.filter(r=>getRdvStatut(r)==='confirme').length}  label="Rendez-vous à venir"  sub="prochains RDV"  onClick={() => setTab("rdv")} />
+                <KpiCard color="teal"   icon={I.calendar} value={stats.nbRdv  || rdvs.filter(r=>getRdvStatut(r)==='a_venir').length}  label="Rendez-vous à venir"  sub="prochains RDV"  onClick={() => setTab("rdv")} />
                 <KpiCard color="blue"   icon={I.pill}     value={stats.nbOrd  || ordonnances.filter(o=>getOrdStatut(o)==='active').length} label="Ordonnances actives" sub="en cours"     onClick={() => setTab("ordonnances")} />
                 <KpiCard color="green"  icon={I.flask}    value={stats.nbLabo || analyses.length}    label="Analyses disponibles"  sub="résultats reçus"  onClick={() => setTab("analyses")} />
                 <KpiCard color="purple" icon={I.xray}     value={stats.nbImag || imageries.length}   label="Imageries disponibles" sub="rapports prêts"   onClick={() => setTab("imageries")} />
@@ -605,11 +958,11 @@ export default function MonEspacePatient() {
                 {/* Prochains RDV */}
                 <div className="ep-card fu">
                   <div className="ep-card-hdr">
-                    <div><h3>📅 Prochains rendez-vous</h3><p>{rdvs.filter(r=>getRdvStatut(r)==='confirme').length} RDV confirmés</p></div>
+                    <div><h3>📅 Prochains rendez-vous</h3><p>{rdvs.filter(r=>getRdvStatut(r)==='a_venir').length} RDV à venir</p></div>
                     <button className="ebtn ebtn-ghost ebtn-sm" onClick={() => setTab("rdv")}>Voir tous →</button>
                   </div>
                   <div style={{ padding:"0 0 8px" }}>
-                    {rdvs.filter(r => getRdvStatut(r) === "confirme").slice(0,3).map((rdv,i) => {
+                    {rdvs.filter(r => getRdvStatut(r) === "a_venir").slice(0,3).map((rdv,i) => {
                       const d = new Date(getRdvDate(rdv));
                       return (
                       <div key={rdv._id||rdv.id||i} style={{ padding:"14px 20px", borderBottom:"1px solid #F3F7FF", display:"flex", alignItems:"center", gap:14 }}>
@@ -622,7 +975,7 @@ export default function MonEspacePatient() {
                           <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{getRdvService(rdv)} · {isNaN(d)?'':d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
                           <div style={{ fontSize:11, color:"var(--cm)" }}>{rdv.motif}</div>
                         </div>
-                        <Badge cls="teal">✓ Confirmé</Badge>
+                        <Badge cls={getRdvBadge(rdv)[0]}>{getRdvBadge(rdv)[1]}</Badge>
                       </div>
                     )})}
                   </div>
@@ -698,7 +1051,7 @@ export default function MonEspacePatient() {
                           </td>
                           <td style={{ fontSize:12 }}>{fmtDate(getOrdExpire(o))}</td>
                           <td><Badge cls="green">✓ Active</Badge></td>
-                          <td><button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Télécharger</button></td>
+                          <td><button className="ebtn ebtn-ghost ebtn-sm" onClick={() => downloadOrdonnancePdf(o)}>{I.dl} Télécharger</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -781,6 +1134,85 @@ export default function MonEspacePatient() {
                 </div>
               </div>
 
+              {/* PORTAL-DOSSIER-001 (audit du 12 sept. 2026, mission "Compléter
+                  Mon dossier") — Consultation/Hospitalization/Document existent
+                  et sont réellement alimentés côté personnel, mais aucun
+                  endpoint du portail ne les exposait au patient : "Mon dossier"
+                  n'affichait ni historique de consultations, ni
+                  hospitalisations, ni documents. Réel désormais (GET
+                  /portal/consultations|hospitalizations|documents,
+                  portal.controller.js), strictement scopé au patient connecté
+                  (findPatient). État vide honnête si le patient n'a réellement
+                  aucun historique de ce type. */}
+              <div className="ep-card fu" style={{ marginBottom:16 }}>
+                <div className="ep-card-hdr"><h3>🩺 Mes Consultations</h3><p>{consultations.length} consultation(s)</p></div>
+                {consultations.length === 0 ? (
+                  <div style={{ padding:24, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucune consultation enregistrée.</div>
+                ) : (
+                  <div>
+                    {consultations.map((c,i) => {
+                      const [badgeCls, badgeLbl] = CONS_STATUT_BADGE[c.statut] || ['gray', c.statut || '—'];
+                      return (
+                      <div key={c._id||i} style={{ padding:"14px 20px", borderBottom: i < consultations.length-1 ? "1px solid #F3F7FF" : "none" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap", marginBottom:6 }}>
+                          <div>
+                            <div style={{ fontWeight:700, color:"var(--cn)", fontSize:13 }}>{getConsMedecin(c)}</div>
+                            <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{fmtDate(getConsDate(c))}{c.service ? ` · ${c.service}` : ''}{c.type_consultation ? ` · ${c.type_consultation}` : ''}</div>
+                          </div>
+                          <Badge cls={badgeCls}>{badgeLbl}</Badge>
+                        </div>
+                        {c.diagnostic && <div style={{ fontSize:12.5, color:"var(--cn)" }}><strong>Diagnostic :</strong> {c.diagnostic}</div>}
+                        {c.recommandations && <div style={{ fontSize:12.5, color:"var(--cm)", marginTop:2 }}><strong>Recommandations :</strong> {c.recommandations}</div>}
+                      </div>
+                    )})}
+                  </div>
+                )}
+              </div>
+
+              <div className="ep-card fu" style={{ marginBottom:16 }}>
+                <div className="ep-card-hdr"><h3>🏥 Mes Hospitalisations</h3><p>{hospitalizations.length} séjour(s)</p></div>
+                {hospitalizations.length === 0 ? (
+                  <div style={{ padding:24, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucune hospitalisation enregistrée.</div>
+                ) : (
+                  <div style={{ overflowX:"auto" }}>
+                    <table className="ep-tbl">
+                      <thead><tr><th>Entrée</th><th>Sortie</th><th>Service</th><th>Chambre</th><th>Motif</th><th>Statut</th></tr></thead>
+                      <tbody>
+                        {hospitalizations.map((h,i) => (
+                          <tr key={h._id||i}>
+                            <td style={{ fontWeight:600, color:"var(--cn)" }}>{fmtDate(h.date_entree)}</td>
+                            <td style={{ fontSize:12 }}>{h.date_sortie ? fmtDate(h.date_sortie) : (h.date_sortie_prevue ? `Prévue : ${fmtDate(h.date_sortie_prevue)}` : '—')}</td>
+                            <td style={{ fontSize:12, color:"var(--cm)" }}>{h.service?.nom || h.service_nom || '—'}</td>
+                            <td style={{ fontSize:12, color:"var(--cm)" }}>{h.chambre?.numero || h.chambre_num || '—'}{h.lit_numero ? ` / lit ${h.lit_numero}` : ''}</td>
+                            <td style={{ fontSize:12, color:"var(--cm)" }}>{h.motif_entree}</td>
+                            <td><Badge cls={h.statut === 'sorti' ? 'green' : h.statut === 'en_cours' ? 'blue' : 'gray'}>{h.statut === 'en_cours' ? 'En cours' : h.statut === 'sorti' ? 'Sorti' : (h.statut || '—')}</Badge></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="ep-card fu" style={{ marginBottom:16 }}>
+                <div className="ep-card-hdr"><h3>📁 Mes Documents Médicaux</h3><p>{documents.length} document(s)</p></div>
+                {documents.length === 0 ? (
+                  <div style={{ padding:24, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucun document disponible.</div>
+                ) : (
+                  <div>
+                    {documents.map((d,i) => (
+                      <div key={d._id||i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, padding:"12px 20px", borderBottom: i < documents.length-1 ? "1px solid #F3F7FF" : "none", flexWrap:"wrap" }}>
+                        <div>
+                          <div style={{ fontWeight:600, color:"var(--cn)", fontSize:13 }}>{d.nom}</div>
+                          <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{DOC_TYPE_LABEL[d.type] || d.type || 'Document'} · {fmtTaille(d.taille)} · {fmtDate(d.createdAt)}</div>
+                        </div>
+                        <button className="ebtn ebtn-ghost ebtn-sm" onClick={() => downloadDocument(d)}>{I.dl} Télécharger</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Actions rapides */}
               <div className="ep-card fu">
                 <div className="ep-card-hdr"><h3>⚡ Actions rapides</h3></div>
@@ -800,13 +1232,16 @@ export default function MonEspacePatient() {
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 }}>
                 <div><div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Mes Rendez-vous</div><div style={{ fontSize:12, color:"var(--cm)" }}>{rdvs.length} rendez-vous au total</div></div>
-                <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>📅 Prendre un rendez-vous</button>
+                {/* PORTAL-RDV-001 — réellement câblé sur POST /portal/appointments
+                    (voir modale plus bas) ; auparavant désactivé (AUDIT-11), aucune
+                    route n'existait. */}
+                <button className="ebtn ebtn-teal" onClick={handleOpenRdvModal}>📅 Prendre un rendez-vous</button>
               </div>
 
-              {["confirme","passe"].map(statut => (
+              {["a_venir","passe"].map(statut => (
                 <div key={statut} className="ep-card fu" style={{ marginBottom:20 }}>
                   <div className="ep-card-hdr">
-                    <div><h3>{statut === "confirme" ? "📅 À venir" : "🕐 Passés"}</h3><p>{rdvs.filter(r=>getRdvStatut(r)===statut).length} rendez-vous</p></div>
+                    <div><h3>{statut === "a_venir" ? "📅 À venir" : "🕐 Passés"}</h3><p>{rdvs.filter(r=>getRdvStatut(r)===statut).length} rendez-vous</p></div>
                   </div>
                   <div style={{ overflowX:"auto" }}>
                     <table className="ep-tbl">
@@ -814,6 +1249,7 @@ export default function MonEspacePatient() {
                       <tbody>
                         {rdvs.filter(r => getRdvStatut(r) === statut).map((rdv,i) => {
                           const d = new Date(getRdvDate(rdv));
+                          const [badgeCls, badgeLbl] = getRdvBadge(rdv);
                           return (
                           <tr key={rdv._id||rdv.id||i}>
                             <td style={{ fontWeight:600, color:"var(--cn)" }}>{isNaN(d)?'—':d.toLocaleDateString("fr-FR")}</td>
@@ -821,11 +1257,12 @@ export default function MonEspacePatient() {
                             <td style={{ fontWeight:600, color:"var(--cn)" }}>{getRdvMedecin(rdv)}</td>
                             <td style={{ fontSize:12, color:"var(--cm)" }}>{getRdvService(rdv)}</td>
                             <td style={{ fontSize:12, color:"var(--cm)" }}>{rdv.motif}</td>
-                            <td><Badge cls={statut === "confirme" ? "teal" : "gray"}>{statut === "confirme" ? "✓ Confirmé" : "Passé"}</Badge></td>
+                            <td><Badge cls={badgeCls}>{badgeLbl}</Badge></td>
                             <td>
                               <div style={{ display:"flex", gap:6 }}>
-                                <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Conf.</button>
-                                {statut === "confirme" && <button className="ebtn ebtn-danger ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>Annuler</button>}
+                                {isRdvCancellable(rdv) && (
+                                  <button className="ebtn ebtn-danger ebtn-sm" disabled={saving} onClick={() => handleCancelRdv(rdv)}>Annuler</button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -855,7 +1292,7 @@ export default function MonEspacePatient() {
                       </div>
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                         <Badge cls={st === "active" ? "green" : "gray"}>{st === "active" ? "✓ Active" : "Expirée"}</Badge>
-                        <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Télécharger</button>
+                        <button className="ebtn ebtn-ghost ebtn-sm" onClick={() => downloadOrdonnancePdf(o)}>{I.dl} Télécharger</button>
                         {/* Sous-phase 5.2 — n'avait aucun onClick (bouton
                             muet, ni désactivé ni fonctionnel). Câblé sur
                             window.print(), même mécanisme réel utilisé
@@ -893,7 +1330,7 @@ export default function MonEspacePatient() {
                     </div>
                     <div style={{ display:"flex", gap:8 }}>
                       {a.est_critique && <Badge cls="red">⚠ Critique</Badge>}
-                      <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} PDF</button>
+                      <button className="ebtn ebtn-ghost ebtn-sm" onClick={() => downloadLabResultPdf(a)}>{I.dl} PDF</button>
                     </div>
                   </div>
                   <div style={{ overflowX:"auto" }}>
@@ -950,8 +1387,14 @@ export default function MonEspacePatient() {
                         {getImgConclusion(im)}
                       </div>
                       <div style={{ display:"flex", gap:8 }}>
+                        {/* PORTAL-PDF-001 — resté honnêtement désactivé :
+                            ImagingResult (backend/models/ImagingResult.js) ne
+                            stocke aucun fichier/URL d'image (DICOM/JPEG…),
+                            seulement le compte-rendu texte (conclusion) —
+                            aucune image réelle à visualiser n'existe dans ce
+                            système, contrairement au rapport texte ci-contre. */}
                         <button className="ebtn ebtn-teal ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>👁 Visualiser</button>
-                        <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Rapport</button>
+                        <button className="ebtn ebtn-ghost ebtn-sm" onClick={() => downloadImagingReportPdf(im)}>{I.dl} Rapport</button>
                       </div>
                     </div>
                   </div>
@@ -1045,7 +1488,7 @@ export default function MonEspacePatient() {
                           <td><Badge cls={getFacStatut(f) === "payee" ? "green" : "red"}>{getFacStatut(f) === "payee" ? "✓ Payée" : "⚠ Impayée"}</Badge></td>
                           <td>
                             <div style={{ display:"flex", gap:6 }}>
-                              <button className="ebtn ebtn-ghost ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>{I.dl} Facture</button>
+                              <button className="ebtn ebtn-ghost ebtn-sm" onClick={() => downloadInvoicePdf(f)}>{I.dl} Facture</button>
                               {getFacStatut(f) === "impayee" && <button className="ebtn ebtn-teal ebtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>💳 Payer</button>}
                             </div>
                           </td>
@@ -1067,33 +1510,93 @@ export default function MonEspacePatient() {
           )}
 
           {/* ══ MESSAGERIE ══ */}
-          {/* Correction 3 (relecture du 6 sept. 2026) — cet onglet affichait
-              MESSAGES, une constante statique de trois conversations
-              entièrement fabriquées (dont une facture inventée), jamais
-              chargée depuis l'API, comme si un vrai patient recevait ces
-              messages. Aucun canal de messagerie patient-scopé n'existe
-              aujourd'hui : Conversation/Message sont réservés au personnel
-              (SEC-004/SEC-005), et "Nouveau message" ci-dessous est déjà
-              honnêtement désactivé depuis AUDIT-11. Plutôt que de construire
-              précipitamment un nouveau canal patient↔personnel — une
-              extension sensible du périmètre de sécurité délibérément fermé
-              par SEC-004/SEC-005 — désactivé honnêtement dans son ensemble,
-              même pattern que le reste de cette page. */}
-          {tab === "messagerie" && (
+          {/* PORTAL-MSG-001 (audit du 12 sept. 2026, mission "Correction
+              stricte de la messagerie patient") — Correction 3 désactivait
+              honnêtement cet onglet faute de canal patient↔personnel réel
+              (Conversation/Message réservés au personnel via POST /messages,
+              SEC-004/SEC-005). Réactivé en réutilisant EXACTEMENT la même
+              architecture : GET /messages, GET /messages/:id,
+              POST /messages/:id/send (aucune restriction de rôle, déjà
+              scopés par appartenance côté contrôleur — MSG-01, non modifiés)
+              + POST /portal/messages (nouveau, portal.controller.js::
+              getOrCreatePatientConversation), qui n'autorise que les
+              destinataires ayant un vrai lien de soin avec ce patient
+              (medecin_referent, ou médecin ayant réellement eu un RDV/une
+              consultation avec lui) — jamais l'annuaire complet du
+              personnel. */}
+          {tab === "messagerie" && (() => {
+            const otherMember = (c) => c.membres?.find(m => m.role !== 'patient') || {};
+            return (
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 }}>
-                <div><div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Messagerie Sécurisée</div><div style={{ fontSize:12, color:"var(--cm)" }}>Fonctionnalité momentanément indisponible</div></div>
-                <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>✉️ Nouveau message</button>
+                <div><div style={{ fontSize:16, fontWeight:700, color:"var(--cn)" }}>Messagerie Sécurisée</div><div style={{ fontSize:12, color:"var(--cm)" }}>{msgConversations.length} conversation(s)</div></div>
+                <button className="ebtn ebtn-teal" onClick={() => { setMsgError(""); setMsgNewContact(""); setModalMsg(true); }}>✉️ Nouveau message</button>
               </div>
-              <div className="ep-card fu">
-                <div style={{ padding:"32px 20px", textAlign:"center", color:"var(--cm)" }}>
-                  <div style={{ fontSize:36, marginBottom:10 }}>💬</div>
-                  <div style={{ fontWeight:600, color:"var(--cn)", fontSize:14 }}>Messagerie momentanément indisponible</div>
-                  <div style={{ fontSize:12.5, marginTop:6 }}>Pour toute question, contactez directement votre clinique par téléphone.</div>
+
+              <div className="ep-g2">
+                {/* Liste des conversations */}
+                <div className="ep-card fu" style={{ maxHeight: 560, overflowY: 'auto' }}>
+                  {msgLoadingList && <div style={{ padding:24, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Chargement…</div>}
+                  {!msgLoadingList && msgConversations.length === 0 && (
+                    <div style={{ padding:24, textAlign:"center", color:"var(--cm)", fontSize:13 }}>
+                      Aucune conversation pour le moment.<br/>Utilisez « Nouveau message » pour contacter votre équipe soignante.
+                    </div>
+                  )}
+                  {msgConversations.map((c) => {
+                    const om = otherMember(c);
+                    const active = msgSelected?._id === c._id;
+                    return (
+                      <div key={c._id} onClick={() => openMsgConversation(c)}
+                        style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderBottom:"1px solid #F3F7FF", cursor:"pointer", background: active ? "#F0FDFC" : (c.non_lus ? "rgba(14,165,160,.04)" : "") }}>
+                        <div style={{ width:38, height:38, borderRadius:"50%", background:"linear-gradient(135deg,#EEF4FF,#DBEAFE)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"var(--cb)", flexShrink:0 }}>
+                          {(om.prenom?.[0]||'')}{(om.nom?.[0]||'')}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontWeight: c.non_lus ? 700 : 600, color:"var(--cn)", fontSize:13 }}>Dr. {om.prenom} {om.nom}</div>
+                          <div style={{ fontSize:11.5, color:"var(--cm)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.dernier_message_apercu || 'Aucun message'}</div>
+                        </div>
+                        {c.non_lus > 0 && <span className="tab-bar-item-count" style={{ position:"static" }}>{c.non_lus}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Fil de la conversation sélectionnée */}
+                <div className="ep-card fu" style={{ display:"flex", flexDirection:"column", height:560 }}>
+                  {!msgSelected ? (
+                    <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", color:"var(--cm)", fontSize:13, textAlign:"center", padding:24 }}>
+                      Sélectionnez une conversation pour l'ouvrir.
+                    </div>
+                  ) : (<>
+                    <div className="ep-card-hdr">
+                      <h3>💬 Dr. {otherMember(msgSelected).prenom} {otherMember(msgSelected).nom}</h3>
+                    </div>
+                    <div style={{ flex:1, overflowY:"auto", padding:16, display:"flex", flexDirection:"column", gap:10 }}>
+                      {msgLoadingThread && <div style={{ textAlign:"center", color:"var(--cm)", fontSize:13 }}>Chargement…</div>}
+                      {!msgLoadingThread && msgThread.length === 0 && <div style={{ textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucun message. Écrivez le premier.</div>}
+                      {msgThread.map((m, i) => {
+                        const mine = m.expediteur?.role === 'patient';
+                        return (
+                          <div key={m._id||i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth:"75%" }}>
+                            <div style={{ background: mine ? 'var(--cb)' : '#F0FDFC', color: mine ? '#fff' : 'var(--cn)', borderRadius:12, padding:"10px 14px", fontSize:13, whiteSpace:"pre-wrap" }}>{m.contenu}</div>
+                            <div style={{ fontSize:10, color:"var(--cm)", marginTop:3, textAlign: mine ? 'right' : 'left' }}>{new Date(m.date_envoi).toLocaleString('fr-FR', { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit' })}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display:"flex", gap:8, padding:16, borderTop:"1.5px solid var(--cbr)" }}>
+                      <input className="einp" placeholder="Écrire un message…" value={msgInput}
+                        onChange={e => setMsgInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsgMessage(); } }}
+                        disabled={msgSendingMsg} />
+                      <button className="ebtn ebtn-teal" disabled={msgSendingMsg || !msgInput.trim()} onClick={sendMsgMessage}>{msgSendingMsg ? "…" : "Envoyer"}</button>
+                    </div>
+                  </>)}
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* ══ NOTIFICATIONS ══ */}
           {tab === "notifs" && (
@@ -1135,18 +1638,29 @@ export default function MonEspacePatient() {
               </div>
 
               <div className="ep-g2" style={{ marginBottom:24 }}>
-                {/* Fonctions IA */}
+                {/* PORTAL-IA-001 (audit du 12 sept. 2026, mission Portail
+                    Patient) — ces 5 cartes n'avaient jamais eu de handler
+                    (curseur pointeur + survol suggérant une interaction
+                    réelle, mais aucun onClick) : décoratives, alors même
+                    qu'elles semblaient cliquables. Chaque carte envoie
+                    désormais une vraie question à POST /portal/ai/chat
+                    (portal.controller.js::aiChat, réutilise
+                    utils/openai.js::generateReport — même service que le
+                    chat IA du personnel, aucune seconde intégration créée)
+                    et affiche la vraie réponse ci-dessous, jamais un contenu
+                    médical inventé. */}
                 <div className="ep-card fu">
-                  <div className="ep-card-hdr"><h3>🤖 Fonctions disponibles</h3></div>
+                  <div className="ep-card-hdr"><h3>🤖 Poser une question à l'assistant</h3></div>
                   <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
                     {[
-                      ["📊","Explication des résultats","Comprenez vos analyses laboratoire en langage simple","teal"],
-                      ["⏰","Rappel médicaments","Gérez votre traitement et horaires de prise","blue"],
-                      ["🛡","Conseils préventifs","Recommandations basées sur votre profil santé","green"],
-                      ["📋","Préparation consultation","Préparez vos questions avant votre RDV médecin","orange"],
-                      ["❓","FAQ médicale","Réponses aux questions fréquentes sur votre santé","purple"],
-                    ].map(([ico,titre,desc,col]) => (
-                      <div key={titre} style={{ display:"flex", alignItems:"flex-start", gap:12, background:"#F8FAFD", borderRadius:12, padding:"12px 14px", cursor:"pointer", transition:"box-shadow .2s" }}
+                      ["📊","Explication des résultats","Comprenez vos analyses laboratoire en langage simple","Peux-tu m'aider à comprendre en langage simple ce que signifient des résultats d'analyse de laboratoire ?"],
+                      ["⏰","Rappel médicaments","Conseils généraux pour gérer vos horaires de prise","Quels conseils généraux peux-tu me donner pour ne pas oublier de prendre mes médicaments à heure fixe ?"],
+                      ["🛡","Conseils préventifs","Recommandations générales de prévention santé","Quels sont des conseils préventifs généraux pour rester en bonne santé au quotidien ?"],
+                      ["📋","Préparation consultation","Préparez vos questions avant votre RDV médecin","Comment bien préparer mes questions avant une consultation médicale ?"],
+                      ["❓","FAQ médicale","Questions fréquentes sur la santé en général","Quelles sont des questions fréquentes que les patients posent à leur médecin, et pourquoi consulter reste important ?"],
+                    ].map(([ico,titre,desc,prompt]) => (
+                      <button key={titre} type="button" onClick={() => sendIaMessage(prompt)} disabled={iaSending}
+                        style={{ display:"flex", alignItems:"flex-start", gap:12, background:"#F8FAFD", border:"none", borderRadius:12, padding:"12px 14px", cursor: iaSending ? "not-allowed" : "pointer", transition:"box-shadow .2s", textAlign:"left", font:"inherit", opacity: iaSending ? .6 : 1 }}
                         onMouseOver={e=>e.currentTarget.style.boxShadow="var(--shm)"} onMouseOut={e=>e.currentTarget.style.boxShadow="none"}>
                         <span style={{ fontSize:20, flexShrink:0 }}>{ico}</span>
                         <div style={{ flex:1 }}>
@@ -1154,8 +1668,35 @@ export default function MonEspacePatient() {
                           <div style={{ fontSize:11.5, color:"var(--cm)", marginTop:2 }}>{desc}</div>
                         </div>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--cm)" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
-                      </div>
+                      </button>
                     ))}
+                  </div>
+
+                  {/* Fil de conversation réel */}
+                  {iaMessages.length > 0 && (
+                    <div style={{ borderTop:"1.5px solid var(--cbr)", padding:16, display:"flex", flexDirection:"column", gap:10, maxHeight:340, overflowY:"auto" }}>
+                      {iaMessages.map((m,i) => (
+                        <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth:"85%" }}>
+                          <div style={{
+                            background: m.role === 'user' ? 'var(--cb)' : (m.error ? '#FEF2F2' : '#F0FDFC'),
+                            color: m.role === 'user' ? '#fff' : (m.error ? 'var(--cr)' : 'var(--cn)'),
+                            borderRadius:12, padding:"10px 14px", fontSize:13, lineHeight:1.5, whiteSpace:"pre-wrap",
+                          }}>{m.content}</div>
+                          {m.disclaimer && <div style={{ fontSize:10, color:"var(--cm)", marginTop:4, fontStyle:"italic" }}>ℹ️ {m.disclaimer}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ display:"flex", gap:8, padding:16, borderTop:"1.5px solid var(--cbr)" }}>
+                    <input className="einp" placeholder="Posez votre question de santé…" value={iaInput}
+                      onChange={e => setIaInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendIaMessage(); } }}
+                      disabled={iaSending} />
+                    <button className="ebtn ebtn-teal" disabled={iaSending || !iaInput.trim()} onClick={() => sendIaMessage()}>{iaSending ? "…" : "Envoyer"}</button>
+                  </div>
+                  <div style={{ padding:"0 16px 16px", fontSize:10.5, color:"var(--cm)" }}>
+                    ⚠ Les réponses de l'assistant sont générées par IA, à titre informatif uniquement — elles ne remplacent jamais l'avis d'un professionnel de santé.
                   </div>
                 </div>
 
@@ -1218,68 +1759,73 @@ export default function MonEspacePatient() {
         </div>
 
         {/* ═══ MODAL : PRENDRE RDV ═══ */}
+        {/* PORTAL-RDV-001 — service/médecin réellement chargés depuis
+            GET /portal/booking-options (services actifs + médecins actifs),
+            soumission réellement câblée sur POST /portal/appointments
+            (handleSubmitRdv). Le champ Médecin est requis côté serveur
+            (portal.controller.js::createAppointment) : marqué requis ici
+            aussi, contrairement à l'ancienne modale non fonctionnelle. */}
         <Modal open={modalRdv} onClose={() => setModalRdv(false)} title="📅 Prendre un rendez-vous">
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-            <div><label className="elbl">Service *</label>
-              <select className="einp">
-                <option>— Sélectionner un service —</option>
-                {["Médecine générale","Cardiologie","Pneumologie","Dermatologie","Pédiatrie","Gynécologie","Chirurgie","Radiologie"].map(s=><option key={s}>{s}</option>)}
+            <div><label className="elbl">Service</label>
+              <select className="einp" value={rdvForm.service} onChange={e => setRdvForm(f => ({...f, service:e.target.value}))}>
+                <option value="">— Sélectionner un service —</option>
+                {bookingOptions.services.map(s => <option key={s._id} value={s._id}>{s.nom}</option>)}
               </select>
             </div>
-            <div><label className="elbl">Médecin</label>
-              {/* Phase 7 (audit du 11 sept. 2026) — noms fictifs retirés.
-                  Cette modale n'a de toute façon aucun déclencheur réel
-                  (setModalRdv(true) n'est appelé nulle part) et son bouton
-                  de soumission est déjà honnêtement désactivé ci-dessous —
-                  désactivé également pour ne jamais présenter de choix
-                  fictif, même dans une modale inatteignable. */}
-              <select className="einp" disabled>
-                <option>— Sélectionner un médecin —</option>
+            <div><label className="elbl">Médecin *</label>
+              <select className="einp" value={rdvForm.medecin} onChange={e => setRdvForm(f => ({...f, medecin:e.target.value}))}>
+                <option value="">— Sélectionner un médecin —</option>
+                {bookingOptions.medecins.map(m => <option key={m._id} value={m._id}>Dr. {m.prenom} {m.nom}{m.specialite ? ` — ${m.specialite}` : ''}</option>)}
               </select>
             </div>
             <div className="ep-g11s">
-              <div><label className="elbl">Date souhaitée *</label><input type="date" className="einp" min={new Date().toISOString().substring(0,10)} /></div>
-              <div><label className="elbl">Heure préférée</label>
-                <select className="einp">
-                  <option>Matin (8h-12h)</option>
-                  <option>Après-midi (13h-17h)</option>
-                  <option>Fin de journée (17h-19h)</option>
-                </select>
+              <div><label className="elbl">Date souhaitée *</label>
+                <input type="date" className="einp" min={new Date().toISOString().substring(0,10)} value={rdvForm.date} onChange={e => setRdvForm(f => ({...f, date:e.target.value}))} />
+              </div>
+              <div><label className="elbl">Heure souhaitée *</label>
+                <input type="time" className="einp" value={rdvForm.heure} onChange={e => setRdvForm(f => ({...f, heure:e.target.value}))} />
               </div>
             </div>
-            <div><label className="elbl">Motif de consultation</label><textarea className="einp" rows={2} placeholder="Décrivez brièvement le motif de votre consultation..." /></div>
-            <div className="al-info" style={{ fontSize:12, color:"#1E40AF" }}>
-              ℹ️ Votre demande sera confirmée par la clinique dans les 24h. Vous recevrez une notification.
+            <div><label className="elbl">Motif de consultation *</label>
+              <textarea className="einp" rows={2} placeholder="Décrivez brièvement le motif de votre consultation..." value={rdvForm.motif} onChange={e => setRdvForm(f => ({...f, motif:e.target.value}))} />
             </div>
+            <div className="al-info" style={{ fontSize:12, color:"#1E40AF" }}>
+              ℹ️ Votre demande sera confirmée par la clinique. Vous recevrez une notification.
+            </div>
+            {rdvError && <div style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, padding:"10px 14px", color:"#DC2626", fontSize:13 }}>❌ {rdvError}</div>}
             <div style={{ display:"flex", gap:10 }}>
               <button className="ebtn ebtn-ghost" onClick={() => setModalRdv(false)}>Annuler</button>
-              {/* Filet de sécurité : le déclencheur qui ouvre cette modale
-                  est désactivé, mais si elle était atteinte autrement, ce
-                  bouton n'a jamais eu de handler réel — le laisser inerte
-                  plutôt que de lui ajouter une fausse action. */}
-              <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ marginLeft:"auto", opacity:.5, cursor:"not-allowed" }}>✓ Demander le rendez-vous</button>
+              <button className="ebtn ebtn-teal" style={{ marginLeft:"auto" }} disabled={saving} onClick={handleSubmitRdv}>
+                {saving ? "Envoi..." : "✓ Demander le rendez-vous"}
+              </button>
             </div>
           </div>
         </Modal>
 
         {/* ═══ MODAL : NOUVEAU MESSAGE ═══ */}
+        {/* PORTAL-MSG-001 — le destinataire est désormais réellement chargé
+            depuis GET /portal/messages/contacts (votre équipe soignante
+            réelle — medecin_referent ou médecin ayant réellement eu un
+            RDV/une consultation avec vous), jamais un annuaire complet ni
+            une liste fictive. Pas de champ "Objet"/pièce jointe ici : la
+            messagerie réelle (Conversation/Message) est une conversation,
+            le message se rédige dans le fil une fois ouvert. */}
         <Modal open={modalMsg} onClose={() => setModalMsg(false)} title="✉️ Nouveau message">
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             <div><label className="elbl">Destinataire *</label>
-              {/* Phase 7 — même correctif que le sélecteur "Médecin" de la
-                  modale RDV ci-dessus : noms fictifs retirés, jamais un
-                  déclencheur réel pour cette modale non plus
-                  (setModalMsg(true) n'est appelé nulle part). */}
-              <select className="einp" disabled>
-                <option>— Sélectionner —</option>
+              <select className="einp" value={msgNewContact} onChange={e => setMsgNewContact(e.target.value)}>
+                <option value="">— Sélectionner un membre de votre équipe soignante —</option>
+                {msgContacts.map(c => <option key={c._id} value={c._id}>Dr. {c.prenom} {c.nom}{c.specialite ? ` — ${c.specialite}` : ''}</option>)}
               </select>
+              {msgContacts.length === 0 && (
+                <div style={{ fontSize:11.5, color:"var(--cm)", marginTop:6 }}>Aucun membre de votre équipe soignante n'est encore associé à votre dossier (médecin référent ou ayant réellement eu un rendez-vous/une consultation avec vous).</div>
+              )}
             </div>
-            <div><label className="elbl">Objet *</label><input className="einp" placeholder="Sujet de votre message..." /></div>
-            <div><label className="elbl">Message *</label><textarea className="einp" rows={5} placeholder="Rédigez votre message ici..." /></div>
-            <div><label className="elbl">Pièce jointe (optionnel)</label><input type="file" className="einp" style={{ padding:"6px 10px" }} /></div>
+            {msgError && <div style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, padding:"10px 14px", color:"#DC2626", fontSize:13 }}>❌ {msgError}</div>}
             <div style={{ display:"flex", gap:10 }}>
               <button className="ebtn ebtn-ghost" onClick={() => setModalMsg(false)}>Annuler</button>
-              <button className="ebtn ebtn-teal" disabled title="Fonctionnalité momentanément indisponible" style={{ marginLeft:"auto", opacity:.5, cursor:"not-allowed" }}>📤 Envoyer</button>
+              <button className="ebtn ebtn-teal" style={{ marginLeft:"auto" }} disabled={!msgNewContact} onClick={handleStartConversation}>Ouvrir la conversation</button>
             </div>
           </div>
         </Modal>

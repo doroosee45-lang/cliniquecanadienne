@@ -52,8 +52,16 @@ exports.getAll = async (req, res, next) => {
     if (fields) query = query.select(fields);
     if (!fields || fields.includes('medecin_referent')) query = query.populate('medecin_referent', 'nom prenom');
 
-    const total    = await Patient.countDocuments(filter);
-    const patients = await paginate(query, page, limit);
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find étaient attendus l'un après l'autre alors qu'ils sont
+    // indépendants (aucun ne dépend du résultat de l'autre) : un aller-
+    // retour réseau complet vers MongoDB gagné en les exécutant en
+    // parallèle, mesuré réellement sur GET /appointments (même correctif,
+    // appointments.controller.js::getAll) avant de le généraliser ici.
+    const [total, patients] = await Promise.all([
+      Patient.countDocuments(filter),
+      paginate(query, page, limit),
+    ]);
     res.json({ success: true, total, count: patients.length, patients });
   } catch (err) { next(err); }
 };
@@ -299,44 +307,80 @@ exports.setPasswordAndActivate = async (req, res, next) => {
 };
 
 // ── ACTIVATE DIRECT (admin, sans email) ──────────────────────────────────────
+// PATIENT-ACTIVATION-002 (audit du 12 sept. 2026) — un patient sans
+// smartphone/accès email ne peut suivre aucun lien d'activation (le seul
+// mécanisme réel jusqu'ici, R-08b) : il n'avait donc, en pratique, jamais
+// moyen de se connecter au portail. Ajout d'un second mode explicite,
+// déclenché uniquement à la demande du personnel (jamais automatique) :
+// `numero_dossier` définit directement le mot de passe du compte lié sur le
+// numero_dossier réel du patient (déjà unique, déjà conforme au validateur
+// de complexité de User.password — majuscule+chiffre, ex. "CLIN-2026-00001")
+// et force must_change_password, réutilisant exactement le mécanisme déjà
+// existant (Login.jsx / Portal.jsx affichent déjà la modale de changement
+// obligatoire — AuthContext le lit sur /auth/me, aucune nouvelle UI requise
+// pour cette partie). Le mode par lien email (défaut, sans body.methode)
+// reste strictement inchangé.
 exports.activateAdmin = async (req, res, next) => {
   try {
     const patient = await Patient.findById(req.params.id);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
 
+    const viaNumeroDossier = req.body?.methode === 'numero_dossier';
+    // Le mode numero_dossier définit un mot de passe sur un compte User lié —
+    // il exige donc un email (seul moyen d'avoir un compte lié, cf. create()).
+    // Le mode par défaut (lien email / dossier sans email du tout) reste lui
+    // inchangé : un patient sans email n'a jamais eu de compte portail à
+    // activer, mais son DOSSIER (patient.actif/statut) doit toujours pouvoir
+    // être marqué actif administrativement (comportement préexistant).
+    if (viaNumeroDossier && !patient.email) {
+      return res.status(400).json({ success: false, message: "Ce patient n'a pas d'adresse email — aucun compte portail n'est associé à ce dossier." });
+    }
+
     patient.actif  = true;
     patient.statut = 'actif';
-    await patient.save();
 
     let lienRenvoye = false;
-    if (patient.email) {
-      const user = await User.findOne({ email: patient.email, role: 'patient' }).select('+password');
-      if (user) {
-        user.statut = 'actif';
+    let motDePasseDefini = false;
+    const user = patient.email
+      ? await User.findOne({ email: patient.email, role: 'patient' }).select('+password')
+      : null;
+    if (!user && viaNumeroDossier) {
+      return res.status(404).json({ success: false, message: 'Compte utilisateur introuvable pour ce dossier — impossible de définir un mot de passe.' });
+    }
+    if (user) {
+      user.statut = 'actif';
+      if (viaNumeroDossier) {
+        // Numéro de dossier réel du patient, jamais un mot de passe
+        // fabriqué ou générique — identique à ce que la réception peut lire
+        // et transmettre de vive voix/sur papier à un patient sans moyen
+        // de suivre un lien.
+        user.password             = patient.numero_dossier;
+        user.must_change_password = true;
+        patient.token_activation        = undefined;
+        patient.token_activation_expire = undefined;
+        motDePasseDefini = true;
+      } else if (!user.password) {
         // R-08b — dossier activé tout de suite pour le staff, mais si ce
         // compte n'a encore aucun mot de passe utilisable, "actif" et
         // "peut se connecter au portail" restent deux états distincts :
         // on renvoie un nouveau lien plutôt que de régénérer un mot de
         // passe temporaire (ce que R-08b cherche justement à éliminer).
-        if (!user.password) {
-          const tokenActivation = crypto.randomBytes(32).toString('hex');
-          patient.token_activation        = tokenActivation;
-          patient.token_activation_expire = new Date(Date.now() + 24 * 60 * 60 * 1000);
-          await patient.save();
-          try {
-            await mail.sendActivationEmail({ email: patient.email, prenom: patient.prenom, nom: patient.nom, token: tokenActivation });
-            lienRenvoye = true;
-          } catch (mailErr) {
-            logger.error('[MAIL ERROR] Échec envoi email patient', { error: mailErr.message });
-          }
-        } else {
-          patient.token_activation        = undefined;
-          patient.token_activation_expire = undefined;
-          await patient.save();
+        const tokenActivation = crypto.randomBytes(32).toString('hex');
+        patient.token_activation        = tokenActivation;
+        patient.token_activation_expire = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        try {
+          await mail.sendActivationEmail({ email: patient.email, prenom: patient.prenom, nom: patient.nom, token: tokenActivation });
+          lienRenvoye = true;
+        } catch (mailErr) {
+          logger.error('[MAIL ERROR] Échec envoi email patient', { error: mailErr.message });
         }
-        await user.save();
+      } else {
+        patient.token_activation        = undefined;
+        patient.token_activation_expire = undefined;
       }
+      await user.save();
     }
+    await patient.save();
 
     await logAction({
       utilisateur: req.user._id,
@@ -344,7 +388,7 @@ exports.activateAdmin = async (req, res, next) => {
       module:      'patients',
       entite_id:   patient._id,
       ip:          req.ip,
-      message:     `Compte patient activé manuellement : ${patient.nom} ${patient.prenom} (${patient.numero_dossier}) par ${req.user.prenom} ${req.user.nom}${lienRenvoye ? ' — nouveau lien envoyé (pas encore de mot de passe)' : ''}`,
+      message:     `Compte patient activé manuellement : ${patient.nom} ${patient.prenom} (${patient.numero_dossier}) par ${req.user.prenom} ${req.user.nom}${motDePasseDefini ? ' — mot de passe initial défini sur le numéro de dossier (sans smartphone)' : (lienRenvoye ? ' — nouveau lien envoyé (pas encore de mot de passe)' : '')}`,
     });
     emitActivity({ module: 'patients', action: 'Compte patient activé (admin)', detail: `${patient.prenom} ${patient.nom} (${patient.numero_dossier})`, icon: '✅', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
@@ -353,11 +397,19 @@ exports.activateAdmin = async (req, res, next) => {
       success: true,
       patient,
       lien_renvoye: lienRenvoye,
-      message: lienRenvoye
-        ? 'Dossier activé. Le patient n\'a pas encore de mot de passe — un nouveau lien d\'activation lui a été envoyé.'
-        : 'Compte patient activé directement.',
+      mot_de_passe_defini: motDePasseDefini,
+      message: motDePasseDefini
+        ? `Compte activé — mot de passe initial défini sur le numéro de dossier (${patient.numero_dossier}). Le patient devra le changer à sa première connexion.`
+        : (lienRenvoye
+          ? 'Dossier activé. Le patient n\'a pas encore de mot de passe — un nouveau lien d\'activation lui a été envoyé.'
+          : 'Compte patient activé directement.'),
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (err.name === 'ValidationError' && err.errors?.password) {
+      return res.status(400).json({ success: false, message: err.errors.password.message });
+    }
+    next(err);
+  }
 };
 
 // AUDIT-P2-1 (constat original) — actif/token_activation* sont gérés par

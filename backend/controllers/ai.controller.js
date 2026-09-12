@@ -138,6 +138,15 @@ exports.getStats = async (req, res, next) => {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfDay   = new Date(now.setHours(0, 0, 0, 0));
 
+    // AI-01 (correction du 12 sept. 2026, audit indépendant) — ce ratio
+    // (prédictions au statut 'traite' / total) était nommé/étiqueté
+    // "precision" : un taux de traitement des alertes, pas une précision de
+    // modèle (aucune vérité terrain, aucune mesure de justesse des
+    // prédictions n'existe dans ce système). Renommé pour refléter
+    // honnêtement ce qui est réellement mesuré.
+    // PERF-001 (audit de performance du 12 sept. 2026) — traites/total
+    // fusionnés dans le même Promise.all que les 7 comptages ci-dessus
+    // (tous indépendants) plutôt qu'un second aller-retour groupé séparé.
     const [
       analyses_mois,
       diagnostics_mois,
@@ -146,6 +155,8 @@ exports.getStats = async (req, res, next) => {
       labo_anomalies_ia,
       imagerie_urgentes,
       patients_analyses,
+      traites,
+      total,
     ] = await Promise.all([
       AIPrediction.countDocuments({ createdAt: { $gte: startOfMonth } }),
       AIPrediction.countDocuments({ type: 'diagnostic', createdAt: { $gte: startOfMonth } }),
@@ -154,16 +165,9 @@ exports.getStats = async (req, res, next) => {
       LabResult.countDocuments({ ia_anomalie: true, createdAt: { $gte: startOfMonth } }),
       ImagingResult.countDocuments({ priorite: { $in: ['urgente', 'tres_urgente', 'stat'] }, createdAt: { $gte: startOfDay } }),
       AIPrediction.distinct('patient', { createdAt: { $gte: startOfMonth } }),
+      AIPrediction.countDocuments({ statut: 'traite' }),
+      AIPrediction.countDocuments(),
     ]);
-
-    // AI-01 (correction du 12 sept. 2026, audit indépendant) — ce ratio
-    // (prédictions au statut 'traite' / total) était nommé/étiqueté
-    // "precision" : un taux de traitement des alertes, pas une précision de
-    // modèle (aucune vérité terrain, aucune mesure de justesse des
-    // prédictions n'existe dans ce système). Renommé pour refléter
-    // honnêtement ce qui est réellement mesuré.
-    const traites = await AIPrediction.countDocuments({ statut: 'traite' });
-    const total   = await AIPrediction.countDocuments();
     const taux_traitement = total > 0 ? Math.round((traites / total) * 100) : 0;
 
     // R-10c — conflit_rdv retiré de l'enum AIPrediction.type (jamais alimenté) ;
@@ -199,14 +203,17 @@ exports.getPredictions = async (req, res, next) => {
     if (statut)  filter.statut  = statut;
 
     const skip  = (parseInt(page) - 1) * parseInt(limit);
-    const total = await AIPrediction.countDocuments(filter);
-    const predictions = await AIPrediction.find(filter)
-      .populate('patient', 'nom prenom numero_dossier')
-      .populate('traite_par', 'nom prenom')
-      .sort('-createdAt')
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
+    // PERF-001 (audit de performance du 12 sept. 2026) — indépendants, en parallèle.
+    const [total, predictions] = await Promise.all([
+      AIPrediction.countDocuments(filter),
+      AIPrediction.find(filter)
+        .populate('patient', 'nom prenom numero_dossier')
+        .populate('traite_par', 'nom prenom')
+        .sort('-createdAt')
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+    ]);
 
     res.json({ success: true, predictions, total });
   } catch (err) { next(err); }

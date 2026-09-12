@@ -51,7 +51,17 @@ const NAV_SECTIONS = [
       // (lecture) sans jamais pouvoir atteindre ce lien de menu.
       { to: '/patients',        label: 'Patients',        icon: Users,      roles: withAdmins('medecin','infirmier','receptionniste','sage_femme','laborantin','radiologue','pharmacien','comptable') },
       { to: '/dossiers-medicaux', label: 'Dossiers Médicaux', icon: Search, roles: withAdmins('medecin','infirmier','laborantin','radiologue','sage_femme','pharmacien') },
-      { to: '/appointments',    label: 'Rendez-vous',     icon: Calendar,   roles: null },
+      // Correction 2 (relecture du 12 sept. 2026, même classe de bug que
+      // "Messagerie" ci-dessous, Correction 1) — roles: null affichait ce
+      // lien à tout rôle connecté, y compris patient, pour une page
+      // (Appointments.jsx, gestion de TOUS les RDV de la clinique) gardée
+      // par App.jsx::ROLES.appointments (superadmin/adminclinique/medecin/
+      // infirmier/receptionniste — jamais patient) : un patient cliquant ce
+      // lien atterrissait systématiquement sur "Accès non autorisé", alors
+      // que Portal.jsx a son propre onglet "Mes Rendez-vous" pleinement
+      // fonctionnel (menu "Mon Espace Patient" séparé, plus bas). Aligné sur
+      // le Guard réel, même pattern que Correction 1.
+      { to: '/appointments',    label: 'Rendez-vous',     icon: Calendar,   roles: withAdmins('medecin','infirmier','receptionniste') },
       { to: '/consultations',   label: 'Consultations',   icon: Stethoscope, roles: withAdmins('medecin','infirmier'), ai: true },
       { to: '/prescriptions',   label: 'Ordonnances',     icon: FileText,   roles: withAdmins('medecin','pharmacien','infirmier') },
       { to: '/hospitalization', label: 'Hospitalisation', icon: BedDouble,  roles: withAdmins('medecin','infirmier') },

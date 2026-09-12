@@ -152,41 +152,50 @@ export default function Header({ title, onMenuToggle }) {
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Search */}
-          <div className="relative hidden md:block">
-            <label htmlFor="header-patient-search" className="sr-only">Rechercher un patient</label>
-            <input
-              id="header-patient-search"
-              type="search"
-              value={searchQuery}
-              onChange={e => handleSearch(e.target.value)}
-              placeholder="Rechercher patient..."
-              className="bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-4 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            {searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 bg-white rounded-xl shadow-xl border border-gray-100 mt-1 z-50 max-h-60 overflow-y-auto">
-                {searchResults.map(p => (
-                  <button
-                    key={p._id}
-                    className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 text-sm"
-                    // ARCH-005 (audit du 11 sept. 2026) — chaque résultat de
-                    // recherche est un vrai patient (p._id réel, /patients/
-                    // search) mais le clic ignorait cet id et renvoyait
-                    // toujours vers la liste générale /patients, jamais vers
-                    // sa propre fiche — /patients/:id existe déjà (App.jsx,
-                    // PatientDetail).
-                    onClick={() => { navigate(`/patients/${p._id}`); setSearchResults([]); setSearchQuery(''); }}
-                  >
-                    <div className="font-semibold">{p.nom} {p.prenom}</div>
-                    <div className="text-gray-400 text-xs">{p.numero_dossier} • {p.telephone}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Search — QUICK-ACTIONS-001 (audit du 12 sept. 2026) : rendu sans
+              condition de rôle alors que GET /patients/search
+              (patients.routes.js::CAN_READ) exclut explicitement 'patient' —
+              un patient connecté voyait ce champ mais toute saisie échouait
+              silencieusement (403), et un résultat n'a de toute façon jamais
+              de sens pour un patient (chercher un AUTRE dossier patient).
+              Masqué pour ce rôle plutôt que laissé comme champ non
+              fonctionnel. */}
+          {user?.role !== 'patient' && (
+            <div className="relative hidden md:block">
+              <label htmlFor="header-patient-search" className="sr-only">Rechercher un patient</label>
+              <input
+                id="header-patient-search"
+                type="search"
+                value={searchQuery}
+                onChange={e => handleSearch(e.target.value)}
+                placeholder="Rechercher patient..."
+                className="bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-4 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              {searchResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 bg-white rounded-xl shadow-xl border border-gray-100 mt-1 z-50 max-h-60 overflow-y-auto">
+                  {searchResults.map(p => (
+                    <button
+                      key={p._id}
+                      className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 text-sm"
+                      // ARCH-005 (audit du 11 sept. 2026) — chaque résultat de
+                      // recherche est un vrai patient (p._id réel, /patients/
+                      // search) mais le clic ignorait cet id et renvoyait
+                      // toujours vers la liste générale /patients, jamais vers
+                      // sa propre fiche — /patients/:id existe déjà (App.jsx,
+                      // PatientDetail).
+                      onClick={() => { navigate(`/patients/${p._id}`); setSearchResults([]); setSearchQuery(''); }}
+                    >
+                      <div className="font-semibold">{p.nom} {p.prenom}</div>
+                      <div className="text-gray-400 text-xs">{p.numero_dossier} • {p.telephone}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Notifications */}
           <div className="relative" ref={notifRef}>
@@ -229,17 +238,25 @@ export default function Header({ title, onMenuToggle }) {
             )}
           </div>
 
-          {/* AI Chat */}
-          <button onClick={() => setShowAI(true)} aria-label="Assistant IA"
-            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
-            <span aria-hidden="true">🤖</span>
-            <span className="hidden sm:inline">IA</span>
-          </button>
+          {/* AI Chat — QUICK-ACTIONS-001 : appelle POST /ai/chat
+              (ai.routes.js, réservé à superadmin/adminclinique/medecin) sans
+              condition de rôle ici ; un patient connecté le voyait mais
+              chaque message échouait (403). Le patient a déjà son propre
+              Assistant IA réel et scopé (onglet dédié de Portal.jsx,
+              POST /portal/ai/chat) — masqué ici pour ce rôle plutôt que
+              dupliqué ou laissé non fonctionnel. */}
+          {user?.role !== 'patient' && (
+            <button onClick={() => setShowAI(true)} aria-label="Assistant IA"
+              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
+              <span aria-hidden="true">🤖</span>
+              <span className="hidden sm:inline">IA</span>
+            </button>
+          )}
         </div>
       </header>
 
       {/* AI Panel */}
-      {showAI && (
+      {showAI && user?.role !== 'patient' && (
         <div className="fixed bottom-0 right-0 left-0 sm:bottom-6 sm:right-6 sm:left-auto w-full sm:w-80 md:w-96 z-50">
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
             <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-4 flex items-center justify-between">

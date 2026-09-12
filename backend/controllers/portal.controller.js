@@ -8,7 +8,13 @@ const Notification = require('../models/Notification');
 const Consultation = require('../models/Consultation');
 const Child        = require('../models/Child');
 const User         = require('../models/User');
-const { logAction, countUnreadConversations } = require('../utils/helpers');
+const Service      = require('../models/Service');
+const HospitalizationModel = require('../models/Hospitalization');
+const DocumentModel = require('../models/Document');
+const { logAction, countUnreadConversations, checkAppointmentConflict, isAppointmentRaceWinner } = require('../utils/helpers');
+const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const path = require('path');
+const fs   = require('fs');
 
 // R-07 — Trouve le dossier patient lié au User connecté. patient_id
 // d'abord : référence directe par ObjectId, stable même si Patient.email
@@ -69,6 +75,148 @@ exports.getAppointments = async (req, res, next) => {
       .sort('-date_heure')
       .lean();
     res.json({ success: true, appointments });
+  } catch (err) { next(err); }
+};
+
+const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
+// PORTAL-RDV-001 — "Prendre un rendez-vous" (Portal.jsx) n'avait aucun
+// déclencheur réel (AUDIT-11) : la modale n'était reliée à aucune route.
+// Options de prise de RDV patient-safe : mêmes sources réelles que le
+// personnel (consultations.controller.js::getMedecins,
+// settings.controller.js::getServices) mais projection volontairement plus
+// stricte (aucun champ interne — chef_service, capacite, etc. — exposé à un
+// compte role:'patient').
+exports.getBookingOptions = async (req, res, next) => {
+  try {
+    const [services, medecins] = await Promise.all([
+      Service.find({ statut: 'actif' }).select('nom').sort('nom').lean(),
+      User.find({ role: 'medecin', statut: 'actif' }).select('nom prenom specialite').sort('nom').lean(),
+    ]);
+    res.json({ success: true, services, medecins });
+  } catch (err) { next(err); }
+};
+
+// Liste blanche stricte, alignée sur APPT_CREATE_ALLOWED_FIELDS
+// (appointments.controller.js) MOINS `patient` — un patient ne choisit
+// jamais pour qui est le rendez-vous, uniquement pour lui-même (voir
+// affectation forcée patient: patient._id ci-dessous, req.body.patient
+// n'est jamais lu). `salle`/`notes` retirés : décisions internes à la
+// clinique, aucun cas d'usage patient légitime.
+const PORTAL_APPT_ALLOWED_FIELDS = ['medecin', 'service', 'date_heure', 'duree_minutes', 'type', 'motif'];
+
+// POST /portal/appointments — prise de RDV patient-initiée. Réutilise
+// exactement les mêmes garanties anti-conflit que le personnel
+// (checkAppointmentConflict + isAppointmentRaceWinner, utils/helpers.js) :
+// aucune seconde logique de détection de créneau n'est inventée ici. Le
+// statut est toujours 'en_attente' (jamais 'confirme' directement) — cohérent
+// avec le texte déjà affiché à l'écran ("Votre demande sera confirmée par la
+// clinique dans les 24h").
+exports.createAppointment = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+
+    const { medecin, date_heure, duree_minutes = 30, motif } = req.body;
+    if (!isObjectId(medecin)) {
+      return res.status(400).json({ success: false, message: 'Médecin invalide.' });
+    }
+    if (!motif || !String(motif).trim()) {
+      return res.status(400).json({ success: false, message: 'Le motif de consultation est requis.' });
+    }
+    const dateReq = new Date(date_heure);
+    if (isNaN(dateReq) || dateReq.getTime() <= Date.now()) {
+      return res.status(400).json({ success: false, message: 'Merci de choisir une date et une heure futures.' });
+    }
+    if (req.body.service !== undefined && req.body.service !== '' && !isObjectId(req.body.service)) {
+      return res.status(400).json({ success: false, message: 'Service invalide.' });
+    }
+
+    const medecinDoc = await User.findOne({ _id: medecin, role: 'medecin', statut: 'actif' }).select('_id');
+    if (!medecinDoc) return res.status(404).json({ success: false, message: 'Médecin introuvable ou indisponible.' });
+
+    if (req.body.service) {
+      const serviceDoc = await Service.findOne({ _id: req.body.service, statut: 'actif' }).select('_id');
+      if (!serviceDoc) return res.status(404).json({ success: false, message: 'Service introuvable ou indisponible.' });
+    }
+
+    const conflict = await checkAppointmentConflict({ medecin, date_heure: dateReq, duree_minutes });
+    if (conflict) {
+      return res.status(400).json({ success: false, message: 'Ce médecin a déjà un rendez-vous à cette heure. Merci de choisir un autre créneau.' });
+    }
+
+    const data = {};
+    for (const k of PORTAL_APPT_ALLOWED_FIELDS) { if (req.body[k] !== undefined && req.body[k] !== '') data[k] = req.body[k]; }
+    data.date_heure = dateReq;
+    // Jamais lu depuis req.body : un patient ne peut réserver que pour son
+    // propre dossier, quelle que soit la valeur envoyée par le client.
+    data.patient = patient._id;
+    data.statut = 'en_attente';
+    data.created_by = req.user._id;
+
+    let appt;
+    try {
+      appt = await Appointment.create(data);
+    } catch (err) {
+      if (err.code === 11000) {
+        return res.status(409).json({ success: false, message: 'Ce créneau vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+      }
+      throw err;
+    }
+
+    // AUDIT-M-B4 (même filet que appointments.controller.js::create) —
+    // élimine un chevauchement partiel gagné en concurrence AVANT tout effet
+    // de bord.
+    if (!(await isAppointmentRaceWinner(appt._id))) {
+      await Appointment.findByIdAndDelete(appt._id);
+      return res.status(409).json({ success: false, message: 'Ce créneau chevauche un rendez-vous qui vient d\'être réservé par une autre requête. Veuillez réessayer.' });
+    }
+
+    await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'portal', entite_id: appt._id, ip: req.ip, message: `Patient ${patient.nom} ${patient.prenom} a demandé un RDV (${appt.type})` });
+    emitActivity({ module: 'appointments', action: 'Nouvelle demande de rendez-vous', detail: appt.motif, icon: '📅', userId: req.user._id, userName: `${patient.prenom} ${patient.nom}` });
+    emitDashboardUpdate();
+
+    const populated = await Appointment.findById(appt._id).populate('medecin', 'nom prenom specialite').populate('service', 'nom').lean();
+    res.status(201).json({ success: true, appointment: populated });
+  } catch (err) { next(err); }
+};
+
+// PUT /portal/appointments/:id/cancel — annulation patient-initiée.
+// SÉCURITÉ (Section 12 de l'audit) : vérifie explicitement que le RDV
+// appartient bien au patient connecté avant toute écriture — jamais une
+// confiance dans un identifiant fourni par le client sans revérification
+// d'appartenance (un patient A ne peut pas annuler le RDV d'un patient B en
+// devinant/énumérant un _id).
+const APPT_CANCEL_BLOCKED_STATUTS = ['termine', 'annule', 'absent'];
+exports.cancelAppointment = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+    if (!isObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Identifiant invalide.' });
+
+    const appt = await Appointment.findById(req.params.id);
+    if (!appt) return res.status(404).json({ success: false, message: 'Rendez-vous introuvable.' });
+    if (appt.patient.toString() !== patient._id.toString()) {
+      await logAction({ utilisateur: req.user._id, action: 'CANCEL', module: 'portal', entite_id: appt._id, ip: req.ip, statut: 'echec', message: `Tentative d'annulation d'un RDV n'appartenant pas au patient connecté (${patient.numero_dossier})` });
+      return res.status(403).json({ success: false, message: "Vous ne pouvez annuler que vos propres rendez-vous." });
+    }
+    if (APPT_CANCEL_BLOCKED_STATUTS.includes(appt.statut)) {
+      return res.status(400).json({ success: false, message: 'Ce rendez-vous ne peut plus être annulé.' });
+    }
+    if (new Date(appt.date_heure).getTime() <= Date.now()) {
+      return res.status(400).json({ success: false, message: 'Ce rendez-vous est déjà passé et ne peut plus être annulé.' });
+    }
+
+    const avant = appt.toObject();
+    appt.statut = 'annule';
+    await appt.save();
+
+    await logAction({ utilisateur: req.user._id, action: 'CANCEL', module: 'portal', entite_id: appt._id, ip: req.ip, message: `Patient ${patient.nom} ${patient.prenom} a annulé son rendez-vous`, avant, apres: appt.toObject() });
+    emitActivity({ module: 'appointments', action: 'Rendez-vous annulé par le patient', detail: appt.motif, icon: '🚫', userId: req.user._id, userName: `${patient.prenom} ${patient.nom}` });
+    emitDashboardUpdate();
+
+    const populated = await Appointment.findById(appt._id).populate('medecin', 'nom prenom specialite').populate('service', 'nom').lean();
+    res.json({ success: true, appointment: populated });
   } catch (err) { next(err); }
 };
 
@@ -157,6 +305,189 @@ exports.getVaccinations = async (req, res, next) => {
 
     const child = await Child.findOne({ patient_id: patient._id }).select('vaccinations').lean();
     res.json({ success: true, vaccinations: child?.vaccinations || [] });
+  } catch (err) { next(err); }
+};
+
+// ── CONSULTATIONS ─────────────────────────────────────────────────────────────
+// PORTAL-DOSSIER-001 (audit du 12 sept. 2026, mission "Compléter Mon dossier
+// du portail patient") — le modèle Consultation existe et est réellement
+// alimenté (Consultations.jsx, module personnel) mais aucun endpoint du
+// portail ne l'exposait au patient : "Mon dossier" n'affichait ni historique
+// de consultations, ni hospitalisations, ni documents. Même périmètre strict
+// que le reste de ce contrôleur (findPatient) — jamais un identifiant fourni
+// par le client, jamais une deuxième source de vérité pour "quel est le bon
+// patient".
+exports.getConsultations = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+
+    const consultations = await Consultation.find({ patient: patient._id })
+      .populate('medecin', 'nom prenom specialite')
+      .sort('-date_consultation')
+      .lean();
+    res.json({ success: true, consultations });
+  } catch (err) { next(err); }
+};
+
+// ── HOSPITALISATIONS ──────────────────────────────────────────────────────────
+exports.getHospitalizations = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+
+    const hospitalizations = await HospitalizationModel.find({ patient: patient._id })
+      .populate('chambre', 'numero')
+      .populate('service', 'nom')
+      .populate('medecin_responsable', 'nom prenom specialite')
+      .sort('-date_entree')
+      .lean();
+    res.json({ success: true, hospitalizations });
+  } catch (err) { next(err); }
+};
+
+// ── DOCUMENTS MÉDICAUX ────────────────────────────────────────────────────────
+// document.controller.js/document.routes.js réservent tout le module à
+// ADMIN (SEC-B-04, décision déjà documentée : un administrateur gère le
+// dépôt à travers tous les patients). Ici au contraire, un seul patient —
+// celui réellement connecté — jamais un accès par rôle : liste strictement
+// filtrée sur patient._id, et fichier_path/hash_integrite volontairement
+// exclus de la réponse (chemin de stockage interne, aucune utilité
+// frontend — le téléchargement passe exclusivement par downloadDocument
+// ci-dessous, qui revérifie l'appartenance).
+exports.getDocuments = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+
+    const documents = await DocumentModel.find({ patient: patient._id })
+      .select('nom type taille mime_type commentaire tags createdAt')
+      .sort('-createdAt')
+      .lean();
+    res.json({ success: true, documents });
+  } catch (err) { next(err); }
+};
+
+// GET /portal/documents/:id/download
+// SÉCURITÉ CRITIQUE — jamais une confiance dans req.params.id seul : un
+// Document existant mais appartenant à un autre patient doit être refusé
+// (403), pas seulement "non listé" côté frontend. Réutilise la même racine
+// de résolution que uploads.controller.js::serveUpload (uploadsRoot exporté
+// depuis ce contrôleur, jamais un second calcul de chemin) avec la même
+// garde anti-traversée de chemin, mais un contrôle d'accès différent et
+// volontaire : appartenance réelle au patient connecté, pas un rôle.
+const { uploadsRoot } = require('./uploads.controller');
+exports.downloadDocument = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+    if (!isObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Identifiant invalide.' });
+
+    const doc = await DocumentModel.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, message: 'Document introuvable.' });
+    if (String(doc.patient) !== String(patient._id)) {
+      await logAction({
+        utilisateur: req.user._id, action: 'READ', module: 'portal', entite_id: doc._id, ip: req.ip, statut: 'echec',
+        message: `Tentative de téléchargement d'un document n'appartenant pas au patient connecté (${patient.numero_dossier})`,
+      });
+      return res.status(403).json({ success: false, message: 'Vous ne pouvez accéder qu\'à vos propres documents.' });
+    }
+
+    // Jamais un fichier simulé : si aucun chemin réel n'est associé (ne
+    // devrait pas arriver — document.controller.js::create exige un
+    // upload — mais un état de données incohérent doit échouer
+    // honnêtement, pas fabriquer un téléchargement).
+    if (!doc.fichier_path) return res.status(404).json({ success: false, message: 'Aucun fichier associé à ce document.' });
+
+    const relative = doc.fichier_path.replace(/^\/?uploads\//, '');
+    const resolved = path.resolve(path.join(uploadsRoot, relative));
+    if (!resolved.startsWith(uploadsRoot + path.sep) && resolved !== uploadsRoot) {
+      return res.status(400).json({ success: false, message: 'Chemin de fichier invalide.' });
+    }
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+      return res.status(404).json({ success: false, message: 'Fichier introuvable sur le serveur.' });
+    }
+
+    await logAction({ utilisateur: req.user._id, action: 'READ', module: 'portal', entite_id: doc._id, ip: req.ip, message: `Patient ${patient.nom} ${patient.prenom} a téléchargé le document "${doc.nom}"` });
+    res.download(resolved, doc.nom);
+  } catch (err) { next(err); }
+};
+
+// ── MESSAGERIE PATIENT ─────────────────────────────────────────────────────────
+// PORTAL-MSG-001 (audit du 12 sept. 2026, mission "Correction stricte de la
+// messagerie patient") — l'onglet "Messagerie" (Portal.jsx) était
+// honnêtement désactivé depuis Correction 3 : Conversation/Message n'avaient
+// jamais de canal patient↔personnel réel, et POST /messages (getOrCreate,
+// messages.routes.js) est réservé à STAFF (SEC-005) — un patient ne pouvait
+// jamais devenir membre d'une conversation. Réactivé ici en réutilisant
+// EXACTEMENT la même architecture (Conversation/Message, messages.controller.js)
+// plutôt qu'une deuxième messagerie parallèle : GET /messages (liste),
+// GET /messages/:id (lecture, marque lu), POST /messages/:id/send (envoi)
+// n'ont AUCUNE restriction de rôle dans messages.routes.js — déjà
+// utilisables tels quels par un patient une fois membre d'une conversation,
+// aucune modification de ces trois routes/contrôleurs. Seule pièce
+// manquante : un moyen, pour le patient, de DEVENIR membre d'une
+// conversation avec un destinataire réellement autorisé — c'est tout ce que
+// ce bloc ajoute.
+const messagesController = require('./messages.controller');
+
+// Règle métier (déterminée depuis les données réelles existantes, aucun
+// nouveau champ) : un patient ne peut contacter que les membres du
+// personnel ayant un lien de soin réel et vérifiable avec lui — jamais
+// l'annuaire complet du personnel (getDirectory, réservé au personnel).
+// Deux sources déjà présentes sur le schéma : patient.medecin_referent
+// (médecin référent déclaré) et tout médecin ayant réellement eu un
+// rendez-vous ou une consultation avec ce patient (Appointment.medecin /
+// Consultation.medecin). Recalculé côté serveur à chaque appel — jamais un
+// snapshot mis en cache qui pourrait dériver des vraies données.
+const getAuthorizedContactIds = async (patient) => {
+  const [apptMedecins, consMedecins] = await Promise.all([
+    Appointment.find({ patient: patient._id }).distinct('medecin'),
+    Consultation.find({ patient: patient._id }).distinct('medecin'),
+  ]);
+  const ids = new Set([...apptMedecins, ...consMedecins].map(String));
+  if (patient.medecin_referent) ids.add(String(patient.medecin_referent));
+  return ids;
+};
+
+// GET /portal/messages/contacts
+exports.getMessageContacts = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+
+    const ids = await getAuthorizedContactIds(patient);
+    const contacts = await User.find({ _id: { $in: [...ids] }, statut: 'actif' })
+      .select('nom prenom role specialite avatar')
+      .sort('nom');
+    res.json({ success: true, contacts });
+  } catch (err) { next(err); }
+};
+
+// POST /portal/messages — ouvre (ou récupère) une conversation directe avec
+// un contact réellement autorisé. SÉCURITÉ : userId revérifié contre
+// getAuthorizedContactIds recalculé depuis le patient réellement connecté —
+// jamais une confiance dans un rôle affiché côté client. Une fois
+// l'autorisation confirmée, délègue à messages.controller.js::getOrCreate
+// tel quel (même recherche/déduplication de conversation directe que le
+// personnel, aucune deuxième logique de création écrite ici).
+exports.getOrCreatePatientConversation = async (req, res, next) => {
+  try {
+    const patient = await findPatient(req.user);
+    if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
+    const { userId } = req.body;
+    if (!isObjectId(userId)) return res.status(400).json({ success: false, message: 'Destinataire invalide.' });
+
+    const authorized = await getAuthorizedContactIds(patient);
+    if (!authorized.has(String(userId))) {
+      await logAction({
+        utilisateur: req.user._id, action: 'CREATE', module: 'portal', ip: req.ip, statut: 'echec',
+        message: `Tentative de contact d'un destinataire non autorisé (${userId}) par le patient ${patient.numero_dossier}`,
+      });
+      return res.status(403).json({ success: false, message: 'Vous ne pouvez contacter que les membres de votre équipe soignante.' });
+    }
+
+    return messagesController.getOrCreate(req, res, next);
   } catch (err) { next(err); }
 };
 
@@ -439,4 +770,51 @@ exports.changePassword = async (req, res, next) => {
 
     res.json({ success: true, message: 'Mot de passe mis à jour avec succès.' });
   } catch (err) { next(err); }
+};
+
+// ── ASSISTANT IA (patient) ────────────────────────────────────────────────────
+// PORTAL-IA-001 — l'onglet "Assistant IA" (Portal.jsx) n'appelait aucune API
+// réelle : les 5 cartes "Fonctions disponibles" étaient purement décoratives
+// (curseur pointeur + survol, aucun handler). Réutilise
+// utils/openai.js::generateReport() tel quel (même service déjà utilisé par
+// ai.controller.js::chat pour le personnel et par le rapport hebdomadaire
+// Analytics) — aucune seconde intégration OpenAI créée. Volontairement une
+// route distincte de POST /ai/chat (réservée au personnel, ai.routes.js) :
+// prompt système différent, adressé directement à un PATIENT plutôt qu'à un
+// professionnel, et cette fonction ne reçoit ni ne lit aucune donnée d'un
+// autre patient (aucun patientId dans le payload) — la portée est donc déjà
+// strictement individuelle par construction, pas seulement par filtrage.
+const openai = require('../utils/openai');
+const PORTAL_AI_SYSTEM_PROMPT = "Tu es l'assistant IA santé de MediSync, à la Clinique Canadienne de Souanké. Tu réponds directement à un PATIENT, jamais à un professionnel de santé. Réponds en français, simplement et avec bienveillance. Tu n'établis JAMAIS de diagnostic, ne prescris jamais de traitement, et rappelles systématiquement que tes réponses sont uniquement informatives et ne remplacent pas l'avis d'un professionnel de santé — invite le patient à consulter son médecin pour toute décision médicale ou en cas de doute, d'urgence ou de symptôme préoccupant.";
+const PORTAL_AI_MAX_MESSAGE_LEN = 2000;
+const PORTAL_AI_MAX_HISTORY = 6;
+
+exports.aiChat = async (req, res) => {
+  const { message, history } = req.body;
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ success: false, message: 'Message vide.' });
+  }
+  if (message.length > PORTAL_AI_MAX_MESSAGE_LEN) {
+    return res.status(400).json({ success: false, message: `Message trop long (max ${PORTAL_AI_MAX_MESSAGE_LEN} caractères).` });
+  }
+  const histArr = Array.isArray(history) ? history.slice(-PORTAL_AI_MAX_HISTORY) : [];
+  const transcript = histArr
+    .filter(h => h && typeof h.content === 'string' && (h.role === 'user' || h.role === 'bot'))
+    .map(h => `${h.role === 'user' ? 'Patient' : 'Assistant'}: ${h.content}`)
+    .join('\n');
+  const userPrompt = transcript ? `${transcript}\nPatient: ${message}` : message;
+
+  try {
+    const result = await openai.generateReport({ systemPrompt: PORTAL_AI_SYSTEM_PROMPT, userPrompt });
+    if (result.simulated) {
+      return res.json({ success: false, simulated: true, message: 'Assistant IA indisponible — non configuré sur le serveur.' });
+    }
+    res.json({
+      success: true,
+      reply: result.content,
+      disclaimer: 'Réponse générée par IA — à titre informatif uniquement, ne remplace pas l\'avis d\'un professionnel de santé.',
+    });
+  } catch (err) {
+    res.status(502).json({ success: false, message: err.message || "Échec de l'appel à l'assistant IA." });
+  }
 };

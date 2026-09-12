@@ -46,14 +46,27 @@ exports.getAll = async (req, res, next) => {
       filter.date_heure = { $gte: debut, $lte: fin };
     }
 
-    const total = await Appointment.countDocuments(filter);
-    const appointments = await paginate(
-      Appointment.find(filter)
-        .populate('patient', 'nom prenom numero_dossier telephone')
-        .populate('medecin', 'nom prenom specialite')
-        .sort('date_heure'),
-      page, limit
-    );
+    // PERF-001 (audit de performance du 12 sept. 2026, mesuré réellement —
+    // GET /appointments?limit=500 : ~1.1s médiane, requête Mongo elle-même
+    // <1ms via explain() sur les mêmes filtres). Le coût réel n'est pas la
+    // requête en elle-même mais le nombre d'aller-retours RÉSEAU séquentiels
+    // vers l'instance MongoDB (countDocuments PUIS find, l'un après l'autre)
+    // — mesuré : passer les deux en parallèle (indépendants, aucune donnée de
+    // l'un ne dépend de l'autre) supprime un aller-retour complet du chemin
+    // critique. .lean() conservé en plus (lecture seule, jamais modifiée ni
+    // sauvegardée ensuite — aucun virtual/méthode d'instance sur Appointment)
+    // : gain plus modeste mais réel et sans risque.
+    const [total, appointments] = await Promise.all([
+      Appointment.countDocuments(filter),
+      paginate(
+        Appointment.find(filter)
+          .populate('patient', 'nom prenom numero_dossier telephone')
+          .populate('medecin', 'nom prenom specialite')
+          .sort('date_heure')
+          .lean(),
+        page, limit
+      ),
+    ]);
     res.json({ success: true, total, count: appointments.length, appointments });
   } catch (err) { next(err); }
 };

@@ -42,14 +42,18 @@ exports.getAll = async (req, res, next) => {
     // la vraie facture liée à un acte précis, au lieu d'un calcul factice.
     if (source_module) filter.source_module = source_module;
     if (source_id)     filter.source_id     = source_id;
-    const total = await Invoice.countDocuments(filter);
-    const raw = await paginate(
-      Invoice.find(filter)
-        .populate('patient', 'nom prenom numero_dossier telephone email')
-        .populate('created_by', 'nom prenom')
-        .sort('-date_facture'),
-      page, limit
-    );
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, raw] = await Promise.all([
+      Invoice.countDocuments(filter),
+      paginate(
+        Invoice.find(filter)
+          .populate('patient', 'nom prenom numero_dossier telephone email')
+          .populate('created_by', 'nom prenom')
+          .sort('-date_facture'),
+        page, limit
+      ),
+    ]);
     const invoices = raw.map(i => normalizeInvoice(i.toObject ? i.toObject() : i));
     res.json({ success: true, total, invoices });
   } catch (err) { next(err); }

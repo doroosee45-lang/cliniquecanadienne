@@ -138,15 +138,19 @@ exports.getAll = async (req, res, next) => {
     const filter = {};
     if (statut)  filter.statut  = statut;
     if (patient) filter.patient = patient;
-    const total = await Hospitalization.countDocuments(filter);
-    const hospitalizations = await paginate(
-      Hospitalization.find(filter)
-        .populate('patient', 'nom prenom numero_dossier date_naissance telephone email')
-        .populate('medecin_responsable', 'nom prenom specialite')
-        .populate('chambre', 'numero type batiment')
-        .sort('-date_entree'),
-      page, limit
-    );
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, hospitalizations] = await Promise.all([
+      Hospitalization.countDocuments(filter),
+      paginate(
+        Hospitalization.find(filter)
+          .populate('patient', 'nom prenom numero_dossier date_naissance telephone email')
+          .populate('medecin_responsable', 'nom prenom specialite')
+          .populate('chambre', 'numero type batiment')
+          .sort('-date_entree'),
+        page, limit
+      ),
+    ]);
     res.json({ success: true, total, hospitalizations });
   } catch (err) { next(err); }
 };

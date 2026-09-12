@@ -156,6 +156,14 @@ const seed = async () => {
     { numero_dossier:`CLIN-${yr}-00010`, nom:'Oyono',      prenom:'Patrice',       date_naissance:new Date('1980-01-20'), sexe:'M', groupe_sanguin:'AB+',telephone:'+242 06 222 0022', email:'p.oyono@gmail.com',         adresse:{rue:'Avenue de la Gare',  ville:'Souanké', pays:'Congo'}, allergies:[],                     antecedents_medicaux:['Hypertension artérielle'],                      contact_urgence:{nom:'Jeanne Oyono',     relation:'Épouse', telephone:'+242 06 222 0023'}, assurances:[{compagnie:'CNAMGS',taux:75}] },
     { numero_dossier:`CLIN-${yr}-00011`, nom:'Meye',       prenom:'Brigitte',      date_naissance:new Date('1992-05-30'), sexe:'F', groupe_sanguin:'A+', telephone:'+242 06 333 0033', email:'brigitte.meye@gmail.com',   adresse:{rue:'Quartier Sud',       ville:'Souanké', pays:'Congo'}, allergies:['Erythromycine'],      antecedents_medicaux:['Appendicectomie 2015'],                         contact_urgence:{nom:'Paul Meye',        relation:'Époux',  telephone:'+242 06 333 0034'}, assurances:[{compagnie:'Axa Assurances Congo',taux:70}] },
     { numero_dossier:`CLIN-${yr}-00012`, nom:'Nkoghe',     prenom:'Antoine',       date_naissance:new Date('2018-09-12'), sexe:'M', groupe_sanguin:'B+', telephone:'+242 06 444 0044', email:'',                          adresse:{rue:'Rue des Manguiers',  ville:'Souanké', pays:'Congo'}, allergies:[],                     antecedents_medicaux:['Prématurité à 34 SA'],                          contact_urgence:{nom:'Marie Nkoghe',     relation:'Mère',   telephone:'+242 06 444 0045'}, assurances:[{compagnie:'CNSS Congo',taux:80}] },
+    // Compte portail patient de test — email identique au compte User
+    // role:'patient' ci-dessous (patient@clinique-souanke.cg) : portal.
+    // controller.js résout le dossier par patient_id d'abord, avec repli sur
+    // l'email (R-07) — ce repli ne trouvait auparavant aucun dossier
+    // (aucun Patient de ce jeu de données ne portait cet email), laissant le
+    // portail vide pour ce compte de test. Identité alignée avec le compte
+    // ("Georges Ondo") pour que le nom affiché et le dossier réel correspondent.
+    { numero_dossier:`CLIN-${yr}-00013`, nom:'Ondo',       prenom:'Georges',       date_naissance:new Date('1988-03-10'), sexe:'M', groupe_sanguin:'O+', telephone:'+242 06 800 0001', email:'patient@clinique-souanke.cg', adresse:{rue:'Quartier Centre',    ville:'Souanké', pays:'Congo'}, allergies:[],                     antecedents_medicaux:[],                                               contact_urgence:{nom:'Alice Ondo',       relation:'Épouse', telephone:'+242 06 800 0002'}, assurances:[{compagnie:'CNSS Congo',taux:80}] },
   ];
   const patients = await Patient.insertMany(patientsData.map(p => ({ ...p, cree_par: superadmin._id, actif: true })));
   const [ptMboumba, ptNgoma, ptOndoa, ptEssono, ptAkana, ptMoutombi, ptNzinga, ptBiyoghe, ptMounguengui, ptOyono, ptMeye, ptNkoghe] = patients;
@@ -505,8 +513,12 @@ const seed = async () => {
   console.log(`║  Hospit.        : ${hosps.length.toString().padEnd(3)} | Prescriptions : ${prescriptions.length.toString().padEnd(3)}         ║`);
   console.log(`║  Factures       : ${invoices.length.toString().padEnd(3)} | Labo          : ${labResults.length.toString().padEnd(3)}         ║`);
   console.log('╠══════════════════════════════════════════════════════════╣');
-  console.log('║  CONNEXION : oseedoro@gmail.com / medisync123           ║');
-  console.log('║  Autres    : dr.nguema@clinique-souanke.cg / medisync123║');
+  // Le mot de passe réellement utilisé pour TOUS les comptes seedés est
+  // toujours PWD (process.env.SEED_PASSWORD) — jamais une valeur figée
+  // ("medisync123" était périmé, ne correspondait plus au vrai mot de
+  // passe depuis que SEED_PASSWORD est devenu configurable).
+  console.log(`║  CONNEXION : oseedoro@gmail.com / ${PWD}`);
+  console.log(`║  Autres    : dr.nguema@clinique-souanke.cg / ${PWD}`);
   console.log('╚══════════════════════════════════════════════════════════╝\n');
 
   await mongoose.disconnect();

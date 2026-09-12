@@ -79,3 +79,21 @@ test('FE-INFRA-03 — un rôle réellement sans accès backend (patient) ne voit
   renderSidebar();
   expect(screen.queryByText('Patients')).not.toBeInTheDocument();
 });
+
+// Correction 2 (relecture du 12 sept. 2026) — le lien "Rendez-vous" pointait
+// vers /appointments (Guard App.jsx::ROLES.appointments, qui exclut
+// 'patient') mais restait affiché à tout rôle (roles: null), y compris un
+// compte patient : cliquer ce lien produisait systématiquement "Accès non
+// autorisé" alors que Portal.jsx a son propre onglet "Mes Rendez-vous"
+// pleinement fonctionnel.
+test('Correction 2 — un compte patient ne voit plus "Rendez-vous" (lien mort vers /appointments, Guard staff)', () => {
+  mockRole = 'patient';
+  renderSidebar();
+  expect(screen.queryByText('Rendez-vous')).not.toBeInTheDocument();
+});
+
+test('Correction 2 — le personnel autorisé par le Guard (médecin) voit toujours "Rendez-vous" (non-régression)', () => {
+  mockRole = 'medecin';
+  renderSidebar();
+  expect(screen.getByText('Rendez-vous')).toBeInTheDocument();
+});

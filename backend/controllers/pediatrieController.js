@@ -122,12 +122,16 @@ exports.getAll = async (req, res, next) => {
       filter.date_naissance = { $gte: min, $lte: max };
     }
 
-    const total   = await Child.countDocuments(filter);
-    const enfants = await Child.find(filter)
-      .populate('patient_id', 'nom prenom numero_dossier')
-      .sort('-createdAt')
-      .skip((parseInt(page) - 1) * parseInt(limit))
-      .limit(parseInt(limit));
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, enfants] = await Promise.all([
+      Child.countDocuments(filter),
+      Child.find(filter)
+        .populate('patient_id', 'nom prenom numero_dossier')
+        .sort('-createdAt')
+        .skip((parseInt(page) - 1) * parseInt(limit))
+        .limit(parseInt(limit)),
+    ]);
 
     res.json({ success: true, enfants, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
   } catch (err) { next(err); }
@@ -257,11 +261,14 @@ exports.getConsultations = async (req, res, next) => {
         { diagnostic:  { $regex: qRe, $options: 'i' } },
       ];
     }
-    const consultations = await PediatricConsultation.find(filter)
-      .sort('-date')
-      .limit(parseInt(limit))
-      .populate('child_id', 'nom prenom date_naissance sexe');
-    const total = await PediatricConsultation.countDocuments(filter);
+    // PERF-001 (audit de performance du 12 sept. 2026) — indépendants, en parallèle.
+    const [consultations, total] = await Promise.all([
+      PediatricConsultation.find(filter)
+        .sort('-date')
+        .limit(parseInt(limit))
+        .populate('child_id', 'nom prenom date_naissance sexe'),
+      PediatricConsultation.countDocuments(filter),
+    ]);
     res.json({ success: true, consultations, total });
   } catch (err) { next(err); }
 };

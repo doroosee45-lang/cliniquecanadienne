@@ -2,9 +2,11 @@ const Notification = require('../models/Notification');
 
 exports.getAll = async (req, res, next) => {
   try {
-    const notifications = await Notification.find({ destinataire: req.user._id })
-      .sort('-createdAt').limit(50);
-    const unread = await Notification.countDocuments({ destinataire: req.user._id, lu: false });
+    // PERF-001 (audit de performance du 12 sept. 2026) — indépendants, en parallèle.
+    const [notifications, unread] = await Promise.all([
+      Notification.find({ destinataire: req.user._id }).sort('-createdAt').limit(50),
+      Notification.countDocuments({ destinataire: req.user._id, lu: false }),
+    ]);
     res.json({ success: true, notifications, unread });
   } catch (err) { next(err); }
 };

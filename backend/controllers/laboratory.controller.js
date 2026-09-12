@@ -37,22 +37,26 @@ exports.getAll = async (req, res, next) => {
     if (critique !== undefined) filter.est_critique = critique === 'true';
 
     const skip  = (parseInt(page) - 1) * parseInt(limit);
-    const total = await LabResult.countDocuments(filter);
-
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle (un aller-retour réseau
+    // MongoDB économisé) plutôt que l'un après l'autre.
     // .lean() retourne des objets JS purs — pas de documents Mongoose, pas d'objets imbriqués après sérialisation
-    const raw = await LabResult.find(filter)
-      .populate('patient',             'nom prenom numero_dossier date_naissance')
-      .populate('medecin_prescripteur','nom prenom')
-      // LAB-03 — technicien/biologiste réels (jamais les anciens champs
-      // texte libre jamais persistés) : mêmes flattening + *_nom que
-      // medecin_prescripteur ci-dessous, pour que la liste n'expose jamais
-      // un objet peuplé directement (risque de crash React déjà documenté).
-      .populate('technicien',         'nom prenom')
-      .populate('validateur',         'nom prenom')
-      .lean()
-      .sort('-date_prescription')
-      .skip(skip)
-      .limit(parseInt(limit));
+    const [total, raw] = await Promise.all([
+      LabResult.countDocuments(filter),
+      LabResult.find(filter)
+        .populate('patient',             'nom prenom numero_dossier date_naissance')
+        .populate('medecin_prescripteur','nom prenom')
+        // LAB-03 — technicien/biologiste réels (jamais les anciens champs
+        // texte libre jamais persistés) : mêmes flattening + *_nom que
+        // medecin_prescripteur ci-dessous, pour que la liste n'expose jamais
+        // un objet peuplé directement (risque de crash React déjà documenté).
+        .populate('technicien',         'nom prenom')
+        .populate('validateur',         'nom prenom')
+        .lean()
+        .sort('-date_prescription')
+        .skip(skip)
+        .limit(parseInt(limit)),
+    ]);
 
     const list = raw.map(a => {
       const patientNom      = a.patient_nom      || (a.patient      ? `${a.patient.prenom      || ''} ${a.patient.nom      || ''}`.trim() : '');

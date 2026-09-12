@@ -30,8 +30,12 @@ exports.getAll = async (req, res, next) => {
       const in30days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       filter.date_peremption = { $lte: in30days };
     }
-    const total = await Medication.countDocuments(filter);
-    const medications = await paginate(Medication.find(filter).sort('nom_commercial'), page, limit);
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, medications] = await Promise.all([
+      Medication.countDocuments(filter),
+      paginate(Medication.find(filter).sort('nom_commercial'), page, limit),
+    ]);
     res.json({ success: true, total, medications });
   } catch (err) { next(err); }
 };
@@ -211,8 +215,12 @@ exports.getCommandes = async (req, res, next) => {
   try {
     const { page = 1, limit = 20, statut } = req.query;
     const filter = statut ? { statut } : {};
-    const total = await Commande.countDocuments(filter);
-    const raw = await paginate(Commande.find(filter).sort('-createdAt'), page, limit);
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, raw] = await Promise.all([
+      Commande.countDocuments(filter),
+      paginate(Commande.find(filter).sort('-createdAt'), page, limit),
+    ]);
     const commandes = raw.map(c => ({
       ...c.toObject(),
       date: c.createdAt,

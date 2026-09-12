@@ -60,16 +60,19 @@ exports.getAll = async (req, res, next) => {
     if (type_categorie) filter.type_categorie = type_categorie;
 
     const skip  = (parseInt(page) - 1) * parseInt(limit);
-    const total = await ImagingResult.countDocuments(filter);
-
-    const raw = await ImagingResult.find(filter)
-      .populate('patient',             'nom prenom numero_dossier date_naissance')
-      .populate('medecin_prescripteur','nom prenom')
-      .populate('radiologue',          'nom prenom')
-      .lean()
-      .sort('-date_prescription')
-      .skip(skip)
-      .limit(parseInt(limit));
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, raw] = await Promise.all([
+      ImagingResult.countDocuments(filter),
+      ImagingResult.find(filter)
+        .populate('patient',             'nom prenom numero_dossier date_naissance')
+        .populate('medecin_prescripteur','nom prenom')
+        .populate('radiologue',          'nom prenom')
+        .lean()
+        .sort('-date_prescription')
+        .skip(skip)
+        .limit(parseInt(limit)),
+    ]);
 
     const list = raw.map(normalize);
     res.json({ success: true, total, examens: list });

@@ -61,14 +61,18 @@ exports.getAll = async (req, res, next) => {
     if (patient) filter.patient = patient;
     if (type)    filter.type    = type;
 
-    const total = await Document.countDocuments(filter);
-    const documents = await paginate(
-      Document.find(filter)
-        .populate('patient', 'nom prenom numero_dossier')
-        .populate('created_by', 'nom prenom')
-        .sort('-createdAt'),
-      page, limit
-    );
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, documents] = await Promise.all([
+      Document.countDocuments(filter),
+      paginate(
+        Document.find(filter)
+          .populate('patient', 'nom prenom numero_dossier')
+          .populate('created_by', 'nom prenom')
+          .sort('-createdAt'),
+        page, limit
+      ),
+    ]);
     res.json({ success: true, total, documents });
   } catch (err) { next(err); }
 };

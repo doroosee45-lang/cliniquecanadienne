@@ -36,14 +36,18 @@ exports.getAll = async (req, res, next) => {
   try {
     const { page = 1, limit = 20, statut } = req.query;
     const filter = statut ? { statut } : {};
-    const total = await Staff.countDocuments(filter);
-    const rawStaff = await paginate(
-      Staff.find(filter)
-        .populate('utilisateur', 'nom prenom role email telephone specialite')
-        .populate('service', 'nom')
-        .sort('statut'),
-      page, limit
-    );
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, rawStaff] = await Promise.all([
+      Staff.countDocuments(filter),
+      paginate(
+        Staff.find(filter)
+          .populate('utilisateur', 'nom prenom role email telephone specialite')
+          .populate('service', 'nom')
+          .sort('statut'),
+        page, limit
+      ),
+    ]);
     const staff = rawStaff.map(s => normalizeStaff(s.toObject ? s.toObject() : s));
     res.json({ success: true, total, staff });
   } catch (err) { next(err); }

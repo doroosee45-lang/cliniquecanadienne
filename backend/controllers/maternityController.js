@@ -69,12 +69,16 @@ exports.getAll = async (req, res, next) => {
         { telephone: { $regex: qRe, $options: 'i' } },
       ];
     }
-    const total      = await Pregnancy.countDocuments(filter);
-    const grossesses = await Pregnancy.find(filter)
-      .populate('patient_id', 'nom prenom numero_dossier')
-      .sort('-createdAt')
-      .skip((parseInt(page) - 1) * parseInt(limit))
-      .limit(parseInt(limit));
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, grossesses] = await Promise.all([
+      Pregnancy.countDocuments(filter),
+      Pregnancy.find(filter)
+        .populate('patient_id', 'nom prenom numero_dossier')
+        .sort('-createdAt')
+        .skip((parseInt(page) - 1) * parseInt(limit))
+        .limit(parseInt(limit)),
+    ]);
     res.json({ success: true, grossesses, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
   } catch (err) { next(err); }
 };
@@ -205,8 +209,11 @@ exports.getDeliveries = async (req, res, next) => {
     const { limit = 50, q = '' } = req.query;
     const filter = {};
     if (q) filter.patient_nom = { $regex: escapeRegex(q), $options: 'i' };
-    const accouchements = await Delivery.find(filter).sort('-date_heure').limit(parseInt(limit));
-    const total = await Delivery.countDocuments(filter);
+    // PERF-001 (audit de performance du 12 sept. 2026) — indépendants, en parallèle.
+    const [accouchements, total] = await Promise.all([
+      Delivery.find(filter).sort('-date_heure').limit(parseInt(limit)),
+      Delivery.countDocuments(filter),
+    ]);
     res.json({ success: true, accouchements, total });
   } catch (err) { next(err); }
 };
@@ -242,8 +249,11 @@ exports.getNewborns = async (req, res, next) => {
     const { limit = 50, q = '' } = req.query;
     const filter = {};
     if (q) { const qRe = escapeRegex(q); filter.$or = [{ prenom: { $regex: qRe, $options: 'i' } }, { mere_nom: { $regex: qRe, $options: 'i' } }]; }
-    const nouveaunes = await Newborn.find(filter).sort('-date_naissance').limit(parseInt(limit));
-    const total = await Newborn.countDocuments(filter);
+    // PERF-001 (audit de performance du 12 sept. 2026) — indépendants, en parallèle.
+    const [nouveaunes, total] = await Promise.all([
+      Newborn.find(filter).sort('-date_naissance').limit(parseInt(limit)),
+      Newborn.countDocuments(filter),
+    ]);
     res.json({ success: true, nouveaunes, total });
   } catch (err) { next(err); }
 };

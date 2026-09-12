@@ -38,6 +38,15 @@ const SUBPATH_ROLES = {
 };
 
 const uploadsRoot = path.resolve(path.join(__dirname, '..', 'uploads'));
+// PORTAL-DOC-001 — exporté (additif, aucun comportement existant modifié)
+// pour que portal.controller.js::downloadDocument réutilise exactement la
+// même racine de résolution que ce contrôleur, plutôt que de recalculer un
+// second chemin potentiellement divergent. Le contrôle d'accès du portail
+// reste volontairement DIFFÉRENT de SUBPATH_ROLES ci-dessus (qui exclut
+// délibérément 'patient' — cf. commentaire de la clé `patients`) :
+// downloadDocument vérifie une appartenance réelle (Document.patient ===
+// dossier du patient connecté), jamais un simple rôle.
+exports.uploadsRoot = uploadsRoot;
 
 exports.serveUpload = (req, res) => {
   const requested = req.params[0] || '';

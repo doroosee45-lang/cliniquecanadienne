@@ -1957,7 +1957,40 @@ export default function Patient() {
                   {patientSaving ? '⏳ Activation...' : '⚡ Activer le dossier maintenant'}
                 </button>
               )}
-              {credsModal.patient?.actif && (
+              {/* PATIENT-ACTIVATION-002 (audit du 12 sept. 2026) — pour un
+                  patient sans smartphone/accès email, aucun lien
+                  d'activation n'est réellement utilisable. Définit le mot de
+                  passe initial sur le numéro de dossier réel (visible juste
+                  au-dessus/déjà communiqué au patient sur son papier
+                  d'admission), avec changement obligatoire à la première
+                  connexion (must_change_password, déjà géré par
+                  AuthContext/Portal.jsx). */}
+              {credsModal.patient && credsModal.email && !credsModal.patient.actif && (
+                <button
+                  disabled={patientSaving}
+                  onClick={async () => {
+                    setPatientSaving(true);
+                    try {
+                      const { data } = await api.put(`/patients/${credsModal.patient._id}/activate-admin`, { methode: 'numero_dossier' });
+                      toast.success(`✅ Compte activé — mot de passe initial = numéro de dossier (${data.patient.numero_dossier})`);
+                      setCredsModal(c => ({ ...c, patient: data.patient, motDePasseNumeroDossier: true }));
+                      dispatch(fetchPatients({ page: reduxPage, limit: 100 }));
+                    } catch (e) {
+                      toast.error(e.response?.data?.message || 'Erreur lors de l\'activation');
+                    } finally {
+                      setPatientSaving(false);
+                    }
+                  }}
+                  style={{ padding:'10px 20px', background:'#fff', color:'#0B1E3B', border:'1.5px solid #E2EAF4', borderRadius:10, cursor: patientSaving ? 'not-allowed' : 'pointer', fontWeight:700, fontSize:14, opacity: patientSaving ? 0.6 : 1, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                  📋 Patient sans smartphone — utiliser le n° de dossier comme mot de passe
+                </button>
+              )}
+              {credsModal.motDePasseNumeroDossier && credsModal.patient?.actif && (
+                <div style={{ background:'#EFF6FF', border:'1.5px solid #BFDBFE', borderRadius:10, padding:'12px 16px', fontSize:13, color:'#1E40AF' }}>
+                  ℹ️ Identifiants à transmettre au patient : email <strong>{credsModal.email}</strong>, mot de passe initial <strong>{credsModal.patient.numero_dossier}</strong>. Il devra le changer à sa première connexion.
+                </div>
+              )}
+              {credsModal.patient?.actif && !credsModal.motDePasseNumeroDossier && (
                 <div style={{ background:'#F0FDF4', border:'1.5px solid #BBF7D0', borderRadius:10, padding:'10px 16px', fontSize:13, fontWeight:700, color:'#166534', textAlign:'center' }}>
                   ✅ Dossier actif — connexion au portail possible dès que le patient a défini son mot de passe
                 </div>

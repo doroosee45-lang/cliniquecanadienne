@@ -46,13 +46,15 @@ exports.getDossiers = async (req, res, next) => {
       ];
     }
 
-    const dossiers = await DossierChirurgical.find(filter)
-      .populate('patient', 'nom prenom numero_dossier')
-      .sort({ created_at: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await DossierChirurgical.countDocuments(filter);
+    // PERF-001 (audit de performance du 12 sept. 2026) — indépendants, en parallèle.
+    const [dossiers, total] = await Promise.all([
+      DossierChirurgical.find(filter)
+        .populate('patient', 'nom prenom numero_dossier')
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      DossierChirurgical.countDocuments(filter),
+    ]);
 
     res.json({ success: true, dossiers, total, page: parseInt(page), pages: Math.ceil(total / limit) });
   } catch (err) { next(err); }

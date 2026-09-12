@@ -79,17 +79,23 @@ exports.getAll = async (req, res, next) => {
     if (patient) filter.patient = patient;
     if (medecin) filter.medecin = medecin;
     if (statut) filter.statut = statut;
-    const total = await Consultation.countDocuments(filter);
     // AUDIT-FAIBLE-F1 — .lean() : aucun virtual/toJSON transform sur
     // Consultation ni sur Patient/User (populate), vérifié exhaustivement.
-    const consultations = await paginate(
-      Consultation.find(filter)
-        .populate('patient', 'nom prenom numero_dossier')
-        .populate('medecin', 'nom prenom specialite')
-        .sort('-date_consultation')
-        .lean(),
-      page, limit
-    );
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find sont indépendants : exécutés en parallèle plutôt que l'un après
+    // l'autre (un aller-retour réseau MongoDB économisé, mesuré réellement
+    // sur ce même correctif appliqué à appointments.controller.js::getAll).
+    const [total, consultations] = await Promise.all([
+      Consultation.countDocuments(filter),
+      paginate(
+        Consultation.find(filter)
+          .populate('patient', 'nom prenom numero_dossier')
+          .populate('medecin', 'nom prenom specialite')
+          .sort('-date_consultation')
+          .lean(),
+        page, limit
+      ),
+    ]);
     res.json({ success: true, total, consultations });
   } catch (err) { next(err); }
 };

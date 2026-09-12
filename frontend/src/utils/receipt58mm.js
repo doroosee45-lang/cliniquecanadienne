@@ -16,7 +16,6 @@
 // réservé au partage (pièce jointe email, téléchargement pour WhatsApp) —
 // jamais utilisé par le flux d'impression lui-même.
 import QRCode from 'qrcode';
-import jsPDF from 'jspdf';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 
 const fmtCFA = (n) => (n != null && !isNaN(Number(n)) ? Number(n).toLocaleString('fr-FR') : '0') + ' CFA';
@@ -238,6 +237,18 @@ const buildReceiptPdfDoc = async (receipt) => {
   } = receipt;
 
   const qrDataUrl = await buildQrDataUrl(qrData);
+
+  // PERF-BUNDLE-001 (audit de performance du 12 sept. 2026) — jsPDF (~130 Ko
+  // gzippé) était importé statiquement en tête de ce fichier alors que
+  // printReceipt58mm/buildReceipt58mmHtml (le chemin réellement emprunté à
+  // chaque impression de reçu — Consultations.jsx, InvoicePrint.jsx) ne s'en
+  // servent jamais : Audit.jsx/Consultations.jsx/Finance.jsx/InvoicePrint.jsx/
+  // Pharmacy.jsx chargeaient donc systématiquement ce poids mort au moment
+  // d'ouvrir la page, jamais seulement au moment réel du téléchargement PDF.
+  // Import dynamique (même pattern déjà établi ailleurs dans ce projet —
+  // Consultations.jsx::downloadOrdonnancePdf, AI.jsx) : chargé une seule fois
+  // ici, réellement au moment où un PDF est généré.
+  const { default: jsPDF } = await import('jspdf');
 
   // AUDIT-RECU-PDF-PARTAGE — doc de mesure jetable (jamais affiché/exporté),
   // utilisé uniquement pour splitTextToSize : un vrai texte peut dépasser la

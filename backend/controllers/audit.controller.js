@@ -88,14 +88,18 @@ exports.getAll = async (req, res, next) => {
       }
     }
 
-    const total = await AuditLog.countDocuments(filter);
     // AUDIT-FAIBLE-F1 — .lean() : formatLog() ci-dessous n'accède qu'à des
     // propriétés brutes (aucune méthode d'instance/virtual Mongoose),
     // vérifié exhaustivement — compatible tel quel.
-    const raw = await paginate(
-      AuditLog.find(filter).populate('utilisateur', 'nom prenom role email').sort('-createdAt').lean(),
-      page, limit
-    );
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, raw] = await Promise.all([
+      AuditLog.countDocuments(filter),
+      paginate(
+        AuditLog.find(filter).populate('utilisateur', 'nom prenom role email').sort('-createdAt').lean(),
+        page, limit
+      ),
+    ]);
 
     let events = raw.map(formatLog);
     if (utilisateur) events = events.filter(e => e.utilisateur.toLowerCase().includes(utilisateur.toLowerCase()));

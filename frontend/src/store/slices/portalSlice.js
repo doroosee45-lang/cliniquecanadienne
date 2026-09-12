@@ -27,6 +27,45 @@ export const fetchPortalAppointments = createAsyncThunk(
   }
 );
 
+// PORTAL-RDV-001 — options réelles (services actifs + médecins actifs,
+// portal.controller.js::getBookingOptions) pour peupler les sélecteurs de la
+// modale "Prendre un rendez-vous", auparavant vide/désactivée (AUDIT-11).
+export const fetchPortalBookingOptions = createAsyncThunk(
+  'portal/fetchBookingOptions',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/portal/booking-options');
+      return { services: data.services, medecins: data.medecins };
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur chargement des options de rendez-vous');
+    }
+  }
+);
+
+export const createPortalAppointment = createAsyncThunk(
+  'portal/createAppointment',
+  async (body, { rejectWithValue }) => {
+    try {
+      const { data } = await api.post('/portal/appointments', body);
+      return data.appointment;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur lors de la demande de rendez-vous');
+    }
+  }
+);
+
+export const cancelPortalAppointment = createAsyncThunk(
+  'portal/cancelAppointment',
+  async (id, { rejectWithValue }) => {
+    try {
+      const { data } = await api.put(`/portal/appointments/${id}/cancel`);
+      return data.appointment;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || "Erreur lors de l'annulation du rendez-vous");
+    }
+  }
+);
+
 export const fetchPortalPrescriptions = createAsyncThunk(
   'portal/fetchPrescriptions',
   async (_, { rejectWithValue }) => {
@@ -130,6 +169,44 @@ export const fetchPortalVaccinations = createAsyncThunk(
   }
 );
 
+// PORTAL-DOSSIER-001 — "Mon dossier" n'exposait ni consultations, ni
+// hospitalisations, ni documents (aucun endpoint portail ne les servait).
+export const fetchPortalConsultations = createAsyncThunk(
+  'portal/fetchConsultations',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/portal/consultations');
+      return data.consultations;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur chargement des consultations');
+    }
+  }
+);
+
+export const fetchPortalHospitalizations = createAsyncThunk(
+  'portal/fetchHospitalizations',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/portal/hospitalizations');
+      return data.hospitalizations;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur chargement des hospitalisations');
+    }
+  }
+);
+
+export const fetchPortalDocuments = createAsyncThunk(
+  'portal/fetchDocuments',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/portal/documents');
+      return data.documents;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur chargement des documents');
+    }
+  }
+);
+
 export const updatePortalProfile = createAsyncThunk(
   'portal/updateProfile',
   async (body, { rejectWithValue }) => {
@@ -171,6 +248,10 @@ const portalSlice = createSlice({
     constantes:         {},
     constantesHistorique: [],
     vaccinations:       [],
+    consultations:      [],
+    hospitalizations:   [],
+    documents:          [],
+    bookingOptions:     { services: [], medecins: [] },
     loading:            false,
     saving:             false,
     error:              null,
@@ -197,6 +278,23 @@ const portalSlice = createSlice({
       .addCase(fetchPortalAppointments.pending,   pending)
       .addCase(fetchPortalAppointments.fulfilled, (state, action) => { state.loading = false; state.appointments = action.payload; })
       .addCase(fetchPortalAppointments.rejected,  rejected)
+
+      // booking options (services/médecins actifs pour la prise de RDV)
+      .addCase(fetchPortalBookingOptions.fulfilled, (state, action) => { state.bookingOptions = action.payload; })
+      .addCase(fetchPortalBookingOptions.rejected,  (state, action) => { state.error = action.payload; })
+
+      // création de RDV — insère en tête, cohérent avec le tri -date_heure du backend
+      .addCase(createPortalAppointment.pending,   (state) => { state.saving = true; state.error = null; })
+      .addCase(createPortalAppointment.fulfilled, (state, action) => { state.saving = false; state.appointments = [action.payload, ...state.appointments]; })
+      .addCase(createPortalAppointment.rejected,  (state, action) => { state.saving = false; state.error = action.payload; })
+
+      // annulation de RDV — remplace l'entrée mise à jour (statut: annule)
+      .addCase(cancelPortalAppointment.pending,   (state) => { state.saving = true; state.error = null; })
+      .addCase(cancelPortalAppointment.fulfilled, (state, action) => {
+        state.saving = false;
+        state.appointments = state.appointments.map(a => (a._id === action.payload._id ? action.payload : a));
+      })
+      .addCase(cancelPortalAppointment.rejected,  (state, action) => { state.saving = false; state.error = action.payload; })
 
       // prescriptions
       .addCase(fetchPortalPrescriptions.pending,   pending)
@@ -237,6 +335,14 @@ const portalSlice = createSlice({
       .addCase(fetchPortalVaccinations.fulfilled, (state, action) => { state.vaccinations = action.payload || []; })
       .addCase(fetchPortalVaccinations.rejected,  (state) => { state.vaccinations = []; })
 
+      // consultations / hospitalisations / documents (Mon dossier)
+      .addCase(fetchPortalConsultations.fulfilled, (state, action) => { state.consultations = action.payload || []; })
+      .addCase(fetchPortalConsultations.rejected,  (state) => { state.consultations = []; })
+      .addCase(fetchPortalHospitalizations.fulfilled, (state, action) => { state.hospitalizations = action.payload || []; })
+      .addCase(fetchPortalHospitalizations.rejected,  (state) => { state.hospitalizations = []; })
+      .addCase(fetchPortalDocuments.fulfilled, (state, action) => { state.documents = action.payload || []; })
+      .addCase(fetchPortalDocuments.rejected,  (state) => { state.documents = []; })
+
       // mark all read
       .addCase(markAllNotificationsRead.fulfilled, (state) => {
         state.notifications = state.notifications.map(n => ({ ...n, lu: true }));
@@ -269,6 +375,10 @@ export const selectPortalNotifications = (s) => s.portal.notifications;
 export const selectPortalConstantes    = (s) => s.portal.constantes;
 export const selectPortalConstantesHistorique = (s) => s.portal.constantesHistorique;
 export const selectPortalVaccinations  = (s) => s.portal.vaccinations;
+export const selectPortalConsultations = (s) => s.portal.consultations;
+export const selectPortalHospitalizations = (s) => s.portal.hospitalizations;
+export const selectPortalDocuments     = (s) => s.portal.documents;
+export const selectPortalBookingOptions = (s) => s.portal.bookingOptions;
 export const selectPortalLoading       = (s) => s.portal.loading;
 export const selectPortalSaving        = (s) => s.portal.saving;
 export const selectPortalError         = (s) => s.portal.error;

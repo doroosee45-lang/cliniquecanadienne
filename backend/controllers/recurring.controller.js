@@ -25,13 +25,17 @@ exports.getAll = async (req, res, next) => {
     if (!['superadmin','adminclinique'].includes(req.user.role)) {
       filter.medecin = req.user._id;
     }
-    const total = await RecurringProtocol.countDocuments(filter);
-    const protocols = await paginate(
-      RecurringProtocol.find(filter)
-        .populate('medecin', 'nom prenom specialite')
-        .sort('prochaine_date'),
-      page, limit
-    );
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, protocols] = await Promise.all([
+      RecurringProtocol.countDocuments(filter),
+      paginate(
+        RecurringProtocol.find(filter)
+          .populate('medecin', 'nom prenom specialite')
+          .sort('prochaine_date'),
+        page, limit
+      ),
+    ]);
     // Avertissement, pas une erreur — signale si le plafond devient un jour
     // réellement contraignant, plutôt qu'une troncature silencieuse.
     if (protocols.length >= Number(limit)) {

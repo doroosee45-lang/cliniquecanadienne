@@ -242,16 +242,20 @@ exports.getAll = async (req, res, next) => {
     }
 
     const skip  = (parseInt(page) - 1) * parseInt(limit);
-    const total = await ArchiveEntry.countDocuments(filter);
-    const archives = await ArchiveEntry.find(filter)
-      // Sous-phase 5.1 — l'onglet "Restaurations" (Archive.jsx) triait par
-      // date de restauration, pas d'archivage : trie désormais par
-      // restaure_at quand ce filtre est utilisé.
-      .sort(statut === 'restauré' ? '-restaure_at' : '-date_archivage')
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('restaure_par', 'nom prenom')
-      .lean();
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle.
+    const [total, archives] = await Promise.all([
+      ArchiveEntry.countDocuments(filter),
+      ArchiveEntry.find(filter)
+        // Sous-phase 5.1 — l'onglet "Restaurations" (Archive.jsx) triait par
+        // date de restauration, pas d'archivage : trie désormais par
+        // restaure_at quand ce filtre est utilisé.
+        .sort(statut === 'restauré' ? '-restaure_at' : '-date_archivage')
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('restaure_par', 'nom prenom')
+        .lean(),
+    ]);
 
     res.json({ success: true, archives, total });
   } catch (err) { next(err); }

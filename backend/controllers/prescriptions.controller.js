@@ -16,19 +16,24 @@ exports.getAll = async (req, res, next) => {
     if (statut)  filter.statut  = statut;
     if (medecin) filter.medecin = medecin;
 
-    const total = await Prescription.countDocuments(filter);
     // AUDIT-FAIBLE-F1 — .lean() : aucun virtual/toJSON transform sur
     // Prescription ni sur Patient/User/Medication (populate), vérifié
     // exhaustivement.
-    const prescriptions = await paginate(
-      Prescription.find(filter)
-        .populate('patient',  'nom prenom numero_dossier telephone')
-        .populate('medecin',  'nom prenom specialite')
-        .populate('lignes.medicament', 'nom_commercial dci')
-        .sort('-date_prescription')
-        .lean(),
-      page, limit
-    );
+    // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
+    // find indépendants, exécutés en parallèle (un aller-retour réseau
+    // MongoDB économisé).
+    const [total, prescriptions] = await Promise.all([
+      Prescription.countDocuments(filter),
+      paginate(
+        Prescription.find(filter)
+          .populate('patient',  'nom prenom numero_dossier telephone')
+          .populate('medecin',  'nom prenom specialite')
+          .populate('lignes.medicament', 'nom_commercial dci')
+          .sort('-date_prescription')
+          .lean(),
+        page, limit
+      ),
+    ]);
     res.json({ success: true, total, prescriptions });
   } catch (err) { next(err); }
 };
