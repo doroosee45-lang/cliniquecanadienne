@@ -292,19 +292,33 @@ exports.receptionCommande = async (req, res, next) => {
     // un incrément (la dernière écriture gagne, sans jamais additionner les
     // deux). Remplacé par un $inc atomique, même principe que dispenser().
     const { receptions } = req.body; // [{ index, quantite_recue }]
+    // PHARM-002 (audit du 13 sept. 2026) — quantite_recue n'était jamais
+    // validée : une valeur négative décrémentait stock_actuel via $inc sans
+    // aucun garde plancher (le $gte appliqué aux sorties dans mouvement() ne
+    // couvre pas cette route), tout en étant journalisée comme une "entrée".
+    // Une réception ne représente jamais une quantité nulle ou négative —
+    // validées intégralement AVANT toute écriture (aucune réception
+    // partiellement appliquée sur un lot invalide).
+    for (const r of (receptions || [])) {
+      const q = Number(r.quantite_recue);
+      if (!Number.isFinite(q) || q <= 0) {
+        return res.status(400).json({ success: false, message: 'Quantité reçue invalide : doit être un nombre strictement positif.' });
+      }
+    }
     for (const r of (receptions || [])) {
       const ligne = commande.lignes[r.index];
       if (!ligne) continue;
-      const recues = Math.min(ligne.quantite, (ligne.quantite_recue || 0) + (r.quantite_recue || 0));
+      const quantiteRecue = Number(r.quantite_recue);
+      const recues = Math.min(ligne.quantite, (ligne.quantite_recue || 0) + quantiteRecue);
       ligne.quantite_recue = recues;
       if (ligne.medicament) {
         const med = await Medication.findOneAndUpdate(
           { _id: ligne.medicament },
           {
-            $inc: { stock_actuel: (r.quantite_recue || 0) },
-            $push: { mouvements: { type: 'entree', quantite: r.quantite_recue || 0, reference: commande.numero, notes: `Réception commande ${commande.numero}`, utilisateur: req.user._id } },
+            $inc: { stock_actuel: quantiteRecue },
+            $push: { mouvements: { type: 'entree', quantite: quantiteRecue, reference: commande.numero, notes: `Réception commande ${commande.numero}`, utilisateur: req.user._id } },
           },
-          { new: true }
+          { new: true, runValidators: true }
         );
         if (med && med.stock_actuel > 0 && med.statut === 'rupture') {
           await Medication.findByIdAndUpdate(med._id, { $set: { statut: 'disponible' } });
@@ -408,7 +422,20 @@ exports.uploadPhoto = async (req, res, next) => {
 
 exports.mouvement = async (req, res, next) => {
   try {
-    const { type, quantite, reference, notes } = req.body;
+    const { type, reference, notes } = req.body;
+    // PHARM-001 (audit du 13 sept. 2026) — quantite n'était jamais validée :
+    // une valeur négative envoyée pour un mouvement "sortant" inversait le
+    // delta ($inc positif au lieu de négatif), et pour un mouvement
+    // "entrant" décrémentait le stock sans jamais passer par le garde
+    // stock_actuel >= quantite (appliqué uniquement si sortant). Un
+    // mouvement ne représente jamais une quantité nulle ou négative — rejet
+    // strict avant toute lecture/écriture, jamais une normalisation
+    // silencieuse (Math.abs aurait accepté une saisie erronée sans le
+    // signaler à l'appelant).
+    const quantite = Number(req.body.quantite);
+    if (!Number.isFinite(quantite) || quantite <= 0) {
+      return res.status(400).json({ success: false, message: 'Quantité invalide : doit être un nombre strictement positif.' });
+    }
     const avant = await Medication.findById(req.params.id).lean();
     if (!avant) return res.status(404).json({ success: false, message: 'Médicament introuvable.' });
 
@@ -427,7 +454,7 @@ exports.mouvement = async (req, res, next) => {
     const med = await Medication.findOneAndUpdate(
       filter,
       { $inc: { stock_actuel: delta }, $push: { mouvements: { type, quantite, reference, notes, utilisateur: req.user._id } } },
-      { new: true }
+      { new: true, runValidators: true }
     );
     if (!med) return res.status(400).json({ success: false, message: 'Stock insuffisant.' });
 
