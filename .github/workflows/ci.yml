@@ -41,7 +41,7 @@ jobs:
       # l'email échoue/est simulé) — pas besoin d'une vraie clé Resend pour
       # que les tests passent en CI.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -67,7 +67,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
