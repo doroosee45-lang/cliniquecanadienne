@@ -79,6 +79,30 @@ const uploadBuffer = (buffer, { folder, public_id, resource_type = 'auto' } = {}
   });
 };
 
+// getSignedDeliveryUrl — SEC-DOC-01 (audit métier du 13 sept. 2026, Phase 4).
+// uploadBuffer() ci-dessus produit une URL signée SANS expires_at : valide
+// indéfiniment une fois obtenue, jamais révocable. Cette fonction régénère
+// une signature à COURTE durée de vie (ttlSeconds, défaut 5 min — largement
+// suffisant pour qu'un client suive une redirection ou charge une image
+// immédiatement, mais rend l'URL inutilisable si elle fuite/est réutilisée
+// plus tard) à partir des seules données d'identification de l'asset
+// (public_id/resource_type/format/version — jamais un nouvel appel réseau,
+// signature HMAC locale comme dans uploadBuffer). Destinée à être appelée à
+// CHAQUE lecture autorisée (jamais persistée en base), contrairement à
+// l'URL figée que uploadBuffer() retourne à l'upload.
+const getSignedDeliveryUrl = ({ public_id, resource_type, format, version }, ttlSeconds = 300) => {
+  configure();
+  return cloudinarySdk.v2.url(public_id, {
+    type: AUTH_TYPE,
+    resource_type,
+    format,
+    version,
+    sign_url: true,
+    secure: true,
+    expires_at: Math.floor(Date.now() / 1000) + ttlSeconds,
+  });
+};
+
 // destroy — utilisé par le seul point qui nettoyait déjà l'ancien fichier
 // lors d'un remplacement (photo patient, patients.controller.js::uploadPhoto)
 // ; une erreur ici est volontairement journalisée puis avalée par l'appelant
@@ -91,4 +115,4 @@ const destroy = (public_id, opts = {}) => {
   return cloudinarySdk.v2.uploader.destroy(public_id, { type: AUTH_TYPE, ...opts });
 };
 
-module.exports = { isConfigured, uploadBuffer, destroy };
+module.exports = { isConfigured, uploadBuffer, getSignedDeliveryUrl, destroy };

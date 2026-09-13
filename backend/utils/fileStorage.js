@@ -18,10 +18,13 @@ const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
 // `patient-${id}-${Date.now()}`), reproduisant exactement la convention de
 // nommage que chaque storage.filename() de multer construisait avant cette
 // migration. L'extension est reprise de file.originalname.
-// Renvoie { url, public_id } — public_id est null en repli disque local (le
-// concept n'existe pas hors Cloudinary) ; les appelants qui doivent nettoyer
-// l'ancien fichier lors d'un remplacement (seul cas existant : photo
-// patient) doivent donc vérifier public_id avant d'appeler cloudinaryUtil.destroy.
+// Renvoie { url, public_id, resource_type, format, version } — tous les
+// champs après `url` sont null en repli disque local (le concept n'existe
+// pas hors Cloudinary). public_id sert déjà au nettoyage lors d'un
+// remplacement (photo patient) ; les 3 autres (SEC-DOC-01, audit métier du
+// 13 sept. 2026) permettent à un appelant de régénérer plus tard une URL
+// signée à courte durée de vie (cloudinaryUtil.getSignedDeliveryUrl) au lieu
+// de resservir indéfiniment l'URL figée renvoyée ici.
 async function storeUploadedFile(file, { folder, filenameBase }) {
   const ext = path.extname(file.originalname).toLowerCase();
   if (cloudinaryUtil.isConfigured()) {
@@ -29,13 +32,16 @@ async function storeUploadedFile(file, { folder, filenameBase }) {
       folder: `medisync/${folder}`,
       public_id: filenameBase,
     });
-    return { url: result.secure_url, public_id: result.public_id };
+    return {
+      url: result.secure_url, public_id: result.public_id,
+      resource_type: result.resource_type, format: result.format, version: result.version,
+    };
   }
   const dir = path.join(UPLOADS_ROOT, folder);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const filename = `${filenameBase}${ext}`;
   fs.writeFileSync(path.join(dir, filename), file.buffer);
-  return { url: `/uploads/${folder}/${filename}`, public_id: null };
+  return { url: `/uploads/${folder}/${filename}`, public_id: null, resource_type: null, format: null, version: null };
 }
 
 module.exports = { storeUploadedFile };

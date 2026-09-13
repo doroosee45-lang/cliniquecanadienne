@@ -16,6 +16,7 @@ const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { logger } = require('../utils/logger');
 const path = require('path');
 const fs   = require('fs');
+const cloudinaryUtil = require('../utils/cloudinary');
 
 // R-07 — Trouve le dossier patient lié au User connecté. patient_id
 // d'abord : référence directe par ObjectId, stable même si Patient.email
@@ -427,9 +428,26 @@ exports.downloadDocument = async (req, res, next) => {
     // d'appartenance ci-dessus reste identique (déjà effectué avant ce
     // point), seule la façon de livrer le fichier diffère — redirection vers
     // Cloudinary plutôt qu'un fs.existsSync/res.download local.
+    // SEC-DOC-01 (audit métier du 13 sept. 2026, Phase 4) — fichier_path
+    // seul était une URL signée valide indéfiniment (jamais d'expires_at à
+    // l'upload) : une fois obtenue par ce téléchargement légitime, elle
+    // restait utilisable pour toujours, y compris après révocation de
+    // l'accès du patient. Une URL fraîche à courte durée de vie est
+    // désormais régénérée à CHAQUE téléchargement autorisé (jamais
+    // persistée) quand l'asset est sur Cloudinary (cloudinary_public_id
+    // présent) ; un document en repli disque local (public_id absent, ou
+    // déposé avant ce correctif) continue d'utiliser fichier_path tel quel.
     if (/^https?:\/\//.test(doc.fichier_path)) {
       await logAction({ utilisateur: req.user._id, action: 'READ', module: 'portal', entite_id: doc._id, ip: req.ip, message: `Patient ${patient.nom} ${patient.prenom} a téléchargé le document "${doc.nom}"` });
-      return res.redirect(doc.fichier_path);
+      const deliveryUrl = doc.cloudinary_public_id
+        ? cloudinaryUtil.getSignedDeliveryUrl({
+            public_id: doc.cloudinary_public_id,
+            resource_type: doc.cloudinary_resource_type,
+            format: doc.cloudinary_format,
+            version: doc.cloudinary_version,
+          })
+        : doc.fichier_path;
+      return res.redirect(deliveryUrl);
     }
 
     const relative = doc.fichier_path.replace(/^\/?uploads\//, '');
