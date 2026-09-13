@@ -1,5 +1,12 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+
+// defineConfig vient de 'vite' (pas 'vitest/config') : Render installe avec
+// NODE_ENV=production, qui saute les devDependencies (dont vitest) — importer
+// 'vitest/config' faisait alors échouer `vite build` en prod avec
+// ERR_MODULE_NOT_FOUND. 'vite' exporte le même defineConfig ; il ne fait que
+// retourner l'objet tel quel, donc le bloc `test` ci-dessous (lu par Vitest
+// en local/CI) n'est ni validé ni modifié par ce changement.
 
 // Cible du proxy dev — configurable via VITE_PROXY_TARGET pour les tests
 // bout en bout (Playwright, etc.) qui doivent pointer vers un backend local
