@@ -178,6 +178,94 @@ test('Dossiers Médicaux — recherche transversale (base réelle)', { skip: !pr
       assert.equal(body.page, 1);
       assert.equal(body.limit, 3);
     });
+
+    // ── FICHE-UNIQUE-001 — patientId cible directement un patient déjà
+    // identifié (fiche unique regroupée) : mêmes 9 dossiers retrouvés sans
+    // aucun mot-clé, la matrice de permissions reste appliquée à l'identique. ──
+    await t.test('patientId — retrouve les 9 dossiers de CE patient, sans aucun mot-clé', async () => {
+      const { status, body } = await call({ user: asRole('superadmin'), query: { patientId: String(patient._id), limit: '50' } });
+      assert.equal(status, 200);
+      const ids = body.results.map(r => String(r.recordId));
+      for (const expected of [consultation, hospitalisation, chirurgie, labo, imagerie, echographie, urgence, pediatrie, ordonnance]) {
+        assert.ok(ids.includes(String(expected._id)), `patientId doit retrouver ${expected._id} sans mot-clé`);
+      }
+      assert.ok(body.results.every(r => String(r.patientId) === String(patient._id)), 'patientId ne doit jamais retourner le dossier d\'un autre patient');
+    });
+
+    await t.test('patientId — la matrice de permissions par rôle reste appliquée à l\'identique', async () => {
+      const { body } = await call({ user: asRole('laborantin'), query: { patientId: String(patient._id), limit: '50' } });
+      const types = new Set(body.results.map(r => r.type));
+      assert.ok(types.has('laboratoire'), 'laborantin doit voir le laboratoire de ce patient');
+      assert.ok(!types.has('consultation'), 'laborantin ne doit jamais voir les consultations, même via patientId');
+      assert.ok(!types.has('ordonnance'), 'laborantin ne doit jamais voir les ordonnances, même via patientId');
+    });
+
+    await t.test('patientId invalide (pas un ObjectId) — ignoré proprement, jamais une erreur 500', async () => {
+      const { status } = await call({ user: asRole('superadmin'), query: { patientId: 'not-an-object-id' } });
+      assert.equal(status, 200);
+    });
+  } finally {
+    for (const fn of cleanup) await fn();
+    await mongoose.disconnect();
+  }
+});
+
+// FICHE-UNIQUE-001 — PER_SOURCE_CAP (200) doit être signalé honnêtement
+// (sourcesTruncated), jamais tronquer silencieusement une fiche patient.
+// Fixture séparée (201 vraies consultations, un seul patient, un mot-clé
+// unique) pour ne jamais interférer avec les comptes du test principal.
+test('Dossiers Médicaux — PER_SOURCE_CAP signale honnêtement une troncature (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
+  await mongoose.connect(process.env.MONGO_URI);
+  const medicalRecordsC = require('../controllers/medicalRecordsController');
+  const Patient         = require('../models/Patient');
+  const User            = require('../models/User');
+  const Consultation    = require('../models/Consultation');
+
+  const stamp = Date.now();
+  const KW = `KWCAP${stamp}`;
+  const cleanup = [];
+  const asRole = (role) => ({ _id: new mongoose.Types.ObjectId(), role });
+  const call = async (req) => {
+    let status = 200, body = null;
+    const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
+    await medicalRecordsC.search(req, res, (err) => { if (err) throw err; });
+    return { status, body };
+  };
+
+  try {
+    const patient = await Patient.create({
+      nom: `Cap${stamp}`, prenom: 'Testeur', sexe: 'F',
+      date_naissance: new Date('1985-01-01'), numero_dossier: `DM-CAP-${stamp}`,
+    });
+    cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+    const medecin = await User.create({
+      email: `_dm-cap-${stamp}@_test.local`, password: 'Xx1aaaaa',
+      nom: 'Praticien', prenom: 'Dr', role: 'medecin', statut: 'actif',
+    });
+    cleanup.push(() => User.findByIdAndDelete(medecin._id));
+
+    // 201 consultations réelles, un même patient — PER_SOURCE_CAP=200 doit
+    // couper à 200, jamais 201, et le signaler.
+    const docs = Array.from({ length: 201 }, (_, i) => ({
+      patient: patient._id, medecin: medecin._id,
+      diagnostic: `Diagnostic ${KW} ${i}`, statut: 'en_cours',
+      date_consultation: new Date(Date.now() - i * 60000),
+    }));
+    const inserted = await Consultation.insertMany(docs, { ordered: false });
+    cleanup.push(() => Consultation.deleteMany({ _id: { $in: inserted.map(d => d._id) } }));
+
+    await t.test('sourcesTruncated signale "consultation" au-delà de PER_SOURCE_CAP', async () => {
+      const { status, body } = await call({ user: asRole('superadmin'), query: { q: KW, types: ['consultation'], limit: '500' } });
+      assert.equal(status, 200);
+      assert.equal(body.results.length, 200, 'jamais plus de PER_SOURCE_CAP résultats bruts pour une seule collection');
+      assert.ok(body.sourcesTruncated.includes('consultation'), 'la troncature doit être signalée, jamais silencieuse');
+    });
+
+    await t.test('patientId ciblé sur CE patient — 200 restent le plafond par collection, mais ce plafond est déjà bien au-delà d\'un historique réel pour 1 patient', async () => {
+      const { body } = await call({ user: asRole('superadmin'), query: { patientId: String(patient._id), types: ['consultation'], limit: '500' } });
+      assert.equal(body.results.length, 200);
+      assert.ok(body.sourcesTruncated.includes('consultation'));
+    });
   } finally {
     for (const fn of cleanup) await fn();
     await mongoose.disconnect();

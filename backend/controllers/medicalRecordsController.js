@@ -9,6 +9,7 @@
 // élargie ici. Ne remplace pas PatientDetail.jsx : chaque résultat renvoie
 // de quoi y naviguer directement (voir tabTarget/moduleRoute), la vue
 // détaillée reste la seule source d'affichage complet d'un dossier.
+const mongoose               = require('mongoose');
 const Patient               = require('../models/Patient');
 const Consultation          = require('../models/Consultation');
 const Hospitalization       = require('../models/Hospitalization');
@@ -17,6 +18,7 @@ const LabResult             = require('../models/LabResult');
 const ImagingResult         = require('../models/ImagingResult');
 const Echographie           = require('../models/Echographie');
 const Urgence                = require('../models/Urgence');
+const Child                 = require('../models/Child');
 const PediatricConsultation = require('../models/PediatricConsultation');
 const Prescription          = require('../models/Prescription');
 const { escapeRegex }       = require('../utils/helpers');
@@ -168,12 +170,24 @@ async function matchingPatientIds(qRe) {
   return patients.map(p => p._id);
 }
 
-function buildFilter(source, { qRe, patientIds, dateFrom, dateTo, praticien, statut }) {
+// FICHE-UNIQUE-001 (13 sept. 2026) — `patientId` cible directement UN
+// patient déjà identifié (fiche unique regroupée, frontend) : filtre exact
+// (`patient`/`child_id` selon la source), jamais la correspondance texte
+// approximative de matchingPatientIds. Combinable avec `qRe` (ex. affiner
+// dans la fiche) — MongoDB ANDe implicitement filter.patient et filter.$or,
+// deux clés top-level distinctes.
+function buildFilter(source, { qRe, patientIds, patientId, childIds, dateFrom, dateTo, praticien, statut }) {
   const filter = {};
+  const isPediatrie = source.key === 'pediatrie';
+
+  if (patientId) {
+    if (isPediatrie) filter.child_id = { $in: childIds || [] };
+    else filter.patient = patientId;
+  }
 
   if (qRe) {
     const or = [];
-    if (source.key !== 'pediatrie' && patientIds?.length) or.push({ patient: { $in: patientIds } });
+    if (!patientId && !isPediatrie && patientIds?.length) or.push({ patient: { $in: patientIds } });
     for (const field of source.searchFields) or.push({ [field]: qRe });
     if (source.hasPatientNomField) or.push({ patient_nom: qRe });
     // Aucun champ ne peut correspondre (ni patient, ni champs libres) :
@@ -204,8 +218,13 @@ async function runSource(source, params) {
   if (source.key === 'pediatrie') query = query.populate('child_id', 'patient_id');
 
   const docs = await query;
+  // FICHE-UNIQUE-001 — docs.length === PER_SOURCE_CAP signifie que d'autres
+  // résultats plus anciens existent peut-être et n'ont pas été chargés :
+  // signalé honnêtement (jamais une troncature silencieuse), voir search()
+  // ci-dessous et son champ de réponse `sourcesTruncated`.
+  const truncated = docs.length === PER_SOURCE_CAP;
 
-  return docs.map((d) => {
+  const items = docs.map((d) => {
     let patientId, patientNom;
     if (source.key === 'pediatrie') {
       patientId  = d.child_id?.patient_id || null;
@@ -229,6 +248,8 @@ async function runSource(source, params) {
       moduleRoute: source.moduleRoute,
     };
   });
+
+  return { uiType: source.uiType, items, truncated };
 }
 
 // GET /api/medical-records/search
@@ -238,6 +259,13 @@ exports.search = async (req, res, next) => {
     const requestedTypes = [].concat(req.query.types || []).filter(Boolean);
     const typesFilter = requestedTypes.length ? requestedTypes : ALL_UI_TYPES;
 
+    // FICHE-UNIQUE-001 — patientId (filtre exact, un seul patient déjà
+    // identifié par le frontend) : ignoré silencieusement s'il n'a pas la
+    // forme d'un ObjectId valide, plutôt qu'une CastError 500 sur une valeur
+    // de requête non fiable.
+    const patientId = req.query.patientId && mongoose.Types.ObjectId.isValid(req.query.patientId)
+      ? req.query.patientId : null;
+
     // Filtrage des sources AUTORISÉES pour ce rôle AVANT toute requête —
     // jamais tout interroger puis filtrer les résultats après coup.
     const allowedSources = SOURCES.filter(
@@ -246,10 +274,21 @@ exports.search = async (req, res, next) => {
 
     const qRe = q && q.trim() ? new RegExp(escapeRegex(q.trim()), 'i') : null;
     const patientIds = await matchingPatientIds(qRe);
-    const params = { qRe, patientIds, dateFrom, dateTo, praticien, statut };
+    // Résolu uniquement si utile (patientId fourni ET la source pédiatrie
+    // réellement autorisée/interrogée pour ce rôle) — jamais une requête
+    // Child inutile pour les rôles n'ayant pas accès à la pédiatrie.
+    const childIds = (patientId && allowedSources.some(s => s.key === 'pediatrie'))
+      ? (await Child.find({ patient_id: patientId }).select('_id').lean()).map(c => c._id)
+      : null;
+    const params = { qRe, patientIds, patientId, childIds, dateFrom, dateTo, praticien, statut };
 
     const perSourceResults = await Promise.all(allowedSources.map((s) => runSource(s, params)));
-    const merged = perSourceResults.flat().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    const merged = perSourceResults.flatMap(r => r.items).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    // FICHE-UNIQUE-001 — types dont la collection sous-jacente a atteint
+    // PER_SOURCE_CAP pour CETTE requête précise : le frontend l'affiche
+    // honnêtement (fiche potentiellement incomplète) plutôt que de laisser
+    // croire à un historique complet.
+    const sourcesTruncated = [...new Set(perSourceResults.filter(r => r.truncated).map(r => r.uiType))];
 
     const total = merged.length;
     const pageNum  = Math.max(1, parseInt(page, 10) || 1);
@@ -257,6 +296,6 @@ exports.search = async (req, res, next) => {
     const start = (pageNum - 1) * limitNum;
     const results = merged.slice(start, start + limitNum);
 
-    res.json({ success: true, results, total, page: pageNum, limit: limitNum });
+    res.json({ success: true, results, total, page: pageNum, limit: limitNum, sourcesTruncated });
   } catch (err) { next(err); }
 };
