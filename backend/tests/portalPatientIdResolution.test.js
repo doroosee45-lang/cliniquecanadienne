@@ -42,16 +42,47 @@ test('résolution patient_id/email dans portal.controller.js (base réelle)', { 
       assert.equal(String(body.patient._id), String(patient._id));
     });
 
-    await t.test('repli sur l\'email quand patient_id n\'est pas peuplé', async () => {
+    await t.test('repli sur l\'email quand patient_id n\'est pas peuplé — et auto-guérison persistée (DASHBOARD-VIDE-001)', async () => {
       const email = `_t07-fallback-${stamp}@_test.local`;
       const patient = await Patient.create({ nom: `T07B${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M', email });
-      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
       const user = await User.create({ email, password: 'Xx1aaaaa', nom: 'T07B', prenom: 'U', role: 'patient', statut: 'actif' });
+      // DASHBOARD-VIDE-001 — ce repli persiste désormais patient_id (voir
+      // plus bas) : comme le test T07A, le User (qui référencera bientôt le
+      // Patient) doit être nettoyé avant lui, sans quoi la contrainte
+      // structurelle du ticket 0008 (models/Patient.js) refuse la
+      // suppression d'un dossier encore référencé par un compte actif.
       cleanup.push(() => User.findByIdAndDelete(user._id));
+      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
       const { status, body } = await call(user);
       assert.equal(status, 200);
       assert.equal(String(body.patient._id), String(patient._id));
+
+      // DASHBOARD-VIDE-001 — le compte réel meyaosee@gmail.com (audit du
+      // 13 sept. 2026) avait patient_id absent depuis sa création, jamais
+      // corrigé par aucun appel ultérieur : ce repli réussissait à chaque
+      // fois mais ne guérissait jamais le compte, le laissant dépendant
+      // indéfiniment d'une correspondance d'email fragile. findPatient()
+      // doit désormais persister patient_id dès qu'il est résolu ainsi.
+      const userAfter = await User.findById(user._id).lean();
+      assert.equal(String(userAfter.patient_id), String(patient._id), 'patient_id doit être persisté après une résolution réussie par email');
+
+      const healLog = await AuditLog.findOne({ action: 'LINK_PATIENT_DOSSIER', utilisateur: user._id }).lean();
+      assert.ok(healLog, 'la liaison automatique doit être journalisée, pas silencieuse');
+      assert.equal(String(healLog.entite_id), String(patient._id));
+    });
+
+    await t.test('patient_id déjà présent — jamais réécrit par le repli (le repli ne s\'exécute même pas dans ce cas)', async () => {
+      const patient = await Patient.create({ nom: `T07E${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M', email: `_t07-noheal-real-${stamp}@_test.local` });
+      const user = await User.create({ email: `_t07-noheal-user-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'T07E', prenom: 'U', role: 'patient', statut: 'actif', patient_id: patient._id });
+      cleanup.push(() => User.findByIdAndDelete(user._id));
+      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+
+      await call(user);
+      const userAfter = await User.findById(user._id).lean();
+      assert.equal(String(userAfter.patient_id), String(patient._id), 'patient_id déjà correct ne doit jamais être modifié');
+      const healLog = await AuditLog.findOne({ action: 'LINK_PATIENT_DOSSIER', utilisateur: user._id }).lean();
+      assert.equal(healLog, null, 'aucune guérison ne doit se déclencher quand patient_id est déjà renseigné et valide');
     });
 
     await t.test('patient_id cassé (dossier supprimé) → anomalie journalisée avant le repli', async () => {
@@ -91,7 +122,7 @@ test('résolution patient_id/email dans portal.controller.js (base réelle)', { 
     });
   } finally {
     for (const fn of cleanup) await fn();
-    await AuditLog.deleteMany({ action: 'DATA_ANOMALY', module: 'portal', message: { $regex: `_t07-` } });
+    await AuditLog.deleteMany({ action: { $in: ['DATA_ANOMALY', 'LINK_PATIENT_DOSSIER'] }, module: 'portal', message: { $regex: `_t07-` } });
     await mongoose.disconnect();
   }
 });

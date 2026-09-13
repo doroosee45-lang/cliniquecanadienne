@@ -36,7 +36,29 @@ const findPatient = async (user) => {
       statut: 'echec',
     });
   }
-  return Patient.findOne({ email: user.email.toLowerCase().trim() });
+  const patientViaEmail = await Patient.findOne({ email: user.email.toLowerCase().trim() });
+  // DASHBOARD-VIDE-001 (13 sept. 2026) — auto-guérison : un compte dont
+  // patient_id n'était jamais renseigné (anomalie de création — voir le
+  // renforcement de patients.controller.js::create ci-dessous, qui
+  // n'empêche pas les comptes déjà affectés avant ce correctif) retombait
+  // sur cette correspondance par email à CHAQUE appel, indéfiniment
+  // fragile (un email différent, un espace parasite ou une casse
+  // différente entre les deux documents suffirait à casser le repli sans
+  // avertissement). Persiste ici le lien une fois trouvé, pour que les
+  // appels suivants empruntent le chemin direct et stable (patient_id),
+  // exactement comme googleAuth.controller.js::ensurePatientDossier le
+  // fait déjà pour les comptes Google. N'invente jamais de lien : ne
+  // persiste que ce que ce repli a déjà, de toute façon, décidé d'utiliser.
+  if (patientViaEmail && !user.patient_id) {
+    user.patient_id = patientViaEmail._id;
+    await user.save();
+    await logAction({
+      utilisateur: user._id, action: 'LINK_PATIENT_DOSSIER', module: 'portal',
+      entite_id: patientViaEmail._id,
+      message: `patient_id absent sur le compte ${user.email} — lié automatiquement au dossier patient trouvé par correspondance d'email (${patientViaEmail.numero_dossier || patientViaEmail._id}), pour ne plus dépendre de ce repli aux appels suivants`,
+    });
+  }
+  return patientViaEmail;
 };
 
 // ── ME : profil + statistiques ────────────────────────────────────────────────

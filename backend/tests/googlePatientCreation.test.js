@@ -69,9 +69,13 @@ test('inscription Google (e-mail inconnu) → portail accessible immédiatement 
     assert.equal(patient.sexe, undefined);
 
     // ── Le vrai critère de vérification demandé : GET /portal/me → 200 ──
+    // req.user doit être le VRAI document Mongoose (comme le pose
+    // middleware/auth.js::protect via User.findById en production, jamais un
+    // objet littéral) — findPatient() (portal.controller.js) peut persister
+    // patient_id dessus via .save() lors du repli par email (DASHBOARD-VIDE-001).
     let portalStatus = 200, portalBody = null;
     const portalRes = { status: (c) => { portalStatus = c; return portalRes; }, json: (d) => { portalBody = d; } };
-    await portalController.getMe({ user: { email } }, portalRes, () => {});
+    await portalController.getMe({ user }, portalRes, () => {});
     assert.equal(portalStatus, 200, `portal/me doit renvoyer 200, pas 404 : ${JSON.stringify(portalBody)}`);
     assert.ok(portalBody.patient, 'la réponse doit contenir le dossier patient');
   } finally {

@@ -143,16 +143,38 @@ exports.create = async (req, res, next) => {
     // mot de passe (schéma : optionnel depuis le support des comptes
     // Google) — inutilisable pour se connecter tant que le patient n'a pas
     // suivi le lien d'activation et défini le sien.
-    if (patient.email && !(await User.findOne({ email: patient.email }))) {
-      await User.create({
-        email:                patient.email,
-        nom:                  patient.nom,
-        prenom:               patient.prenom,
-        role:                 'patient',
-        telephone:            patient.telephone || '',
-        statut:               'inactif',       // activé lors du clic sur le lien
-        patient_id:           patient._id,     // T2.2 — lien direct dossier ↔ compte
-      });
+    //
+    // DASHBOARD-VIDE-001 (13 sept. 2026) — si un User existait déjà pour cet
+    // email (ex. auto-inscription Google antérieure jamais liée, ou tout
+    // autre compte préexistant), ce bloc se contentait jusqu'ici de ne rien
+    // faire silencieusement : le compte restait sans patient_id, dépendant
+    // indéfiniment du repli par correspondance d'email de portal.controller.
+    // js::findPatient (fragile — un email différent, un espace parasite ou
+    // une casse différente entre les deux documents suffit à le casser).
+    // Lie désormais ce compte existant au dossier qui vient d'être créé
+    // lorsqu'il n'a pas déjà de patient_id — jamais n'écrase un patient_id
+    // déjà présent (pourrait légitimement pointer ailleurs).
+    if (patient.email) {
+      const existingUser = await User.findOne({ email: patient.email });
+      if (!existingUser) {
+        await User.create({
+          email:                patient.email,
+          nom:                  patient.nom,
+          prenom:               patient.prenom,
+          role:                 'patient',
+          telephone:            patient.telephone || '',
+          statut:               'inactif',       // activé lors du clic sur le lien
+          patient_id:           patient._id,     // T2.2 — lien direct dossier ↔ compte
+        });
+      } else if (!existingUser.patient_id) {
+        existingUser.patient_id = patient._id;
+        await existingUser.save();
+        await logAction({
+          utilisateur: req.user._id, action: 'LINK_PATIENT_DOSSIER', module: 'patients',
+          entite_id: patient._id,
+          message: `Compte existant ${existingUser.email} sans patient_id lié au nouveau dossier patient (${patient.numero_dossier}) plutôt que laissé sans lien`,
+        });
+      }
     }
 
     // ③ Envoi email activation
