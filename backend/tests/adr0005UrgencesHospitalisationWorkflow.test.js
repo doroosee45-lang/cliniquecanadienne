@@ -89,6 +89,64 @@ test('ADR-0005 — workflow Urgences → Hospitalisation (base réelle)', { skip
       const fresh = await Urgence.findById(urgence._id);
       assert.equal(fresh.admission_status, 'terminee', 'une hospitalisation réelle existe déjà — jamais réécrit silencieusement');
     });
+
+    // ANOM-URG-HOSP-02 (audit métier du 13 sept. 2026, Phase 4) — reproduit
+    // par test HTTP réel : hospitalization.controller.js::create ne
+    // vérifiait jamais que le patient fourni correspond au patient réel du
+    // dossier urgences référencé par urgence_id, permettant de créer une
+    // hospitalisation pour un patient P2 tout en clôturant (à tort) le
+    // dossier urgences d'un patient P1 totalement différent, sans jamais
+    // lever d'erreur.
+    await t.test('ANOM-URG-HOSP-02 — un urgence_id référençant un AUTRE patient est refusé (400), rien n\'est créé, l\'urgence d\'origine reste inchangée', async () => {
+      const patient2 = await Patient.create({ nom: `T4-P2-${stamp}`, prenom: 'Autre', date_naissance: '1985-01-01', sexe: 'F' });
+      cleanup.push(() => Patient.findByIdAndDelete(patient2._id));
+
+      const urgence2 = await Urgence.create({ patient: patient._id, patient_nom: `${patient.prenom} ${patient.nom}` });
+      cleanup.push(() => Urgence.findByIdAndDelete(urgence2._id));
+      await call(urgencesC.update, { params: { id: urgence2._id }, body: { decision: 'hospitalisation' }, user });
+
+      const { status, body } = await call(hospC.create, {
+        body: { patient: patient2._id, motif_entree: 'Incohérence patient/urgence', urgence_id: urgence2._id },
+        user,
+      });
+      assert.equal(status, 400);
+      assert.match(body.message, /ne correspond pas/i);
+
+      const freshUrgence2 = await Urgence.findById(urgence2._id);
+      assert.equal(freshUrgence2.admission_status, 'preparation', 'l\'urgence référencée ne doit jamais être clôturée par une admission qui a été refusée');
+      const hospCreee = await Hospitalization.findOne({ urgence_id: urgence2._id });
+      assert.equal(hospCreee, null, 'aucune hospitalisation ne doit avoir été créée');
+    });
+
+    await t.test('ANOM-URG-HOSP-02 (contrôle positif) — même patient pour l\'urgence et l\'hospitalisation → accepté', async () => {
+      const patient3 = await Patient.create({ nom: `T4-P3-${stamp}`, prenom: 'Coherent', date_naissance: '1992-01-01', sexe: 'M' });
+      cleanup.push(() => Patient.findByIdAndDelete(patient3._id));
+      const urgence3 = await Urgence.create({ patient: patient3._id, patient_nom: `${patient3.prenom} ${patient3.nom}` });
+      cleanup.push(() => Urgence.findByIdAndDelete(urgence3._id));
+      await call(urgencesC.update, { params: { id: urgence3._id }, body: { decision: 'hospitalisation' }, user });
+
+      const { status, body } = await call(hospC.create, {
+        body: { patient: patient3._id, motif_entree: 'Admission cohérente', urgence_id: urgence3._id },
+        user,
+      });
+      assert.equal(status, 201, JSON.stringify(body));
+      cleanup.push(() => Hospitalization.findByIdAndDelete(body.hospitalization._id));
+      const patientRenvoye = body.hospitalization.patient?._id || body.hospitalization.patient;
+      assert.equal(String(patientRenvoye), String(patient3._id));
+    });
+
+    await t.test('ANOM-URG-HOSP-02 (non-régression) — une urgence sans patient identifié (intake ER) reste acceptée pour toute admission', async () => {
+      const urgenceSansPatient = await Urgence.create({ patient_nom: 'Inconnu-ER' });
+      cleanup.push(() => Urgence.findByIdAndDelete(urgenceSansPatient._id));
+      await call(urgencesC.update, { params: { id: urgenceSansPatient._id }, body: { decision: 'hospitalisation' }, user });
+
+      const { status, body } = await call(hospC.create, {
+        body: { patient: patient._id, motif_entree: 'Identification tardive', urgence_id: urgenceSansPatient._id },
+        user,
+      });
+      assert.equal(status, 201, JSON.stringify(body));
+      cleanup.push(() => Hospitalization.findByIdAndDelete(body.hospitalization._id));
+    });
   } finally {
     for (const fn of cleanup) await fn();
     await mongoose.disconnect();

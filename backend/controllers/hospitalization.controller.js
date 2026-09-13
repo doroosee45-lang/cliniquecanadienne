@@ -186,8 +186,21 @@ exports.create = async (req, res, next) => {
     // (ex. double clic, deux membres du personnel) pour le même épisode.
     let urgence_id;
     if (req.body.urgence_id) {
-      const urgenceExiste = await Urgence.findById(req.body.urgence_id).select('_id');
+      const urgenceExiste = await Urgence.findById(req.body.urgence_id).select('_id patient');
       if (!urgenceExiste) return res.status(400).json({ success: false, message: 'Dossier urgences introuvable pour la référence fournie.' });
+      // ANOM-URG-HOSP-02 (audit métier du 13 sept. 2026, Phase 4) — rien ne
+      // vérifiait que le patient admis correspond au patient du passage aux
+      // urgences référencé : un urgence_id de P1 combiné à un patient de P2
+      // créait réellement une hospitalisation pour P2 tout en clôturant
+      // (admission_status:'terminee' plus bas) le dossier urgences de P1,
+      // sans jamais lever d'erreur — reproduit par test HTTP réel. Urgence.
+      // patient reste optionnel par conception (intake ER non identifié,
+      // cf. Urgence.js) : le refus ne s'applique donc que si l'urgence a
+      // bien un patient lié ET qu'il diffère de celui fourni ici — jamais si
+      // l'urgence n'a encore aucun patient identifié.
+      if (urgenceExiste.patient && String(urgenceExiste.patient) !== String(patient)) {
+        return res.status(400).json({ success: false, message: "Le patient fourni ne correspond pas au patient du dossier urgences référencé." });
+      }
       const dejaHospitalise = await Hospitalization.findOne({ urgence_id: req.body.urgence_id, statut: 'en_cours' }).select('_id');
       if (dejaHospitalise) return res.status(409).json({ success: false, message: 'Une hospitalisation est déjà en cours pour ce passage aux urgences.' });
       urgence_id = req.body.urgence_id;
