@@ -23,8 +23,12 @@ test('A-5 — notification du médecin prescripteur sur anomalie détectée à l
   const medecin = await User.create({ email: `_a5-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'A5', prenom: 'Prescripteur', role: 'medecin', statut: 'actif' });
   const radiologue = { _id: new mongoose.Types.ObjectId(), prenom: 'Rad', nom: 'A5', role: 'radiologue' };
   const cleanup = [
-    () => Patient.findByIdAndDelete(patient._id),
     () => User.findByIdAndDelete(medecin._id),
+  ];
+  // Patient supprimé après les ImagingResult ci-dessous, qui le référencent
+  // encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [
+    () => Patient.findByIdAndDelete(patient._id),
   ];
 
   const call = async (id) => {
@@ -85,6 +89,7 @@ test('A-5 — notification du médecin prescripteur sur anomalie détectée à l
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

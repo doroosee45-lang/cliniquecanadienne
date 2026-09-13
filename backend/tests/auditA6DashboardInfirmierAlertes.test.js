@@ -25,6 +25,9 @@ test('A-6 — alertes du tableau de bord infirmier calculées depuis les résult
   const stamp = Date.now();
   const infirmier = { _id: new mongoose.Types.ObjectId(), role: 'infirmier' };
   const cleanup = [];
+  // Patients supprimés après les Hospitalization/LabResult qui les
+  // référencent encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [];
 
   const call = async () => {
     statsCache.flushAll();
@@ -37,7 +40,7 @@ test('A-6 — alertes du tableau de bord infirmier calculées depuis les résult
   try {
     await t.test('résultat critique d\'un patient hospitalisé apparaît dans alertes', async () => {
       const patient = await Patient.create({ nom: `A6-Hosp-${stamp}`, prenom: 'Patient', date_naissance: '1990-01-01', sexe: 'M' });
-      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+      patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
       const hosp = await Hospitalization.create({ patient: patient._id, medecin_responsable: infirmier._id, service_nom: 'Médecine', motif_entree: 'Test A-6', statut: 'en_cours' });
       cleanup.push(() => Hospitalization.findByIdAndDelete(hosp._id));
       const rx = await LabResult.create({ patient: patient._id, statut: 'valide', est_critique: true, valeurs_critiques: 'Kaliémie 6.8 mmol/L' });
@@ -51,7 +54,7 @@ test('A-6 — alertes du tableau de bord infirmier calculées depuis les résult
 
     await t.test('résultat critique d\'un patient NON hospitalisé n\'apparaît pas', async () => {
       const patientNonHosp = await Patient.create({ nom: `A6-NonHosp-${stamp}`, prenom: 'Patient', date_naissance: '1990-01-01', sexe: 'F' });
-      cleanup.push(() => Patient.findByIdAndDelete(patientNonHosp._id));
+      patientCleanup.push(() => Patient.findByIdAndDelete(patientNonHosp._id));
       const rx = await LabResult.create({ patient: patientNonHosp._id, statut: 'valide', est_critique: true, valeurs_critiques: 'Ne doit jamais apparaître A-6' });
       cleanup.push(() => LabResult.findByIdAndDelete(rx._id));
 
@@ -62,7 +65,7 @@ test('A-6 — alertes du tableau de bord infirmier calculées depuis les résult
 
     await t.test('résultat critique déjà acquitté n\'apparaît plus', async () => {
       const patient = await Patient.create({ nom: `A6-Acquitte-${stamp}`, prenom: 'Patient', date_naissance: '1990-01-01', sexe: 'M' });
-      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+      patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
       const hosp = await Hospitalization.create({ patient: patient._id, medecin_responsable: infirmier._id, service_nom: 'Médecine', motif_entree: 'Test A-6b', statut: 'en_cours' });
       cleanup.push(() => Hospitalization.findByIdAndDelete(hosp._id));
       const rx = await LabResult.create({ patient: patient._id, statut: 'valide', est_critique: true, valeurs_critiques: 'Déjà traité A-6', acquitte_par: infirmier._id, acquitte_at: new Date() });
@@ -74,6 +77,7 @@ test('A-6 — alertes du tableau de bord infirmier calculées depuis les résult
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     statsCache.flushAll();
     await mongoose.disconnect();
   }

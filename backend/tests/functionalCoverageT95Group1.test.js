@@ -33,7 +33,11 @@ test('couverture fonctionnelle — chirurgie, bloc opératoire, laboratoire, ima
   const medecin = await User.create({ email: `_t95g1-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Chirurgien', prenom: 'T95G1', role: 'medecin', statut: 'actif' });
   const user = { _id: medecin._id, prenom: medecin.prenom, nom: medecin.nom, role: 'medecin' };
 
-  const cleanup = [() => Patient.findByIdAndDelete(patient._id), () => User.findByIdAndDelete(medecin._id)];
+  const cleanup = [() => User.findByIdAndDelete(medecin._id)];
+  // Patient supprimé après tous les DossierChirurgical/LabResult/ImagingResult
+  // créés plus bas, qui le référencent encore (hook pre('findOneAndDelete')
+  // de Patient).
+  const patientCleanup = [() => Patient.findByIdAndDelete(patient._id)];
   const call = async (fn, req) => {
     let status = 200, body = null;
     const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
@@ -121,6 +125,7 @@ test('couverture fonctionnelle — chirurgie, bloc opératoire, laboratoire, ima
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

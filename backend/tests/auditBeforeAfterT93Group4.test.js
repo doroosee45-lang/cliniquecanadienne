@@ -29,7 +29,11 @@ test('donnees_avant/donnees_apres — ambulances, hr, pharmacy, recurring, setti
   const patient = await Patient.create({ nom: `T93G4${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M' });
   const medecin = await require('../models/User').create({ email: `_t93g4-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Med', prenom: 'T93G4', role: 'medecin', statut: 'actif' });
 
-  const cleanup = [() => Patient.findByIdAndDelete(patient._id), () => require('../models/User').findByIdAndDelete(medecin._id)];
+  const cleanup = [() => require('../models/User').findByIdAndDelete(medecin._id)];
+  // Patient supprimé après tout le reste (Prescription/Appointment créés
+  // plus bas le référencent encore — hook pre('findOneAndDelete') de
+  // Patient).
+  const patientCleanup = [() => Patient.findByIdAndDelete(patient._id)];
   const call = async (fn, req) => {
     let status = 200, body = null;
     const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
@@ -138,6 +142,7 @@ test('donnees_avant/donnees_apres — ambulances, hr, pharmacy, recurring, setti
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

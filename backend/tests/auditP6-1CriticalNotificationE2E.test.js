@@ -62,6 +62,10 @@ test('laboratoire — chaîne complète frontend réel -> validate() -> notifica
   const cleanup = [
     () => User.findByIdAndDelete(medecin._id),
     () => User.findByIdAndDelete(laborantin._id),
+  ];
+  // Patient supprimé après tous les LabResult créés plus bas, qui le
+  // référencent encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [
     () => Patient.findByIdAndDelete(patient._id),
   ];
 
@@ -203,6 +207,7 @@ test('laboratoire — chaîne complète frontend réel -> validate() -> notifica
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

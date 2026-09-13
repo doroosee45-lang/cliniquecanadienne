@@ -33,10 +33,14 @@ test('laboratory.controller — prelever, saisirResultats, validate, acquit (bas
   const userInfirmier  = { _id: infirmier._id, prenom: infirmier.prenom, nom: infirmier.nom, role: 'infirmier' };
 
   const cleanup = [
-    () => Patient.findByIdAndDelete(patient._id),
     () => User.findByIdAndDelete(medecin._id),
     () => User.findByIdAndDelete(laborantin._id),
     () => User.findByIdAndDelete(infirmier._id),
+  ];
+  // Patient supprimé après le LabResult créé plus bas, qui le référence
+  // encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [
+    () => Patient.findByIdAndDelete(patient._id),
   ];
 
   const call = async (fn, req) => {
@@ -157,6 +161,7 @@ test('laboratory.controller — prelever, saisirResultats, validate, acquit (bas
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

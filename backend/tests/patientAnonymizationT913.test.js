@@ -33,6 +33,11 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
   const stamp = Date.now();
   const admin = { _id: new mongoose.Types.ObjectId() };
   const cleanup = [];
+  // Patient supprimé après toutes les collections en cascade ci-dessous, qui
+  // le référencent toutes encore même une fois anonymisé (anonymizePatient()
+  // scrube les copies d'identité mais ne retire jamais la référence ObjectId
+  // — hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [];
   let patientIdForCleanup = null;
 
   try {
@@ -44,7 +49,7 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
       contact_urgence: { nom: 'Jean Nkoulou', relation: 'Époux', telephone: '+242069876543' },
       notes: 'Note confidentielle',
     });
-    cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+    patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
     patientIdForCleanup = patient._id;
 
     const linkedUser = await User.create({
@@ -208,6 +213,7 @@ test('T9.13 — anonymizePatient() : cascade réelle, contenu clinique préserv�
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     if (patientIdForCleanup) {
       await AuditLog.deleteMany({ action: 'ANONYMIZE', module: 'patients', entite_id: patientIdForCleanup.toString() });
     }

@@ -68,7 +68,6 @@ test('AUDIT-3.4 — références introuvables rejetées explicitement, plus de r
 
     await t.test('consultations.controller.remove — détache la Prescription générée automatiquement au lieu de laisser une référence orpheline', async () => {
       const patient = await Patient.create({ nom: `T34-${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M' });
-      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
       const medecin = await User.create({ email: `_t34-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'T34', prenom: 'Med', role: 'medecin', statut: 'actif' });
       cleanup.push(() => User.findByIdAndDelete(medecin._id));
       const user = { _id: medecin._id, prenom: medecin.prenom, nom: medecin.nom, role: 'medecin' };
@@ -82,6 +81,9 @@ test('AUDIT-3.4 — références introuvables rejetées explicitement, plus de r
         lignes: [{ medicament_nom: 'Test', quantite: 1 }], statut: 'active',
       });
       cleanup.push(() => Prescription.findByIdAndDelete(rx._id));
+      // Patient supprimé en dernier : la Prescription ci-dessus le référence
+      // encore (hook pre('findOneAndDelete') de Patient).
+      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
       const { status } = await call(consultationsC.remove, { params: { id: consult._id }, user });
       assert.equal(status, 200);

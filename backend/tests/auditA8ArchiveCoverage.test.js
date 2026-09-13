@@ -69,12 +69,14 @@ test('archive.controller — couverture fonctionnelle des 9 endpoints (base rée
 
     await t.test('restore() — réactive aussi le patient source si source_model=Patient', async () => {
       const patient = await Patient.create({ nom: `A8-${stamp}`, prenom: 'Restaure', date_naissance: '1990-01-01', sexe: 'M', statut: 'inactif' });
-      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
       const entry = await ArchiveEntry.create({
         titre: `A8-PatientArchive-${stamp}`, categorie: 'patient',
         source_model: 'Patient', source_id: patient._id, patient: patient._id,
       });
       cleanup.push(() => ArchiveEntry.findByIdAndDelete(entry._id));
+      // Patient supprimé après l'ArchiveEntry ci-dessus, qui le référence
+      // encore (hook pre('findOneAndDelete') de Patient).
+      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
       const { status, body } = await call(archiveC.restore, { params: { id: entry._id }, body: { motif: 'Test A-8' }, user: admin, ip: '127.0.0.1' });
       assert.equal(status, 200);

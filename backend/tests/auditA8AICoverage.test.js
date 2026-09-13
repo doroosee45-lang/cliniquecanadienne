@@ -17,6 +17,9 @@ test('ai.controller — couverture fonctionnelle des 6 endpoints (base réelle)'
   const stamp = Date.now();
   const medecin = { _id: new mongoose.Types.ObjectId(), role: 'medecin', prenom: 'A8', nom: 'Med' };
   const cleanup = [];
+  // Patients supprimés après tous les AIPrediction/LabResult/ImagingResult
+  // qui les référencent encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [];
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -32,7 +35,7 @@ test('ai.controller — couverture fonctionnelle des 6 endpoints (base réelle)'
         nom: `A8-Diag-${stamp}`, prenom: 'Patient', date_naissance: '1970-01-01', sexe: 'M',
         antecedents_medicaux: ['Hypertension'],
       });
-      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+      patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
       const { status, body } = await call(aiC.runDiagnosis, {
         body: { patientId: patient._id, symptoms: ['fievre', 'frissons', 'cephalees'], vitals: { temperature: 39.2, frequence_cardiaque: 110 } },
@@ -72,7 +75,7 @@ test('ai.controller — couverture fonctionnelle des 6 endpoints (base réelle)'
         nom: `A8-Allergie-${stamp}`, prenom: 'Patient', date_naissance: '1980-01-01', sexe: 'F',
         allergies: ['Pénicilline'],
       });
-      cleanup.push(() => Patient.findByIdAndDelete(patientAllergique._id));
+      patientCleanup.push(() => Patient.findByIdAndDelete(patientAllergique._id));
 
       const { status, body } = await call(aiC.checkInteractions, {
         body: { medications: ['Quinine', 'Digoxine', 'Pénicilline'], patientId: patientAllergique._id },
@@ -152,6 +155,7 @@ test('ai.controller — couverture fonctionnelle des 6 endpoints (base réelle)'
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

@@ -35,6 +35,10 @@ test('AUDIT-2.1 — décrément de stock pharmacie atomique sous concurrence ré
   const user = { _id: medecin._id, prenom: medecin.prenom, nom: medecin.nom, role: 'medecin' };
   const cleanup = [
     () => User.findByIdAndDelete(medecin._id),
+  ];
+  // Patient supprimé après les Prescription créées plus bas (elles le
+  // référencent encore au moment du nettoyage).
+  const patientCleanup = [
     () => Patient.findByIdAndDelete(patient._id),
   ];
 
@@ -109,6 +113,7 @@ test('AUDIT-2.1 — décrément de stock pharmacie atomique sous concurrence ré
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

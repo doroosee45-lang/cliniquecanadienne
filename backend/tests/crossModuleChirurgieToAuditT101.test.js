@@ -31,10 +31,13 @@ test('Chirurgie→Journal d\'audit — createDossier/addBilan/addSuivi/addCompli
     return { status, body };
   };
   const cleanup = [];
+  // Patient supprimé après les DossierChirurgical créés plus bas, qui le
+  // référencent encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [];
 
   try {
     const patient = await Patient.create({ nom: `T101CHIR${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'F' });
-    cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+    patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
     const medecin = await User.create({ email: `_t101-chir-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Chirurgien', prenom: 'T101', role: 'medecin', statut: 'actif' });
     cleanup.push(() => User.findByIdAndDelete(medecin._id));
     const user = { _id: medecin._id, prenom: medecin.prenom, nom: medecin.nom, role: 'medecin' };
@@ -73,6 +76,7 @@ test('Chirurgie→Journal d\'audit — createDossier/addBilan/addSuivi/addCompli
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

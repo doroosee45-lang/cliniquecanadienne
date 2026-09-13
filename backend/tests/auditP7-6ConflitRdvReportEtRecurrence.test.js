@@ -22,7 +22,10 @@ test('P7-6 — conflit de créneau vérifié sur report de RDV et planification 
   const medecin = await User.create({ email: `_p76-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'P76', prenom: 'Med', role: 'medecin', statut: 'actif' });
   const user = { _id: medecin._id, prenom: medecin.prenom, nom: medecin.nom, role: 'medecin' };
   const patient = await Patient.create({ nom: `P76-${stamp}`, prenom: 'Patient', date_naissance: '1990-01-01', sexe: 'M' });
-  const cleanup = [() => User.findByIdAndDelete(medecin._id), () => Patient.findByIdAndDelete(patient._id)];
+  const cleanup = [() => User.findByIdAndDelete(medecin._id)];
+  // Patient supprimé après tous les Appointment/RecurringProtocol créés plus
+  // bas, qui le référencent encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [() => Patient.findByIdAndDelete(patient._id)];
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -92,6 +95,7 @@ test('P7-6 — conflit de créneau vérifié sur report de RDV et planification 
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

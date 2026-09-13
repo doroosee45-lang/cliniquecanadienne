@@ -29,7 +29,10 @@ test('couverture fonctionnelle — pharmacie, hospitalisation (base réelle)', {
   const medecin = await User.create({ email: `_t95g3-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'T95G3', prenom: 'Med', role: 'medecin', statut: 'actif' });
   const user = { _id: medecin._id, prenom: medecin.prenom, nom: medecin.nom, role: 'medecin' };
 
-  const cleanup = [() => Patient.findByIdAndDelete(patient._id), () => User.findByIdAndDelete(medecin._id)];
+  const cleanup = [() => User.findByIdAndDelete(medecin._id)];
+  // Patient supprimé après les Hospitalization créées plus bas, qui le
+  // référencent encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [() => Patient.findByIdAndDelete(patient._id)];
   const call = async (fn, req) => {
     let status = 200, body = null;
     const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
@@ -123,6 +126,7 @@ test('couverture fonctionnelle — pharmacie, hospitalisation (base réelle)', {
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

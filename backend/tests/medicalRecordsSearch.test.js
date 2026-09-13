@@ -33,6 +33,9 @@ test('Dossiers Médicaux — recherche transversale (base réelle)', { skip: !pr
   const stamp = Date.now();
   const KW = `KWSTAMP${stamp}`;
   const cleanup = [];
+  // Patient supprimé après tous les dossiers cliniques créés plus bas, qui le
+  // référencent tous encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [];
   const asRole = (role) => ({ _id: new mongoose.Types.ObjectId(), role });
 
   const call = async (req) => {
@@ -47,7 +50,7 @@ test('Dossiers Médicaux — recherche transversale (base réelle)', { skip: !pr
       nom: `Rechercher${stamp}`, prenom: 'Testeur', sexe: 'M',
       date_naissance: new Date('1990-01-01'), numero_dossier: `DM-TEST-${stamp}`,
     });
-    cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+    patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
     const medecin = await User.create({
       email: `_dm-medecin-${stamp}@_test.local`, password: 'Xx1aaaaa',
@@ -206,6 +209,7 @@ test('Dossiers Médicaux — recherche transversale (base réelle)', { skip: !pr
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });
@@ -224,6 +228,9 @@ test('Dossiers Médicaux — PER_SOURCE_CAP signale honnêtement une troncature 
   const stamp = Date.now();
   const KW = `KWCAP${stamp}`;
   const cleanup = [];
+  // Patient supprimé après les 201 Consultation créées plus bas, qui le
+  // référencent encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [];
   const asRole = (role) => ({ _id: new mongoose.Types.ObjectId(), role });
   const call = async (req) => {
     let status = 200, body = null;
@@ -237,7 +244,7 @@ test('Dossiers Médicaux — PER_SOURCE_CAP signale honnêtement une troncature 
       nom: `Cap${stamp}`, prenom: 'Testeur', sexe: 'F',
       date_naissance: new Date('1985-01-01'), numero_dossier: `DM-CAP-${stamp}`,
     });
-    cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+    patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
     const medecin = await User.create({
       email: `_dm-cap-${stamp}@_test.local`, password: 'Xx1aaaaa',
       nom: 'Praticien', prenom: 'Dr', role: 'medecin', statut: 'actif',
@@ -268,6 +275,7 @@ test('Dossiers Médicaux — PER_SOURCE_CAP signale honnêtement une troncature 
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

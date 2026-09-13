@@ -52,6 +52,10 @@ test('balayage T5.2 — Appointments, Patients, Finance/Invoices, Administration
   const stamp = Date.now();
   const staff = { _id: new mongoose.Types.ObjectId(), prenom: 'Staff', nom: 'Test', role: 'receptionniste' };
   const cleanup = [];
+  // Patients supprimés après les documents créés dans le même sous-test qui
+  // les référencent encore (ex. Appointment) — hook pre('findOneAndDelete')
+  // de Patient.
+  const patientCleanup = [];
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -63,7 +67,7 @@ test('balayage T5.2 — Appointments, Patients, Finance/Invoices, Administration
   try {
     await t.test('Appointments — le payload réel (dont salle) est retrouvé intact en base', async () => {
       const patient = await Patient.create({ nom: `T52A-${stamp}`, prenom: 'Pat', date_naissance: '1990-01-01', sexe: 'M' });
-      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+      patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
       const medecin = await User.create({ email: `_t52a-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Med', prenom: 'T52A', role: 'medecin', statut: 'actif' });
       cleanup.push(() => User.findByIdAndDelete(medecin._id));
 
@@ -103,7 +107,7 @@ test('balayage T5.2 — Appointments, Patients, Finance/Invoices, Administration
       };
       const { status, body } = await call(patC.create, { body: payload, user: staff, ip: '127.0.0.1', headers: {} });
       assert.equal(status, 201);
-      cleanup.push(() => Patient.findByIdAndDelete(body.patient._id));
+      patientCleanup.push(() => Patient.findByIdAndDelete(body.patient._id));
       cleanup.push(() => User.deleteOne({ email }));
 
       const fresh = await Patient.findById(body.patient._id).lean();
@@ -219,6 +223,7 @@ test('balayage T5.2 — Appointments, Patients, Finance/Invoices, Administration
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

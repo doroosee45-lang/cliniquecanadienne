@@ -25,6 +25,10 @@ test('P7-7 — le portail patient masque les ordonnances en brouillon/annulées 
   const cleanup = [
     () => User.findByIdAndDelete(userPatient._id),
     () => User.findByIdAndDelete(medecin._id),
+  ];
+  // Patient supprimé après toutes les Prescription créées plus bas, qui le
+  // référencent encore (hook pre('findOneAndDelete') de Patient).
+  const patientCleanup = [
     () => Patient.findByIdAndDelete(patient._id),
   ];
 
@@ -60,6 +64,7 @@ test('P7-7 — le portail patient masque les ordonnances en brouillon/annulées 
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

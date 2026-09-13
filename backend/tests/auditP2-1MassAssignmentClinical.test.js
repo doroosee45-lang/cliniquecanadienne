@@ -50,12 +50,18 @@ test('P2-1 groupe 2 — mass-assignment bloqué sur 13 endpoints cliniques/méti
   };
 
   const cleanup = [];
+  // Patient supprimé après tout le reste (Appointment/Consultation/
+  // Prescription/ImagingResult/Pregnancy/DossierChirurgical/Hospitalization
+  // créés plus bas le référencent encore — hook pre('findOneAndDelete') de
+  // Patient).
+  const patientCleanup = [];
   const otherPatientId = new mongoose.Types.ObjectId();
 
   try {
     const medecin = await User.create({ email: `_p21c-medecin-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'M', prenom: 'D', role: 'medecin', statut: 'actif' });
     const patient = await Patient.create({ nom: 'P21C', prenom: stamp.toString(), date_naissance: '1990-01-01', sexe: 'F' });
-    cleanup.push(() => User.findByIdAndDelete(medecin._id), () => Patient.findByIdAndDelete(patient._id));
+    cleanup.push(() => User.findByIdAndDelete(medecin._id));
+    patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
     await t.test('Patient.update — actif/token_activation/statut/cree_par bloqués, telephone/notes légitimes toujours persistés', async () => {
       const before = await Patient.findById(patient._id).lean();
@@ -243,6 +249,7 @@ test('P2-1 groupe 2 — mass-assignment bloqué sur 13 endpoints cliniques/méti
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

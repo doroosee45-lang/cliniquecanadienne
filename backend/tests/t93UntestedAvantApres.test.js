@@ -31,7 +31,11 @@ test('T9.5 — fonctions avant/apres du T9.3 jamais exercées par un test (base 
   const patient = await Patient.create({ nom: `T95${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M' });
   const medecin = await User.create({ email: `_t95-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Med', prenom: 'T95', role: 'medecin', statut: 'actif' });
 
-  const cleanup = [() => Patient.findByIdAndDelete(patient._id), () => User.findByIdAndDelete(medecin._id)];
+  const cleanup = [() => User.findByIdAndDelete(medecin._id)];
+  // Patient supprimé après les DossierChirurgical/ImagingResult/Echographie
+  // créés plus bas, qui le référencent encore (hook pre('findOneAndDelete')
+  // de Patient).
+  const patientCleanup = [() => Patient.findByIdAndDelete(patient._id)];
   const call = async (fn, req) => {
     let status = 200, body = null;
     const res = { status: (c) => { status = c; return res; }, json: (d) => { body = d; } };
@@ -125,6 +129,7 @@ test('T9.5 — fonctions avant/apres du T9.3 jamais exercées par un test (base 
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

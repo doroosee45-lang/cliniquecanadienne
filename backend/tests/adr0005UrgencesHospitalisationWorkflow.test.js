@@ -21,6 +21,10 @@ test('ADR-0005 — workflow Urgences → Hospitalisation (base réelle)', { skip
 
   const stamp = Date.now();
   const cleanup = [];
+  // Patients supprimés après tout le reste (Urgence/Hospitalization les
+  // référencent encore) — le hook pre('findOneAndDelete') de Patient refuse
+  // désormais la suppression tant qu'un document clinique y fait référence.
+  const patientCleanup = [];
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -31,7 +35,7 @@ test('ADR-0005 — workflow Urgences → Hospitalisation (base réelle)', { skip
 
   try {
     const patient = await Patient.create({ nom: `T4-${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'M' });
-    cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+    patientCleanup.push(() => Patient.findByIdAndDelete(patient._id));
     const medecin = await User.create({ email: `_t4-med-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'T4', prenom: 'Med', role: 'medecin', statut: 'actif' });
     cleanup.push(() => User.findByIdAndDelete(medecin._id));
     const user = { _id: medecin._id, prenom: medecin.prenom, nom: medecin.nom, role: 'medecin' };
@@ -99,7 +103,7 @@ test('ADR-0005 — workflow Urgences → Hospitalisation (base réelle)', { skip
     // lever d'erreur.
     await t.test('ANOM-URG-HOSP-02 — un urgence_id référençant un AUTRE patient est refusé (400), rien n\'est créé, l\'urgence d\'origine reste inchangée', async () => {
       const patient2 = await Patient.create({ nom: `T4-P2-${stamp}`, prenom: 'Autre', date_naissance: '1985-01-01', sexe: 'F' });
-      cleanup.push(() => Patient.findByIdAndDelete(patient2._id));
+      patientCleanup.push(() => Patient.findByIdAndDelete(patient2._id));
 
       const urgence2 = await Urgence.create({ patient: patient._id, patient_nom: `${patient.prenom} ${patient.nom}` });
       cleanup.push(() => Urgence.findByIdAndDelete(urgence2._id));
@@ -120,7 +124,7 @@ test('ADR-0005 — workflow Urgences → Hospitalisation (base réelle)', { skip
 
     await t.test('ANOM-URG-HOSP-02 (contrôle positif) — même patient pour l\'urgence et l\'hospitalisation → accepté', async () => {
       const patient3 = await Patient.create({ nom: `T4-P3-${stamp}`, prenom: 'Coherent', date_naissance: '1992-01-01', sexe: 'M' });
-      cleanup.push(() => Patient.findByIdAndDelete(patient3._id));
+      patientCleanup.push(() => Patient.findByIdAndDelete(patient3._id));
       const urgence3 = await Urgence.create({ patient: patient3._id, patient_nom: `${patient3.prenom} ${patient3.nom}` });
       cleanup.push(() => Urgence.findByIdAndDelete(urgence3._id));
       await call(urgencesC.update, { params: { id: urgence3._id }, body: { decision: 'hospitalisation' }, user });
@@ -149,6 +153,7 @@ test('ADR-0005 — workflow Urgences → Hospitalisation (base réelle)', { skip
     });
   } finally {
     for (const fn of cleanup) await fn();
+    for (const fn of patientCleanup) await fn();
     await mongoose.disconnect();
   }
 });

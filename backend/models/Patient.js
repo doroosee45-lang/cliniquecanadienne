@@ -112,6 +112,31 @@ PatientSchema.pre('findOneAndDelete', async function (next) {
     err.statusCode = 409;
     return next(err);
   }
+
+  // DB-001 (audit métier du 13 sept. 2026, Phase 4) — ce hook ne bloquait
+  // jusqu'ici que sur un compte User actif encore lié ; patients.
+  // controller.js::remove() vérifie séparément, lui, un historique clinique/
+  // financier réel (CASCADE_TARGETS) avant d'autoriser une suppression
+  // physique — mais cette vérification vivait UNIQUEMENT dans ce contrôleur.
+  // Tout autre appelant de Patient.findByIdAndDelete()/findOneAndDelete()
+  // (script, migration, nettoyage de test, futur contrôleur) contournait
+  // donc entièrement cette protection, laissant des Appointment/
+  // Consultation/Prescription/LabResult/ImagingResult/Invoice orphelins —
+  // constaté réellement en base sur des résidus de tests automatisés.
+  // Déplacée ici (source unique, CASCADE_TARGETS déjà l'inventaire le plus
+  // complet du projet), la garde s'applique désormais quel que soit
+  // l'appelant. Require paresseux (comme User ci-dessus) : patientAnonymization.js
+  // require('../models/Patient') à son propre chargement — un require en
+  // tête de ce fichier créerait un cycle.
+  const { CASCADE_TARGETS } = require('../utils/patientAnonymization');
+  const counts = await Promise.all(
+    CASCADE_TARGETS.map(({ model, refField }) => model.countDocuments({ [refField]: target._id }))
+  );
+  if (counts.some(n => n > 0)) {
+    const err = new Error('Impossible de supprimer ce dossier : un historique clinique ou financier réel y fait encore référence. Utilisez la désactivation ou l\'anonymisation plutôt que la suppression physique.');
+    err.statusCode = 409;
+    return next(err);
+  }
   next();
 });
 
