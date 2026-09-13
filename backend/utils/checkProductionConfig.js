@@ -66,9 +66,13 @@ function checkJwtSecret(env, findings) {
   }
 }
 
-function checkSmtp(env, findings) {
-  if (!env.SMTP_HOST || !env.SMTP_USER) {
-    findings.push({ level: 'error', check: 'SMTP', message: 'SMTP non configuré (SMTP_HOST/SMTP_USER absent) — utils/mail.js retombera en mode simulé : aucun email réel (activation compte, rappel de rendez-vous, réinitialisation de mot de passe) ne sera envoyé.' });
+// MIGRATION-RESEND (13 sept. 2026) — remplace l'ancien checkSmtp
+// (SMTP_HOST/SMTP_USER) : utils/mail.js n'utilise plus que RESEND_API_KEY,
+// même pattern que checkOpenAI/checkTwilio ci-dessous (vérifie uniquement la
+// PRÉSENCE de la clé, jamais sa valeur).
+function checkResend(env, findings) {
+  if (!env.RESEND_API_KEY) {
+    findings.push({ level: 'error', check: 'RESEND', message: 'RESEND_API_KEY non configurée — utils/mail.js retombera en mode simulé : aucun email réel (activation compte, rappel de rendez-vous, réinitialisation de mot de passe) ne sera envoyé.' });
   }
 }
 
@@ -128,7 +132,7 @@ async function checkProductionConfig({ env = process.env, mongoUri } = {}) {
   const findings = [];
   checkNodeEnv(env, findings);
   checkJwtSecret(env, findings);
-  checkSmtp(env, findings);
+  checkResend(env, findings);
   checkOpenAI(env, findings);
   checkTwilio(env, findings);
   checkGoogleOAuth(env, findings);

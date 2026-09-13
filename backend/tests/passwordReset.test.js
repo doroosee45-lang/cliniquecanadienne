@@ -54,9 +54,9 @@ test('forgot-password / reset-password : réponse uniforme, token à usage uniqu
     assert.equal(bodyExisting.success, true);
     assert.equal(bodyUnknown.success, true);
 
-    // AUDIT-C4 (ticket 0004) — SMTP_HOST/SMTP_USER sont volontairement vides
-    // sur ce serveur isolé (mail.js retombe alors en mode simulé, qui ne
-    // lève jamais d'erreur — voir commentaire plus haut sur ces variables) :
+    // AUDIT-C4 (ticket 0004) — RESEND_API_KEY est volontairement vide sur ce
+    // serveur isolé (mail.js retombe alors en mode simulé, qui ne lève
+    // jamais d'erreur — voir commentaire plus haut sur cette variable) :
     // ce cas précis reste donc un succès journalisé, pas un échec. Le cas
     // d'un envoi qui échoue réellement (SMTP configuré mais indisponible)
     // est couvert séparément par auditC4ForgotPasswordEchecEnvoi.test.js, en
@@ -70,7 +70,7 @@ test('forgot-password / reset-password : réponse uniforme, token à usage uniqu
     // 2. Le contrôleur génère puis pose le token AVANT la tentative d'envoi
     //    (auth.controller.js:74-77), et le révoque explicitement si le mail
     //    échoue (:81-86). AUDIT-C4 — correction du commentaire précédent :
-    //    SMTP_HOST/SMTP_USER étant vides sur ce serveur isolé, mail.js
+    //    RESEND_API_KEY étant vide sur ce serveur isolé, mail.js
     //    retombe en mode simulé (jamais d'erreur, voir plus haut), donc le
     //    token n'est PAS révoqué ici, quel que soit le domaine de l'email
     //    (_test.local n'entre jamais en jeu — aucune tentative réseau n'a

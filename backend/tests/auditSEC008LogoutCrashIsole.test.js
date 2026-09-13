@@ -64,7 +64,7 @@ async function runScenario() {
       JWT_EXPIRE: '1h',
       JWT_COOKIE_EXPIRE: '1',
       CLIENT_URL: 'http://127.0.0.1:0',
-      SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '',
+      RESEND_API_KEY: '',
     },
     stdio: 'ignore',
   });

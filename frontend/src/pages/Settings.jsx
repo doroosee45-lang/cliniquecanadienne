@@ -302,7 +302,6 @@ export default function Settings() {
   const [saved, setSaved]         = useState({});    // { cle: true } pour l'animation
   const [users, setUsers]         = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [testingSmtp, setTestingSmtp] = useState(false); // NEW-001 / SET-002
   const [insurances, setInsurances] = useState([]);
   const [loadingInsurances, setLoadingInsurances] = useState(false);
   const [logs, setLogs]           = useState([]);
@@ -353,9 +352,6 @@ export default function Settings() {
         "notif_sms_actif":      true,
         "notif_email_actif":    true,
         "notif_whatsapp_actif": false,
-        "notif_smtp_host":      "smtp.gmail.com",
-        "notif_smtp_port":      "587",
-        "notif_smtp_user":      "noreply@clinique-souanke.cg",
         "backup_auto":          true,
         "backup_frequence":     "quotidien",
         "backup_heure":         "02:00",
@@ -570,22 +566,6 @@ export default function Settings() {
       }, 3000);
     } catch { toast.error("Erreur lors de la sauvegarde"); }
     finally { setSaving(false); }
-  };
-
-  // NEW-001 / SET-002 — POST /settings/test-smtp effectue un vrai
-  // transporter.verify() côté serveur (connexion + authentification SMTP
-  // réelles, jamais un envoi d'email) contre la configuration réellement
-  // effective (Paramètres applicatifs si complets, sinon les variables
-  // d'environnement du serveur) — jamais un succès/échec simulé.
-  const testSmtp = async () => {
-    setTestingSmtp(true);
-    try {
-      const { data } = await api.post("/settings/test-smtp");
-      if (data.success) toast.success(`✅ ${data.message}`);
-      else toast.error(`❌ ${data.message}`);
-    } catch (err) {
-      toast.error(`❌ ${err.response?.data?.message || "Échec du test de connexion SMTP."}`);
-    } finally { setTestingSmtp(false); }
   };
 
   // ─────────────────────────────────────────────────────────
@@ -905,8 +885,7 @@ export default function Settings() {
           <div><div className="set-section-title">🔔 Notifications</div><div className="set-section-sub">SMS, E-mail et WhatsApp — API /settings (groupe : notifications)</div></div>
           <button className="sbtn sbtn-teal" disabled={saving} onClick={() => saveGroup([
             {cle:"notif_sms_actif",type:"boolean"},{cle:"notif_email_actif",type:"boolean"},
-            {cle:"notif_whatsapp_actif",type:"boolean"},{cle:"notif_smtp_host"},
-            {cle:"notif_smtp_port"},{cle:"notif_smtp_user"},
+            {cle:"notif_whatsapp_actif",type:"boolean"},
           ], "Notifications")}>
             {I.save} {saving?"...":"Tout enregistrer"}
           </button>
@@ -936,53 +915,20 @@ export default function Settings() {
           </div>
           <div>
             <div className="set-card" style={{ marginBottom:16 }}>
-              <div className="set-card-hdr"><h3>📧 Configuration E-mail (SMTP)</h3></div>
+              <div className="set-card-hdr"><h3>📧 Configuration E-mail (Resend)</h3></div>
               <div className="set-card-body" style={{ display:"flex", flexDirection:"column", gap:12 }}>
                 <ParamRow cle="notif_email_actif" label="Activer les e-mails" type="boolean">
                   <Toggle checked={val("notif_email_actif", false)} onChange={v => set("notif_email_actif", v)} />
                 </ParamRow>
-                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:10 }}>
-                  <div>
-                    <label className="slbl">Serveur SMTP</label>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <input className="sinp" value={val("notif_smtp_host","smtp.gmail.com")} onChange={e => set("notif_smtp_host", e.target.value)} />
-                      <SaveBtn cle="notif_smtp_host" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="slbl">Port</label>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <input className="sinp" value={val("notif_smtp_port","587")} onChange={e => set("notif_smtp_port", e.target.value)} />
-                      <SaveBtn cle="notif_smtp_port" />
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <label className="slbl">Adresse expéditeur</label>
-                  <div style={{ display:"flex", gap:8 }}>
-                    <input className="sinp" value={val("notif_smtp_user","")} onChange={e => set("notif_smtp_user", e.target.value)} />
-                    <SaveBtn cle="notif_smtp_user" />
-                  </div>
-                </div>
-                <div>
-                  <label className="slbl">Mot de passe SMTP</label>
-                  <div style={{ display:"flex", gap:8 }}>
-                    <input className="sinp" type="password" value={val("notif_smtp_pwd","")} onChange={e => set("notif_smtp_pwd", e.target.value)} placeholder="••••••••" />
-                    <SaveBtn cle="notif_smtp_pwd" />
-                  </div>
-                </div>
-                {/* NEW-001 / SET-002 (rapport de correction du 11 sept. 2026)
-                    — utils/mail.js::getSmtpConfig() lit désormais réellement
-                    ces 4 champs (prioritaires sur les variables
-                    d'environnement du serveur quand les 3 requis host/user/
-                    pass sont tous présents) ; POST /settings/test-smtp
-                    exécute un vrai transporter.verify() contre la
-                    configuration réellement effective. */}
-                <button className="sbtn sbtn-ghost sbtn-sm" style={{ alignSelf:"flex-start" }} disabled={testingSmtp} onClick={testSmtp}>
-                  {testingSmtp ? "Test en cours..." : "Tester la connexion SMTP"}
-                </button>
+                {/* MIGRATION-RESEND (13 sept. 2026) — remplace l'ancienne
+                    configuration SMTP applicative (host/port/user/pass,
+                    NEW-001/SET-002) : Resend n'utilise qu'une clé API,
+                    configurée exclusivement côté serveur (RESEND_API_KEY),
+                    même principe que la clé Analytics/IA — jamais via cette
+                    UI, pour ne pas faire transiter une clé API par le
+                    navigateur ni la stocker en clair dans Setting. */}
                 <p style={{ fontSize:11, color:"var(--muted)", margin:0 }}>
-                  ℹ️ Si ces 4 champs sont tous renseignés, ils pilotent réellement l'envoi des emails. Sinon, le serveur retombe sur sa configuration par variables d'environnement.
+                  ℹ️ L'envoi d'e-mails est assuré par Resend, configuré exclusivement via la variable d'environnement serveur RESEND_API_KEY. Si elle est absente, les e-mails sont simulés (aucun envoi réel).
                 </p>
               </div>
             </div>

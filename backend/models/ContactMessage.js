@@ -6,8 +6,8 @@ const { Schema } = mongoose;
 // un state contrôlé, mais le bouton "Envoyer le message" n'avait aucun
 // onSubmit/onClick : rien n'était jamais transmis. Stockage minimal choisi
 // plutôt qu'un envoi email — aucune adresse de contact clinique réelle
-// n'est configurée dans ce système (seuls SMTP_USER/SMTP_FROM existent,
-// destinés à l'expéditeur des emails automatiques, pas à une boîte de
+// n'est configurée dans ce système (seul MAIL_FROM existe, destiné à
+// l'expéditeur des emails automatiques via Resend, pas à une boîte de
 // réception du personnel) : inventer un destinataire aurait été une
 // donnée fabriquée, explicitement exclu par ce chantier.
 const ContactMessageSchema = new Schema({

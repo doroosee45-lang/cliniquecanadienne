@@ -52,8 +52,7 @@ function waitForPort(port, timeoutMs = 15000) {
 const GOOD_ENV = {
   NODE_ENV: 'production',
   JWT_SECRET: 'x'.repeat(80),
-  SMTP_HOST: 'smtp.example.com',
-  SMTP_USER: 'noreply@example.com',
+  RESEND_API_KEY: 're_' + 'x'.repeat(20),
   OPENAI_API_KEY: 'sk-' + 'x'.repeat(40),
   TWILIO_ACCOUNT_SID: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
   TWILIO_AUTH_TOKEN: 'x'.repeat(32),
@@ -62,7 +61,7 @@ const GOOD_ENV = {
 };
 
 test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart de configuration production', async (t) => {
-  await t.test('configuration saine (production, secret long+aléatoire, SMTP configuré) — aucun écart', async () => {
+  await t.test('configuration saine (production, secret long+aléatoire, Resend configuré) — aucun écart', async () => {
     const findings = await checkProductionConfig({ env: GOOD_ENV });
     assert.deepEqual(findings, []);
   });
@@ -91,9 +90,9 @@ test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart 
     assert.ok(findings.some(f => f.check === 'JWT_SECRET'), 'doit signaler un JWT_SECRET non régénéré');
   });
 
-  await t.test('SMTP non configuré (mode simulé) — signalé', async () => {
-    const findings = await checkProductionConfig({ env: { ...GOOD_ENV, SMTP_HOST: undefined, SMTP_USER: undefined } });
-    assert.ok(findings.some(f => f.check === 'SMTP'), 'doit signaler SMTP en mode simulé');
+  await t.test('Resend non configuré (mode simulé) — signalé', async () => {
+    const findings = await checkProductionConfig({ env: { ...GOOD_ENV, RESEND_API_KEY: undefined } });
+    assert.ok(findings.some(f => f.check === 'RESEND'), 'doit signaler Resend en mode simulé');
   });
 
   await t.test('OpenAI non configurée (mode simulé) — signalé', async () => {
@@ -115,11 +114,11 @@ test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart 
   });
 
   await t.test('plusieurs écarts simultanés — tous signalés, pas seulement le premier', async () => {
-    const findings = await checkProductionConfig({ env: { NODE_ENV: 'development', SMTP_HOST: undefined } });
+    const findings = await checkProductionConfig({ env: { NODE_ENV: 'development', RESEND_API_KEY: undefined } });
     const checks = findings.map(f => f.check);
     assert.ok(checks.includes('NODE_ENV'));
     assert.ok(checks.includes('JWT_SECRET'));
-    assert.ok(checks.includes('SMTP'));
+    assert.ok(checks.includes('RESEND'));
   });
 });
 

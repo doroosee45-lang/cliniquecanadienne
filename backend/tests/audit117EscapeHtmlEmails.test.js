@@ -9,20 +9,22 @@
 // rendez-vous (motif) présentaient exactement la même faille — tous corrigés
 // avec la même fonction utils/helpers.js::escapeHtml.
 //
-// Stubbe nodemailer.createTransport (pas mail.sendEmail) : les fonctions de
-// utils/mail.js (sendPrescriptionEmail, sendAppointmentEmail...) appellent la
-// const locale sendEmail directement, jamais module.exports.sendEmail —
-// monkey-patcher l'export ne les intercepterait pas. nodemailer.createTransport
-// est en revanche une propriété du module nodemailer lui-même, lue à chaque
-// appel : la stubber ici capture le HTML final réellement construit, pour les
-// 3 fonctions concernées, sans dépendre d'un vrai SMTP ni d'un vrai réseau.
+// MIGRATION-RESEND (13 sept. 2026) — remplace le stub nodemailer.createTransport
+// par un stub de resendSdk.Resend : les fonctions de utils/mail.js
+// (sendPrescriptionEmail, sendAppointmentEmail...) appellent la const locale
+// sendEmail directement, jamais module.exports.sendEmail — monkey-patcher
+// l'export ne les intercepterait pas. mail.js lit resendSdk.Resend (propriété
+// du module 'resend', jamais une liaison destructurée figée au require) à
+// chaque construction de client — la stubber ici capture le HTML final
+// réellement construit, pour les 3 fonctions concernées, sans dépendre d'un
+// vrai réseau ni d'une vraie clé API.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
-const nodemailer = require('nodemailer');
+const resendSdk = require('resend');
 
-test('AUDIT-11-7 — contenu HTML échappé dans les emails patients (base réelle, SMTP stubbé)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
+test('AUDIT-11-7 — contenu HTML échappé dans les emails patients (base réelle, Resend stubbé)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
   const msgC = require('../controllers/messages.controller');
   const mailUtil = require('../utils/mail');
@@ -31,20 +33,21 @@ test('AUDIT-11-7 — contenu HTML échappé dans les emails patients (base réel
   const User = require('../models/User');
 
   const stamp = Date.now();
-  const originalSmtpHost = env.SMTP_HOST;
-  const originalSmtpUser = env.SMTP_USER;
-  const originalCreateTransport = nodemailer.createTransport;
+  const originalResendApiKey = env.RESEND_API_KEY;
+  const OriginalResend = resendSdk.Resend;
 
-  // Force le chemin "SMTP configuré" (sendEmail() renvoie tôt {simulated:true}
-  // sinon, sans jamais construire ni transmettre le HTML) — createTransport
-  // étant stubbé ci-dessous, aucun réseau réel n'est jamais sollicité.
-  env.SMTP_HOST = 'stub.invalid';
-  env.SMTP_USER = 'stub@stub.invalid';
+  // Force le chemin "Resend configuré" (sendEmail() renvoie tôt
+  // {simulated:true} sinon, sans jamais construire ni transmettre le HTML) —
+  // resendSdk.Resend étant stubbé ci-dessous, aucun réseau réel n'est jamais
+  // sollicité.
+  env.RESEND_API_KEY = 'stub-key-invalid';
 
   let capturedHtml = null;
-  nodemailer.createTransport = () => ({
-    sendMail: async (opts) => { capturedHtml = opts.html; return { messageId: 'stub-' + stamp }; },
-  });
+  resendSdk.Resend = class FakeResend {
+    constructor() {
+      this.emails = { send: async (opts) => { capturedHtml = opts.html; return { data: { id: 'stub-' + stamp }, error: null }; } };
+    }
+  };
 
   const agent = await User.create({ email: `_h117-agent-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Agent', prenom: 'H117', role: 'medecin', statut: 'actif' });
   const patient = await Patient.create({ nom: `H117-${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'F', email: `_h117-patient-${stamp}@_test.local` });
@@ -108,9 +111,8 @@ test('AUDIT-11-7 — contenu HTML échappé dans les emails patients (base réel
       assert.ok(capturedHtml.includes('<table'), 'le tableau HTML légitime du template ne doit jamais être échappé');
     });
   } finally {
-    nodemailer.createTransport = originalCreateTransport;
-    env.SMTP_HOST = originalSmtpHost;
-    env.SMTP_USER = originalSmtpUser;
+    resendSdk.Resend = OriginalResend;
+    env.RESEND_API_KEY = originalResendApiKey;
     await Patient.findByIdAndDelete(patient._id);
     await User.findByIdAndDelete(agent._id);
     await mongoose.disconnect();

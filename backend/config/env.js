@@ -44,11 +44,12 @@ module.exports = {
   LOG_LEVEL:  process.env.LOG_LEVEL || 'info',
   SENTRY_DSN: process.env.SENTRY_DSN,
 
-  SMTP_HOST: process.env.SMTP_HOST,
-  SMTP_PORT: process.env.SMTP_PORT || '587',
-  SMTP_USER: process.env.SMTP_USER,
-  SMTP_PASS: process.env.SMTP_PASS,
-  SMTP_FROM: process.env.SMTP_FROM || '"Clinique Canadienne" <noreply@clinique.cg>',
+  // MIGRATION-RESEND (13 sept. 2026) — remplace SMTP_HOST/PORT/USER/PASS
+  // (nodemailer) : Resend n'utilise qu'une clé API, aucune notion de
+  // host/port/utilisateur. utils/mail.js retombe en mode simulé si absente
+  // (même pattern que OPENAI_API_KEY/TWILIO_*).
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  MAIL_FROM: process.env.MAIL_FROM || '"Clinique Canadienne" <onboarding@resend.dev>',
 
   TWILIO_ACCOUNT_SID:  process.env.TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN:   process.env.TWILIO_AUTH_TOKEN,

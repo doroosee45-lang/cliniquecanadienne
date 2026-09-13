@@ -3,13 +3,15 @@
 // POST /settings/regenerate-key), chacun échouant systématiquement (ou,
 // pour les logs, retombant silencieusement sur une liste vide). Ce fichier
 // prouve : (a) l'onglet Audit & Journaux interroge désormais le vrai
-// système d'audit (/audit) et affiche ses vrais champs ; (b) [mis à jour le
-// 11 sept. 2026, NEW-001] "Tester la connexion SMTP" est désormais réel —
-// POST /settings/test-smtp existe et exécute un vrai transporter.verify() —
-// le bouton reste actif et affiche un vrai succès/échec selon la réponse
-// serveur, jamais un diagnostic fictif ; (c) la carte "Clé API" affiche
-// honnêtement qu'aucune clé n'a jamais été émise, boutons désactivés,
-// jamais un appel vers une route inexistante.
+// système d'audit (/audit) et affiche ses vrais champs ; (b) la carte "Clé
+// API" affiche honnêtement qu'aucune clé n'a jamais été émise, boutons
+// désactivés, jamais un appel vers une route inexistante.
+// MIGRATION-RESEND (13 sept. 2026) — "Tester la connexion SMTP" (b, ajouté
+// par NEW-001 le 11 sept. 2026) a été retiré avec le reste de la
+// configuration SMTP applicative : Resend n'a pas d'équivalent (une seule
+// clé API serveur, RESEND_API_KEY, aucune connexion à "tester" séparément
+// d'un envoi réel) — POST /settings/test-smtp n'existe plus, testé ci-avant
+// par les 2 tests supprimés ici.
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -64,39 +66,20 @@ test('Audit & Journaux interroge le vrai système d\'audit (/audit), jamais /adm
   expect(screen.getByText('patients')).toBeInTheDocument();
 });
 
-test('"Tester la connexion SMTP" exécute un vrai test réseau — succès réel affiché après un vrai succès serveur', async () => {
+// MIGRATION-RESEND — la carte email n'a plus de bouton de test ni de champs
+// host/port/user/pass : seule une note informative renvoie à RESEND_API_KEY
+// (variable d'environnement serveur), jamais un appel /settings/test-smtp.
+test('la carte e-mail (Resend) n\'affiche plus aucun champ SMTP ni bouton de test', async () => {
   const user = userEvent.setup();
-  api.post.mockImplementation((url) => {
-    if (url === '/settings/test-smtp') return Promise.resolve({ data: { success: true, message: 'Connexion SMTP vérifiée avec succès (smtp.test.local).', source: 'settings' } });
-    return Promise.resolve({ data: {} });
-  });
   renderSettings();
 
   await user.click(await screen.findByRole('button', { name: 'Notifications' }));
-  const btn = await screen.findByRole('button', { name: /Tester la connexion SMTP/ });
-  expect(btn).not.toBeDisabled();
 
-  await user.click(btn);
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/settings/test-smtp'));
-  await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('vérifiée avec succès')));
-  expect(toast.error).not.toHaveBeenCalled();
-});
-
-test('"Tester la connexion SMTP" — un vrai échec serveur affiche une vraie erreur, jamais un succès déguisé', async () => {
-  const user = userEvent.setup();
-  api.post.mockImplementation((url) => {
-    if (url === '/settings/test-smtp') return Promise.resolve({ data: { success: false, message: 'Échec de la connexion SMTP.', source: 'env' } });
-    return Promise.resolve({ data: {} });
-  });
-  renderSettings();
-
-  await user.click(await screen.findByRole('button', { name: 'Notifications' }));
-  const btn = await screen.findByRole('button', { name: /Tester la connexion SMTP/ });
-
-  await user.click(btn);
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/settings/test-smtp'));
-  await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Échec de la connexion SMTP')));
-  expect(toast.success).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: /Tester la connexion SMTP/ })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/Serveur SMTP/)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/Mot de passe SMTP/)).not.toBeInTheDocument();
+  expect(await screen.findByText(/RESEND_API_KEY/)).toBeInTheDocument();
+  expect(api.post).not.toHaveBeenCalledWith('/settings/test-smtp');
 });
 
 test('la carte "Clé API" n\'affiche aucune clé fabriquée et ses actions sont désactivées', async () => {

@@ -151,9 +151,11 @@ async function startIsolatedServer({ httpReadyTimeoutMs = 45000 } = {}) {
       JWT_EXPIRE: '1h',
       JWT_COOKIE_EXPIRE: '1',
       CLIENT_URL: 'http://127.0.0.1:0',
-      // SMTP volontairement absent : mail.js retombe sur son mode simulé,
-      // aucun email réel envoyé pendant les tests d'intégration.
-      SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '',
+      // MIGRATION-RESEND — RESEND_API_KEY volontairement vidé (même si
+      // réellement configuré dans backend/.env, hérité via ...process.env
+      // ci-dessus) : mail.js retombe sur son mode simulé, aucun email réel
+      // envoyé pendant les tests d'intégration.
+      RESEND_API_KEY: '',
     },
     stdio: 'ignore',
   });

@@ -24,8 +24,9 @@ test('B5 — config/env.js expose les variables centralisées avec les mêmes d�
   assert.equal(env.NODE_ENV, process.env.NODE_ENV || 'development');
   assert.equal(env.PORT, process.env.PORT || 5000);
   assert.equal(env.LOG_LEVEL, process.env.LOG_LEVEL || 'info');
-  assert.equal(env.SMTP_PORT, process.env.SMTP_PORT || '587');
-  assert.equal(env.SMTP_FROM, process.env.SMTP_FROM || '"Clinique Canadienne" <noreply@clinique.cg>');
+  // MIGRATION-RESEND (13 sept. 2026) — remplace SMTP_PORT/SMTP_FROM (retirés
+  // de config/env.js avec le reste de l'ancien transport SMTP/nodemailer).
+  assert.equal(env.MAIL_FROM, process.env.MAIL_FROM || '"Clinique Canadienne" <onboarding@resend.dev>');
 
   // require() de Node met en cache le module — deux require() successifs
   // doivent renvoyer exactement le même objet (une seule lecture réelle de

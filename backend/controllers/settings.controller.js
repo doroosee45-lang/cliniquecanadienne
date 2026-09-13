@@ -21,28 +21,18 @@ const { runBackup } = require('../utils/backup');
 const backupState = require('../utils/backupState');
 const { forceDisconnectUser } = require('../utils/socket');
 
-// NEW-001 / SET-002 (rapport de correction du 11 sept. 2026) — le bouton
-// "Tester la connexion SMTP" de Settings.jsx était désactivé, faute de
-// route réelle. mail.testSmtpConnection() effectue un vrai
-// transporter.verify() (connexion + authentification réelles auprès du
-// serveur SMTP effectif, jamais un envoi d'email) — succès/échec reflètent
-// exactement ce qu'un vrai envoi ferait, jamais un résultat simulé.
-exports.testSmtp = async (req, res, next) => {
-  try {
-    const result = await mail.testSmtpConnection();
-    res.json({ success: result.ok, message: result.message, source: result.source });
-  } catch (err) { next(err); }
-};
-
-// NEW-001 (rapport de correction du 11 sept. 2026) — notif_smtp_pwd est
-// désormais réellement consommé par utils/mail.js::getSmtpConfig() pour
-// piloter l'envoi d'email réel : sa valeur ne doit donc plus jamais
-// apparaître en clair dans une réponse API ni dans le journal d'audit
-// (GET /settings la renvoyait intégralement, et upsert() journalisait
-// `${cle} = ${valeur}` sans distinction). Liste extensible si d'autres
-// paramètres secrets (ex. notif_sms_api_key, notif_whatsapp_token —
-// signalés mais non traités ici, hors périmètre de NEW-001) devaient être
-// couverts de la même façon.
+// NEW-001 (rapport de correction du 11 sept. 2026) — notif_smtp_pwd ne doit
+// jamais apparaître en clair dans une réponse API ni dans le journal
+// d'audit (GET /settings la renvoyait intégralement, et upsert()
+// journalisait `${cle} = ${valeur}` sans distinction).
+// MIGRATION-RESEND (13 sept. 2026) — utils/mail.js n'utilise plus ce
+// paramètre (retiré avec le reste de l'ancien mécanisme SMTP applicatif),
+// mais un Setting existant en base d'une installation antérieure peut
+// toujours contenir une vraie valeur : le masquage reste nécessaire tant
+// que ce document n'a pas été purgé, pas seulement pendant que le champ
+// était activement utilisé. Liste extensible si d'autres paramètres secrets
+// (ex. notif_sms_api_key, notif_whatsapp_token — signalés mais non traités
+// ici, hors périmètre de NEW-001) devaient être couverts de la même façon.
 const SECRET_SETTING_KEYS = ['notif_smtp_pwd'];
 const SECRET_MASK = '••••••••';
 const maskSecretSetting = (doc) => {

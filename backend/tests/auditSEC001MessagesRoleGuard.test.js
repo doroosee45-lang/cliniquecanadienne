@@ -21,7 +21,7 @@ const mongoose = require('mongoose');
 const { startIsolatedServer, mongodExists } = require('./helpers/isolatedServer');
 
 const PASSWORD = 'SEC001TestPass1!';
-// AUDIT-SEC-001-TEST — isolatedServer.js ne vide que SMTP_HOST/USER/PASS pour
+// AUDIT-SEC-001-TEST — isolatedServer.js ne vide que RESEND_API_KEY pour
 // le serveur spawné, jamais TWILIO_*. Un vrai envoi SMS déclencherait donc un
 // vrai appel réseau sortant vers l'API Twilio avec les identifiants réels
 // (connus invalides, cf. audit du 4 sept. — l'API Twilio répond

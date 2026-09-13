@@ -52,7 +52,7 @@ async function startServerWithClientUrl(mongoPort, clientUrl, extraEnv = {}) {
       JWT_EXPIRE: '1h',
       JWT_COOKIE_EXPIRE: '1',
       CLIENT_URL: clientUrl,
-      SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '',
+      RESEND_API_KEY: '',
       ...extraEnv,
     },
     stdio: 'ignore',

@@ -1,87 +1,63 @@
-const nodemailer = require('nodemailer');
+// require('resend') gardé comme référence au module (pas de destructuring
+// de Resend ici) — un test peut ainsi remplacer resendSdk.Resend par une
+// fausse classe (même technique que le stub historique de
+// nodemailer.createTransport) : getClient() lit resendSdk.Resend à chaque
+// construction, jamais une liaison figée au moment du require.
+const resendSdk = require('resend');
 const { logger } = require('./logger');
 const env = require('../config/env');
 const { escapeHtml } = require('./helpers');
 
-// NEW-001 (rapport de correction du 11 sept. 2026) — Settings.jsx persiste
-// réellement 4 paramètres SMTP applicatifs (notif_smtp_host/port/user/pwd,
-// via POST /settings, Setting générique) mais ce module ne lisait jusqu'ici
-// que des variables d'environnement serveur : la configuration saisie dans
-// l'UI n'avait jamais d'effet réel sur l'envoi. Source de vérité désormais
-// claire, une seule architecture (pas de second système SMTP parallèle) :
-// getSmtpConfig() lit d'abord les 4 Setting applicatifs, et ne les utilise
-// QUE si les trois champs requis (host/user/pass) sont tous les trois
-// présents — jamais une configuration partielle utilisée à moitié. Sinon,
-// repli intégral sur les variables d'environnement historiques (comportement
-// strictement inchangé pour toute installation n'utilisant pas l'UI).
-const SMTP_SETTING_KEYS = ['notif_smtp_host', 'notif_smtp_port', 'notif_smtp_user', 'notif_smtp_pwd'];
+// MIGRATION-RESEND (13 sept. 2026) — remplace l'ancien transport SMTP/
+// nodemailer (host/port/user/pass, y compris la surcouche Setting
+// applicative notif_smtp_* introduite par NEW-001/SET-002) par l'API Resend,
+// une seule clé API sans notion de host/port/utilisateur — même
+// architecture que OPENAI_API_KEY/TWILIO_* : une variable d'environnement
+// serveur, aucune configuration parallèle via l'UI Settings. Toute la
+// surface publique de ce module (chaque sendXxxEmail ci-dessous, leurs noms
+// et paramètres) reste strictement identique — seul sendEmail() change
+// d'implémentation interne. testSmtpConnection()/le bouton "Tester la
+// connexion SMTP" de Settings.jsx n'ont pas d'équivalent conceptuel ici
+// (Resend n'a pas de connexion à "vérifier" séparément d'un envoi réel) et
+// ont été retirés (route settings.controller.js::testSmtp, UI SMTP de
+// Settings.jsx) plutôt que laissés à référencer une fonction supprimée.
+// Pas de mise en cache du client : sa construction ne fait qu'enregistrer la
+// clé API (aucun appel réseau), et reconstruire à chaque envoi permet de
+// toujours refléter la valeur courante de env.RESEND_API_KEY (utile en test,
+// sans coût réel en production où la clé ne change jamais en cours de vie du
+// processus).
+const getClient = () => new resendSdk.Resend(env.RESEND_API_KEY);
 
-async function getSmtpConfig() {
-  try {
-    const Setting = require('../models/Setting');
-    const docs = await Setting.find({ cle: { $in: SMTP_SETTING_KEYS } }).lean();
-    const map = {};
-    docs.forEach(d => { map[d.cle] = d.valeur; });
-    if (map.notif_smtp_host && map.notif_smtp_user && map.notif_smtp_pwd) {
-      return { host: map.notif_smtp_host, port: map.notif_smtp_port || '587', user: map.notif_smtp_user, pass: map.notif_smtp_pwd, source: 'settings' };
-    }
-  } catch (err) {
-    logger.error('[MAIL] Échec de lecture de la configuration SMTP applicative (Setting) — repli sur les variables d\'environnement', { error: err.message });
-  }
-  return { host: env.SMTP_HOST, port: env.SMTP_PORT, user: env.SMTP_USER, pass: env.SMTP_PASS, source: 'env' };
-}
+const isConfigured = () => !!env.RESEND_API_KEY;
 
-const getTransporter = (cfg) =>
-  nodemailer.createTransport({
-    host: cfg.host,
-    port: parseInt(cfg.port),
-    secure: String(cfg.port) === '465',
-    auth: { user: cfg.user, pass: cfg.pass },
-  });
-
-// NEW-001 / SET-002 — le bouton "Tester la connexion SMTP" de Settings.jsx
-// était désactivé (aucune route backend, et la config saisie ne pilotait de
-// toute façon aucun envoi réel — voir commentaire ci-dessus). Désormais que
-// getSmtpConfig() est réellement utilisé par sendEmail(), un vrai test est
-// possible : transporter.verify() (API standard nodemailer) vérifie
-// réellement la connexion réseau ET l'authentification SMTP auprès du
-// serveur, sans jamais envoyer le moindre email — jamais un setTimeout, un
-// message fictif, ni un succès simulé. Un succès ou un échec ici reflète
-// exactement ce que sendEmail() ferait pour un vrai envoi.
-async function testSmtpConnection() {
-  const cfg = await getSmtpConfig();
-  if (!cfg.host || !cfg.user || !cfg.pass) {
-    return { ok: false, message: 'Aucune configuration SMTP disponible (ni dans Paramètres, ni dans les variables d\'environnement du serveur).', source: null };
-  }
-  try {
-    await getTransporter(cfg).verify();
-    return { ok: true, message: `Connexion SMTP vérifiée avec succès (${cfg.host}).`, source: cfg.source };
-  } catch (err) {
-    logger.error('[MAIL] Échec du test de connexion SMTP', { host: cfg.host, error: err.message });
-    return { ok: false, message: err.message || 'Échec de la connexion SMTP.', source: cfg.source };
-  }
-}
-
-// AUDIT-RECU-PDF-PARTAGE — attachments optionnel (forme nodemailer standard :
-// [{filename, content:Buffer}]), réutilisable par tout futur module — pas
-// propre à la facturation. Absent par défaut : n'affecte aucun appelant
-// existant (activation, rappels, ordonnances, messagerie patient texte seul).
+// AUDIT-RECU-PDF-PARTAGE — attachments optionnel (forme nodemailer standard
+// conservée pour ne rien changer aux appelants : [{filename, content:Buffer}],
+// convertie ci-dessous vers la forme attendue par le SDK Resend). Absent par
+// défaut : n'affecte aucun appelant existant (activation, rappels,
+// ordonnances, messagerie patient texte seul).
 const sendEmail = async ({ to, subject, html, attachments }) => {
-  const cfg = await getSmtpConfig();
-  // Validation conjointe des 3 champs requis (host+user+pass), jamais un
-  // sous-ensemble partiel envoyé à nodemailer (échec d'auth opaque sinon).
-  if (!cfg.host || !cfg.user || !cfg.pass) {
-    logger.warn('[MAIL] SMTP non configuré (ni Settings applicatifs, ni variables d\'environnement) — email simulé', { to, subject });
+  if (!isConfigured()) {
+    logger.warn('[MAIL] RESEND_API_KEY non configurée — email simulé', { to, subject });
     return { simulated: true };
   }
-  const info = await getTransporter(cfg).sendMail({
-    from: env.SMTP_FROM || cfg.user,
+  const { data, error } = await getClient().emails.send({
+    from: env.MAIL_FROM,
     to,
     subject,
     html,
-    ...(attachments && attachments.length ? { attachments } : {}),
+    ...(attachments && attachments.length
+      ? { attachments: attachments.map(a => ({ filename: a.filename, content: a.content })) }
+      : {}),
   });
-  return info;
+  // Honnêteté externe (même principe que utils/openai.js, utils/sms.js) —
+  // une vraie erreur Resend ne doit jamais devenir un succès silencieux :
+  // elle est relancée pour que l'appelant la journalise (AuditLog,
+  // statut:'echec'), exactement comme le rejet d'une promesse nodemailer
+  // avant cette migration.
+  if (error) {
+    throw new Error(error.message || 'Échec de l\'envoi de l\'email (Resend).');
+  }
+  return data;
 };
 
 // R-08b — plus de mot de passe temporaire généré côté serveur : le patient
@@ -854,4 +830,4 @@ const sendInvoiceEmail = async ({ email, prenom, nom, numero_facture, montant_tt
   });
 };
 
-module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendAccountDeactivatedEmail, sendPlanningPublishedEmail, sendPlanningReminderEmail, sendAnalyticsReportEmail, sendWeeklyAnalyticsReportEmail, sendInvoiceEmail, testSmtpConnection };
+module.exports = { sendEmail, sendActivationEmail, sendPasswordResetEmail, sendPrescriptionEmail, sendAppointmentEmail, sendAppointmentConfirmedEmail, sendAppointmentRescheduledEmail, sendReminderEmail, sendAccountSuspendedEmail, sendAccountDeactivatedEmail, sendPlanningPublishedEmail, sendPlanningReminderEmail, sendAnalyticsReportEmail, sendWeeklyAnalyticsReportEmail, sendInvoiceEmail, isConfigured };
