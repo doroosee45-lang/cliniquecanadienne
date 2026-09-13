@@ -13,6 +13,15 @@ const { storeUploadedFile } = require('../utils/fileStorage');
 const cloudinaryUtil = require('../utils/cloudinary');
 const { isObjectId } = require('../middleware/upload');
 
+// SEC-ACTIVATION-TOKEN-HASH (13 sept. 2026) — token_activation était stocké
+// en clair dans Patient (contrairement à User.reset_password_token, hashé
+// depuis SEC-006 pour exactement la même raison) : une fuite de backup ou un
+// accès direct à la base exposait un token immédiatement exploitable pour
+// activer le compte, sans jamais intercepter l'email. Même traitement que
+// SEC-006 : seul le hash SHA-256 est persisté, le token en clair ne vit que
+// dans l'email et dans l'URL que le patient suit — jamais en base.
+const hashActivationToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
 // R-08a — superadmin/adminclinique/medecin/infirmier/sage_femme voient le
 // dossier complet ; les 5 autres rôles autorisés à lire /patients n'ont un
 // besoin métier réel que des champs administratifs/démographiques liés à
@@ -134,7 +143,7 @@ exports.create = async (req, res, next) => {
     const patientData = {
       ...bodyData,
       actif:                   false,          // inactif jusqu'à activation
-      token_activation:        tokenActivation,
+      token_activation:        hashActivationToken(tokenActivation),
       token_activation_expire: tokenExpire,
       cree_par:                req.user._id,
       ip_creation:             req.ip,
@@ -243,7 +252,7 @@ exports.activate = async (req, res, next) => {
   try {
     const { token } = req.params;
     const patient = await Patient.findOne({
-      token_activation:        token,
+      token_activation:        hashActivationToken(token),
       token_activation_expire: { $gt: new Date() },
     });
 
@@ -274,7 +283,7 @@ exports.setPasswordAndActivate = async (req, res, next) => {
     const { password } = req.body;
 
     const patient = await Patient.findOne({
-      token_activation:        token,
+      token_activation:        hashActivationToken(token),
       token_activation_expire: { $gt: new Date() },
     });
     if (!patient) {
@@ -391,7 +400,7 @@ exports.activateAdmin = async (req, res, next) => {
         // on renvoie un nouveau lien plutôt que de régénérer un mot de
         // passe temporaire (ce que R-08b cherche justement à éliminer).
         const tokenActivation = crypto.randomBytes(32).toString('hex');
-        patient.token_activation        = tokenActivation;
+        patient.token_activation        = hashActivationToken(tokenActivation);
         patient.token_activation_expire = new Date(Date.now() + 24 * 60 * 60 * 1000);
         try {
           await mail.sendActivationEmail({ email: patient.email, prenom: patient.prenom, nom: patient.nom, token: tokenActivation });

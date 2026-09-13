@@ -45,8 +45,14 @@ test('AUDIT-PHASE4-G2 — patients.controller.js émet activity:new/dashboard:re
   try {
     setIO(fakeIo);
 
+    // SEC-ACTIVATION-TOKEN-HASH — le contrôleur hashe désormais le token
+    // reçu avant comparaison (même traitement que SEC-006 pour le reset de
+    // mot de passe) : la base doit donc contenir le HASH, req.params.token
+    // le token EN CLAIR (ce que le lien envoyé par email contient réellement).
+    const hashActivationToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
     await t.test('activate() ne mute rien → aucune émission (non-régression du raisonnement, pas un bug)', async () => {
-      const patient = await Patient.create({ nom: `G2Activate${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'F', token_activation: 'tok-g2-activate', token_activation_expire: new Date(Date.now() + 3600000) });
+      const patient = await Patient.create({ nom: `G2Activate${stamp}`, prenom: 'P', date_naissance: '1990-01-01', sexe: 'F', token_activation: hashActivationToken('tok-g2-activate'), token_activation_expire: new Date(Date.now() + 3600000) });
       created.patients.push(patient);
       emitted.length = 0;
       const { status } = await call(patientsC.activate, { params: { token: 'tok-g2-activate' } });
@@ -56,7 +62,7 @@ test('AUDIT-PHASE4-G2 — patients.controller.js émet activity:new/dashboard:re
 
     await t.test('setPasswordAndActivate() → activity:new (acteur = le compte patient lui-même) + dashboard:refresh', async () => {
       const email = `_g2-setpwd-${stamp}@_test.local`;
-      const patient = await Patient.create({ nom: 'SetPwd', prenom: 'G2', email, date_naissance: '1990-01-01', sexe: 'F', token_activation: 'tok-g2-setpwd', token_activation_expire: new Date(Date.now() + 3600000) });
+      const patient = await Patient.create({ nom: 'SetPwd', prenom: 'G2', email, date_naissance: '1990-01-01', sexe: 'F', token_activation: hashActivationToken('tok-g2-setpwd'), token_activation_expire: new Date(Date.now() + 3600000) });
       created.patients.push(patient);
       const user = await User.create({ email, password: 'Xx1aaaaa', nom: 'SetPwd', prenom: 'G2', role: 'patient', statut: 'inactif', patient_id: patient._id });
       created.users.push(user);

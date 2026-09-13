@@ -8,6 +8,15 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
+const crypto = require('crypto');
+
+// SEC-ACTIVATION-TOKEN-HASH (13 sept. 2026) — patients.controller.js ne
+// stocke plus jamais le token d'activation en clair (même traitement que
+// SEC-006 pour User.reset_password_token) : ces tests doivent donc semer le
+// HASH en base (ce que create()/activateAdmin() font réellement), tout en
+// continuant à passer le token EN CLAIR dans req.params.token (ce que le
+// lien envoyé par email contient réellement).
+const hashActivationToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
 test('activation patient avec mot de passe auto-défini (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -53,28 +62,30 @@ test('activation patient avec mot de passe auto-défini (base réelle)', { skip:
 
     await t.test('activate (GET) valide le lien sans le consommer', async () => {
       const email = `_t08b-getlink-${stamp}@_test.local`;
-      const patient = await Patient.create({ nom: 'T08b', prenom: 'GetLink', date_naissance: '1990-01-01', sexe: 'M', email, token_activation: 'tok-getlink-' + stamp, token_activation_expire: new Date(Date.now() + 3600000) });
+      const rawToken = 'tok-getlink-' + stamp;
+      const patient = await Patient.create({ nom: 'T08b', prenom: 'GetLink', date_naissance: '1990-01-01', sexe: 'M', email, token_activation: hashActivationToken(rawToken), token_activation_expire: new Date(Date.now() + 3600000) });
       cleanup.push(() => Patient.findByIdAndDelete(patient._id));
 
       status = 200; body = null;
-      await patC.activate({ params: { token: 'tok-getlink-' + stamp } }, res, () => {});
+      await patC.activate({ params: { token: rawToken } }, res, () => {});
       assert.equal(status, 200);
       assert.equal(body.prenom, 'GetLink');
 
       const fresh = await Patient.findById(patient._id);
       assert.equal(fresh.actif, false, 'ne doit pas activer sur un simple GET');
-      assert.equal(fresh.token_activation, 'tok-getlink-' + stamp, 'le token ne doit pas être consommé par le GET');
+      assert.equal(fresh.token_activation, hashActivationToken(rawToken), 'le token ne doit pas être consommé par le GET');
     });
 
     await t.test('setPasswordAndActivate refuse un mot de passe sans majuscule/chiffre (R-16)', async () => {
       const email = `_t08b-weak-${stamp}@_test.local`;
-      const patient = await Patient.create({ nom: 'T08b', prenom: 'Weak', date_naissance: '1990-01-01', sexe: 'M', email, token_activation: 'tok-weak-' + stamp, token_activation_expire: new Date(Date.now() + 3600000) });
+      const rawToken = 'tok-weak-' + stamp;
+      const patient = await Patient.create({ nom: 'T08b', prenom: 'Weak', date_naissance: '1990-01-01', sexe: 'M', email, token_activation: hashActivationToken(rawToken), token_activation_expire: new Date(Date.now() + 3600000) });
       cleanup.push(() => Patient.findByIdAndDelete(patient._id));
       const user = await User.create({ email, nom: 'T08b', prenom: 'Weak', role: 'patient', statut: 'inactif' });
       cleanup.push(() => User.findByIdAndDelete(user._id));
 
       status = 200; body = null;
-      await patC.setPasswordAndActivate({ params: { token: 'tok-weak-' + stamp }, body: { password: 'toutminuscule' }, ip: '127.0.0.1' }, res, () => {});
+      await patC.setPasswordAndActivate({ params: { token: rawToken }, body: { password: 'toutminuscule' }, ip: '127.0.0.1' }, res, () => {});
       assert.equal(status, 400);
 
       const fresh = await Patient.findById(patient._id);
@@ -83,13 +94,14 @@ test('activation patient avec mot de passe auto-défini (base réelle)', { skip:
 
     await t.test('setPasswordAndActivate active réellement avec un mot de passe conforme', async () => {
       const email = `_t08b-strong-${stamp}@_test.local`;
-      const patient = await Patient.create({ nom: 'T08b', prenom: 'Strong', date_naissance: '1990-01-01', sexe: 'M', email, token_activation: 'tok-strong-' + stamp, token_activation_expire: new Date(Date.now() + 3600000) });
+      const rawToken = 'tok-strong-' + stamp;
+      const patient = await Patient.create({ nom: 'T08b', prenom: 'Strong', date_naissance: '1990-01-01', sexe: 'M', email, token_activation: hashActivationToken(rawToken), token_activation_expire: new Date(Date.now() + 3600000) });
       cleanup.push(() => Patient.findByIdAndDelete(patient._id));
       const user = await User.create({ email, nom: 'T08b', prenom: 'Strong', role: 'patient', statut: 'inactif' });
       cleanup.push(() => User.findByIdAndDelete(user._id));
 
       status = 200; body = null;
-      await patC.setPasswordAndActivate({ params: { token: 'tok-strong-' + stamp }, body: { password: 'Abcdef12' }, ip: '127.0.0.1' }, res, () => {});
+      await patC.setPasswordAndActivate({ params: { token: rawToken }, body: { password: 'Abcdef12' }, ip: '127.0.0.1' }, res, () => {});
       assert.equal(status, 200);
 
       const freshPatient = await Patient.findById(patient._id);
