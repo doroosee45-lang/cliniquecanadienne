@@ -20,7 +20,10 @@ import {
   selectPortalLoading, selectPortalSaving, selectPortalError, clearPortalError,
 } from '../store/slices/portalSlice';
 import api from '../api';
-import { User, Calendar, Pencil } from 'lucide-react';
+import {
+  User, Calendar, Pencil, Home, Pill, FlaskConical, ScanLine, Syringe,
+  Wallet, MessageSquare, Bell, Bot,
+} from 'lucide-react';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
@@ -66,37 +69,13 @@ function buildResponsiveCSS({ isMobile, isSmall }) {
     .ep-tab  { padding: ${isSmall ? '6px 6px 8px' : '7px 10px 9px'} !important; font-size: 10px !important; flex:1; min-width: ${isSmall ? '22%' : '17%'}; }
     .ep-tab-icon { font-size: ${isSmall ? '17px' : '18px'} !important; }
 
-    /* RESPONSIVE-PORTAIL-001 — barre de navigation principale du portail
-       (.tab-bar/.tab-bar-item, classe PARTAGÉE avec d'autres pages : scopée
-       à ".ep" pour ne jamais affecter les onglets internes d'autres modules
-       comme Patients/Consultations/Hospitalization). 11 onglets avec libellé
-       complet ne tiennent jamais sur une largeur mobile : défilement
-       horizontal propre plutôt que de masquer/tronquer le texte — icône +
-       libellé toujours visibles, entiers, jamais coupés. */
-    .ep .tab-bar {
-      flex-wrap: nowrap !important;
-      overflow-x: auto !important;
-      overflow-y: hidden !important;
-      -webkit-overflow-scrolling: touch !important;
-      scroll-behavior: smooth !important;
-      scrollbar-width: thin !important;
-      max-width: 100% !important;
-      gap: ${isSmall ? '4px' : '6px'} !important;
-      padding: ${isSmall ? '4px' : '6px'} !important;
-    }
-    .ep .tab-bar::-webkit-scrollbar { height: 5px; }
-    .ep .tab-bar::-webkit-scrollbar-track { background: transparent; }
-    .ep .tab-bar::-webkit-scrollbar-thumb { background: var(--cbr); border-radius: 99px; }
-    .ep .tab-bar-item {
-      flex: 0 0 auto !important;
-      white-space: nowrap !important;
-      padding: ${isSmall ? '8px 10px' : '9px 13px'} !important;
-      gap: ${isSmall ? '5px' : '6px'} !important;
-      font-size: ${isSmall ? '11px' : '12px'} !important;
-    }
-    .ep .tab-bar-item-icon { font-size: ${isSmall ? '15px' : '16px'} !important; line-height: 1 !important; flex-shrink: 0 !important; }
-    .ep .tab-bar-item-label { white-space: nowrap !important; }
-    .ep .tab-bar-item-count { flex-shrink: 0 !important; }
+    /* RESPONSIVE-PORTAIL-002 (13 sept. 2026) — la barre de navigation
+       principale du portail (.tab-bar/.tab-bar-item, classe PARTAGÉE avec
+       d'autres pages, jamais touchée elle-même) passe en grille 3 colonnes
+       sur mobile, même style/technique que HR.jsx (styles inline
+       conditionnels sur isMobile, pas de nouvelles règles CSS globales —
+       voir le rendu JSX ci-dessous, TABS.map). Remplace l'ancien défilement
+       horizontal (RESPONSIVE-PORTAIL-001) à la demande explicite. */
 
     .ebtn    { font-size: 12px !important; padding: 8px 12px !important; }
     .ebtn-sm { font-size: 11px !important; padding: 5px 8px !important; }
@@ -842,18 +821,21 @@ export default function MonEspacePatient() {
     else setPwdError(res.payload || "Erreur.");
   };
 
+  // RESPONSIVE-PORTAIL-002 — Icon (composant lucide-react réel, même
+  // bibliothèque déjà utilisée par Sidebar.jsx) réservé à la grille mobile ;
+  // `icon` (emoji) reste utilisé tel quel en desktop, design inchangé.
   const TABS = [
-    { key: "dashboard",   icon: "🏠", label: "Tableau de bord" },
-    { key: "profil",      icon: "👤", label: "Mon Profil" },
-    { key: "rdv",         icon: "📅", label: "Mes Rendez-vous" },
-    { key: "ordonnances", icon: "💊", label: "Ordonnances" },
-    { key: "analyses",    icon: "🔬", label: "Analyses" },
-    { key: "imageries",   icon: "🩻", label: "Imageries" },
-    { key: "vaccinations",icon: "💉", label: "Vaccinations" },
-    { key: "factures",    icon: "💰", label: "Factures" },
-    { key: "messagerie",  icon: "💬", label: "Messagerie" },
-    { key: "notifs",      icon: "🔔", label: "Notifications", badge: notifCount > 0 ? notifCount : 0 },
-    { key: "ia",          icon: "🤖", label: "Assistant IA" },
+    { key: "dashboard",   icon: "🏠", Icon: Home,         label: "Tableau de bord" },
+    { key: "profil",      icon: "👤", Icon: User,         label: "Mon Profil" },
+    { key: "rdv",         icon: "📅", Icon: Calendar,     label: "Mes Rendez-vous" },
+    { key: "ordonnances", icon: "💊", Icon: Pill,         label: "Ordonnances" },
+    { key: "analyses",    icon: "🔬", Icon: FlaskConical, label: "Analyses" },
+    { key: "imageries",   icon: "🩻", Icon: ScanLine,     label: "Imageries" },
+    { key: "vaccinations",icon: "💉", Icon: Syringe,      label: "Vaccinations" },
+    { key: "factures",    icon: "💰", Icon: Wallet,       label: "Factures" },
+    { key: "messagerie",  icon: "💬", Icon: MessageSquare,label: "Messagerie" },
+    { key: "notifs",      icon: "🔔", Icon: Bell,         label: "Notifications", badge: notifCount > 0 ? notifCount : 0 },
+    { key: "ia",          icon: "🤖", Icon: Bot,          label: "Assistant IA" },
   ];
 
   if (loading && !reduxPatient) return (
@@ -914,26 +896,32 @@ export default function MonEspacePatient() {
         />
 
         {/* ── TABS BAR ── */}
-        {/* RESPONSIVE-PORTAIL-001 (correction du 13 sept. 2026) — sur mobile,
-            le libellé était soit tronqué à 2 mots (`split(' ').slice(0,2)` :
-            "Tableau de bord" devenait "Tableau de"), soit carrément masqué
-            (`display:none` dès que isSmall et plus de 8 onglets — ce qui est
-            toujours le cas ici, 11 onglets) : seules les icônes restaient
-            visibles, aucun moyen d'identifier un onglet à l'aveugle. Icône +
-            libellé complet toujours affichés désormais, quelle que soit la
-            largeur d'écran ; le débordement horizontal (impossible à éviter
-            avec 11 libellés complets sur un petit écran) est géré par un
-            vrai défilement horizontal scrollable (règles dans
-            buildResponsiveCSS, scopées à .ep .tab-bar pour ne pas affecter
-            .tab-bar/.tab-bar-item ailleurs dans l'app — classe partagée).
-            Wrap conservé tel quel en desktop (design inchangé). */}
-        <div className="tab-bar">
+        {/* RESPONSIVE-PORTAIL-002 (13 sept. 2026) — sur mobile, reprend
+            exactement le style/la technique de la grille de navigation de
+            HR.jsx (mêmes classes partagées .tab-bar/.tab-bar-item, mêmes
+            styles inline conditionnels sur isMobile — grille 3 colonnes,
+            icône au-dessus du libellé, actif = fond plein/texte blanc via
+            .tab-bar-item.active déjà définie dans index.css, inactif =
+            fond neutre/texte gris-bleu). Icônes lucide-react réelles (déjà
+            la bibliothèque utilisée par Sidebar.jsx) plutôt que l'émoji,
+            réservées à ce rendu mobile — l'émoji reste utilisé tel quel en
+            desktop, wrap/design inchangés. Remplace le défilement
+            horizontal de RESPONSIVE-PORTAIL-001 à la demande explicite. */}
+        <div className="tab-bar" style={isMobile ? { display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 } : {}}>
           {TABS.map(t => (
             <button key={t.key} className={`tab-bar-item ${tab === t.key ? "active" : ""}`}
+              style={isMobile ? { flexDirection:'column', textAlign:'center', padding:'12px 4px', fontSize:11, gap:6, whiteSpace:'normal', minWidth:0 } : {}}
               onClick={() => setTab(t.key)} title={t.label}>
-              <span className="tab-bar-item-icon">{t.icon}</span>
+              {isMobile ? (
+                <span style={{ position:'relative', display:'inline-flex' }}>
+                  <t.Icon size={20} />
+                  {t.badge > 0 && <span className="tab-bar-item-count" style={{ position:'absolute', top:-6, right:-10 }}>{t.badge}</span>}
+                </span>
+              ) : (
+                <span className="tab-bar-item-icon">{t.icon}</span>
+              )}
               <span className="tab-bar-item-label">{t.label}</span>
-              {t.badge > 0 && <span className="tab-bar-item-count">{t.badge}</span>}
+              {!isMobile && t.badge > 0 && <span className="tab-bar-item-count">{t.badge}</span>}
             </button>
           ))}
         </div>
