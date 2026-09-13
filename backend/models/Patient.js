@@ -22,6 +22,13 @@ const PatientSchema = new Schema({
   telephone: { type: String, trim: true },
   email: { type: String, lowercase: true, trim: true },
   photo: { type: String },
+  // MIGRATION-CLOUDINARY (13 sept. 2026) — public_id Cloudinary de `photo`
+  // quand elle y est hébergée (null en repli disque local, ou pour une
+  // photo antérieure à cette migration jamais re-uploadée) : nécessaire
+  // pour supprimer réellement l'ancien asset Cloudinary lors d'un
+  // remplacement (patients.controller.js::uploadPhoto), même comportement
+  // que la suppression disque déjà existante avant cette migration.
+  photo_public_id: { type: String, default: null },
   // Suite du balayage T5.2 — Patients.jsx collecte ces deux champs depuis
   // toujours et les affiche sur la fiche patient, mais ni l'un ni l'autre
   // n'était déclaré ici : silencieusement supprimés par Mongoose à chaque

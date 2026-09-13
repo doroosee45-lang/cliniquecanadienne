@@ -164,6 +164,7 @@ async function anonymizePatient(patientId, { utilisateur, ip } = {}) {
   patient.email = undefined;
   patient.telephone = undefined;
   patient.photo = undefined;
+  patient.photo_public_id = undefined;
   patient.adresse = { rue: undefined, ville: undefined, pays: undefined, code_postal: undefined };
   patient.contact_urgence = { nom: undefined, relation: undefined, telephone: undefined };
   patient.notes = undefined;

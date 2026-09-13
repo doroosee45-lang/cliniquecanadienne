@@ -156,6 +156,10 @@ async function startIsolatedServer({ httpReadyTimeoutMs = 45000 } = {}) {
       // ci-dessus) : mail.js retombe sur son mode simulé, aucun email réel
       // envoyé pendant les tests d'intégration.
       RESEND_API_KEY: '',
+      // MIGRATION-CLOUDINARY — même principe : CLOUDINARY_* volontairement
+      // vidés, utils/fileStorage.js retombe sur l'écriture disque locale,
+      // jamais un vrai upload vers le compte Cloudinary réellement configuré.
+      CLOUDINARY_CLOUD_NAME: '', CLOUDINARY_API_KEY: '', CLOUDINARY_API_SECRET: '',
     },
     stdio: 'ignore',
   });

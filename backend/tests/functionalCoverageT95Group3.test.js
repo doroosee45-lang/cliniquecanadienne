@@ -10,6 +10,9 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
+const { withLocalUploadFallback } = require('./helpers/forceLocalUploadFallback');
 
 test('couverture fonctionnelle — pharmacie, hospitalisation (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -70,11 +73,17 @@ test('couverture fonctionnelle — pharmacie, hospitalisation (base réelle)', {
       const med = await Medication.create({ nom_commercial: `T95G3-Photo-${stamp}`, forme: 'comprime' });
       cleanup.push(() => Medication.findByIdAndDelete(med._id));
 
-      const { status, body } = await call(pharmaC.uploadPhoto, { params: { id: med._id }, file: { filename: `t95g3-${stamp}.jpg` }, user });
+      // MIGRATION-CLOUDINARY — memoryStorage (middleware/upload.js) : le
+      // contrôleur lit désormais req.file.buffer, plus filename/path. Force
+      // le repli disque local (utils/fileStorage.js) même si CLOUDINARY_*
+      // est réellement configuré dans le .env de cette machine.
+      const { status, body } = await withLocalUploadFallback(() =>
+        call(pharmaC.uploadPhoto, { params: { id: med._id }, file: { originalname: `t95g3-${stamp}.jpg`, buffer: Buffer.from('fake-image-data') }, user }));
       assert.equal(status, 200);
-      assert.equal(body.photo, `/uploads/medications/t95g3-${stamp}.jpg`);
+      assert.match(body.photo, new RegExp(`^/uploads/medications/med-${med._id}-\\d+\\.jpg$`));
       const freshMed = await Medication.findById(med._id);
       assert.equal(freshMed.photo, body.photo);
+      cleanup.push(() => fs.promises.unlink(path.join(__dirname, '..', body.photo)).catch(() => {}));
     });
 
     await t.test('hospitalization.controller.create occupe le lit choisi et refuse un lit déjà occupé', async () => {

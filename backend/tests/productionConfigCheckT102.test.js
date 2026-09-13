@@ -57,6 +57,9 @@ const GOOD_ENV = {
   TWILIO_ACCOUNT_SID: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
   TWILIO_AUTH_TOKEN: 'x'.repeat(32),
   TWILIO_PHONE_NUMBER: '+15005550006',
+  CLOUDINARY_CLOUD_NAME: 'demo-cloud',
+  CLOUDINARY_API_KEY: '123456789012345',
+  CLOUDINARY_API_SECRET: 'x'.repeat(24),
   GOOGLE_CLIENT_ID: 'xxxx.apps.googleusercontent.com',
 };
 
@@ -103,6 +106,11 @@ test('Phase 10.2 — checkProductionConfig() détecte réellement chaque écart 
   await t.test('Twilio non configuré (mode simulé) — signalé', async () => {
     const findings = await checkProductionConfig({ env: { ...GOOD_ENV, TWILIO_ACCOUNT_SID: undefined, TWILIO_AUTH_TOKEN: undefined, TWILIO_PHONE_NUMBER: undefined } });
     assert.ok(findings.some(f => f.check === 'TWILIO'), 'doit signaler Twilio en mode simulé');
+  });
+
+  await t.test('Cloudinary non configuré (repli disque local) — signalé', async () => {
+    const findings = await checkProductionConfig({ env: { ...GOOD_ENV, CLOUDINARY_CLOUD_NAME: undefined, CLOUDINARY_API_KEY: undefined, CLOUDINARY_API_SECRET: undefined } });
+    assert.ok(findings.some(f => f.check === 'CLOUDINARY'), 'doit signaler Cloudinary non configuré');
   });
 
   // SEC-011 — GOOGLE_CLIENT_ID absent désactivait silencieusement la

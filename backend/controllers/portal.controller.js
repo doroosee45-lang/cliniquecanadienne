@@ -421,6 +421,16 @@ exports.downloadDocument = async (req, res, next) => {
     // honnêtement, pas fabriquer un téléchargement).
     if (!doc.fichier_path) return res.status(404).json({ success: false, message: 'Aucun fichier associé à ce document.' });
 
+    // MIGRATION-CLOUDINARY — un document créé (ou migré) après le passage à
+    // Cloudinary porte une URL absolue, plus un chemin local : le contrôle
+    // d'appartenance ci-dessus reste identique (déjà effectué avant ce
+    // point), seule la façon de livrer le fichier diffère — redirection vers
+    // Cloudinary plutôt qu'un fs.existsSync/res.download local.
+    if (/^https?:\/\//.test(doc.fichier_path)) {
+      await logAction({ utilisateur: req.user._id, action: 'READ', module: 'portal', entite_id: doc._id, ip: req.ip, message: `Patient ${patient.nom} ${patient.prenom} a téléchargé le document "${doc.nom}"` });
+      return res.redirect(doc.fichier_path);
+    }
+
     const relative = doc.fichier_path.replace(/^\/?uploads\//, '');
     const resolved = path.resolve(path.join(uploadsRoot, relative));
     if (!resolved.startsWith(uploadsRoot + path.sep) && resolved !== uploadsRoot) {

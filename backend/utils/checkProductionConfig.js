@@ -93,6 +93,22 @@ function checkTwilio(env, findings) {
   }
 }
 
+// MIGRATION-CLOUDINARY (13 sept. 2026) — même pattern que checkResend/
+// checkOpenAI/checkTwilio ci-dessus. Contrairement à ces derniers,
+// l'absence de configuration ne bloque aucun envoi (utils/fileStorage.js
+// retombe sur l'écriture disque locale, jamais un échec) — mais en
+// production, un stockage disque local n'a de sens que sur une seule
+// instance non éphémère : un déploiement typique (conteneur/instance
+// éphémère, plusieurs instances derrière un load-balancer) perdrait les
+// fichiers au redémarrage ou les rendrait invisibles d'une instance à
+// l'autre. Ce contrôle le signale explicitement plutôt que de laisser cette
+// hypothèse implicite.
+function checkCloudinary(env, findings) {
+  if (!env.CLOUDINARY_CLOUD_NAME || !env.CLOUDINARY_API_KEY || !env.CLOUDINARY_API_SECRET) {
+    findings.push({ level: 'error', check: 'CLOUDINARY', message: 'Cloudinary non configuré (CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET absent) — utils/fileStorage.js retombera sur l\'écriture disque locale (backend/uploads/), non adaptée à un déploiement en production (perte au redémarrage, incohérente entre plusieurs instances).' });
+  }
+}
+
 // SEC-011 (audit indépendant du 6 sept. 2026) — googleAuth.controller.js
 // désactivait silencieusement la vérification d'audience du jeton Google
 // quand GOOGLE_CLIENT_ID est absent (corrigé : refus explicite en
@@ -135,6 +151,7 @@ async function checkProductionConfig({ env = process.env, mongoUri } = {}) {
   checkResend(env, findings);
   checkOpenAI(env, findings);
   checkTwilio(env, findings);
+  checkCloudinary(env, findings);
   checkGoogleOAuth(env, findings);
   if (mongoUri) {
     await checkSeedAccounts(mongoUri, findings);

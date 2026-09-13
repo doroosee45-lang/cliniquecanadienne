@@ -9,6 +9,9 @@ const { CASCADE_TARGETS } = require('../utils/patientAnonymization');
 const mail = require('../utils/mail');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { logger } = require('../utils/logger');
+const { storeUploadedFile } = require('../utils/fileStorage');
+const cloudinaryUtil = require('../utils/cloudinary');
+const { isObjectId } = require('../middleware/upload');
 
 // R-08a — superadmin/adminclinique/medecin/infirmier/sage_femme voient le
 // dossier complet ; les 5 autres rôles autorisés à lire /patients n'ont un
@@ -615,18 +618,31 @@ exports.search = async (req, res, next) => {
 exports.uploadPhoto = async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier reçu.' });
+    // AUDIT-3.5 (SEC-02) — validé avant toute construction de nom de fichier
+    // (repli disque local de storeUploadedFile inclus), voir middleware/upload.js.
+    if (!isObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Identifiant patient invalide.' });
 
     const patient = await Patient.findById(req.params.id);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
     const ancienPhoto = patient.photo;
+    const ancienPublicId = patient.photo_public_id;
 
-    // Supprimer l'ancienne photo du disque si elle est hébergée sur le serveur
-    if (patient.photo?.startsWith('/uploads/')) {
+    // MIGRATION-CLOUDINARY — supprime l'ancienne photo (Cloudinary via son
+    // public_id, ou disque local pour une photo antérieure à cette
+    // migration) avant d'enregistrer la nouvelle, même comportement de
+    // nettoyage qu'avant cette migration.
+    if (ancienPublicId) {
+      await cloudinaryUtil.destroy(ancienPublicId).catch((err) => {
+        logger.error('[UPLOAD] Échec de suppression de l\'ancienne photo Cloudinary (nouvel upload déjà réussi)', { public_id: ancienPublicId, error: err.message });
+      });
+    } else if (patient.photo?.startsWith('/uploads/')) {
       const old = path.join(__dirname, '..', patient.photo);
       if (fs.existsSync(old)) fs.unlinkSync(old);
     }
 
-    patient.photo = `/uploads/patients/${req.file.filename}`;
+    const { url, public_id } = await storeUploadedFile(req.file, { folder: 'patients', filenameBase: `patient-${req.params.id}-${Date.now()}` });
+    patient.photo = url;
+    patient.photo_public_id = public_id;
     await patient.save();
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'patients', entite_id: patient._id, ip: req.ip, avant: { photo: ancienPhoto }, apres: { photo: patient.photo }, message: 'Photo mise à jour' });
     // AUDIT-PHASE4-G2 — dashboard:refresh seul : une photo mise à jour doit

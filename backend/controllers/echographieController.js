@@ -1,9 +1,11 @@
+const path = require('path');
 const Echographie = require('../models/Echographie');
 const ExamCatalogue = require('../models/ExamCatalogue');
 const Invoice = require('../models/Invoice');
 const Patient = require('../models/Patient');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction, escapeRegex } = require('../utils/helpers');
+const { storeUploadedFile } = require('../utils/fileStorage');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
@@ -307,10 +309,11 @@ exports.uploadImages = async (req, res, next) => {
     if (!req.files || req.files.length === 0)
       return res.status(400).json({ success: false, message: 'Aucun fichier reçu.' });
 
-    const nouvelles = req.files.map(f => ({
-      url: `/uploads/echographie/${f.filename}`,
-      description: f.originalname,
-      date: new Date(),
+    const nouvelles = await Promise.all(req.files.map(async (f, i) => {
+      const ext = path.extname(f.originalname);
+      const base = path.basename(f.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
+      const { url } = await storeUploadedFile(f, { folder: 'echographie', filenameBase: `${Date.now()}-${i}-${base}` });
+      return { url, description: f.originalname, date: new Date() };
     }));
 
     const avant = await Echographie.findById(req.params.id).lean();

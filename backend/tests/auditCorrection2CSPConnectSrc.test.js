@@ -53,6 +53,7 @@ async function startServerWithClientUrl(mongoPort, clientUrl, extraEnv = {}) {
       JWT_COOKIE_EXPIRE: '1',
       CLIENT_URL: clientUrl,
       RESEND_API_KEY: '',
+      CLOUDINARY_CLOUD_NAME: '', CLOUDINARY_API_KEY: '', CLOUDINARY_API_SECRET: '',
       ...extraEnv,
     },
     stdio: 'ignore',

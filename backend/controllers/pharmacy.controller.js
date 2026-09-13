@@ -5,6 +5,8 @@ const Invoice = require('../models/Invoice');
 const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
+const { storeUploadedFile } = require('../utils/fileStorage');
+const { isObjectId } = require('../middleware/upload');
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -393,7 +395,9 @@ exports.remove = async (req, res, next) => {
 exports.uploadPhoto = async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'Aucun fichier fourni.' });
-    const url = `/uploads/medications/${req.file.filename}`;
+    // AUDIT-3.5 (SEC-02) — même garde qu'avant cette migration (middleware/upload.js).
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: 'Identifiant médicament invalide.' });
+    const { url } = await storeUploadedFile(req.file, { folder: 'medications', filenameBase: `med-${req.params.id}-${Date.now()}` });
     const avant = await Medication.findById(req.params.id).select('photo').lean();
     if (!avant) return res.status(404).json({ message: 'Médicament introuvable.' });
     const med = await Medication.findByIdAndUpdate(req.params.id, { photo: url }, { new: true });

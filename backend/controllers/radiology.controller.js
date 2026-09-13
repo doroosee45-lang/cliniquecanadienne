@@ -1,3 +1,4 @@
+const path = require('path');
 const ImagingResult = require('../models/ImagingResult');
 const ExamCatalogue = require('../models/ExamCatalogue');
 const Consultation = require('../models/Consultation');
@@ -5,6 +6,7 @@ const Invoice = require('../models/Invoice');
 const { logAction, createNotification, paginate } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
+const { storeUploadedFile } = require('../utils/fileStorage');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
@@ -290,11 +292,16 @@ exports.uploadImages = async (req, res, next) => {
     if (!req.files || req.files.length === 0)
       return res.status(400).json({ success: false, message: 'Aucun fichier reçu.' });
 
-    const nouvelles = req.files.map(f => ({
-      filename:  f.filename,
-      path:      `/uploads/radiology/${f.filename}`,
-      type_mime: f.mimetype,
-      taille:    f.size,
+    // MIGRATION-CLOUDINARY — req.files[].buffer (multer memoryStorage) au
+    // lieu d'un fichier déjà écrit sur disque (f.filename/f.path) ; même
+    // convention de nom (horodatage + index + base assainie) que l'ancien
+    // callback storage.filename() de middleware/upload.js.
+    const nouvelles = await Promise.all(req.files.map(async (f, i) => {
+      const ext = path.extname(f.originalname);
+      const base = path.basename(f.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
+      const filenameBase = `${Date.now()}-${i}-${base}`;
+      const { url } = await storeUploadedFile(f, { folder: 'radiology', filenameBase });
+      return { filename: `${filenameBase}${ext}`, path: url, type_mime: f.mimetype, taille: f.size };
     }));
 
     const avant = await ImagingResult.findById(req.params.id).lean();

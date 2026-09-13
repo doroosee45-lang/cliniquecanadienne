@@ -8,6 +8,9 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
+const { withLocalUploadFallback } = require('./helpers/forceLocalUploadFallback');
 
 test('messages.controller — les 4 endpoints réellement utilisés (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -156,13 +159,18 @@ test('messages.controller — les 4 endpoints réellement utilisés (base réell
     });
 
     await t.test('sendAttachment — persiste la pièce jointe et l\'aperçu de conversation', async () => {
-      const fakeFile = { originalname: 'vocal.webm', filename: '123-vocal.webm' };
-      const { status, body } = await call(msgC.sendAttachment, { user: userA, params: { id: convId }, body: { type: 'audio', duration: '7' }, file: fakeFile });
+      // MIGRATION-CLOUDINARY — req.file.buffer (multer memoryStorage), plus
+      // de filename généré côté disque par multer. Force le repli disque
+      // local même si CLOUDINARY_* est réellement configuré dans le .env de
+      // cette machine.
+      const fakeFile = { originalname: 'vocal.webm', buffer: Buffer.from('audio-data') };
+      const { status, body } = await withLocalUploadFallback(() => call(msgC.sendAttachment, { user: userA, params: { id: convId }, body: { type: 'audio', duration: '7' }, file: fakeFile }));
       assert.equal(status, 200);
       assert.equal(body.message.pieceJointe.type, 'audio');
-      assert.equal(body.message.pieceJointe.path, '/uploads/messages/123-vocal.webm');
+      assert.match(body.message.pieceJointe.path, /^\/uploads\/messages\/\d+-vocal\.webm$/);
       const relu = await Conversation.findById(convId).lean();
       assert.equal(relu.dernier_message_apercu, '🎙️ Message vocal');
+      await fs.promises.unlink(path.join(__dirname, '..', body.message.pieceJointe.path)).catch(() => {});
     });
 
     await t.test('sendMessage — refuse un transfert de pièce jointe hors /uploads/messages/ (path traversal)', async () => {

@@ -17,6 +17,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const { withLocalUploadFallback } = require('./helpers/forceLocalUploadFallback');
 
 test('AUDIT-PHASE4-G2 — patients.controller.js émet activity:new/dashboard:refresh sur les mutations notables (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -121,10 +124,14 @@ test('AUDIT-PHASE4-G2 — patients.controller.js émet activity:new/dashboard:re
       created.patients.push(patient);
       emitted.length = 0;
 
-      const { status } = await call(patientsC.uploadPhoto, { params: { id: patient._id.toString() }, file: { filename: `g2-photo-${stamp}.jpg` }, user: staff, ip: '127.0.0.1' });
+      // MIGRATION-CLOUDINARY — req.file.buffer (multer memoryStorage), plus
+      // de filename généré côté disque. Force le repli disque local même si
+      // CLOUDINARY_* est réellement configuré dans le .env de cette machine.
+      const { status, body } = await withLocalUploadFallback(() => call(patientsC.uploadPhoto, { params: { id: patient._id.toString() }, file: { originalname: `g2-photo-${stamp}.jpg`, buffer: Buffer.from('img') }, user: staff, ip: '127.0.0.1' }));
       assert.equal(status, 200);
       assert.equal(eventsOf('activity:new').length, 0);
       assert.equal(eventsOf('dashboard:refresh').length, 1);
+      await fs.promises.unlink(path.join(__dirname, '..', body.photo)).catch(() => {});
     });
   } finally {
     setIO(null);

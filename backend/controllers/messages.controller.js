@@ -1,3 +1,4 @@
+const path = require('path');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
@@ -7,6 +8,16 @@ const { emitTo } = require('../utils/socket');
 const { logAction, escapeHtml } = require('../utils/helpers');
 const mail = require('../utils/mail');
 const sms = require('../utils/sms');
+const { storeUploadedFile } = require('../utils/fileStorage');
+
+// MIGRATION-CLOUDINARY — AUDIT-MESSAGES-PhaseB validait qu'un pieceJointe.path
+// transféré ("Transférer", pas un nouvel upload) commence bien par
+// /uploads/messages/ (jamais un chemin arbitraire, path traversal) ; accepte
+// désormais en plus l'équivalent Cloudinary (dossier medisync/messages/ sous
+// le compte Cloudinary configuré), les deux formes pouvant coexister pendant
+// et après la migration des pièces jointes existantes.
+const isLegitimateMessageAttachmentPath = (p) =>
+  typeof p === 'string' && (p.startsWith('/uploads/messages/') || /^https:\/\/res\.cloudinary\.com\/[^/]+\/.+\/medisync\/messages\//.test(p));
 
 // AUDIT-MESSAGES-PhaseA — la modale "Nouveau message" appelait GET
 // /admin/users (authorize(superadmin, adminclinique)) pour peupler la liste
@@ -95,7 +106,7 @@ exports.sendMessage = async (req, res, next) => {
       // (référence uniquement) : le chemin fourni doit obligatoirement
       // pointer vers un fichier déjà stocké par cette messagerie, jamais un
       // chemin arbitraire (path traversal).
-      if (typeof pieceJointe.path !== 'string' || !pieceJointe.path.startsWith('/uploads/messages/')) {
+      if (!isLegitimateMessageAttachmentPath(pieceJointe.path)) {
         return res.status(400).json({ success: false, message: 'Pièce jointe invalide.' });
       }
       msgData.pieceJointe = {
@@ -184,9 +195,12 @@ exports.sendAttachment = async (req, res, next) => {
     if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier reçu.' });
 
     const { type, duration } = req.body;
+    const ext = path.extname(req.file.originalname);
+    const base = path.basename(req.file.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
+    const { url } = await storeUploadedFile(req.file, { folder: 'messages', filenameBase: `${Date.now()}-${base}` });
     const pieceJointe = {
       filename: req.file.originalname,
-      path: `/uploads/messages/${req.file.filename}`,
+      path: url,
       type: type || 'document',
       duration: duration ? Number(duration) : undefined,
     };

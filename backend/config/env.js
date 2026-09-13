@@ -15,7 +15,8 @@
 //   (`if (require.main === module)`) — déjà le pattern que ce fichier
 //   généralise, pas un cas "ad hoc" à corriger.
 // - utils/check-login.js, checkProductionConfig.js, create-user.js,
-//   migrate-init-counters.js, migrate-link-patient-id.js, seed.js —
+//   migrate-init-counters.js, migrate-link-patient-id.js,
+//   migrate-uploads-to-cloudinary.js, seed.js —
 //   scripts de maintenance exécutés manuellement et rarement, chacun déjà
 //   autonome avec son propre bootstrap explicite ; les migrer ajoute un
 //   risque (casser un script peu testé) pour un bénéfice marginal face au
@@ -54,4 +55,12 @@ module.exports = {
   TWILIO_ACCOUNT_SID:  process.env.TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN:   process.env.TWILIO_AUTH_TOKEN,
   TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+
+  // MIGRATION-CLOUDINARY (13 sept. 2026) — stockage des photos/pièces
+  // jointes (utils/cloudinary.js). Absent en dev : repli sur l'écriture
+  // disque locale historique (backend/uploads/), jamais un échec ni un
+  // faux succès qui perdrait le fichier envoyé.
+  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_API_KEY:    process.env.CLOUDINARY_API_KEY,
+  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
 };

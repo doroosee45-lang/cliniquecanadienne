@@ -1,7 +1,7 @@
 const crypto = require('crypto');
-const fs     = require('fs');
 const Document = require('../models/Document');
 const { logAction, paginate } = require('../utils/helpers');
+const { storeUploadedFile } = require('../utils/fileStorage');
 
 // R-10b / ticket 0006 — périmètre volontairement minimal : upload, hash,
 // consultation, statut par défaut 'actif'. Les transitions de cycle de vie
@@ -28,12 +28,15 @@ exports.create = async (req, res, next) => {
 
     // Hash d'intégrité calculé à la réception, avant toute autre écriture —
     // c'est précisément ce que R-10b constatait comme jamais fait.
-    const hash_integrite = crypto.createHash('sha256').update(fs.readFileSync(req.file.path)).digest('hex');
+    // MIGRATION-CLOUDINARY — calculé depuis le Buffer en mémoire
+    // (req.file.path n'existe plus, multer utilise memoryStorage désormais).
+    const hash_integrite = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+    const { url } = await storeUploadedFile(req.file, { folder: 'documents', filenameBase: `${Date.now()}-${hash_integrite.slice(0, 16)}` });
 
     const doc = await Document.create({
       nom:            req.body.nom || req.file.originalname,
       type:           req.body.type,
-      fichier_path:   `/uploads/documents/${req.file.filename}`,
+      fichier_path:   url,
       taille:         req.file.size,
       mime_type:      req.file.mimetype,
       patient:        req.body.patient || undefined,

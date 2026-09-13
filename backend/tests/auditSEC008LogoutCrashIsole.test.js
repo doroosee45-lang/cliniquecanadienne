@@ -65,6 +65,7 @@ async function runScenario() {
       JWT_COOKIE_EXPIRE: '1',
       CLIENT_URL: 'http://127.0.0.1:0',
       RESEND_API_KEY: '',
+      CLOUDINARY_CLOUD_NAME: '', CLOUDINARY_API_KEY: '', CLOUDINARY_API_SECRET: '',
     },
     stdio: 'ignore',
   });

@@ -1,27 +1,29 @@
 const multer = require('multer');
 const path   = require('path');
-const fs     = require('fs');
 
 // AUDIT-3.5 (SEC-02) — req.params.id était injecté tel quel dans le nom de
-// fichier ci-dessous ; multer construit le chemin final via
-// path.join(destination, filename), qui normalise "../" comme n'importe quel
-// chemin — un ID contenant de telles séquences pouvait donc écrire hors du
+// fichier ; un ID contenant des séquences "../" pouvait donc écrire hors du
 // répertoire d'upload prévu. Seuls les ObjectId Mongo valides sont attendus
-// ici (routes /:id/photo), donc validés avant construction du nom de fichier.
+// ici (routes /:id/photo) — exporté (MIGRATION-CLOUDINARY) car la
+// construction du nom de fichier a été déplacée dans le contrôleur (multer
+// n'a plus de callback filename() en memoryStorage, voir plus bas), mais la
+// validation elle-même doit rester appliquée avant toute construction de
+// chemin, que le fichier parte ensuite vers Cloudinary ou vers le repli
+// disque local (utils/fileStorage.js).
 const isObjectId = (v) => /^[a-f\d]{24}$/i.test(v);
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/radiology');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext  = path.extname(file.originalname);
-    const base = path.basename(file.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
-    cb(null, `${Date.now()}-${base}${ext}`);
-  },
-});
+// MIGRATION-CLOUDINARY (13 sept. 2026) — remplace les 6 configurations
+// multer.diskStorage (écriture directe sous backend/uploads/) par une
+// storage engine commune en mémoire : chaque fichier n'est plus jamais
+// écrit sur disque par multer lui-même, il est simplement mis à disposition
+// en Buffer (req.file.buffer / req.files[].buffer) pour que le contrôleur
+// le transmette à utils/fileStorage.js::storeUploadedFile (Cloudinary si
+// configuré, sinon repli sur l'écriture disque locale historique — jamais
+// un succès simulé, un fichier envoyé doit toujours être réellement stocké
+// quelque part). fileFilter et limits, qui appliquent la validation
+// métier (extensions autorisées, taille/nombre max), restent strictement
+// identiques à avant — seule la destination change.
+const memoryStorage = multer.memoryStorage();
 
 // SEC-002 — statusCode posé explicitement sur chaque erreur de fileFilter
 // ci-dessous : errorHandler.js respecte déjà err.statusCode dans sa branche
@@ -40,25 +42,12 @@ const fileFilter = (req, file, cb) => {
 };
 
 const uploadImages = multer({
-  storage,
+  storage: memoryStorage,
   fileFilter,
   limits: { fileSize: 50 * 1024 * 1024, files: 20 },
 });
 
 // ── Photo patient ─────────────────────────────────────────────────────────────
-const storagePhoto = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/patients');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    if (!isObjectId(req.params.id)) return cb(new Error('Identifiant patient invalide.'));
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `patient-${req.params.id}-${Date.now()}${ext}`);
-  },
-});
-
 const fileFilterPhoto = (req, file, cb) => {
   const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
   if (allowed.includes(path.extname(file.originalname).toLowerCase())) return cb(null, true);
@@ -69,45 +58,19 @@ const fileFilterPhoto = (req, file, cb) => {
 };
 
 const uploadPatientPhoto = multer({
-  storage: storagePhoto,
+  storage: memoryStorage,
   fileFilter: fileFilterPhoto,
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
 });
 
 // ── Photo médicament ──────────────────────────────────────────────────────────
-const storageMedPhoto = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/medications');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    if (!isObjectId(req.params.id)) return cb(new Error('Identifiant médicament invalide.'));
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `med-${req.params.id}-${Date.now()}${ext}`);
-  },
-});
-
 const uploadMedPhoto = multer({
-  storage: storageMedPhoto,
+  storage: memoryStorage,
   fileFilter: fileFilterPhoto,
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
 });
 
 // ── Document générique (pièces justificatives, contrats, rapports scannés) ────
-const storageDocument = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/documents');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext  = path.extname(file.originalname).toLowerCase();
-    const base = path.basename(file.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
-    cb(null, `${Date.now()}-${base}${ext}`);
-  },
-});
-
 const fileFilterDocument = (req, file, cb) => {
   const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx'];
   const ext = path.extname(file.originalname).toLowerCase();
@@ -119,28 +82,12 @@ const fileFilterDocument = (req, file, cb) => {
 };
 
 const uploadDocument = multer({
-  storage: storageDocument,
+  storage: memoryStorage,
   fileFilter: fileFilterDocument,
   limits: { fileSize: 20 * 1024 * 1024, files: 1 },
 });
 
 // ── Pièce jointe messagerie (vocal, image, document) — AUDIT-MESSAGES-PhaseB ──
-// Brique commune pour les 2 fonctionnalités de la Phase B (messages vocaux et
-// pièces jointes image/document) — même pattern que uploadDocument ci-dessus,
-// filtre élargi aux formats audio produits par MediaRecorder côté navigateur.
-const storageMessageAttachment = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/messages');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext  = path.extname(file.originalname).toLowerCase() || '.bin';
-    const base = path.basename(file.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
-    cb(null, `${Date.now()}-${base}${ext}`);
-  },
-});
-
 const fileFilterMessageAttachment = (req, file, cb) => {
   const allowed = [
     '.webm', '.mp3', '.wav', '.ogg', '.m4a',       // audio (messages vocaux)
@@ -156,32 +103,16 @@ const fileFilterMessageAttachment = (req, file, cb) => {
 };
 
 const uploadMessageAttachment = multer({
-  storage: storageMessageAttachment,
+  storage: memoryStorage,
   fileFilter: fileFilterMessageAttachment,
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
 });
 
-// AUDIT-ECHOGRAPHIE-IMAGES — l'étape "Images" du wizard de réalisation
-// capturait les fichiers via FileReader côté navigateur (state React local
-// uniquement, jamais envoyés au serveur) : perdues au rafraîchissement.
-// Même pattern que uploadImages (radiology) ci-dessus, dossier dédié.
-const storageEchographieImages = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/echographie');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext  = path.extname(file.originalname).toLowerCase();
-    const base = path.basename(file.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
-    cb(null, `${Date.now()}-${base}${ext}`);
-  },
-});
-
+// AUDIT-ECHOGRAPHIE-IMAGES — même pattern que uploadImages (radiology) ci-dessus.
 const uploadEchographieImages = multer({
-  storage: storageEchographieImages,
+  storage: memoryStorage,
   fileFilter,
   limits: { fileSize: 50 * 1024 * 1024, files: 20 },
 });
 
-module.exports = { uploadImages, uploadPatientPhoto, uploadMedPhoto, uploadDocument, uploadMessageAttachment, uploadEchographieImages };
+module.exports = { uploadImages, uploadPatientPhoto, uploadMedPhoto, uploadDocument, uploadMessageAttachment, uploadEchographieImages, isObjectId };

@@ -12,6 +12,9 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
+const { withLocalUploadFallback } = require('./helpers/forceLocalUploadFallback');
 
 test('echographieController.uploadImages — persistance réelle des images (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -40,21 +43,27 @@ test('echographieController.uploadImages — persistance réelle des images (bas
     cleanup.push(() => Echographie.findByIdAndDelete(demande._id));
 
     await t.test('des fichiers réellement reçus (req.files) sont persistés dans demande.images', async () => {
-      const { status, body } = await call(echoC.uploadImages, {
+      // MIGRATION-CLOUDINARY — req.files[].buffer (multer memoryStorage),
+      // plus de filename généré par multer côté disque. Force le repli
+      // disque local même si CLOUDINARY_* est réellement configuré dans le
+      // .env de cette machine.
+      const { status, body } = await withLocalUploadFallback(() => call(echoC.uploadImages, {
         user: agent, ip: '127.0.0.1', params: { id: demande._id.toString() },
         files: [
-          { filename: `${stamp}-a.jpg`, originalname: 'coupe1.jpg' },
-          { filename: `${stamp}-b.png`, originalname: 'coupe2.png' },
+          { originalname: 'coupe1.jpg', buffer: Buffer.from('img-a') },
+          { originalname: 'coupe2.png', buffer: Buffer.from('img-b') },
         ],
-      });
+      }));
       assert.equal(status, 200);
       assert.equal(body.images.length, 2);
-      assert.equal(body.images[0].url, `/uploads/echographie/${stamp}-a.jpg`);
+      assert.match(body.images[0].url, /^\/uploads\/echographie\/\d+-0-coupe1\.jpg$/);
       assert.equal(body.images[0].description, 'coupe1.jpg');
+      cleanup.push(() => fs.promises.unlink(path.join(__dirname, '..', body.images[0].url)).catch(() => {}));
+      cleanup.push(() => fs.promises.unlink(path.join(__dirname, '..', body.images[1].url)).catch(() => {}));
 
       const relu = await Echographie.findById(demande._id).lean();
       assert.equal(relu.images.length, 2, 'les images doivent être réellement persistées en base, pas seulement renvoyées dans la réponse');
-      assert.equal(relu.images[1].url, `/uploads/echographie/${stamp}-b.png`);
+      assert.match(relu.images[1].url, /^\/uploads\/echographie\/\d+-1-coupe2\.png$/);
     });
 
     await t.test('aucun fichier reçu — 400, rien persisté', async () => {
@@ -66,11 +75,20 @@ test('echographieController.uploadImages — persistance réelle des images (bas
     });
 
     await t.test('demande introuvable — 404', async () => {
-      const { status } = await call(echoC.uploadImages, {
+      // echographieController.js::uploadImages stocke les fichiers AVANT de
+      // vérifier que la demande existe (comportement préexistant, non
+      // modifié ici) : ce cas écrit donc bien un fichier réel sur disque
+      // (repli local) malgré le 404 final — capturé ici pour nettoyage,
+      // plutôt que d'en déduire le nom exact.
+      const dir = path.join(__dirname, '..', 'uploads', 'echographie');
+      const before = new Set(fs.existsSync(dir) ? fs.readdirSync(dir) : []);
+      const { status } = await withLocalUploadFallback(() => call(echoC.uploadImages, {
         user: agent, ip: '127.0.0.1', params: { id: new mongoose.Types.ObjectId().toString() },
-        files: [{ filename: 'x.jpg', originalname: 'x.jpg' }],
-      });
+        files: [{ originalname: 'x.jpg', buffer: Buffer.from('x') }],
+      }));
       assert.equal(status, 404);
+      const after = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+      for (const f of after) if (!before.has(f)) cleanup.push(() => fs.promises.unlink(path.join(dir, f)).catch(() => {}));
     });
   } finally {
     for (const fn of cleanup.reverse()) await fn();

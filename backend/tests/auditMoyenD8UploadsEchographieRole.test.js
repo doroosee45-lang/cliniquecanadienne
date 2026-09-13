@@ -116,6 +116,7 @@ test('AUDIT-M-D8 — round-trip réel : uploadImages persiste, serveUpload sert 
   const echoC = require('../controllers/echographieController');
   const uploadsC = require('../controllers/uploads.controller');
   const uploadsRoot = path.join(__dirname, '..', 'uploads');
+  const { withLocalUploadFallback } = require('./helpers/forceLocalUploadFallback');
 
   const stamp = Date.now();
   const agent = await User.create({ email: `_d8-rt-${stamp}@_test.local`, password: 'Xx1aaaaa', nom: 'Agent', prenom: 'RT', role: 'radiologue', statut: 'actif' });
@@ -125,9 +126,6 @@ test('AUDIT-M-D8 — round-trip réel : uploadImages persiste, serveUpload sert 
     motif: 'Contrôle', priorite: 'normale', statut: 'realisee',
   });
   const echoDir = path.join(uploadsRoot, 'echographie');
-  if (!fs.existsSync(echoDir)) fs.mkdirSync(echoDir, { recursive: true });
-  const realFilename = `${stamp}-roundtrip.jpg`;
-  fs.writeFileSync(path.join(echoDir, realFilename), 'contenu réel round-trip D8');
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -142,22 +140,33 @@ test('AUDIT-M-D8 — round-trip réel : uploadImages persiste, serveUpload sert 
     return { status, body, sentFile };
   };
 
+  let realFilename = null;
   try {
-    const { status, body } = await call(echoC.uploadImages, {
+    // MIGRATION-CLOUDINARY — req.files[].buffer (multer memoryStorage), plus
+    // de fichier pré-écrit à la main avec un nom connu d'avance : le nom
+    // réel est désormais généré par echographieController.js::uploadImages
+    // (via utils/fileStorage.js). Force le repli disque local même si
+    // CLOUDINARY_* est réellement configuré dans le .env de cette machine —
+    // c'est justement ce round-trip (upload → chemin renvoyé → servi par
+    // serveUpload) qui a besoin d'un vrai fichier réellement sur disque.
+    const { status, body } = await withLocalUploadFallback(() => call(echoC.uploadImages, {
       user: agent, ip: '127.0.0.1', params: { id: demande._id.toString() },
-      files: [{ filename: realFilename, originalname: 'roundtrip.jpg' }],
-    });
+      files: [{ originalname: 'roundtrip.jpg', buffer: Buffer.from('contenu réel round-trip D8') }],
+    }));
     assert.equal(status, 200);
     const url = body.images[0].url;
-    assert.equal(url, `/uploads/echographie/${realFilename}`);
+    assert.match(url, /^\/uploads\/echographie\/\d+-0-roundtrip\.jpg$/);
+    realFilename = url.replace(/^\/uploads\/echographie\//, '');
 
     // Même transformation que <img src={img.url}> → GET /uploads/<url sans le préfixe /uploads/>.
     const subpathFromUrl = url.replace(/^\/uploads\//, '');
     const { sentFile } = callServe(subpathFromUrl, agent.role);
     assert.equal(sentFile, path.resolve(path.join(echoDir, realFilename)), 'le fichier réellement uploadé doit être servable via son url persisté, tel quel');
   } finally {
-    const f = path.join(echoDir, realFilename);
-    if (fs.existsSync(f)) fs.unlinkSync(f);
+    if (realFilename) {
+      const f = path.join(echoDir, realFilename);
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    }
     await Echographie.findByIdAndDelete(demande._id);
     await User.findByIdAndDelete(agent._id);
     await mongoose.disconnect();

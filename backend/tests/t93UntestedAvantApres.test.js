@@ -8,6 +8,9 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
+const { withLocalUploadFallback } = require('./helpers/forceLocalUploadFallback');
 
 test('T9.5 — fonctions avant/apres du T9.3 jamais exercées par un test (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -76,12 +79,18 @@ test('T9.5 — fonctions avant/apres du T9.3 jamais exercées par un test (base 
       const examen = await ImagingResult.create({ patient: patient._id, patient_nom: 'T95 P', statut: 'programme', type_examen: 'radio' });
       cleanup.push(() => ImagingResult.findByIdAndDelete(examen._id));
 
-      const { status } = await call(radC.uploadImages, {
+      // MIGRATION-CLOUDINARY — req.files[].buffer (multer memoryStorage) et
+      // originalname (utilisé pour construire le nom de fichier), plus de
+      // filename généré côté disque par multer. Force le repli disque local
+      // même si CLOUDINARY_* est réellement configuré dans le .env de cette
+      // machine.
+      const { status, body } = await withLocalUploadFallback(() => call(radC.uploadImages, {
         params: { id: examen._id },
-        files: [{ filename: `t95-${stamp}.jpg`, mimetype: 'image/jpeg', size: 1024 }],
+        files: [{ originalname: `t95-${stamp}.jpg`, mimetype: 'image/jpeg', size: 1024, buffer: Buffer.from('img') }],
         user, ip: '127.0.0.1',
-      });
+      }));
       assert.equal(status, 200);
+      cleanup.push(() => fs.promises.unlink(path.join(__dirname, '..', body.images[0].path)).catch(() => {}));
       const log = await AuditLog.findOne({ module: 'radiology', action: 'UPLOAD_IMAGES', entite_id: examen._id.toString() }).sort('-createdAt');
       assert.equal(log.donnees_avant.images.length, 0);
       assert.equal(log.donnees_apres.images.length, 1);

@@ -13,6 +13,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 const { startIsolatedServer, mongodExists } = require('./helpers/isolatedServer');
+const fs = require('fs');
+const path = require('path');
+const { withLocalUploadFallback } = require('./helpers/forceLocalUploadFallback');
 
 const PASSWORD = 'ArchivageAuditDTest2026!';
 
@@ -103,8 +106,10 @@ test('Archivage/Audit — Point E : gaps mineurs désormais tracés (base réell
       const admin = await User.create({ email: `t-arche1-${stamp}@test.local`, nom: 'A', prenom: 'A', role: 'superadmin', statut: 'actif' });
       created.users.push(admin);
 
-      const { status } = await call(patientsC.uploadPhoto, { params: { id: patient._id.toString() }, file: { filename: `photo-${stamp}.jpg` }, user: admin, ip: '127.0.0.1' });
+      const { status, body } = await withLocalUploadFallback(() => call(patientsC.uploadPhoto, { params: { id: patient._id.toString() }, file: { originalname: `photo-${stamp}.jpg`, buffer: Buffer.from('img') }, user: admin, ip: '127.0.0.1' }));
       assert.equal(status, 200);
+      created.cleanupFiles = created.cleanupFiles || [];
+      created.cleanupFiles.push(body.photo);
 
       const log = await AuditLog.findOne({ action: 'UPDATE', module: 'patients', entite_id: patient._id.toString(), message: /Photo/ }).sort('-createdAt').lean();
       assert.ok(log, 'un changement de photo patient doit désormais produire une entrée AuditLog');
@@ -116,8 +121,10 @@ test('Archivage/Audit — Point E : gaps mineurs désormais tracés (base réell
       const admin = await User.create({ email: `t-arche2-${stamp}@test.local`, nom: 'A', prenom: 'A', role: 'pharmacien', statut: 'actif' });
       created.users.push(admin);
 
-      const { status } = await call(pharmacyC.uploadPhoto, { params: { id: med._id.toString() }, file: { filename: `photo-${stamp}.jpg` }, user: admin, ip: '127.0.0.1' });
+      const { status, body } = await withLocalUploadFallback(() => call(pharmacyC.uploadPhoto, { params: { id: med._id.toString() }, file: { originalname: `photo-${stamp}.jpg`, buffer: Buffer.from('img') }, user: admin, ip: '127.0.0.1' }));
       assert.equal(status, 200);
+      created.cleanupFiles = created.cleanupFiles || [];
+      created.cleanupFiles.push(body.photo);
 
       const log = await AuditLog.findOne({ action: 'UPDATE', module: 'pharmacy', entite_id: med._id.toString(), message: /Photo/ }).sort('-createdAt').lean();
       assert.ok(log, 'un changement de photo médicament doit désormais produire une entrée AuditLog');
@@ -130,14 +137,16 @@ test('Archivage/Audit — Point E : gaps mineurs désormais tracés (base réell
       const conv = await Conversation.create({ type: 'direct', membres: [u1._id, u2._id] });
       created.conversations.push(conv);
 
-      const { status: statusOk } = await call(messagesC.sendAttachment, { params: { id: conv._id.toString() }, file: { filename: `piece-${stamp}.pdf`, originalname: 'piece.pdf' }, body: {}, user: u1, ip: '127.0.0.1' });
+      const { status: statusOk, body: bodyOk } = await withLocalUploadFallback(() => call(messagesC.sendAttachment, { params: { id: conv._id.toString() }, file: { originalname: 'piece.pdf', buffer: Buffer.from('pdf-data') }, body: {}, user: u1, ip: '127.0.0.1' }));
       assert.equal(statusOk, 200);
+      created.cleanupFiles = created.cleanupFiles || [];
+      created.cleanupFiles.push(bodyOk.message.pieceJointe.path);
       const logOk = await AuditLog.findOne({ action: 'CREATE', module: 'messages', entite_id: conv._id.toString(), statut: 'succes', message: /Pièce jointe/ }).sort('-createdAt').lean();
       assert.ok(logOk, 'un envoi de pièce jointe réussi doit désormais produire une entrée AuditLog');
 
       const u3 = await User.create({ email: `t-arche3-3-${stamp}@test.local`, nom: 'U3', prenom: 'C', role: 'medecin', statut: 'actif' });
       created.users.push(u3);
-      const { status: statusRefus } = await call(messagesC.sendAttachment, { params: { id: conv._id.toString() }, file: { filename: `piece2-${stamp}.pdf`, originalname: 'piece2.pdf' }, body: {}, user: u3, ip: '127.0.0.1' });
+      const { status: statusRefus } = await call(messagesC.sendAttachment, { params: { id: conv._id.toString() }, file: { originalname: 'piece2.pdf', buffer: Buffer.from('pdf-data-2') }, body: {}, user: u3, ip: '127.0.0.1' });
       assert.equal(statusRefus, 403);
       const logRefus = await AuditLog.findOne({ action: 'CREATE', module: 'messages', statut: 'echec', message: /non membre/ }).sort('-createdAt').lean();
       assert.ok(logRefus, 'un refus d\'envoi de pièce jointe (non membre) doit aussi être tracé en échec');
@@ -148,6 +157,7 @@ test('Archivage/Audit — Point E : gaps mineurs désormais tracés (base réell
     // pas laisser de débris de test.
     for (const c of created.conversations) await Message.deleteMany({ conversation_id: c._id });
     for (const c of created.conversations) await Conversation.findByIdAndDelete(c._id);
+    for (const f of (created.cleanupFiles || [])) await fs.promises.unlink(path.join(__dirname, '..', f)).catch(() => {});
     for (const m of created.meds) await Medication.findByIdAndDelete(m._id);
     for (const p of created.patients) await Patient.findByIdAndDelete(p._id);
     for (const u of created.users) await User.findByIdAndDelete(u._id);

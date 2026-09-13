@@ -10,8 +10,8 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { Readable } = require('stream');
+const { withLocalUploadFallback } = require('./helpers/forceLocalUploadFallback');
 
 test('upload de document + hash d\'intégrité (base réelle)', { skip: !process.env.MONGO_URI && 'MONGO_URI non configuré' }, async (t) => {
   await mongoose.connect(process.env.MONGO_URI);
@@ -59,25 +59,27 @@ test('upload de document + hash d\'intégrité (base réelle)', { skip: !process
 
   try {
     await t.test('create() calcule le hash SHA-256 réel du fichier reçu', async () => {
+      // MIGRATION-CLOUDINARY — req.file.buffer (multer memoryStorage), plus
+      // req.file.path : document.controller.js::create hashe désormais le
+      // Buffer directement. Force le repli disque local même si
+      // CLOUDINARY_* est réellement configuré dans le .env de cette machine.
       const content = `contenu-test-${Date.now()}`;
       const expectedHash = crypto.createHash('sha256').update(content).digest('hex');
-      const tmpPath = path.join(os.tmpdir(), `doc-test-${Date.now()}.pdf`);
-      fs.writeFileSync(tmpPath, content);
-      cleanup.push(() => fs.existsSync(tmpPath) && fs.unlinkSync(tmpPath));
 
-      const { status, body } = await call(docC.create, {
+      const { status, body } = await withLocalUploadFallback(() => call(docC.create, {
         user: admin, ip: '127.0.0.1',
         body: { nom: 'Justificatif test', type: 'autre' },
-        file: { path: tmpPath, filename: path.basename(tmpPath), size: content.length, mimetype: 'application/pdf', originalname: 'justificatif.pdf' },
-      });
+        file: { buffer: Buffer.from(content), size: content.length, mimetype: 'application/pdf', originalname: 'justificatif.pdf' },
+      }));
 
       assert.equal(status, 201);
       assert.equal(body.document.hash_integrite, expectedHash, 'le hash stocké doit correspondre au SHA-256 réel du contenu');
       assert.equal(body.document.lifecycle_statut, 'actif', 'statut par défaut');
       assert.equal(body.document.nom, 'Justificatif test');
-      assert.equal(body.document.fichier_path, `/uploads/documents/${path.basename(tmpPath)}`);
+      assert.match(body.document.fichier_path, /^\/uploads\/documents\/\d+-[0-9a-f]{16}\.pdf$/);
       const createdId = body.document._id;
       cleanup.push(() => Document.findByIdAndDelete(createdId));
+      cleanup.push(() => fs.promises.unlink(path.join(__dirname, '..', body.document.fichier_path)).catch(() => {}));
     });
 
     await t.test('create() refuse un upload sans fichier', async () => {
@@ -86,17 +88,14 @@ test('upload de document + hash d\'intégrité (base réelle)', { skip: !process
     });
 
     await t.test('getAll retourne le document créé, getOne le récupère individuellement', async () => {
-      const tmpPath = path.join(os.tmpdir(), `doc-test-list-${Date.now()}.pdf`);
-      fs.writeFileSync(tmpPath, 'contenu-liste');
-      cleanup.push(() => fs.existsSync(tmpPath) && fs.unlinkSync(tmpPath));
-
-      const created = await call(docC.create, {
+      const created = await withLocalUploadFallback(() => call(docC.create, {
         user: admin, ip: '127.0.0.1',
         body: { nom: 'Doc pour liste', type: 'autre' },
-        file: { path: tmpPath, filename: path.basename(tmpPath), size: 12, mimetype: 'application/pdf', originalname: 'liste.pdf' },
-      });
+        file: { buffer: Buffer.from('contenu-liste'), size: 12, mimetype: 'application/pdf', originalname: 'liste.pdf' },
+      }));
       const createdId = created.body.document._id;
       cleanup.push(() => Document.findByIdAndDelete(createdId));
+      cleanup.push(() => fs.promises.unlink(path.join(__dirname, '..', created.body.document.fichier_path)).catch(() => {}));
 
       const list = await call(docC.getAll, { query: {} });
       assert.equal(list.status, 200);
