@@ -152,8 +152,11 @@ test('T9.11 — sauvegarde puis restauration réelle sur instance MongoDB locale
         fs.rmSync(dbPath, { recursive: true, force: true });
         break;
       } catch (e) {
-        if (i === 4) throw e;
-        await new Promise(r => setTimeout(r, 500));
+        // Ne jamais throw depuis ce finally : ça remplacerait silencieusement
+        // un vrai échec d'assertion du test par cette erreur de nettoyage.
+        // Après 5 tentatives, on se contente de signaler le blocage.
+        if (i === 4) console.error(`T9.11 — échec du nettoyage de ${dbPath} après 5 tentatives :`, e);
+        else await new Promise(r => setTimeout(r, 500));
       }
     }
     fs.rmSync(backupDir, { recursive: true, force: true });

@@ -333,7 +333,7 @@ exports.getStats = async (req, res, next) => {
       Prescription.aggregate([
         { $lookup: { from: 'users', localField: 'medecin', foreignField: '_id', as: 'medecinDoc' } },
         { $unwind: { path: '$medecinDoc', preserveNullAndEmptyArrays: false } },
-        { $match: { 'medecinDoc.specialite': { $ne: null, $ne: '' } } },
+        { $match: { 'medecinDoc.specialite': { $nin: [null, ''] } } },
         { $group: { _id: '$medecinDoc.specialite', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),

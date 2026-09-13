@@ -116,7 +116,7 @@ exports.getStats = async (req, res, next) => {
       // catégorie clinique n'existe réellement sur ce modèle, contrairement
       // à niveau_triage/decision qui sont de vrais enums).
       Urgence.aggregate([
-        { $match: { motif: { $ne: null, $ne: '' } } },
+        { $match: { motif: { $nin: [null, ''] } } },
         { $group: { _id: '$motif', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 6 },

@@ -72,7 +72,7 @@ const run = async () => {
         // aident au diagnostic sans exposer le contenu.
         console.error(`❌ ${autres.length} échec(s) non liés à un doublon :`,
           autres.slice(0, 3).map(e => ({ index: e.index, code: e.code, errmsg: e.errmsg })));
-        throw new Error(`Échec de migration non récupérable sur ${autres.length} document(s).`);
+        throw new Error(`Échec de migration non récupérable sur ${autres.length} document(s).`, { cause: err });
       }
     }
     batch = [];

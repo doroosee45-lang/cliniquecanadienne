@@ -38,7 +38,7 @@ const generateReport = async ({ systemPrompt, userPrompt }) => {
     data = await res.json();
   } catch (err) {
     logger.error('[OPENAI ERROR] Échec réseau appel OpenAI', { error: err.message });
-    throw new Error(err.message || "Échec réseau lors de l'appel OpenAI.");
+    throw new Error(err.message || "Échec réseau lors de l'appel OpenAI.", { cause: err });
   }
   if (!res.ok) {
     const message = data?.error?.message || `Échec de l'appel OpenAI (HTTP ${res.status}).`;

@@ -108,7 +108,7 @@ test('Analytics Phase 3 — recommandations réelles (règles seuil, base réell
       const med = await Medication.create({ nom_commercial: `T-ANLP3-${stamp}`, dci: 'Test', forme: 'comprime', categorie: 'Autre', stock_actuel: 0, stock_minimum: 10, prix_vente: 100, statut: 'rupture' });
       meds.push(med);
 
-      status = 200; body = null;
+      body = null;
       await analyticsC.getStats({ query: {} }, res, () => {});
       const r = body.recommandations.find(x => x.titre === 'Ruptures de stock pharmacie');
       assert.ok(r, 'une vraie rupture de stock doit produire une vraie recommandation via le vrai chemin getStats → computeRecommandations');

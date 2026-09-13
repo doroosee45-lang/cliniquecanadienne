@@ -131,7 +131,7 @@ test('archive.controller — couverture fonctionnelle des 9 endpoints (base rée
 
       const { body: csvBody } = await call(archiveC.exportAll, { query: { format: 'csv' }, user: admin, ip: '127.0.0.1' });
       assert.ok(typeof csvBody === 'string');
-      assert.match(csvBody, /^﻿Titre,Categorie,Patient,Statut,Date archivage,Priorite/);
+      assert.match(csvBody, /^\uFEFFTitre,Categorie,Patient,Statut,Date archivage,Priorite/);
     });
 
     await t.test('updateConfig() — upsert la configuration dans Setting', async () => {

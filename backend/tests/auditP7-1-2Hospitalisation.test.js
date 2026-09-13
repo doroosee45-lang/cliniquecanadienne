@@ -170,7 +170,7 @@ test('P7-1/P7-2 — hospitalisation : PUT /:id, discharge, sous-ressources du s�
       });
     }
   } finally {
-    for (const fn of cleanup) { try { await fn(); } catch {} }
+    for (const fn of cleanup) { try { await fn(); } catch { /* nettoyage best-effort, ne doit pas masquer l'échec du test */ } }
     await User.findByIdAndDelete(user._id);
     await Patient.findByIdAndDelete(patient._id);
     await mongoose.disconnect();
