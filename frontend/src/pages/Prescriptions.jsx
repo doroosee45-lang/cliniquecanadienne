@@ -4,6 +4,7 @@ import api from "../api";
 import toast from "react-hot-toast";
 import { FileText, Plus, Printer } from 'lucide-react';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import { useAuth } from '../contexts/AuthContext';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
@@ -389,6 +390,14 @@ function BarChart({ labels, data, color="#1B4F9E", height=200 }) {
 // ─── MAIN ────────────────────────────────────────────────────
 export default function Ordonnances() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // ACCES-PHARMACIE-001 (correction du 13 sept. 2026) — l'onglet "Pharmacie"
+  // de la modale d'ordonnance (stock réel + délivrance) était affiché à
+  // n'importe quel rôle pouvant ouvrir cette page, medecin/infirmier
+  // inclus : un médecin pouvait consulter des données du module Pharmacie
+  // (stock, ruptures) qui ne le concernent pas. Réservé désormais aux
+  // mêmes rôles que le backend (pharmacy.routes.js::CAN_READ).
+  const canSeePharmacieSection = ['superadmin', 'adminclinique', 'pharmacien', 'infirmier'].includes(user?.role);
   // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchPrescriptions({}))
   // dupliquait à chaque montage la même requête que loadOrds() (api.get
   // direct, ci-dessous), sans que reduxOrdonnances/reduxTotal ne soient
@@ -665,7 +674,7 @@ export default function Ordonnances() {
   const [pharmStock, setPharmStock] = useState({});
   const [loadingStock, setLoadingStock] = useState(false);
   useEffect(() => {
-    if (tab !== "ordonnance" || section !== "pharmacie" || !currentOrd) return;
+    if (tab !== "ordonnance" || section !== "pharmacie" || !currentOrd || !canSeePharmacieSection) return;
     let cancelled = false;
     setLoadingStock(true);
     api.get("/pharmacy?limit=500")
@@ -1236,7 +1245,7 @@ export default function Ordonnances() {
                   { id:"examens",    label:"🔬 Examens & Recommandations" },
                   { id:"validation", label:"✍️ Validation" },
                   { id:"impression", label:"🖨 Impression" },
-                  { id:"pharmacie",  label:"💊 Pharmacie" },
+                  ...(canSeePharmacieSection ? [{ id:"pharmacie", label:"💊 Pharmacie" }] : []),
                   { id:"audit",      label:"📋 Audit" },
                 ].map(s => (
                   <button key={s.id} className={`sec-btn ${section===s.id?"active":""}`} onClick={() => setSection(s.id)}>
@@ -1669,7 +1678,7 @@ export default function Ordonnances() {
               )}
 
               {/* ── PHARMACIE ── */}
-              {section === "pharmacie" && (
+              {section === "pharmacie" && canSeePharmacieSection && (
                 <div style={{ marginTop:20 }}>
                   <div className="ord-card">
                     <div className="ord-card-hdr"><h3>💊 Liaison Pharmacie</h3><p>Vérification des stocks et délivrance</p></div>

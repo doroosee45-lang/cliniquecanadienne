@@ -576,7 +576,12 @@ export default function Urgences() {
   useEffect(() => {
     api.get("/laboratory/catalogue").then(({ data }) => setCatalogueLabo(data.examens || [])).catch(() => setCatalogueLabo([]));
     api.get("/radiology/catalogue").then(({ data }) => setCatalogueImagerie(data.examens || [])).catch(() => setCatalogueImagerie([]));
-    api.get("/pharmacy?limit=500&statut=disponible").then(({ data }) => setMedicaments(data.medications || [])).catch(() => setMedicaments([]));
+    // ACCES-PHARMACIE-001 (correction du 13 sept. 2026) — /pharmacy?... exige
+    // désormais un rôle ayant un vrai accès au module Pharmacie (medecin en
+    // est exclu) ; /pharmacy/catalogue est l'endpoint dédié, minimal
+    // (nom/prix uniquement, jamais de donnée de stock), ouvert à medecin
+    // spécifiquement pour ce besoin de sélection réelle lors d'une prescription.
+    api.get("/pharmacy/catalogue?statut=disponible").then(({ data }) => setMedicaments(data.medications || [])).catch(() => setMedicaments([]));
   }, []);
   const catalogueExamenById = useMemo(() => {
     const all = [...catalogueLabo, ...catalogueImagerie];

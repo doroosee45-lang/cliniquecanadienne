@@ -127,10 +127,14 @@ const ROLES = {
   // backend et le Sidebar accordent déjà réellement. Même schéma déjà
   // corrigé pour ROLES.audit (AUDIT-ELEVE-1).
   medecin         : ['superadmin', 'adminclinique', 'medecin'],
-  // AUDIT-ELEVE-1 — infirmier a déjà un accès backend réel en lecture à ce
-  // module (pharmacy.routes.js::CAN_READ) sans jamais avoir pu atteindre la
-  // page elle-même.
-  pharmacie       : ['superadmin', 'adminclinique', 'pharmacien', 'medecin', 'infirmier'],
+  // ACCES-PHARMACIE-001 (correction du 13 sept. 2026) — 'medecin' retiré : le
+  // module Pharmacie est exclusivement réservé à pharmacien (+ infirmier,
+  // accès backend déjà existant — pharmacy.routes.js::CAN_READ — hors
+  // périmètre de cette correction). Un médecin qui atteint /pharmacy par une
+  // URL directe est désormais redirigé comme n'importe quel rôle non
+  // autorisé (ProtectedRoute ci-dessus) — et le backend refuse de toute
+  // façon la moindre requête sur ces routes pour ce rôle.
+  pharmacie       : ['superadmin', 'adminclinique', 'pharmacien', 'infirmier'],
   consultation    : ['superadmin', 'medecin', 'infirmier'],
   finance         : ['superadmin', 'adminclinique', 'comptable'],
   hospitalisation : ['superadmin', 'adminclinique', 'medecin', 'infirmier'],

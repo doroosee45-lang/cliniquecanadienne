@@ -78,7 +78,13 @@ test('matrice d\'accès route × rôle (HTTP réel, 14 fichiers touchés par d7a
       { file: 'hr.routes.js',                path: '/hr/staff',            allow: ['superadmin','adminclinique'] },
       { file: 'laboratory.routes.js',        path: '/laboratory',          allow: ['superadmin','adminclinique','medecin','infirmier','laborantin'] },
       { file: 'patients.routes.js',          path: '/patients',            allow: ['superadmin','adminclinique','medecin','infirmier','sage_femme','receptionniste','laborantin','radiologue','pharmacien','comptable'] },
-      { file: 'pharmacy.routes.js',          path: '/pharmacy',            allow: ['superadmin','adminclinique','pharmacien','medecin','infirmier'] },
+      // ACCES-PHARMACIE-001 (correction du 13 sept. 2026) — 'medecin' retiré :
+      // le module Pharmacie est désormais exclusivement réservé à
+      // pharmacien/adminclinique/superadmin (+ infirmier, inchangé). Un
+      // médecin ne doit recevoir aucune donnée de cette route ; son seul
+      // besoin réel (catalogue nom+prix pour Urgences) est servi par la
+      // route dédiée /pharmacy/catalogue, vérifiée séparément plus bas.
+      { file: 'pharmacy.routes.js',          path: '/pharmacy',            allow: ['superadmin','adminclinique','pharmacien','infirmier'] },
       { file: 'prescriptions.routes.js',     path: '/prescriptions',       allow: ['superadmin','adminclinique','medecin','infirmier','pharmacien'] },
       { file: 'radiology.routes.js',         path: '/radiology',           allow: ['superadmin','adminclinique','medecin','infirmier','radiologue'] },
       { file: 'recurring.routes.js',         path: '/recurring',           allow: ['superadmin','adminclinique','medecin','infirmier','receptionniste'] },
@@ -116,7 +122,14 @@ test('matrice d\'accès route × rôle (HTTP réel, 14 fichiers touchés par d7a
     const pharma_write_ok  = await call(BASE, cookies.pharmacien, 'PUT', `/pharmacy/${FAKE_ID}`);
     const pharma_write_med = await call(BASE, cookies.medecin,    'PUT', `/pharmacy/${FAKE_ID}`);
     assert.notEqual(pharma_write_ok, 403, 'pharmacien doit pouvoir modifier une fiche médicament');
-    assert.equal(pharma_write_med, 403, 'médecin a un accès lecture seule à la pharmacie, pas d\'écriture');
+    assert.equal(pharma_write_med, 403, 'médecin ne doit avoir aucun accès (ni lecture ni écriture) au module Pharmacie');
+
+    // ACCES-PHARMACIE-001 — le seul accès pharmacie qu'un médecin conserve :
+    // le catalogue minimal (nom+prix), pour Urgences.jsx, pas le module.
+    const catalogue_med   = await call(BASE, cookies.medecin,    'GET', '/pharmacy/catalogue');
+    const catalogue_pat   = await call(BASE, cookies.patient,    'GET', '/pharmacy/catalogue');
+    assert.notEqual(catalogue_med, 403, 'médecin doit pouvoir lire le catalogue minimal (nom+prix) pour prescrire en urgence');
+    assert.equal(catalogue_pat, 403, 'un patient ne doit jamais accéder, même au catalogue minimal');
 
     const lab_validate_ok  = await call(BASE, cookies.laborantin, 'PUT', `/laboratory/${FAKE_ID}/validate`);
     const lab_validate_med = await call(BASE, cookies.medecin,    'PUT', `/laboratory/${FAKE_ID}/validate`);

@@ -5,7 +5,21 @@ const { protect, authorize } = require('../middleware/auth');
 const { uploadMedPhoto }   = require('../middleware/upload');
 
 const CAN_MANAGE = ['superadmin','adminclinique','pharmacien'];
-const CAN_READ   = ['superadmin','adminclinique','pharmacien','medecin','infirmier'];
+// ACCES-PHARMACIE-001 (correction du 13 sept. 2026) — 'medecin' retiré : le
+// module Pharmacie (stock, mouvements, commandes, ventes, statistiques,
+// file de dispensation) est désormais exclusivement réservé à
+// pharmacien/adminclinique/superadmin (+ infirmier, accès déjà existant et
+// hors périmètre de cette correction). Un médecin ne doit recevoir aucune
+// donnée de ces routes. Le seul besoin métier réel identifié pour ce rôle
+// (sélectionner un médicament réel — nom/prix — pour prescrire/facturer un
+// traitement en urgence, cf. Urgences.jsx) est servi par la route dédiée
+// /catalogue-urgence ci-dessous, dont le contrôleur ne projette QUE les
+// champs de catalogue/tarif — jamais stock/coûts/lots/mouvements.
+const CAN_READ   = ['superadmin','adminclinique','pharmacien','infirmier'];
+
+// Catalogue minimal (nom + prix uniquement) — voir commentaire ci-dessus.
+// Même convention de nommage que /laboratory/catalogue et /radiology/catalogue.
+router.get('/catalogue',                        protect, authorize(...CAN_READ, 'medecin'), pharmaC.getCatalogueMinimal);
 
 router.get('/prescriptions',                    protect, authorize(...CAN_READ),      pharmaC.getPrescriptions);
 router.put('/prescriptions/:id/dispenser',      protect, authorize(...CAN_MANAGE),    pharmaC.dispenser);

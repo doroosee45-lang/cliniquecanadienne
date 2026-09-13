@@ -97,7 +97,10 @@ const NAV_SECTIONS = [
       { to: '/laboratory',  label: 'Laboratoire', icon: FlaskConical, roles: withAdmins('medecin','infirmier','laborantin') },
       { to: '/radiology',   label: 'Imagerie',    icon: ScanLine,     roles: withAdmins('medecin','infirmier','radiologue') },
       { to: '/echographie', label: 'Échographie', icon: Activity,     roles: withAdmins('medecin','radiologue','infirmier','sage_femme') },
-      { to: '/pharmacy',    label: 'Pharmacie',   icon: Pill,         roles: withAdmins('pharmacien','medecin','infirmier') },
+      // ACCES-PHARMACIE-001 (correction du 13 sept. 2026) — 'medecin' retiré :
+      // le module Pharmacie est réservé à pharmacien (+ infirmier, accès
+      // déjà existant côté backend, hors périmètre de cette correction).
+      { to: '/pharmacy',    label: 'Pharmacie',   icon: Pill,         roles: withAdmins('pharmacien','infirmier') },
     ],
   },
   {

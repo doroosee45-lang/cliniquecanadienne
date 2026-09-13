@@ -40,6 +40,27 @@ exports.getAll = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ACCES-PHARMACIE-001 (correction du 13 sept. 2026) — endpoint minimal,
+// distinct de getAll : le rôle medecin ne doit recevoir AUCUNE donnée du
+// module Pharmacie (stock, coûts d'achat, lots, mouvements, fournisseurs...),
+// mais Urgences.jsx a besoin d'un vrai catalogue (nom + prix) pour
+// sélectionner un médicament réel lors de la prescription/facturation d'un
+// traitement en urgence — un besoin métier légitime, distinct de la gestion
+// du stock elle-même. Projection strictement limitée aux champs de
+// catalogue/tarif ; jamais stock_actuel/stock_minimum/seuil_alerte/
+// prix_achat/numero_lot/mouvements/fabricant.
+exports.getCatalogueMinimal = async (req, res, next) => {
+  try {
+    const { statut } = req.query;
+    const filter = statut ? { statut } : { statut: { $ne: 'suspendu' } };
+    const medications = await Medication.find(filter)
+      .select('nom_commercial dci forme dosage presentation prix_vente statut ordonnance_requise')
+      .sort('nom_commercial')
+      .lean();
+    res.json({ success: true, medications });
+  } catch (err) { next(err); }
+};
+
 exports.getStats = async (req, res, next) => {
   try {
     // Exclut les médicaments retirés du catalogue (statut 'suspendu') des KPI

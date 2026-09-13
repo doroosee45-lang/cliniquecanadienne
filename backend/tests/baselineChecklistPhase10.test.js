@@ -39,7 +39,12 @@ const MODULES = [
   { module: 'Rendez-vous',                 path: '/appointments',   allow: ['superadmin','adminclinique','medecin','infirmier','receptionniste'] },
   { module: 'Consultations',                path: '/consultations',  allow: ['superadmin','adminclinique','medecin','infirmier'] },
   { module: 'Prescriptions',                path: '/prescriptions',  allow: ['superadmin','adminclinique','medecin','infirmier','pharmacien'] },
-  { module: 'Pharmacie',                    path: '/pharmacy',       allow: ['superadmin','adminclinique','pharmacien','medecin','infirmier'] },
+  // ACCES-PHARMACIE-001 (correction du 13 sept. 2026) — 'medecin' retiré :
+  // le module Pharmacie est exclusivement réservé à pharmacien (+
+  // infirmier, inchangé). Voir pharmacy.routes.js::CAN_READ et
+  // accessMatrix.test.js pour la même correction, avec le détail du
+  // catalogue minimal (/pharmacy/catalogue) que medecin conserve.
+  { module: 'Pharmacie',                    path: '/pharmacy',       allow: ['superadmin','adminclinique','pharmacien','infirmier'] },
   { module: 'Hospitalisation',              path: '/hospitalization',allow: ['superadmin','adminclinique','medecin','infirmier'] },
   { module: 'Chirurgie & Bloc opératoire',  path: '/chirurgie',      allow: ['superadmin','adminclinique','medecin','infirmier'] },
   { module: 'Urgences & Ambulances',        path: '/urgences',       allow: ['superadmin','adminclinique','medecin','infirmier','sage_femme'] },

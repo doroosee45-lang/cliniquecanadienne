@@ -22,6 +22,11 @@ vi.mock('../../api', () => ({
 import api from '../../api';
 
 vi.mock('../../hooks/useRealtimeRefresh', () => ({ useRealtimeRefresh: () => {} }));
+// ACCES-PHARMACIE-001 — Prescriptions.jsx lit désormais useAuth() pour
+// n'afficher l'onglet "Pharmacie" qu'aux rôles y ayant réellement accès ;
+// ce test ne porte pas sur les rôles, rôle à accès complet pour préserver
+// le comportement déjà couvert ici.
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'superadmin' } }) }));
 
 // 2 ordonnances réelles du Dr Amina Diallo (Cardiologie), toutes deux
 // prescrivant Doliprane — donc Doliprane doit apparaître à 100% (2/2) et
