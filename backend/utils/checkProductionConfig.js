@@ -11,8 +11,20 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 // dynamiquement, pour que ce contrôle reste valide même si seed.js change de
 // forme plus tard sans que quelqu'un pense à mettre ce fichier à jour en
 // même temps — un écart entre les deux serait alors visible en CI/revue).
+//
+// AUDIT-SEC-SEED-ADMIN (13 sept. 2026) — 'oseedoro@gmail.com' a été retiré
+// de cette liste : ce n'est pas un compte de démonstration jetable comme les
+// 26 autres ci-dessous, c'est le compte superadmin réellement utilisé en
+// production. Le laisser dans cette liste bloquait indéfiniment le
+// démarrage réel (aucune rotation de mot de passe ne pouvait jamais faire
+// disparaître l'écart, puisque le contrôle ne regardait que l'email, jamais
+// le mot de passe). Ce compte est désormais géré exclusivement par
+// utils/ensureInitialAdmin.js (INITIAL_ADMIN_EMAIL/INITIAL_ADMIN_PASSWORD,
+// jamais par seed.js) — voir ce fichier pour la marche à suivre : faire
+// tourner ce script pour donner à ce compte un mot de passe qui ne soit
+// plus celui, partagé, de SEED_PASSWORD/seed.js.
 const KNOWN_SEED_EMAILS = [
-  'oseedoro@gmail.com', 'admin@clinique-souanke.cg',
+  'admin@clinique-souanke.cg',
   'dr.nguema@clinique-souanke.cg', 'dr.obiang@clinique-souanke.cg', 'dr.moussavou@clinique-souanke.cg', 'dr.nze@clinique-souanke.cg',
   'inf.bekale@clinique-souanke.cg', 'inf.mba@clinique-souanke.cg', 'inf.eyeghe@clinique-souanke.cg',
   'lab.bongo@clinique-souanke.cg', 'lab.mbemba@clinique-souanke.cg',
