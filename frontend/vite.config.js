@@ -57,5 +57,15 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.js'],
     css: false,
+    // HOSP-04/diagnostic du 13 sept. 2026 — en parallélisme par défaut
+    // (jusqu'à 1 fork par cœur), la création concurrente de ~8 environnements
+    // jsdom sature la machine et pousse occasionnellement un test par
+    // ailleurs rapide (ex. HOSP-04 : 1792ms isolé) au-delà du testTimeout de
+    // 5000ms — mesuré : 2/133 échecs aléatoires en parallèle non borné
+    // (166.90s), 0/133 en séquentiel (157.78s) et 0/133 avec maxWorkers à
+    // 50% des cœurs, cette dernière option étant aussi la plus rapide des
+    // trois (73.84s). Aucun test ni composant modifié — seule la
+    // concurrence est bornée.
+    maxWorkers: '50%',
   },
 });
