@@ -173,6 +173,17 @@ const googleLogin = async (req, res) => {
       // compte classique.
       await logAction({ utilisateur: user._id, action: 'CREATE_USER', module: 'admin', ip: req.ip, message: `Auto-inscription via Google : ${user.email}` });
     } else {
+      // SEC-GOOGLE-INACTIVE-BYPASS (13 sept. 2026, découvert en test
+      // navigateur réel sur le même défaut d'auth.controller.js::resetPassword)
+      // — un compte existant non actif (jamais activé, désactivé ou suspendu)
+      // pouvait obtenir une session pleinement authentifiée via "Continuer
+      // avec Google", sans jamais repasser par la vérification de statut du
+      // login classique (auth.controller.js::login, 403 explicite). Même
+      // règle appliquée ici, avant toute liaison Google ou émission de cookie.
+      if (user.statut !== 'actif') {
+        await logAction({ utilisateur: user._id, action: 'LOGIN_ECHEC', module: 'auth', ip: req.ip, statut: 'echec', message: `Google — compte non actif refusé : ${user.email}` });
+        return res.status(403).json({ success: false, message: 'Compte inactif ou suspendu. Contactez l\'administrateur.' });
+      }
       // Compte existant → lier Google si pas encore fait
       if (!user.googleId) {
         user.googleId = profile.id;

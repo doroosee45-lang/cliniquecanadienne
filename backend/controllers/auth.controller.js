@@ -157,6 +157,18 @@ exports.resetPassword = async (req, res, next) => {
     await user.save();
 
     await logAction({ utilisateur: user._id, action: 'RESET_PASSWORD', module: 'auth', ip: req.ip, message: `Mot de passe réinitialisé: ${user.email}` });
+    // SEC-RESET-INACTIVE-BYPASS (13 sept. 2026, découvert en test navigateur
+    // réel) — sendTokenCookie() était appelé sans jamais vérifier
+    // user.statut, contrairement à exports.login ci-dessus (403 explicite si
+    // statut !== 'actif') : un compte jamais activé, désactivé ou suspendu
+    // pouvait obtenir une session pleinement authentifiée par ce seul
+    // détour, sans jamais repasser par la vérification de statut du login
+    // normal. Le mot de passe est bien changé dans tous les cas (ci-dessus,
+    // inchangé) — seule l'auto-connexion est désormais soumise à la même
+    // règle que login().
+    if (user.statut !== 'actif') {
+      return res.status(200).json({ success: true, message: 'Mot de passe réinitialisé. Ce compte n\'est pas actif — contactez l\'administrateur pour vous connecter.', autoLogin: false });
+    }
     sendTokenCookie(user, 200, res);
   } catch (err) { next(err); }
 };
