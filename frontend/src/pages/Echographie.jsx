@@ -1770,7 +1770,7 @@ const sendEchoReportEmail = async (d) => {
       sujet: `Compte-rendu d'échographie — ${d.type}${d.sous_type ? ` (${d.sous_type})` : ""} — ${d.numero}`,
       rapport: { type: d.type, sous_type: d.sous_type, rapport_texte: d.rapport_texte, conclusion: d.conclusion, recommandations: d.recommandations },
     });
-    toast.success(data.simulated ? "📧 Email simulé (SMTP non configuré en environnement local)" : "📧 Email envoyé");
+    toast.success(data.simulated ? "📧 Email simulé (Resend non configuré en environnement local)" : "📧 Email envoyé");
     return true;
   } catch (err) {
     toast.error(err?.response?.data?.message || "Échec de l'envoi de l'email.");

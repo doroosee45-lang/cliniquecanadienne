@@ -2,9 +2,11 @@
 // du serveur en fonctionnement. Vérifie : le logger produit bien des
 // enregistrements structurés (niveau + message + métadonnées, pas juste une
 // chaîne concaténée), que le mode JSON de production sérialise correctement
-// les métadonnées passées, et que l'absence de SENTRY_DSN dans cet
-// environnement (bloquant documenté, pas sauté en silence) ne fait planter
-// ni le chargement du module ni un appel à captureException.
+// les métadonnées passées, et que l'ABSENCE de SENTRY_DSN (simulée
+// explicitement ici, quelle que soit la configuration réelle de la machine
+// qui exécute ce test) ne fait planter ni le chargement du module ni un
+// appel à captureException — sentryEnabled doit rester false et
+// captureException un no-op silencieux.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -18,14 +20,31 @@ test('T9.10 — logger structuré et intégration Sentry gated', async (t) => {
     assert.doesNotThrow(() => logger.info('T9.10 test log', { module: 'test', nested: { a: 1 } }));
   });
 
-  await t.test('sans SENTRY_DSN (cas réel de cet environnement), sentryEnabled est false et captureException ne lève rien', () => {
+  await t.test('sans SENTRY_DSN, sentryEnabled est false et captureException ne lève rien', () => {
+    // logger.js lit env.SENTRY_DSN (config/env.js), jamais process.env.SENTRY_DSN
+    // directement (AUDIT-B5) — et config/env.js fige sa valeur au premier
+    // require(), comme le documente déjà le 3e sous-test de ce fichier.
+    //
+    // Piège : config/env.js appelle lui-même dotenv.config() à chaque
+    // require() frais — dotenv ne fait jamais que COMPLÉTER les variables
+    // absentes de process.env, jamais écraser celles déjà présentes. Un
+    // simple `delete process.env.SENTRY_DSN` la rend "absente", et le
+    // require() de config/env.js ci-dessous la repeuple aussitôt depuis le
+    // vrai .env de la machine (s'il en contient une) — le test croirait
+    // alors tester l'absence de SENTRY_DSN alors qu'il testerait en fait sa
+    // présence réelle sur cette machine. Régler à une chaîne vide plutôt
+    // que supprimer (comme le 3e sous-test le fait déjà pour NODE_ENV) :
+    // "déjà présente, juste falsy" n'est jamais complétée par dotenv.
+    delete require.cache[require.resolve('../config/env')];
     delete require.cache[require.resolve('../utils/logger')];
     const originalDsn = process.env.SENTRY_DSN;
-    delete process.env.SENTRY_DSN;
+    process.env.SENTRY_DSN = '';
     const { sentryEnabled, captureException } = require('../utils/logger');
     assert.equal(sentryEnabled, false, 'sans DSN, Sentry ne doit pas se déclarer actif');
     assert.doesNotThrow(() => captureException(new Error('test'), { context: 'unit-test' }), 'captureException doit être un no-op silencieux, jamais une exception, quand Sentry est désactivé');
-    if (originalDsn) process.env.SENTRY_DSN = originalDsn;
+    if (originalDsn) process.env.SENTRY_DSN = originalDsn; else delete process.env.SENTRY_DSN;
+    delete require.cache[require.resolve('../config/env')];
+    delete require.cache[require.resolve('../utils/logger')];
   });
 
   await t.test('le format JSON de production sérialise correctement message + métadonnées', () => {

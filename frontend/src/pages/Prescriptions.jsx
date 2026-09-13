@@ -633,7 +633,7 @@ export default function Ordonnances() {
       setOrds(prev => prev.map(o => o._id === currentOrd._id ? { ...o, statut:"publiee" } : o));
       const msg = data.email_envoye
         ? "✅ Ordonnance publiée et envoyée au patient par email."
-        : "✅ Ordonnance publiée (email non envoyé — SMTP non configuré).";
+        : "✅ Ordonnance publiée (email non envoyé — Resend non configuré).";
       toast.success(msg, { duration: 5000 });
       loadStats();
     } catch (err) {
@@ -1136,7 +1136,7 @@ export default function Ordonnances() {
                                       try {
                                         const { data } = await api.post(`/prescriptions/${ord._id}/publier`);
                                         setOrds(prev => prev.map(o => o._id === ord._id ? { ...o, statut:"publiee" } : o));
-                                        toast.success(data.email_envoye ? "✅ Ordonnance publiée et envoyée au patient par email." : "✅ Ordonnance publiée (email non envoyé — SMTP non configuré).", { duration: 4000 });
+                                        toast.success(data.email_envoye ? "✅ Ordonnance publiée et envoyée au patient par email." : "✅ Ordonnance publiée (email non envoyé — Resend non configuré).", { duration: 4000 });
                                         loadStats();
                                       } catch (err) {
                                         toast.error(err?.response?.data?.message || "Erreur publication.");

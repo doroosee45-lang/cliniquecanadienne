@@ -754,7 +754,7 @@ export default function Administration() {
       if (formPatientQuick.email) {
         toast.success(data.email_envoye
           ? `📧 Email d'activation envoyé à ${formPatientQuick.email}`
-          : `⚠️ Dossier créé, mais l'email d'activation n'a pas pu être envoyé — vérifiez la configuration SMTP.`);
+          : `⚠️ Dossier créé, mais l'email d'activation n'a pas pu être envoyé — vérifiez la configuration Resend (RESEND_API_KEY).`);
       }
       setModalPatientQuick(false); setFormPatientQuick(EMPTY_PATIENT_QUICK);
     } catch (err) {

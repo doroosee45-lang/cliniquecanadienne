@@ -10,15 +10,13 @@
 - **Backend** : Mongoose (pollution de prototype via casting `update`, `GHSA-664h-wqgq-64gw`) — corrigé `8.24.0 → 8.24.1` (`^8.24.1`), vérifié explicitement contre le hook `pre('save')` d'`Invoice.js` (calcul `montant_paye`/`montant_restant`, génération `numero_facture`, correctif `date_echeance` de [[T5.2]]) et contre `sweepFullPayloadT52.test.js` en entier, avant et après la mise à jour — 198/198 tests toujours verts. `brace-expansion` et `morgan` corrigés via `npm audit fix` (non cassant).
 - **Frontend** : `axios` (9 avis), `DOMPurify` (3), `form-data`, `nanoid`, `PostCSS`, `Socket.IO`, `launch-editor` — tous corrigés via `npm audit fix` (non cassant), build frontend confirmé propre après coup.
 
-Trois éléments restent, chacun nécessitant un arbitrage plutôt qu'une correction automatique :
+Quatre éléments ont nécessité un arbitrage plutôt qu'une correction automatique ; le premier (`nodemailer`) est depuis résolu par suppression pure et simple de la dépendance (migration Resend), les trois autres restent ouverts :
 
-## 1. `nodemailer` (backend) — risque accepté, mise à jour différée
+## 1. `nodemailer` (backend) — RÉSOLU (13 sept. 2026, migration Resend)
 
-**Faille :** SSRF / lecture de fichier arbitraire via l'option `raw`, contournant `disableFileAccess`/`disableUrlAccess` (`GHSA-p6gq-j5cr-w38f`, sévérité haute). Corrigé en `9.0.5` — saut majeur depuis `^8.0.10`.
+**Faille :** SSRF / lecture de fichier arbitraire via l'option `raw`, contournant `disableFileAccess`/`disableUrlAccess` (`GHSA-p6gq-j5cr-w38f`, sévérité haute).
 
-**Décision :** ne pas mettre à jour maintenant. Vérifié dans `backend/utils/mail.js` : les six fonctions d'envoi (`sendEmail`, `sendActivationEmail`, `sendPasswordResetEmail`, `sendPrescriptionEmail`, `sendAppointmentEmail`, `sendReminderEmail`) n'utilisent jamais l'option `raw` — uniquement `to`/`subject`/`html`/`from` standard. La faille n'est donc pas exploitable telle que ce code l'utilise. Un saut majeur pour un risque non exploitable ne justifie pas le risque de régression dans un ticket d'audit de routine.
-
-**À reprendre si :** un usage futur de `raw` est introduit, ou lors d'une revue de dépendances dédiée.
+**Résolution :** `nodemailer` n'est plus une dépendance de ce projet — `backend/utils/mail.js` a été entièrement migré vers l'API Resend (SDK officiel `resend`), qui ne présente pas cette faille. `npm audit` ne signale plus rien pour ce paquet, plus besoin d'un risque accepté. Le seuil `--audit-level` du job backend en CI (`.github/workflows/ci.yml`) a été resserré de `critical` à `high` en conséquence : la seule justification restante pour un seuil aussi permissif était cette faille haute, désormais disparue — le job frontend reste à `critical` (`xlsx`/`react-router-dom` ci-dessous, encore réels).
 
 ## 2. `xlsx` (frontend, SheetJS) — risque accepté, aucun correctif disponible
 

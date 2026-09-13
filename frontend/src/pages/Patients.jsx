@@ -1889,7 +1889,7 @@ export default function Patient() {
               <div style={{ background: credsModal.emailEnvoye ? '#F0FDF4' : '#FFF7ED', border:`1.5px solid ${credsModal.emailEnvoye ? '#BBF7D0' : '#FED7AA'}`, borderRadius:12, padding:'12px 16px', fontSize:13, color: credsModal.emailEnvoye ? '#166534' : '#9A3412', fontWeight:600 }}>
                 {credsModal.emailEnvoye
                   ? `📧 Email d'activation envoyé à ${credsModal.email}`
-                  : '⚠️ Email non envoyé (SMTP non configuré) — transmettez le lien d\'activation ci-dessous'}
+                  : '⚠️ Email non envoyé (Resend non configuré) — transmettez le lien d\'activation ci-dessous'}
               </div>
 
               {/* Identifiants */}

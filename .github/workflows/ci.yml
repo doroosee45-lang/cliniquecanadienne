@@ -35,10 +35,11 @@ jobs:
       JWT_COOKIE_EXPIRE: 1
       CLIENT_URL: http://localhost:5173
       GOOGLE_CLIENT_ID: ci-dummy-client-id
-      # SMTP volontairement absent : la suite tolère déjà l'échec d'envoi
-      # (voir noPlaintextPassword.test.js et consorts, écrits pour vérifier
-      # justement le comportement quand l'email échoue) — pas besoin de
-      # vraies identifiants SMTP pour que les tests passent en CI.
+      # MIGRATION-RESEND — RESEND_API_KEY volontairement absente : la suite
+      # tolère déjà le mode simulé (voir noPlaintextPassword.test.js et
+      # consorts, écrits pour vérifier justement le comportement quand
+      # l'email échoue/est simulé) — pas besoin d'une vraie clé Resend pour
+      # que les tests passent en CI.
     steps:
       - uses: actions/checkout@v4
 
@@ -51,12 +52,14 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
-      # T9.7 — seuil "critical" seulement : une faille haute (nodemailer,
-      # non exploitable via l'usage de ce code, voir docs/tickets/0011) est
-      # actée et documentée, pas corrigible sans saut majeur. "high" ferait
-      # échouer la CI sur un risque déjà accepté à chaque run. Dependabot
-      # reste le radar continu pour tout le reste (voir dependabot.yml).
-      - run: npm audit --audit-level=critical
+      # T9.7 (mis à jour 13 sept. 2026, ticket 0011) — le seuil était à
+      # "critical" uniquement à cause d'une faille haute sur nodemailer,
+      # dépendance désormais entièrement supprimée (migration Resend) :
+      # resserré à "high" puisqu'aucun risque haut accepté ne reste côté
+      # backend (seul uuid/hyperid, modéré et devDependency de test, l'est
+      # encore — voir ticket 0011 point 4). Dependabot reste le radar
+      # continu pour tout le reste (voir dependabot.yml).
+      - run: npm audit --audit-level=high
 
   frontend:
     runs-on: ubuntu-latest

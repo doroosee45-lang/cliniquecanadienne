@@ -1055,7 +1055,7 @@ export default function Messagerie() {
     setEmailSending(true);
     try {
       const { data } = await api.post("/messages/patient-email", { patient: emailPatient._id, sujet: emailSujet.trim(), contenu: emailBody.trim() });
-      toast.success(data.simulated ? "📧 Email simulé (SMTP non configuré en environnement local)" : "📧 Email envoyé");
+      toast.success(data.simulated ? "📧 Email simulé (Resend non configuré en environnement local)" : "📧 Email envoyé");
       closeEmail();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Échec de l'envoi de l'email.");
