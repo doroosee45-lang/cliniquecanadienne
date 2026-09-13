@@ -165,17 +165,18 @@ export default function PatientDetail() {
   };
 
   const handleToggleActif = async () => {
+    // PAT-TOGGLE-001 — PUT /:id générique bloque volontairement actif/statut
+    // (AUDIT-P2-1) : ce toggle passe désormais par la route dédiée, seule
+    // à réellement persister le changement (et bloquer/débloquer le
+    // compte portail lié en cohérence).
     const newActif = !patient.actif;
     setSaving(true);
     try {
-      const { data: res } = await api.put(`/patients/${id}`, {
-        actif:  newActif,
-        statut: newActif ? 'actif' : 'inactif',
-      });
+      const { data: res } = await api.put(`/patients/${id}/toggle-actif`);
       setPatient(res.patient);
       toast.success(newActif ? '✅ Patient activé' : '🔒 Patient désactivé');
     } catch (e) {
-      toast.error('Erreur lors de la mise à jour du statut');
+      toast.error(e.response?.data?.message || 'Erreur lors de la mise à jour du statut');
     } finally {
       setSaving(false);
     }

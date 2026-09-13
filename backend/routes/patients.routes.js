@@ -21,6 +21,11 @@ router.get('/',        protect, authorize(...CAN_READ),      patC.getAll);
 router.post('/',       protect, authorize(...CAN_CREATE),     patC.create);
 router.get('/:id',     protect, authorize(...CAN_READ),      patC.getOne);
 router.put('/:id/activate-admin', protect, authorize(...CAN_WRITE), patC.activateAdmin);
+// PAT-TOGGLE-001 — même restriction que DELETE /:id (dont c'est le pendant
+// non destructeur) : activer/désactiver un dossier bloque/débloque aussi
+// l'accès portail du patient, une action administrative, pas une simple
+// édition de fiche (CAN_WRITE, plus large, reste réservé à update()).
+router.put('/:id/toggle-actif', protect, authorize('superadmin', 'adminclinique'), patC.toggleActif);
 router.put('/:id',     protect, authorize(...CAN_WRITE),      patC.update);
 router.post('/:id/photo', protect, authorize(...CAN_WRITE), uploadPatientPhoto.single('photo'), patC.uploadPhoto);
 router.delete('/:id',  protect, authorize('superadmin', 'adminclinique'), patC.remove);

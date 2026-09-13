@@ -488,6 +488,64 @@ const resolveLinkedUserFilter = async (patient) => {
   return patient.email ? { email: patient.email, role: 'patient' } : null;
 };
 
+// PAT-TOGGLE-001 (audit métier du 13 sept. 2026, Phase 4) — le bouton
+// Activer/Désactiver de Patients.jsx/PatientDetail.jsx affichait un succès
+// mais ne modifiait jamais rien : il appelle PUT /:id (update, ci-dessus),
+// dont actif/statut font partie de PATIENT_BLOCKED_FIELDS (AUDIT-P2-1,
+// délibéré — empêche CAN_WRITE de contourner le circuit d'activation
+// portail). remove() sait déjà désactiver un dossier (statut='inactif',
+// actif=false + compte User lié bloqué) mais UNIQUEMENT comme repli d'une
+// tentative de SUPPRESSION quand un historique existe — un patient SANS
+// historique y serait réellement supprimé, pas désactivé : inutilisable
+// tel quel pour un simple bouton "Désactiver". Route dédiée, symétrique
+// dans les deux sens (jamais de suppression physique ici, quel que soit
+// l'historique), réutilisant les mêmes gardes que remove() (lit occupé,
+// compte User lié) plutôt que de dupliquer une nouvelle logique.
+exports.toggleActif = async (req, res, next) => {
+  try {
+    const patient = await Patient.findById(req.params.id);
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
+
+    const activerMaintenant = !patient.actif;
+
+    if (!activerMaintenant) {
+      // Même garde que remove() : jamais de désactivation silencieuse d'un
+      // patient physiquement hospitalisé (lit occupé = état live, pas de
+      // l'historique).
+      const Room = require('../models/Room');
+      const occupieUnLit = await Room.countDocuments({ 'lits.patient_actuel': patient._id });
+      if (occupieUnLit > 0) {
+        return res.status(409).json({ success: false, message: 'Ce patient occupe actuellement un lit — une sortie d\'hospitalisation est requise avant toute désactivation du dossier.' });
+      }
+    }
+
+    const avant = patient.toObject();
+    patient.actif  = activerMaintenant;
+    patient.statut = activerMaintenant ? 'actif' : 'inactif';
+    await patient.save();
+
+    // Le compte portail lié suit le même sens (désactivé/réactivé) — sans
+    // quoi un dossier réaffiché "actif" resterait bloqué en connexion, ou
+    // inversement un compte resterait connectable après désactivation du
+    // dossier.
+    const userFilter = await resolveLinkedUserFilter(patient);
+    if (userFilter) await User.findOneAndUpdate(userFilter, { statut: activerMaintenant ? 'actif' : 'inactif' });
+
+    await logAction({
+      utilisateur: req.user._id, action: activerMaintenant ? 'ACTIVATE' : 'DEACTIVATE', module: 'patients',
+      entite_id: patient._id, ip: req.ip, avant, apres: patient,
+      message: `Dossier ${activerMaintenant ? 'réactivé' : 'désactivé'} : ${patient.nom} ${patient.prenom}`,
+    });
+    emitActivity({
+      module: 'patients', action: activerMaintenant ? 'Dossier patient réactivé' : 'Dossier patient désactivé',
+      detail: `${patient.prenom} ${patient.nom} (${patient.numero_dossier})`, icon: activerMaintenant ? '✅' : '🔒',
+      userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}`,
+    });
+    emitDashboardUpdate();
+    res.json({ success: true, patient });
+  } catch (err) { next(err); }
+};
+
 // ── DELETE ───────────────────────────────────────────────────────────────────
 exports.remove = async (req, res, next) => {
   try {
