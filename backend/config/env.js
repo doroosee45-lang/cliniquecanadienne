@@ -50,7 +50,7 @@ module.exports = {
   // host/port/utilisateur. utils/mail.js retombe en mode simulé si absente
   // (même pattern que OPENAI_API_KEY/TWILIO_*).
   RESEND_API_KEY: process.env.RESEND_API_KEY,
-  MAIL_FROM: process.env.MAIL_FROM || '"Clinique Canadienne" <onboarding@resend.dev>',
+  MAIL_FROM: process.env.MAIL_FROM, 
 
   TWILIO_ACCOUNT_SID:  process.env.TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN:   process.env.TWILIO_AUTH_TOKEN,
