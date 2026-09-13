@@ -66,6 +66,38 @@ function buildResponsiveCSS({ isMobile, isSmall }) {
     .ep-tab  { padding: ${isSmall ? '6px 6px 8px' : '7px 10px 9px'} !important; font-size: 10px !important; flex:1; min-width: ${isSmall ? '22%' : '17%'}; }
     .ep-tab-icon { font-size: ${isSmall ? '17px' : '18px'} !important; }
 
+    /* RESPONSIVE-PORTAIL-001 — barre de navigation principale du portail
+       (.tab-bar/.tab-bar-item, classe PARTAGÉE avec d'autres pages : scopée
+       à ".ep" pour ne jamais affecter les onglets internes d'autres modules
+       comme Patients/Consultations/Hospitalization). 11 onglets avec libellé
+       complet ne tiennent jamais sur une largeur mobile : défilement
+       horizontal propre plutôt que de masquer/tronquer le texte — icône +
+       libellé toujours visibles, entiers, jamais coupés. */
+    .ep .tab-bar {
+      flex-wrap: nowrap !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      -webkit-overflow-scrolling: touch !important;
+      scroll-behavior: smooth !important;
+      scrollbar-width: thin !important;
+      max-width: 100% !important;
+      gap: ${isSmall ? '4px' : '6px'} !important;
+      padding: ${isSmall ? '4px' : '6px'} !important;
+    }
+    .ep .tab-bar::-webkit-scrollbar { height: 5px; }
+    .ep .tab-bar::-webkit-scrollbar-track { background: transparent; }
+    .ep .tab-bar::-webkit-scrollbar-thumb { background: var(--cbr); border-radius: 99px; }
+    .ep .tab-bar-item {
+      flex: 0 0 auto !important;
+      white-space: nowrap !important;
+      padding: ${isSmall ? '8px 10px' : '9px 13px'} !important;
+      gap: ${isSmall ? '5px' : '6px'} !important;
+      font-size: ${isSmall ? '11px' : '12px'} !important;
+    }
+    .ep .tab-bar-item-icon { font-size: ${isSmall ? '15px' : '16px'} !important; line-height: 1 !important; flex-shrink: 0 !important; }
+    .ep .tab-bar-item-label { white-space: nowrap !important; }
+    .ep .tab-bar-item-count { flex-shrink: 0 !important; }
+
     .ebtn    { font-size: 12px !important; padding: 8px 12px !important; }
     .ebtn-sm { font-size: 11px !important; padding: 5px 8px !important; }
     .einp    { font-size: 16px !important; }
@@ -882,14 +914,25 @@ export default function MonEspacePatient() {
         />
 
         {/* ── TABS BAR ── */}
+        {/* RESPONSIVE-PORTAIL-001 (correction du 13 sept. 2026) — sur mobile,
+            le libellé était soit tronqué à 2 mots (`split(' ').slice(0,2)` :
+            "Tableau de bord" devenait "Tableau de"), soit carrément masqué
+            (`display:none` dès que isSmall et plus de 8 onglets — ce qui est
+            toujours le cas ici, 11 onglets) : seules les icônes restaient
+            visibles, aucun moyen d'identifier un onglet à l'aveugle. Icône +
+            libellé complet toujours affichés désormais, quelle que soit la
+            largeur d'écran ; le débordement horizontal (impossible à éviter
+            avec 11 libellés complets sur un petit écran) est géré par un
+            vrai défilement horizontal scrollable (règles dans
+            buildResponsiveCSS, scopées à .ep .tab-bar pour ne pas affecter
+            .tab-bar/.tab-bar-item ailleurs dans l'app — classe partagée).
+            Wrap conservé tel quel en desktop (design inchangé). */}
         <div className="tab-bar">
           {TABS.map(t => (
             <button key={t.key} className={`tab-bar-item ${tab === t.key ? "active" : ""}`}
               onClick={() => setTab(t.key)} title={t.label}>
-              <span>{t.icon}</span>
-              <span style={{ display: isSmall && TABS.length > 8 ? 'none' : 'inline' }}>
-                {isMobile ? t.label.split(' ').slice(0,2).join(' ') : t.label}
-              </span>
+              <span className="tab-bar-item-icon">{t.icon}</span>
+              <span className="tab-bar-item-label">{t.label}</span>
               {t.badge > 0 && <span className="tab-bar-item-count">{t.badge}</span>}
             </button>
           ))}
