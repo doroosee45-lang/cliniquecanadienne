@@ -13,6 +13,7 @@ const HospitalizationModel = require('../models/Hospitalization');
 const DocumentModel = require('../models/Document');
 const { logAction, countUnreadConversations, checkAppointmentConflict, isAppointmentRaceWinner } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { logger } = require('../utils/logger');
 const path = require('path');
 const fs   = require('fs');
 
@@ -847,6 +848,19 @@ exports.aiChat = async (req, res) => {
       disclaimer: 'Réponse générée par IA — à titre informatif uniquement, ne remplace pas l\'avis d\'un professionnel de santé.',
     });
   } catch (err) {
-    res.status(502).json({ success: false, message: err.message || "Échec de l'appel à l'assistant IA." });
+    // SEC-AI-ERROR-LEAK (13 sept. 2026, découvert en test navigateur réel) —
+    // err.message peut porter le texte brut renvoyé par l'API OpenAI
+    // (ex. "You have no credits remaining. Add credits ... at
+    // https://platform.openai.com/settings/organization/billing"), un détail
+    // d'infrastructure interne (lien de facturation du compte OpenAI de la
+    // clinique) qui n'a aucune raison d'atteindre un patient. L'erreur réelle
+    // reste tracée (log + AuditLog, même principe qu'ailleurs dans ce
+    // module) — seul le message renvoyé au client est désormais générique.
+    logger.error('[PORTAL AI] Échec appel assistant IA', { error: err.message, patientUserId: req.user?._id?.toString() });
+    await logAction({
+      utilisateur: req.user?._id, action: 'PORTAL_AI_CHAT', module: 'portal', ip: req.ip, statut: 'echec',
+      message: `Échec appel assistant IA (patient ${req.user?.email}) : ${err.message}`,
+    });
+    res.status(502).json({ success: false, message: "Assistant IA temporairement indisponible. Réessayez plus tard." });
   }
 };

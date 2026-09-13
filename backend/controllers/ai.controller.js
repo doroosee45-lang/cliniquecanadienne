@@ -6,6 +6,7 @@ const Prescription  = require('../models/Prescription');
 const Hospitalization = require('../models/Hospitalization');
 const { logAction } = require('../utils/helpers');
 const { detectInteractions } = require('../utils/drugInteractions');
+const { logger } = require('../utils/logger');
 
 // ─── Symptômes → conditions probables ────────────────────────
 const SYMPTOM_MAP = {
@@ -492,7 +493,16 @@ exports.chat = async (req, res) => {
       disclaimer: 'Réponse générée par IA — à titre informatif — non validée médicalement.',
     });
   } catch (err) {
-    res.status(502).json({ success: false, message: err.message || "Échec de l'appel à l'assistant IA." });
+    // SEC-AI-ERROR-LEAK (13 sept. 2026, découvert en test navigateur réel sur
+    // le pendant patient de ce même appel, portal.controller.js::aiChat) —
+    // err.message peut porter le texte brut renvoyé par l'API OpenAI (ex.
+    // un lien vers la page de facturation du compte OpenAI de la clinique),
+    // un détail d'infrastructure interne sans raison d'atteindre le client,
+    // même s'il s'agit ici de personnel et non d'un patient. L'erreur réelle
+    // reste tracée (log + AuditLog) — seul le message renvoyé est générique.
+    logger.error('[AI CHAT] Échec appel assistant IA', { error: err.message, userId: req.user?._id?.toString() });
+    await logAction({ utilisateur: req.user?._id, action: 'AI_CHAT', module: 'ai', ip: req.ip, statut: 'echec', message: `Échec appel assistant IA : ${err.message}` });
+    res.status(502).json({ success: false, message: "Assistant IA temporairement indisponible. Réessayez plus tard." });
   }
 };
 

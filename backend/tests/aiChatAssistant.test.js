@@ -100,12 +100,26 @@ test('CHAT-001 — POST /ai/chat transmet réellement au service OpenAI existant
       assert.ok(capturedPrompt.includes('Et pour un enfant de 5 ans'));
     });
 
-    await t.test('échec réel du service IA (réseau/API) → vraie erreur renvoyée, jamais un succès déguisé', async () => {
-      openai.generateReport = async () => { throw new Error('Échec réseau lors de l\'appel OpenAI (simulation).'); };
+    // SEC-AI-ERROR-LEAK (13 sept. 2026, découvert en test navigateur réel) —
+    // le message d'erreur BRUT d'OpenAI (ex. "You have no credits remaining.
+    // Add credits ... at https://platform.openai.com/settings/...") atteignait
+    // directement le client — un détail d'infrastructure interne (lien de
+    // facturation du compte OpenAI de la clinique) sans raison d'être vu par
+    // qui que ce soit côté client. Un vrai échec (502, success:false) reste
+    // renvoyé — jamais un succès déguisé — mais le message est désormais
+    // générique ; l'erreur réelle est tracée côté serveur (AuditLog).
+    await t.test('échec réel du service IA (réseau/API) → vrai échec renvoyé (502), jamais un succès déguisé, jamais le message brut du fournisseur exposé au client', async () => {
+      const AuditLog = require('../models/AuditLog');
+      openai.generateReport = async () => { throw new Error('You have no credits remaining. Add credits at https://platform.openai.com/settings/organization/billing (simulation).'); };
       const { status, body } = await call({ user: medecin, body: { message: 'Question quelconque' } });
       assert.equal(status, 502);
       assert.equal(body.success, false);
-      assert.match(body.message, /Échec réseau/);
+      assert.doesNotMatch(body.message, /platform\.openai\.com|credits remaining/, 'le message brut du fournisseur IA ne doit jamais atteindre le client');
+      assert.match(body.message, /indisponible/i, 'un message générique et honnête doit être renvoyé à la place');
+
+      const log = await AuditLog.findOne({ action: 'AI_CHAT', module: 'ai', statut: 'echec', utilisateur: medecin._id }).sort('-createdAt').lean();
+      assert.ok(log, 'l\'échec réel doit être tracé côté serveur, pas seulement affiché génériquement au client');
+      assert.match(log.message, /platform\.openai\.com|credits remaining/, 'le détail réel de l\'erreur doit rester disponible côté serveur pour le diagnostic');
     });
 
     await t.test('la clé OPENAI_API_KEY réelle n\'est jamais exposée dans une réponse, succès ou échec', async () => {
@@ -122,6 +136,8 @@ test('CHAT-001 — POST /ai/chat transmet réellement au service OpenAI existant
   } finally {
     openai.generateReport = originalGenerateReport;
     env.OPENAI_API_KEY = originalOpenaiKey;
+    const AuditLog = require('../models/AuditLog');
+    await AuditLog.deleteMany({ action: 'AI_CHAT', module: 'ai', utilisateur: medecin._id });
     await User.findByIdAndDelete(medecin._id);
     await mongoose.disconnect();
   }
