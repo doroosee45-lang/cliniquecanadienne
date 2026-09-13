@@ -427,16 +427,23 @@ function DField({ label, value, full, accent }) {
 }
 
 // ─── Liaison Badge ────────────────────────────────────────────
+// ECHO-001 (audit métier du 13 sept. 2026, Phase 4) — cette liste affichait
+// 9 "liaisons actives" (avec pastille verte pulsante) alors que seules 2
+// sont réellement câblées : Dossier Patient (medicalRecordsController.js
+// interroge bien la collection Echographie) et Facturation (saveRapport()
+// génère réellement une Invoice). Consultation/Maternité/Urgences/
+// Hospitalisation/Imagerie Médicale/Portail Patient n'ont aucun code
+// correspondant (vérifié par recherche exhaustive : Echographie.js n'a
+// aucun champ `consultation`, aucun contrôleur ne référence Pregnancy/
+// Urgence/Hospitalization/ImagingResult depuis ce module, portal.
+// controller.js n'expose aucune route échographie) — "Gynécologie" en
+// particulier ne correspond à aucun module existant dans tout le
+// backend. Ne jamais annoncer une transmission automatique qui n'existe
+// pas : liste réduite aux 2 liaisons réelles plutôt que retirée
+// entièrement, pour ne pas perdre l'information utile qui, elle, est vraie.
 const LIAISONS = [
   { label:"Dossier Patient",  icon:"📁", color:"#1B4F9E", border:"#BFDBFE", bg:"#EFF6FF" },
-  { label:"Consultation",     icon:"🩺", color:"#0EA5A0", border:"#99F6E4", bg:"#F0FDFC" },
-  { label:"Maternité",        icon:"🤰", color:"#BE185D", border:"#FBCFE8", bg:"#FDF2F8" },
-  { label:"Gynécologie",      icon:"💜", color:"#7C3AED", border:"#DDD6FE", bg:"#F5F3FF" },
-  { label:"Urgences",         icon:"🚨", color:"#DC2626", border:"#FECACA", bg:"#FEF2F2" },
-  { label:"Hospitalisation",  icon:"🛏",  color:"#D97706", border:"#FDE68A", bg:"#FFF7ED" },
-  { label:"Imagerie Médicale",icon:"🖥️", color:"#0891B2", border:"#A5F3FC", bg:"#ECFEFF" },
   { label:"Facturation",      icon:"💰", color:"#059669", border:"#A7F3D0", bg:"#ECFDF5" },
-  { label:"Portail Patient",  icon:"📱", color:"#6B7280", border:"#E5E7EB", bg:"#F9FAFB" },
 ];
 
 // ─── TABLEAU DE BORD ─────────────────────────────────────────
@@ -519,7 +526,7 @@ function Dashboard({ demandes }) {
             </div>
             <div className="al-teal" style={{ marginTop:16 }}>
               <div style={{ fontSize:12, fontWeight:700, color:"var(--ct)", marginBottom:4 }}>✅ Transmission automatique active</div>
-              <div style={{ fontSize:11, color:"#0F766E" }}>Les résultats validés sont automatiquement transmis au dossier patient, à la consultation prescriptrice et aux modules concernés.</div>
+              <div style={{ fontSize:11, color:"#0F766E" }}>Les résultats validés sont automatiquement transmis au dossier patient et à la facturation.</div>
             </div>
           </div>
         </div>
@@ -1482,13 +1489,14 @@ function Realisation({ demandes, radiologues = [] }) {
               <div className="echo-card-hdr"><h3>📡 Transmission automatique</h3></div>
               <div style={{ padding:20 }}>
                 <div style={{ fontSize:12, color:"var(--cm)", marginBottom:14 }}>Après validation, les résultats seront automatiquement transmis à :</div>
+                {/* ECHO-001 — seuls Dossier Patient et Facturation sont
+                    réellement câblés (voir LIAISONS ci-dessus) ; Consultation/
+                    Maternité/Portail Patient retirés, aucune transmission
+                    réelle n'existe vers ces destinations depuis ce module. */}
                 <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                   {[
                     { icon:"📁", label:"Dossier Patient",   desc:"Historique & rapport PDF" },
-                    { icon:"🩺", label:"Consultation",      desc:"Résultat ajouté au diagnostic" },
-                    { icon:"🤰", label:"Maternité",         desc:"Suivi de grossesse mis à jour" },
                     { icon:"💰", label:"Facturation",       desc:"Acte généré automatiquement" },
-                    { icon:"📱", label:"Portail Patient",   desc:"Disponible en ligne" },
                   ].map(item=>(
                     <div key={item.label} style={{ display:"flex", gap:10, alignItems:"center", background:"#F8FAFD", borderRadius:10, padding:"10px 14px", border:"1.5px solid var(--cbr)" }}>
                       <span style={{ fontSize:20 }}>{item.icon}</span>
@@ -2114,7 +2122,7 @@ export default function Echographie() {
               <div style={{ fontSize:48, marginBottom:16 }}>📄</div>
               <div style={{ fontSize:16, fontWeight:700, color:"var(--cn)", marginBottom:8 }}>Résultats & Rapports</div>
               <div style={{ fontSize:13, color:"var(--cm)", marginBottom:20, maxWidth:480, margin:"0 auto 20px" }}>
-                Les rapports validés sont disponibles ici et automatiquement transmis au dossier patient, à la consultation prescriptrice et aux modules liés.
+                Les rapports validés sont disponibles ici et automatiquement transmis au dossier patient et à la facturation.
               </div>
               <div style={{ display:"flex", flexWrap:"wrap", gap:10, justifyContent:"center" }}>
                 {demandes.filter(d=>d.rapport_statut==="valide").map(d=>(
