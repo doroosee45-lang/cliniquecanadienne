@@ -1,4 +1,5 @@
 const Consultation = require('../models/Consultation');
+const Appointment   = require('../models/Appointment');
 const Prescription  = require('../models/Prescription');
 const Invoice       = require('../models/Invoice');
 const Patient       = require('../models/Patient');
@@ -161,6 +162,33 @@ exports.create = async (req, res, next) => {
     const patientDoc = await Patient.findById(req.body.patient).select('_id');
     if (!patientDoc) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
 
+    // RDV-CONSULT-002 (audit métier du 13 sept. 2026, Phase 4) — appointment
+    // n'était jamais vérifié : un ObjectId fabriqué/orphelin, ou un
+    // rendez-vous appartenant à un AUTRE patient, était accepté tel quel
+    // (buildConsultationFields ci-dessus ne fait qu'un passthrough). Reste
+    // optionnel — une consultation peut toujours être créée sans rendez-vous
+    // — mais s'il est fourni, doit référencer un vrai Appointment du MÊME
+    // patient, et ne peut être lié qu'à UNE seule Consultation (même
+    // principe qu'Invoice.consultation : index unique sparse empêchant une
+    // double facture pour le même acte, ici appliqué en contrôleur faute
+    // d'unicité déclarée au schéma Consultation).
+    let appointmentId;
+    if (req.body.appointment) {
+      if (!isObjectId(req.body.appointment)) {
+        return res.status(400).json({ success: false, message: 'Référence de rendez-vous invalide.' });
+      }
+      const apptDoc = await Appointment.findById(req.body.appointment).select('patient');
+      if (!apptDoc) return res.status(404).json({ success: false, message: 'Rendez-vous introuvable.' });
+      if (String(apptDoc.patient) !== String(req.body.patient)) {
+        return res.status(400).json({ success: false, message: "Ce rendez-vous n'appartient pas au patient indiqué." });
+      }
+      const dejaLiee = await Consultation.findOne({ appointment: req.body.appointment }).select('_id');
+      if (dejaLiee) {
+        return res.status(409).json({ success: false, message: 'Ce rendez-vous a déjà une consultation liée.' });
+      }
+      appointmentId = req.body.appointment;
+    }
+
     const iaSuggestions = [];
     const sv = req.body.signes_vitaux || {};
     if (sv.temperature > 38.5) iaSuggestions.push({ diagnostic: 'Syndrome fébrile probable', confidence: 85 });
@@ -177,6 +205,7 @@ exports.create = async (req, res, next) => {
     const consultation = await Consultation.create({
       ...buildConsultationFields(req.body),
       medecin,
+      appointment: appointmentId,
       ia_suggestions: iaSuggestions,
     });
 

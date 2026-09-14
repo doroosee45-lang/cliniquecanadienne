@@ -1945,6 +1945,21 @@ export default function RendezVous() {
 
                 {/* Actions */}
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {/* RDV-CONSULT-002 (audit métier du 13 sept. 2026, Phase 4) —
+                      un RDV marqué "Terminé" ne menait jamais nulle part :
+                      aucun mécanisme ne reliait le rendez-vous à la
+                      consultation clinique qui en découle. Même pattern que
+                      Urgences.jsx → Hospitalization.jsx ("Préparer
+                      l'admission") : état de navigation explicite, jamais un
+                      id deviné côté Consultations.jsx. */}
+                  {selectedRdv.statut === "termine" && (
+                    <button className="cbtn cbtn-teal cbtn-sm" onClick={() => {
+                      setModalDetail(false);
+                      navigate("/consultations", { state: { appointment_id: selectedRdv._id, patient_id: selectedRdv.patient_id } });
+                    }}>
+                      📋 Créer la consultation
+                    </button>
+                  )}
                   <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setModalDetail(false); setModalReport(true); }}>
                     📅 Reporter
                   </button>

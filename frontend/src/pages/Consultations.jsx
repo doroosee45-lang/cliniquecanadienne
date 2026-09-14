@@ -2,7 +2,7 @@
 
 
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import api from '../api';
 import toast from 'react-hot-toast';
@@ -327,6 +327,7 @@ const EMPTY_RX = { medicament: "", posologie: "", duree: "", conseils: "" };
 const EMPTY_EXAM = { type: "biologie", libelle: "", priorite: "normal", note: "" };
 const EMPTY_CONS = {
   numero: genNumero(),
+  appointment_id: "",
   patient_nom: "", patient_prenom: "", patient_sexe: "homme", patient_ddn: "",
   patient_tel: "", patient_adresse: "", patient_groupe_sanguin: "",
   patient_antecedents: "", patient_allergies: "",
@@ -928,6 +929,7 @@ const isSameDayCons = (a, b) => {
 export default function Consultation() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const reduxConsultations = useSelector(selectConsultations);
   const reduxTotal         = useSelector(selectConsultationsTotal);
 
@@ -1151,6 +1153,33 @@ export default function Consultation() {
     toast.success(`✅ Patient sélectionné : ${p.prenom} ${p.nom}`);
   };
 
+  // RDV-CONSULT-002 (audit métier du 13 sept. 2026, Phase 4) — arrivée
+  // depuis Appointments.jsx ("📋 Créer la consultation") : le rendez-vous
+  // transmet patient_id/appointment_id via l'état de navigation (jamais une
+  // route inventée, jamais un id deviné), même pattern que Urgences.jsx →
+  // Hospitalization.jsx. Le patient est rechargé depuis l'API (jamais
+  // fabriqué depuis le state de navigation seul) pour réutiliser exactement
+  // le même mappage de champs que selectPatient() ci-dessus.
+  useEffect(() => {
+    if (!location.state?.appointment_id) return;
+    const { appointment_id, patient_id } = location.state;
+    navigate(location.pathname, { replace: true, state: null });
+    (async () => {
+      try {
+        const { data } = await api.get(`/patients/${patient_id}`);
+        const patient = data.patient || data;
+        setMainView('new');
+        setForm({ ...EMPTY_CONS, numero: genNumero() });
+        selectPatient(patient);
+        setForm(f => ({ ...f, appointment_id }));
+        setSection('patient');
+      } catch {
+        toast.error("Impossible de charger le patient de ce rendez-vous.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const addRx = (e) => {
     e.preventDefault();
     if (!formRx.medicament) return;
@@ -1185,6 +1214,7 @@ export default function Consultation() {
     try {
       const payload = {
         patient: form.patient_id,
+        appointment: form.appointment_id || undefined,
         numero: form.numero,
         date_consultation: form.date_heure || new Date().toISOString(),
         medecin:           form.medecin || undefined,
