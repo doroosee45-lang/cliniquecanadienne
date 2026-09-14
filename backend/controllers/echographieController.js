@@ -152,6 +152,23 @@ exports.getOne = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// POST5-001 (audit indépendant post-Phase 5, 14 sept. 2026) — create()
+// persistait `{...req.body}` sans aucun filtre, contrairement à update()
+// (ECHO_BLOCKED_FIELDS ci-dessous) : n'importe quel rôle autorisé sur cette
+// route (dont infirmier/sage_femme — echographie.routes.js) pouvait
+// soumettre directement statut:'validee', rapport_radiologue, rapport_texte,
+// conclusion, recommandations en un seul appel, sans jamais passer par
+// saveRapport() (réservé à radiologue/superadmin). Liste blanche stricte
+// (jamais une liste noire pour une création — plus sûre par défaut si le
+// schéma évolue), dérivée du payload réellement envoyé par le formulaire
+// réel (NouvelleDemandeModal, Echographie.jsx) : seuls les champs
+// descriptifs de la demande initiale, jamais le statut ni le contenu du
+// rapport, qui restent exclusivement gérés par ce contrôleur / saveRapport().
+const ECHO_CREATE_ALLOWED_FIELDS = [
+  'patient_nom', 'dossier', 'age', 'sexe', 'source', 'medecin_presc',
+  'date_prescription', 'type', 'sous_type', 'motif', 'priorite',
+];
+
 // ── POST /echographie
 exports.create = async (req, res, next) => {
   try {
@@ -169,7 +186,14 @@ exports.create = async (req, res, next) => {
     const patientDoc = await Patient.findById(req.body.patient).select('_id').lean();
     if (!patientDoc) return res.status(400).json({ success: false, message: 'Patient introuvable.' });
 
-    const demande = await Echographie.create({ ...req.body, examen, patient: patientDoc._id });
+    const data = {};
+    for (const k of ECHO_CREATE_ALLOWED_FIELDS) { if (req.body[k] !== undefined) data[k] = req.body[k]; }
+
+    // Une demande ne peut jamais naître ailleurs qu'à l'état initial —
+    // statut/rapport_statut/rapport_radiologue/rapport_texte/conclusion/
+    // recommandations/numero sont exclus de la liste blanche ci-dessus,
+    // et statut est explicitement forcé ici (jamais lu de req.body).
+    const demande = await Echographie.create({ ...data, examen, patient: patientDoc._id, statut: 'en_attente' });
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `Nouvelle demande d'échographie ${demande.numero} — ${demande.patient_nom || 'patient'}` });
     emitDashboardUpdate();
     res.status(201).json({ success: true, demande });
