@@ -534,6 +534,23 @@ exports.discharge = async (req, res, next) => {
         await hosp.save();
       }
     }
+    // ANOM-HOSP-01 (audit métier du 13 sept. 2026, Phase 4) — LIMITE
+    // DOCUMENTÉE, même principe que chirurgieController.js::getOne
+    // ("aucun catalogue tarifaire réel n'existe... générer automatiquement
+    // une facture obligerait à inventer un prix — exclu par les règles de
+    // ce chantier") : PrescriptionSejourSchema/ExamenSchema (ci-dessus, sous-
+    // documents embarqués de ce séjour) ne portent aucune référence réelle
+    // vers Medication/ExamCatalogue — contrairement à Urgence.js, qui, lui,
+    // référence bien un vrai Medication/ExamCatalogue pour ses propres
+    // prescriptions/examens et peut donc les facturer ligne par ligne
+    // (urgencesController.js::update). La facture de sortie ne couvre donc
+    // que le tarif réel du lit (cout_total ci-dessus), jamais les
+    // prescriptions/examens consignés pendant le séjour : les inventer ici
+    // reviendrait à fabriquer un prix sans source réelle, ce que ce projet
+    // refuse systématiquement (voir aussi Correction A juste au-dessus).
+    // Facturer réellement ces actes nécessiterait d'abord d'étendre ces deux
+    // schémas avec une vraie référence catalogue — un chantier de fond
+    // distinct, hors périmètre d'un correctif ponctuel.
     let factureGeneree = null;
     const coutTotal = Number(hosp.cout_total) || 0;
     if (coutTotal > 0) {
