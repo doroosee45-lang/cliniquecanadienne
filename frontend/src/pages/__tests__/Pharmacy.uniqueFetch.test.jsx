@@ -17,6 +17,13 @@ import Pharmacy from '../Pharmacy.jsx';
 
 vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 
+// PHARM-005 (audit métier du 13 sept. 2026, Phase 4) — Pharmacy.jsx appelle
+// désormais réellement useAuth() (garde de rôle sur les actions d'écriture,
+// voir Pharmacy.pharm005RoleGuard.test.jsx), qui lève sans <AuthProvider>.
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { prenom: 'Test', nom: 'Pharmacien', role: 'pharmacien' } }),
+}));
+
 vi.mock('../../api', () => ({
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }));

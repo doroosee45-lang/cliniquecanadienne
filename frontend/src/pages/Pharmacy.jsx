@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useLocation } from 'react-router-dom';
 import api from "../api";
 import toast from "react-hot-toast";
+import { useAuth } from '../contexts/AuthContext';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import { Pill, Plus, ShoppingCart, Zap } from 'lucide-react';
 import Hero from '../components/UI/Hero';
@@ -379,6 +380,19 @@ function CmdBadge({ statut }) {
 // ─── MAIN ────────────────────────────────────────────────────
 export default function Pharmacie() {
   const location = useLocation();
+  // PHARM-005 (audit métier du 13 sept. 2026, Phase 4) — aucune garde de
+  // rôle n'existait au niveau des éléments d'interface ici : tous les
+  // boutons d'écriture (vente, mouvement, bon de commande, dispensation,
+  // ajout/modification/retrait catalogue, réception) restaient rendus et
+  // cliquables pour un infirmier, qui n'a accès à /pharmacy qu'en frontend
+  // (App.jsx) — le backend (pharmacy.routes.js::CAN_MANAGE) refuse déjà
+  // correctement toute écriture pour ce rôle (403, aucune donnée jamais
+  // modifiée : ce n'est pas une faille, seulement une interface trompeuse).
+  // Même liste que CAN_MANAGE côté backend, dupliquée ici uniquement pour
+  // piloter l'affichage — le vrai contrôle reste et doit rester serveur.
+  const { user } = useAuth();
+  const canManagePharmacy = ['superadmin', 'adminclinique', 'pharmacien'].includes(user?.role);
+  const pharmacyRoleLockedTitle = 'Réservé au personnel pharmacie (pharmacien ou administration)';
   // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchMedications({}))
   // + dispatch(fetchInventory()) + dispatch(fetchStockAlerts()) dupliquaient
   // à chaque montage la même requête que loadMeds() (api.get direct, plus
@@ -1548,13 +1562,13 @@ ${lignes}
           dateLabel={`${kpis.total} médicament(s) · ${kpis.ruptures} rupture(s) · Stock : ${fmtCFA(kpis.valeur_stock)}`}
           right={
             <>
-              <button className="hero-btn-ghost" onClick={() => setModalVente(true)}>
+              <button className="hero-btn-ghost" disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => setModalVente(true)}>
                 <ShoppingCart size={14} /> Vente
               </button>
-              <button className="hero-btn-ghost" onClick={() => { setFormMvt(EMPTY_MVT); setModalMvt(true); }}>
+              <button className="hero-btn-ghost" disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setFormMvt(EMPTY_MVT); setModalMvt(true); }}>
                 <Zap size={14} /> Mouvement
               </button>
-              <Button icon={Plus} onClick={() => { setFormMed(EMPTY_MED); setModalAdd(true); }}>Nouveau médicament</Button>
+              <Button icon={Plus} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setFormMed(EMPTY_MED); setModalAdd(true); }}>Nouveau médicament</Button>
             </>
           }
         />
@@ -1702,7 +1716,7 @@ ${lignes}
                   <div className="ph-card-hdr">
                     <div><h3>{I.alert} Médicaments nécessitant une action</h3><p>{alertsMeds.length} médicament(s)</p></div>
                     <div style={{ display:"flex", gap:8 }}>
-                      <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => setModalIACmd(true)}>{I.ia} Commande IA</button>
+                      <button className="pbtn pbtn-ghost pbtn-sm" disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => setModalIACmd(true)}>{I.ia} Commande IA</button>
                       <button className="pbtn pbtn-ghost pbtn-sm" onClick={() => setTab("alertes")}>Voir tous →</button>
                     </div>
                   </div>
@@ -1734,7 +1748,7 @@ ${lignes}
                               </td>
                               <td style={{ fontSize:12, color:"var(--pm)" }}>{m.fournisseur||"—"}</td>
                               <td>
-                                <button className="pbtn pbtn-primary pbtn-sm" style={{ fontSize:11 }} onClick={() => { setFormMvt({...EMPTY_MVT,medicament_id:m._id,type:"entree"}); setModalMvt(true); }}>📥 Réappro</button>
+                                <button className="pbtn pbtn-primary pbtn-sm" style={{ fontSize:11 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setFormMvt({...EMPTY_MVT,medicament_id:m._id,type:"entree"}); setModalMvt(true); }}>📥 Réappro</button>
                               </td>
                             </tr>
                           );
@@ -1804,7 +1818,7 @@ ${lignes}
                     <option value="ok">OK</option>
                     <option value="expire">Périmé</option>
                   </select>
-                  <button className="pbtn pbtn-primary" onClick={() => { setFormMed(EMPTY_MED); setPhotoFile(null); setPhotoPreview(null); setModalAdd(true); }}>{I.plus} Ajouter</button>
+                  <button className="pbtn pbtn-primary" disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setFormMed(EMPTY_MED); setPhotoFile(null); setPhotoPreview(null); setModalAdd(true); }}>{I.plus} Ajouter</button>
                   {/* Toggle vue */}
                   <div style={{ display:'flex', border:'1.5px solid #E2EAF4', borderRadius:8, overflow:'hidden' }}>
                     <button onClick={() => setViewMode('grid')} style={{ padding:'6px 14px', background:viewMode==='grid'?'#1B4F9E':'#fff', color:viewMode==='grid'?'#fff':'#6B7A99', border:'none', cursor:'pointer', fontSize:12, fontWeight:700 }}>⊞ Grille</button>
@@ -1866,13 +1880,14 @@ ${lignes}
                         </div>
                         {/* Actions */}
                         <div style={{ padding:'10px 14px', borderTop:'1.5px solid var(--pbr)', display:'flex', gap:6 }}>
-                          <button className="pbtn pbtn-ghost pbtn-sm" style={{ flex:1, fontSize:11 }}
+                          <button className="pbtn pbtn-ghost pbtn-sm" style={{ flex:1, fontSize:11 }} disabled={!canManagePharmacy}
+                            title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined}
                             onClick={() => { setCurrentMed(m); setFormMed({...m}); setPhotoFile(null); setPhotoPreview(null); setModalEdit(true); }}>
                             {I.edit} Modifier
                           </button>
-                          <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} title="Mouvement stock"
+                          <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : "Mouvement stock"}
                             onClick={() => { setFormMvt({...EMPTY_MVT,medicament_id:m._id}); setModalMvt(true); }}>⚡</button>
-                          <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:11 }} title="Supprimer"
+                          <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:11 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : "Supprimer"}
                             onClick={() => deleteMed(m._id)}>{I.trash}</button>
                         </div>
                       </div>
@@ -1928,9 +1943,9 @@ ${lignes}
                             </td>
                             <td>
                               <div style={{ display:"flex", gap:4 }}>
-                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} onClick={() => { setCurrentMed(m); setFormMed({...m}); setPhotoFile(null); setPhotoPreview(null); setModalEdit(true); }}>{I.edit}</button>
-                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} onClick={() => { setFormMvt({...EMPTY_MVT,medicament_id:m._id}); setModalMvt(true); }}>⚡</button>
-                                <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:10 }} onClick={() => deleteMed(m._id)}>{I.trash}</button>
+                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setCurrentMed(m); setFormMed({...m}); setPhotoFile(null); setPhotoPreview(null); setModalEdit(true); }}>{I.edit}</button>
+                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:10 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setFormMvt({...EMPTY_MVT,medicament_id:m._id}); setModalMvt(true); }}>⚡</button>
+                                <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:10 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => deleteMed(m._id)}>{I.trash}</button>
                               </div>
                             </td>
                           </tr>
@@ -1958,8 +1973,8 @@ ${lignes}
                   <div style={{ fontSize:12, color:"var(--pm)" }}>Entrées, sorties, ajustements, traçabilité</div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  <button className="pbtn pbtn-teal" onClick={() => { setFormMvt({...EMPTY_MVT,type:"entree"}); setModalMvt(true); }}>📥 Entrée stock</button>
-                  <button className="pbtn pbtn-ghost" onClick={() => { setFormMvt({...EMPTY_MVT,type:"sortie"}); setModalMvt(true); }}>📤 Sortie stock</button>
+                  <button className="pbtn pbtn-teal" disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setFormMvt({...EMPTY_MVT,type:"entree"}); setModalMvt(true); }}>📥 Entrée stock</button>
+                  <button className="pbtn pbtn-ghost" disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setFormMvt({...EMPTY_MVT,type:"sortie"}); setModalMvt(true); }}>📤 Sortie stock</button>
                 </div>
               </div>
 
@@ -2035,7 +2050,7 @@ ${lignes}
                     Basé sur la consommation des 30 derniers jours, l'IA recommande de commander : Amoxicilline (qté suggérée : 500u), Paracétamol (qté suggérée : 400u), Sérum physiologique (qté suggérée : 60u).
                   </div>
                 </div>
-                <button className="pbtn pbtn-primary pbtn-sm" style={{ fontSize:12, flexShrink:0 }} onClick={() => setModalIACmd(true)}>{I.ia} Commande auto</button>
+                <button className="pbtn pbtn-primary pbtn-sm" style={{ fontSize:12, flexShrink:0 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => setModalIACmd(true)}>{I.ia} Commande auto</button>
               </div>
 
               {/* Ruptures */}
@@ -2054,8 +2069,8 @@ ${lignes}
                             <td><strong style={{ color:"var(--pb)" }}>{m.stock_minimum*3} unités</strong></td>
                             <td>
                               <div style={{ display:"flex", gap:6 }}>
-                                <button className="pbtn pbtn-primary pbtn-sm" style={{ fontSize:11 }} onClick={() => { setFormMvt({...EMPTY_MVT,medicament_id:m._id,type:"entree"}); setModalMvt(true); }}>📥 Réapprovisionner</button>
-                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} onClick={() => setModalCmd(true)}>📦 Commander</button>
+                                <button className="pbtn pbtn-primary pbtn-sm" style={{ fontSize:11 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setFormMvt({...EMPTY_MVT,medicament_id:m._id,type:"entree"}); setModalMvt(true); }}>📥 Réapprovisionner</button>
+                                <button className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => setModalCmd(true)}>📦 Commander</button>
                               </div>
                             </td>
                           </tr>
@@ -2087,7 +2102,7 @@ ${lignes}
                                 <Badge cls={ps==="perime"?"red":"orange"}>{ps==="perime"?"PÉRIMÉ !":`${days}j restants`}</Badge>
                               </td>
                               <td>
-                                <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:11 }} onClick={() => retirerLotPerime(m)}>🗑 Retirer</button>
+                                <button className="pbtn pbtn-danger pbtn-sm" style={{ fontSize:11 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => retirerLotPerime(m)}>🗑 Retirer</button>
                               </td>
                             </tr>
                           );
@@ -2116,7 +2131,7 @@ ${lignes}
                   <div style={{ fontSize:16, fontWeight:700, color:"var(--pn)" }}>Ventes & Dispensations</div>
                   <div style={{ fontSize:12, color:"var(--pm)" }}>Ventes comptoir et dispensation sur ordonnance</div>
                 </div>
-                <button className="pbtn pbtn-teal" onClick={() => setModalVente(true)}>{I.cart} Nouvelle vente</button>
+                <button className="pbtn pbtn-teal" disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => setModalVente(true)}>{I.cart} Nouvelle vente</button>
               </div>
 
               <div className="ph-g11" style={{ marginBottom:20 }}>
@@ -2168,8 +2183,8 @@ ${lignes}
                   <div style={{ fontSize:16, fontWeight:700, color:"var(--pn)" }}>Commandes & Fournisseurs</div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  <button className="pbtn pbtn-primary" onClick={() => { setFormCmd(EMPTY_CMD); setModalCmd(true); }}>📦 Bon de commande</button>
-                  <button className="pbtn pbtn-ghost" onClick={() => setModalIACmd(true)}>{I.ia} Commande IA</button>
+                  <button className="pbtn pbtn-primary" disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => { setFormCmd(EMPTY_CMD); setModalCmd(true); }}>📦 Bon de commande</button>
+                  <button className="pbtn pbtn-ghost" disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => setModalIACmd(true)}>{I.ia} Commande IA</button>
                 </div>
               </div>
 
@@ -2191,7 +2206,7 @@ ${lignes}
                             <td><CmdBadge statut={c.statut} /></td>
                             <td>
                               {!["recu","annule"].includes(c.statut) && (
-                                <button type="button" className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} onClick={() => openReception(c)}>📥 Réceptionner</button>
+                                <button type="button" className="pbtn pbtn-ghost pbtn-sm" style={{ fontSize:11 }} disabled={!canManagePharmacy} title={!canManagePharmacy ? pharmacyRoleLockedTitle : undefined} onClick={() => openReception(c)}>📥 Réceptionner</button>
                               )}
                             </td>
                           </tr>
