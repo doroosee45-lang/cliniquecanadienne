@@ -92,6 +92,23 @@ exports.create = async (req, res, next) => {
     }
     delete body.service;
 
+    // FIN-001 (audit métier du 13 sept. 2026, Phase 4) — ce chemin générique
+    // (POST /finance/factures, formulaire "Nouvelle facture") ne validait
+    // jamais le signe de `montant` ni de `lignes[].prix_unitaire`/`quantite`,
+    // contrairement à createRevenu/createDepense plus bas dans ce fichier
+    // (qui exigent déjà `montant > 0`). Une ligne condition
+    // `montantDirect > 0` empêchait seulement la génération de la ligne
+    // synthétique automatique en cas de montant négatif/nul — elle ne
+    // rejetait jamais la requête, et `montant_ht` retombait quand même sur
+    // `montantDirect` (négatif) faute de `lignes`. Une facture ne peut pas
+    // représenter une dette négative sans mécanisme d'avoir dédié.
+    if (body.montant !== undefined && body.montant !== null && body.montant !== '' && Number(body.montant) < 0) {
+      return res.status(400).json({ success: false, message: 'Le montant de la facture ne peut pas être négatif.' });
+    }
+    if (Array.isArray(body.lignes) && body.lignes.some(l => Number(l?.prix_unitaire) < 0 || Number(l?.quantite) < 0)) {
+      return res.status(400).json({ success: false, message: 'Les lignes de facturation ne peuvent pas avoir de prix unitaire ou de quantité négatifs.' });
+    }
+
     // Si montant direct fourni (sans lignes détaillées), créer une ligne synthétique
     const montantDirect = Number(body.montant) || 0;
     if (montantDirect > 0 && (!body.lignes || body.lignes.length === 0)) {
