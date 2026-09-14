@@ -321,11 +321,6 @@ function Modal({ open, onClose, title, children, maxWidth = 480 }) {
 // ─── DEMO DATA ────────────────────────────────────────────
 const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 
-const JOURS_SEMAINE = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
-const TEMPS_PRISE_CHARGE_DATASETS = [
-  { label:"Temps attente (min)", data:[18,22,35,28,25,15,10], borderColor:"#D97706", backgroundColor:"rgba(215,119,6,.1)", tension:.4, fill:true, pointRadius:4, pointBackgroundColor:"#D97706" },
-  { label:"Temps consultation (min)", data:[22,24,26,25,24,20,18], borderColor:"#1B4F9E", backgroundColor:"rgba(27,79,158,.06)", tension:.4, fill:false, borderDash:[5,5], pointRadius:3, pointBackgroundColor:"#1B4F9E" },
-];
 
 // Correction 2 (FE-BUG-013, audit indépendant du 6 sept. 2026) — ces 9
 // constantes DEMO_* de portée module (DEMO_KPI, DEMO_CONSULT_LINE,
@@ -1538,47 +1533,35 @@ export default function Analytics() {
                 ))}
               </div>
 
-              {/* Satisfaction détaillée */}
+              {/* A-ANL-01 (audit métier du 13 sept. 2026, Phase 4) — les deux
+                  cartes ci-dessous ("Satisfaction patient détaillée" à 7
+                  critères + score global 87/100, "Temps de prise en charge")
+                  étaient des tableaux/valeurs littéraux codés en dur, sans
+                  aucune source backend : contrairement au reste de ce
+                  contrôleur (voir AUDIT-ANALYTICS-P2/P3/P4), ces chiffres ne
+                  variaient jamais selon l'activité réelle de la clinique.
+                  Aucun modèle Mongoose (Satisfaction/Survey/Feedback/
+                  Pointage) n'existe côté backend pour ces données — vérifié
+                  sur la liste complète des modèles. Construire un vrai
+                  mécanisme de sondage patient / suivi de délai dépasse le
+                  périmètre d'un correctif ponctuel : désactivé honnêtement,
+                  même principe déjà appliqué à l'onglet "Présences" de
+                  HR.jsx, plutôt que de laisser des chiffres fabriqués se
+                  faire passer pour une mesure réelle. */}
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20, marginBottom:20 }}>
                 <div className="anl-card fu">
-                  <div className="anl-card-hdr"><div><h3>😊 Satisfaction patient détaillée</h3><p>Score global : 87/100</p></div></div>
-                  <div style={{ padding:20 }}>
-                    {[
-                      ["Accueil & réception",      92, "#059669"],
-                      ["Qualité des soins",         89, "#0EA5A0"],
-                      ["Temps d'attente",           71, "#D97706"],
-                      ["Communication médecin",     88, "#1B4F9E"],
-                      ["Propreté & confort",        94, "#059669"],
-                      ["Rapport qualité/prix",      82, "#7C3AED"],
-                      ["Suivi post-consultation",   79, "#D97706"],
-                    ].map(([lbl,val,col])=>(
-                      <div key={lbl} style={{ marginBottom:12 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, fontSize:12 }}>
-                          <span style={{ color:"var(--am)", fontWeight:600 }}>{lbl}</span>
-                          <span style={{ fontWeight:800, color:col }}>{val}%</span>
-                        </div>
-                        <Prog pct={val} color={col} h={6} />
-                      </div>
-                    ))}
+                  <div className="anl-card-hdr"><div><h3>😊 Satisfaction patient détaillée</h3></div></div>
+                  <div style={{ padding:40, textAlign:"center", color:"var(--am)" }}>
+                    <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>😊</div>
+                    <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel de satisfaction patient n'existe encore dans ce système.</div>
                   </div>
                 </div>
 
                 <div className="anl-card fu">
-                  <div className="anl-card-hdr"><div><h3>⏱ Temps de prise en charge</h3><p>Analyse des délais</p></div></div>
-                  <div style={{ padding:20 }}>
-                    <LineChart
-                      labels={JOURS_SEMAINE}
-                      datasets={TEMPS_PRISE_CHARGE_DATASETS}
-                      height={200}
-                    />
-                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:10, marginTop:16 }}>
-                      {[["Attente moy.","22 min","var(--ao)"],["Consultation moy.","24 min","var(--ab)"],["Prise charge totale","46 min","var(--at)"]].map(([lbl,val,col])=>(
-                        <div key={lbl} className="mini-kpi" style={{ textAlign:"center" }}>
-                          <div className="mini-kpi-val" style={{ color:`${col}`, fontSize:16 }}>{val}</div>
-                          <div className="mini-kpi-lbl" style={{ fontSize:10 }}>{lbl}</div>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="anl-card-hdr"><div><h3>⏱ Temps de prise en charge</h3></div></div>
+                  <div style={{ padding:40, textAlign:"center", color:"var(--am)" }}>
+                    <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>⏱</div>
+                    <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des délais de prise en charge n'existe encore dans ce système.</div>
                   </div>
                 </div>
               </div>
