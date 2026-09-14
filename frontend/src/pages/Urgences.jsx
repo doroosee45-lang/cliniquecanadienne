@@ -538,6 +538,14 @@ export default function Urgences() {
   const [modalExamen, setModalExamen]                 = useState(false);
   const [modalCloture, setModalCloture]               = useState(false);
   const [modalAmbulance, setModalAmbulance]           = useState(false);
+  // ANOM-URG-02 (audit métier du 13 sept. 2026, Phase 4) — remplace
+  // window.prompt() (aucune validation, non accessible, jamais utilisable
+  // en environnement de test/automatisé) par une vraie modale contrôlée,
+  // même correctif déjà appliqué à Hospitalization.jsx (HOSP-04) pour le
+  // même besoin exact — jamais reçu ici jusqu'à présent.
+  const [modalResultatExamen, setModalResultatExamen] = useState(false);
+  const [examenResultatCible, setExamenResultatCible] = useState(null);
+  const [saisieResultatExamen, setSaisieResultatExamen] = useState("");
 
   // Forms
   const [formUrg, setFormUrg]           = useState(EMPTY_URG);
@@ -735,6 +743,21 @@ export default function Urgences() {
       setModalExamen(false);
       setFormExamen_(EMPTY_EXAMEN_U);
     } else { toast.error("❌ Échec", { id: toastId }); }
+  };
+
+  // ─── SAISIR RÉSULTAT EXAMEN (ANOM-URG-02) ───────────────
+  const submitResultatExamenUrgences = async (e) => {
+    e.preventDefault();
+    const r = saisieResultatExamen.trim();
+    if (!r || !examenResultatCible) return;
+    const toastId = toast.loading("💾 Enregistrement du résultat...");
+    const result = await dispatch(saisirResultatExamen({ id: currentUrg._id, examenId: examenResultatCible._id || examenResultatCible.id, resultat: r }));
+    if (saisirResultatExamen.fulfilled.match(result)) {
+      toast.success("✅ Résultat enregistré", { id: toastId });
+      setModalResultatExamen(false);
+    } else {
+      toast.error(`❌ ${result.payload || "Échec de l'enregistrement"}`, { id: toastId });
+    }
   };
 
   // ─── CLÔTURER DOSSIER ───────────────────────────────────
@@ -1554,13 +1577,10 @@ export default function Urgences() {
                                       {e.resultat ? (
                                         <span style={{ background: "#EAFAF1", borderRadius: 6, padding: "3px 8px", fontSize: 11 }}>{e.resultat}</span>
                                       ) : (
-                                        <button className="ubtn ubtn-ghost ubtn-sm" onClick={async () => {
-                                          const r = window.prompt("Saisir le résultat :");
-                                          if (!r) return;
-                                          const toastId = toast.loading("💾 Enregistrement du résultat...");
-                                          const result = await dispatch(saisirResultatExamen({ id: currentUrg._id, examenId: e._id || e.id, resultat: r }));
-                                          if (saisirResultatExamen.fulfilled.match(result)) toast.success("✅ Résultat enregistré", { id: toastId });
-                                          else toast.error(`❌ ${result.payload || "Échec de l'enregistrement"}`, { id: toastId });
+                                        <button className="ubtn ubtn-ghost ubtn-sm" onClick={() => {
+                                          setExamenResultatCible(e);
+                                          setSaisieResultatExamen("");
+                                          setModalResultatExamen(true);
                                         }}>Saisir</button>
                                       )}
                                     </td>
@@ -2029,6 +2049,25 @@ export default function Urgences() {
               <div style={{ display: "flex", gap: 10 }}>
                 <button type="button" className="ubtn ubtn-ghost" onClick={() => setModalExamen(false)}>Annuler</button>
                 <button type="submit" className="ubtn ubtn-danger" style={{ marginLeft: "auto" }}>{I.save} Demander</button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : RÉSULTAT D'EXAMEN (ANOM-URG-02) ═══ */}
+        <Modal open={modalResultatExamen} onClose={() => setModalResultatExamen(false)} title="🔬 Saisir le résultat" maxWidth={480}>
+          <form onSubmit={submitResultatExamenUrgences}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {examenResultatCible && (
+                <div style={{ fontSize: 13, color: "var(--ucm)" }}>Examen : <strong>{examenResultatCible.designation}</strong></div>
+              )}
+              <div>
+                <label className="ulbl">Résultat *</label>
+                <textarea className="uinp" required rows={4} placeholder="Saisir le résultat de l'examen..." value={saisieResultatExamen} onChange={e => setSaisieResultatExamen(e.target.value)} />
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button type="button" className="ubtn ubtn-ghost" onClick={() => setModalResultatExamen(false)}>Annuler</button>
+                <button type="submit" className="ubtn ubtn-danger" style={{ marginLeft: "auto" }} disabled={!saisieResultatExamen.trim()}>{I.save} Enregistrer</button>
               </div>
             </div>
           </form>
