@@ -8,6 +8,28 @@ const { logAction, escapeRegex } = require('../utils/helpers');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
+// ANOM-MAT-01 (audit métier du 13 sept. 2026, Phase 4) — Pregnancy.telephone
+// est une copie figée du téléphone du Patient, écrite une seule fois à la
+// création (create() ci-dessous) et jamais resynchronisée : un dossier de
+// grossesse vit ~9 mois, largement assez pour qu'une patiente change de
+// numéro entre-temps sans que le personnel de maternité ne le voie jamais
+// (risque réel en cas d'urgence obstétricale). Même principe déjà établi
+// par urgencesController.js::normalize() pour patient_nom : préférer la
+// donnée live du Patient lié quand elle est disponible (patient_id peuplé),
+// replier sur la copie figée sinon (dossier dont le patient_id n'a pas été
+// peuplé, ou cas historique) — jamais l'inverse, et jamais une valeur
+// inventée. Champ ciblé uniquement (pas patient_nom/patient_prenom) :
+// c'est le seul explicitement identifié comme dangereux en pratique
+// (numéro de contact en cas d'urgence), les autres changent rarement en 9
+// mois.
+const preferLiveTelephone = (g) => {
+  const obj = typeof g.toObject === 'function' ? g.toObject() : g;
+  if (obj.patient_id && typeof obj.patient_id === 'object' && obj.patient_id.telephone) {
+    obj.telephone = obj.patient_id.telephone;
+  }
+  return obj;
+};
+
 // ── Stats / KPIs ─────────────────────────────────────────────────────────────
 exports.getStats = async (req, res, next) => {
   try {
@@ -74,22 +96,22 @@ exports.getAll = async (req, res, next) => {
     const [total, grossesses] = await Promise.all([
       Pregnancy.countDocuments(filter),
       Pregnancy.find(filter)
-        .populate('patient_id', 'nom prenom numero_dossier')
+        .populate('patient_id', 'nom prenom numero_dossier telephone')
         .sort('-createdAt')
         .skip((parseInt(page) - 1) * parseInt(limit))
         .limit(parseInt(limit)),
     ]);
-    res.json({ success: true, grossesses, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
+    res.json({ success: true, grossesses: grossesses.map(preferLiveTelephone), total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
   } catch (err) { next(err); }
 };
 
 exports.getOne = async (req, res, next) => {
   try {
-    const g = await Pregnancy.findById(req.params.id);
+    const g = await Pregnancy.findById(req.params.id).populate('patient_id', 'nom prenom numero_dossier telephone');
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
     const accouchement = await Delivery.findOne({ grossesse_id: g._id }).sort('-date_heure');
     const nb           = await Newborn.findOne({ grossesse_id: g._id });
-    res.json({ success: true, grossesse: g, accouchement, nouveau_ne: nb });
+    res.json({ success: true, grossesse: preferLiveTelephone(g), accouchement, nouveau_ne: nb });
   } catch (err) { next(err); }
 };
 
