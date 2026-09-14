@@ -67,4 +67,16 @@ export const useAuth = () => {
   return ctx;
 };
 
+// LAB-HOOKS-001 (audit métier du 13 sept. 2026, Phase 4) — Laboratory.jsx
+// appelait useAuth() à l'intérieur d'un try/catch pour tolérer un rendu
+// isolé sans <AuthProvider> (ex. test), ce qui viole react-hooks/rules-of-
+// hooks (un hook ne doit jamais être appelé dans un bloc try/catch — sans
+// risque en usage normal ici, App.jsx montant toujours <AuthProvider>,
+// mais un contournement fragile si un hook était ajouté après ce point).
+// useAuthSafe() appelle useContext directement (jamais conditionnellement,
+// jamais dans un try/catch) et renvoie simplement null en l'absence de
+// provider, au lieu de lever — un composant qui tolère un rendu isolé peut
+// s'appuyer dessus sans jamais contourner les Rules of Hooks.
+export const useAuthSafe = () => useContext(AuthContext);
+
 export default AuthContext;

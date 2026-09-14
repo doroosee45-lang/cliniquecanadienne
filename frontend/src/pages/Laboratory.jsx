@@ -4,7 +4,7 @@ import api from "../api";
 import toast from "react-hot-toast";
 import { FlaskConical, Plus, Printer } from 'lucide-react';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuthSafe } from '../contexts/AuthContext';
 import Hero from '../components/UI/Hero';
 import Button from '../components/UI/Button';
 import { REF_VALUES, deriveCriticalPayload } from '../utils/labResultats';
@@ -452,8 +452,12 @@ export default function Laboratoire() {
   // LAB-03 — identité réelle de l'utilisateur connecté, affichée à la
   // place des anciens champs "Technicien"/"Biologiste" en texte libre
   // requis mais jamais persistés (voir validerAnalyse plus bas).
-  let authData = null;
-  try { authData = useAuth(); } catch { /* AuthProvider absent (ex. rendu isolé en test) */ }
+  // LAB-HOOKS-001 (audit métier du 13 sept. 2026, Phase 4) — useAuth()
+  // était appelé dans un try/catch pour tolérer un rendu isolé sans
+  // <AuthProvider>, en violation de react-hooks/rules-of-hooks. useAuthSafe
+  // (contexts/AuthContext.jsx) appelle le hook natif sans jamais le
+  // conditionner, et renvoie null en l'absence de provider au lieu de lever.
+  const authData = useAuthSafe();
   const authUser = authData?.user || null;
   // NEW-006 (rapport de correction du 11 sept. 2026) — dispatch(fetchLabResults({}))
   // + dispatch(fetchCriticalResults()) dupliquaient à chaque montage la
