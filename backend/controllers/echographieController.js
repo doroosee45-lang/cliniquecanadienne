@@ -289,8 +289,33 @@ exports.saveRapport = async (req, res, next) => {
         return res.status(400).json({ message: 'Impossible de valider : aucun compte-rendu réel (rapport ou conclusion) n\'a été saisi.' });
       }
     }
-    const demande = await Echographie.findByIdAndUpdate(req.params.id, update, { new: true });
-    if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
+    // POST5-002 (audit indépendant post-Phase 5, 14 sept. 2026) — la lecture
+    // `avant` ci-dessus n'est pas atomique avec l'écriture qui suit : deux
+    // validations concurrentes du même rapport pouvaient toutes deux passer
+    // les contrôles JS avant qu'aucune écriture n'ait abouti, chacune
+    // générant sa propre Invoice — même classe de bug que
+    // laboratory.controller.js::validate / radiology.controller.js::
+    // validation, reproduite en direct pendant l'audit. Filtre de garde
+    // uniquement sur le chemin de validation (seul celui-ci déclenche une
+    // facturation) — l'enregistrement d'un brouillon de rapport
+    // (rapport_statut absent ou différent de 'valide') n'a pas cette
+    // conséquence et reste un simple findByIdAndUpdate.
+    let demande;
+    if (rapport_statut === 'valide') {
+      demande = await Echographie.findOneAndUpdate(
+        { _id: req.params.id, statut: { $ne: 'validee' } },
+        update,
+        { new: true }
+      );
+      if (!demande) {
+        const stillThere = await Echographie.exists({ _id: req.params.id });
+        if (!stillThere) return res.status(404).json({ message: 'Demande non trouvée' });
+        return res.status(409).json({ message: 'Cette demande a déjà été validée entre-temps par une autre requête.' });
+      }
+    } else {
+      demande = await Echographie.findByIdAndUpdate(req.params.id, update, { new: true });
+      if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
+    }
 
     // Correction 2 (module 3/6) — facture réelle générée uniquement à la
     // validation du rapport (même moment du cycle de vie que

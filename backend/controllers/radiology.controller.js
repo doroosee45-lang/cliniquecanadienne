@@ -240,12 +240,25 @@ exports.validation = async (req, res, next) => {
     if (!['realise', 'rapporte'].includes(avant.statut)) {
       return res.status(400).json({ success: false, message: `Impossible de valider : l'examen doit d'abord être réellement réalisé (statut actuel : ${avant.statut}).` });
     }
-    const examen = await ImagingResult.findByIdAndUpdate(
-      req.params.id,
+    // POST5-002 (audit indépendant post-Phase 5, 14 sept. 2026) — la lecture
+    // `avant` ci-dessus n'est pas atomique avec l'écriture qui suit : deux
+    // validations concurrentes du même examen pouvaient toutes deux passer
+    // le contrôle JS avant qu'aucune écriture n'ait abouti, chacune générant
+    // sa propre Invoice — même classe de bug que laboratory.controller.js::
+    // validate, reproduite en direct pendant l'audit. Filtre de garde sur
+    // l'écriture elle-même (même principe que pharmacy.controller.js::
+    // dispenser / hospitalization.controller.js::discharge) : seule la
+    // requête qui gagne réellement la course peut matcher.
+    const examen = await ImagingResult.findOneAndUpdate(
+      { _id: req.params.id, statut: { $in: ['realise', 'rapporte'] } },
       { radiologue: radiologue_id, radiologue_nom, date_validation: date_validation || new Date(), signature, statut: 'valide' },
       { new: true }
     ).lean();
-    if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
+    if (!examen) {
+      const stillThere = await ImagingResult.exists({ _id: req.params.id });
+      if (!stillThere) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
+      return res.status(409).json({ success: false, message: 'Cet examen a déjà été validé entre-temps par une autre requête.' });
+    }
 
     // Correction 2 (relecture du 6 sept. 2026) — l'onglet "Facturation" de
     // Radiology.jsx calculait un montant côté client depuis TARIFS, une

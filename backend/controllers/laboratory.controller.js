@@ -250,8 +250,21 @@ exports.validate = async (req, res, next) => {
     if (avant.statut !== 'termine') {
       return res.status(400).json({ success: false, message: `Impossible de valider : les résultats doivent d'abord être saisis (statut actuel : ${avant.statut}).` });
     }
-    const result = await LabResult.findByIdAndUpdate(
-      req.params.id,
+    // POST5-002 (audit indépendant post-Phase 5, 14 sept. 2026) — la lecture
+    // `avant` ci-dessus n'est pas atomique avec l'écriture qui suit : deux
+    // validations concurrentes du même résultat (double-clic, retry réseau,
+    // deux membres du personnel en même temps) passaient toutes deux le
+    // contrôle JS avant qu'aucune écriture n'ait abouti, chacune générant
+    // ensuite sa propre Invoice — reproduit en direct pendant l'audit (2
+    // requêtes concurrentes → 2 factures pour le même LabResult). Filtre de
+    // garde `statut:'termine'` sur l'écriture elle-même (même principe déjà
+    // appliqué à pharmacy.controller.js::dispenser et
+    // hospitalization.controller.js::discharge, AUDIT-M-B5/AUDIT-2.1) :
+    // seule la requête qui gagne réellement la course peut matcher, l'autre
+    // ne trouve plus aucun document `statut:'termine'` et échoue proprement
+    // ci-dessous, sans jamais générer de facture en double.
+    const result = await LabResult.findOneAndUpdate(
+      { _id: req.params.id, statut: 'termine' },
       { resultats, commentaires, est_critique, valeurs_critiques, statut: 'valide', validateur: req.user._id, date_validation: new Date() },
       { new: true }
     // Découverte annexe (relecture du 6 sept. 2026, pendant la vérification
@@ -272,7 +285,16 @@ exports.validate = async (req, res, next) => {
       .populate('technicien', 'nom prenom')
       .populate('validateur', 'nom prenom');
 
-    if (!result) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
+    if (!result) {
+      // Le filtre `statut:'termine'` n'a rien matché : soit le document a
+      // disparu depuis la lecture `avant` (404, cas improbable), soit une
+      // autre requête a gagné la course de validation entre-temps (409,
+      // le cas réellement visé par ce correctif) — jamais une seconde
+      // facture générée dans les deux cas.
+      const stillThere = await LabResult.exists({ _id: req.params.id });
+      if (!stillThere) return res.status(404).json({ success: false, message: 'Résultat introuvable.' });
+      return res.status(409).json({ success: false, message: 'Ce résultat a déjà été validé entre-temps par une autre requête.' });
+    }
 
     // Correction 5 (relecture du 5 sept. 2026) — l'onglet "Facturation" de
     // Laboratory.jsx calculait un montant côté client depuis un catalogue
