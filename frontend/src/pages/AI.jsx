@@ -1379,9 +1379,31 @@ export default function IntelligenceArtificielle() {
                 </div>
               </div>
 
+              {/* AI-FAKE-CHECKLIST-004 (audit métier du 13 sept. 2026, Phase
+                  4) — ces 4 lignes sont un tableau littéral câblé en dur,
+                  jamais dérivé d'un état réel vérifié dynamiquement (aucun
+                  appel API, aucune valeur de configuration lue) : présenter
+                  ce panneau sans le dire créait un faux sentiment de
+                  conformité (RGPD/sécurité) si quelqu'un s'y fiait comme
+                  preuve d'audit. Les affirmations elles-mêmes restent
+                  correctes en pratique (logAction trace bien
+                  systématiquement les analyses IA, AuditLog est bien
+                  alimenté, TLS est bien actif en production ; seule
+                  l'anonymisation pour la recherche n'existe pas, déjà
+                  honnêtement affichée ⬜) — mais aucune n'est vérifiable
+                  depuis ce composant, qui n'a accès à aucun de ces états
+                  d'infrastructure. Retirer entièrement le panneau
+                  masquerait une information utile (bon contre-exemple :
+                  HR.jsx::Présences retire un panneau qui n'affirme RIEN de
+                  vrai) ; ici, le libeller explicitement "déclaratif, non
+                  vérifié automatiquement" est le correctif minimal fidèle à
+                  la recommandation de l'audit. */}
               {/* Sécurité */}
               <div className="ia-card fu">
-                <div className="ia-card-hdr"><h3>🔒 Sécurité & Protection des données</h3></div>
+                <div className="ia-card-hdr">
+                  <h3>🔒 Sécurité & Protection des données</h3>
+                  <p style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>Déclaratif — non vérifié automatiquement à l'exécution</p>
+                </div>
                 <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
                   {[
                     ["Journalisation complète des analyses IA", true],
