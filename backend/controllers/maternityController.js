@@ -257,6 +257,16 @@ exports.createDelivery = async (req, res, next) => {
       body.patient_id = g.patient_id;
       g.statut = 'accouchee';
       await g.save();
+    } else if (body.patient_id) {
+      // ANOM-MAT-02 (audit métier du 13 sept. 2026, Phase 4) — sans
+      // grossesse_id, patient_id fourni directement n'était validé ni pour
+      // son format ni pour son existence (contrairement à create(Pregnancy)
+      // et createNewborn, qui valident systématiquement). Même garde que
+      // AUDIT-3.4/SPEC-02/SPEC-10 ailleurs dans ce fichier : jamais un
+      // patient_id fabriqué ou orphelin accepté silencieusement.
+      if (!isObjectId(body.patient_id)) return res.status(400).json({ success: false, message: 'Référence patient invalide.' });
+      const pat = await Patient.findById(body.patient_id).select('_id');
+      if (!pat) return res.status(400).json({ success: false, message: 'Patient introuvable pour l\'identifiant fourni.' });
     }
     const acc = await Delivery.create(body);
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: acc._id, ip: req.ip, message: `Accouchement enregistré ${acc.numero} — ${acc.patient_nom || 'patiente'} (${acc.type_accouchement})` });
