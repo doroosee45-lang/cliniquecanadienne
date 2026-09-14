@@ -281,6 +281,24 @@ exports.createGroup = async (req, res, next) => {
     }
 
     const membresUniques = [...new Set([req.user._id.toString(), ...membres.map(String)])];
+
+    // A-MSG-01 (audit métier du 13 sept. 2026, Phase 4) — createGroup() ne
+    // vérifiait jamais l'existence ni le rôle des IDs reçus dans `membres`,
+    // contrairement à getOrCreate() (SEC-B-06, ci-dessus) qui applique déjà
+    // cette garde pour la conversation directe. Un ID de patient (ou
+    // fabriqué) pouvait être inclus tel quel dans Conversation.membres, lui
+    // donnant ensuite un accès légitime au groupe via GET /messages/:id
+    // (membres: req.user._id, aucune restriction de rôle à ce niveau).
+    // Même politique que getOrCreate() : chaque membre doit être un vrai
+    // compte staff actif, jamais un patient, jamais un ID fabriqué.
+    const comptesReels = await User.find({ _id: { $in: membresUniques } }).select('role');
+    if (comptesReels.length !== membresUniques.length) {
+      return res.status(400).json({ success: false, message: 'Un ou plusieurs membres sont introuvables.' });
+    }
+    if (comptesReels.some(u => u.role === 'patient')) {
+      return res.status(403).json({ success: false, message: 'Cette messagerie est réservée aux échanges entre membres du personnel.' });
+    }
+
     const conv = await Conversation.create({
       type: 'groupe',
       nom: nom.trim(),
