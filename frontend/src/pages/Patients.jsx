@@ -553,7 +553,12 @@ export default function Patient() {
   const patients = reduxPatients;
   const filtered = patients.filter(p => {
     const q = search.toLowerCase();
-    const matchSearch = !q || `${p.prenom} ${p.nom} ${p.numero}`.toLowerCase().includes(q);
+    // PAT-CLIENTFILTER-005 (audit métier du 13 sept. 2026, Phase 4) — p.numero
+    // n'existe pas sur le document Patient (le champ réel est numero_dossier,
+    // voir Patient.js) : ce fragment était un no-op silencieux, la recherche
+    // par numéro de dossier ne fonctionnait ici que via le filtre serveur
+    // (patients.controller.js, $text sur numero_dossier).
+    const matchSearch = !q || `${p.prenom} ${p.nom} ${p.numero_dossier}`.toLowerCase().includes(q);
     const matchStatut = !filterStatut || p.statut === filterStatut;
     return matchSearch && matchStatut;
   });
