@@ -3,7 +3,7 @@ const ImagingResult = require('../models/ImagingResult');
 const ExamCatalogue = require('../models/ExamCatalogue');
 const Consultation = require('../models/Consultation');
 const Invoice = require('../models/Invoice');
-const { logAction, createNotification, paginate } = require('../utils/helpers');
+const { logAction, createNotification, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
 const { storeUploadedFile } = require('../utils/fileStorage');
@@ -55,11 +55,22 @@ exports.getCatalogue = async (req, res, next) => {
 
 exports.getAll = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, patient, statut, type_categorie } = req.query;
+    const { page = 1, limit = 20, patient, statut, type_categorie, q } = req.query;
     const filter = {};
     if (patient)        filter.patient        = patient;
     if (statut)         filter.statut         = statut;
     if (type_categorie) filter.type_categorie = type_categorie;
+    // LAB-RADIO-SEARCH-001 (audit métier du 13 sept. 2026, Phase 4) — le
+    // frontend (Radiology.jsx) envoie déjà ?q=... depuis la barre de
+    // recherche, jamais lu ici : la recherche était purement décorative.
+    // Même pattern que echographieController.js::getAll (déjà fonctionnel),
+    // étendu à type_examen (champ texte réel, ex. "Échographie abdominale")
+    // pour couvrir la recherche par nom d'examen annoncée par le placeholder
+    // frontend.
+    if (q) {
+      const re = new RegExp(escapeRegex(q), 'i');
+      filter.$or = [{ patient_nom: re }, { numero: re }, { medecin_prescripteur_nom: re }, { type_examen: re }];
+    }
 
     const skip  = (parseInt(page) - 1) * parseInt(limit);
     // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et

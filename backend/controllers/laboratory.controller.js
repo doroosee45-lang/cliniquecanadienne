@@ -2,7 +2,7 @@ const LabResult = require('../models/LabResult');
 const ExamCatalogue = require('../models/ExamCatalogue');
 const Consultation = require('../models/Consultation');
 const Invoice = require('../models/Invoice');
-const { logAction, createNotification, paginate } = require('../utils/helpers');
+const { logAction, createNotification, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
 
@@ -30,11 +30,25 @@ exports.getCatalogue = async (req, res, next) => {
 
 exports.getAll = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, patient, statut, critique } = req.query;
+    const { page = 1, limit = 20, patient, statut, critique, q } = req.query;
     const filter = {};
     if (patient) filter.patient = patient;
     if (statut)  filter.statut  = statut;
     if (critique !== undefined) filter.est_critique = critique === 'true';
+    // LAB-RADIO-SEARCH-001 (audit métier du 13 sept. 2026, Phase 4) — le
+    // frontend (Laboratory.jsx) envoie déjà ?q=... depuis la barre de
+    // recherche, jamais lu ici : la recherche était purement décorative,
+    // aucun résultat n'était jamais exclu quel que soit le texte saisi.
+    // Même pattern que echographieController.js::getAll (déjà fonctionnel) :
+    // regex insensible à la casse sur les champs texte réellement présents
+    // au schéma (patient_nom, numero, medecin_prescripteur_nom) —
+    // examens_demandes n'est volontairement pas inclus (Schema.Types.Mixed,
+    // mélange IDs/texte selon l'appelant, pas un champ texte fiable à
+    // interroger par regex).
+    if (q) {
+      const re = new RegExp(escapeRegex(q), 'i');
+      filter.$or = [{ patient_nom: re }, { numero: re }, { medecin_prescripteur_nom: re }];
+    }
 
     const skip  = (parseInt(page) - 1) * parseInt(limit);
     // PERF-001 (audit de performance du 12 sept. 2026) — countDocuments et
