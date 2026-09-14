@@ -172,7 +172,17 @@ exports.create = async (req, res, next) => {
       operateur:       req.body.operateur,
       date_rdv:        req.body.date_rdv,
       heure_rdv:       req.body.heure_rdv,
-      statut:          req.body.statut || 'programme',
+      // POST5-003 (audit indépendant post-Phase 5, 14 sept. 2026) — statut
+      // était lu directement de req.body (`|| 'programme'` n'agit que si le
+      // champ est absent, jamais s'il est fourni) : un rôle non-radiologue
+      // (medecin/infirmier, autorisés sur cette route) pouvait créer un
+      // examen déjà statut:'valide', visible tel quel dans le portail
+      // patient (portal.controller.js::getImaging, filtre statut in
+      // ['rapporte','valide']) sans jamais passer par saveCR()/validation()
+      // (réservée à radiologue/superadmin). Toujours forcé à 'programme' à
+      // la création — jamais lu du client, même chemin que
+      // ECHO_CREATE_ALLOWED_FIELDS (echographieController.js, POST5-001).
+      statut:          'programme',
       numero,
     };
 
