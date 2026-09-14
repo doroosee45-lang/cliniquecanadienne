@@ -31,9 +31,20 @@ exports.getAll = async (req, res, next) => {
     if (patient) filter.patient = patient;
 
     if (date) {
-      // Filtre jour précis
+      // PERF-001-DATE-FILTER (14 sept. 2026) — `new Date(date)` sur une
+      // chaîne "YYYY-MM-DD" est TOUJOURS interprétée comme minuit UTC par
+      // le moteur JS, mais .setHours()/.setHours() opèrent, eux, en heure
+      // LOCALE du serveur : sur une machine dont le fuseau local n'est pas
+      // UTC (ex. Europe/Paris, UTC+2 l'été), la fenêtre résultante était
+      // décalée de l'offset local par rapport au jour UTC réellement
+      // demandé — un rendez-vous en fin de journée UTC pouvait tomber hors
+      // fenêtre. Filtre jour précis, borné en UTC de bout en bout (cohérent
+      // avec le référentiel dans lequel `date` est déjà parsée ci-dessus),
+      // indépendamment du fuseau local de la machine qui exécute ce code.
       const d = new Date(date);
-      filter.date_heure = { $gte: new Date(d.setHours(0,0,0,0)), $lt: new Date(d.setHours(23,59,59,999)) };
+      const debutJour = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+      const finJour   = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
+      filter.date_heure = { $gte: debutJour, $lte: finJour };
     } else if (from || to) {
       // Plage de dates explicite
       filter.date_heure = {};
