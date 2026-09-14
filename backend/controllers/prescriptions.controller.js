@@ -102,6 +102,19 @@ exports.create = async (req, res, next) => {
     const data = {};
     for (const k of RX_CREATE_ALLOWED_FIELDS) { if (req.body[k] !== undefined) data[k] = req.body[k]; }
 
+    // RX-EMPTY-003 (audit métier du 13 sept. 2026, Phase 4) — ni le schéma
+    // (Prescription.lignes, aucune longueur minimale) ni ce contrôleur ne
+    // vérifiaient qu'une ordonnance contient au moins un médicament réel ;
+    // seul le frontend validait patient/diagnostic (jamais la présence
+    // d'une ligne), une protection frontend seule n'étant jamais suffisante
+    // (contournable par un appel API direct). Une ordonnance vide n'a pas
+    // de sens clinique — exige au moins une ligne avec un medicament_nom
+    // non vide.
+    const lignesReelles = Array.isArray(data.lignes) ? data.lignes.filter(l => l && String(l.medicament_nom || '').trim()) : [];
+    if (lignesReelles.length === 0) {
+      return res.status(400).json({ success: false, message: 'Au moins un médicament est obligatoire pour créer une ordonnance.' });
+    }
+
     // Détection interactions médicamenteuses — base partagée avec le module
     // IA et la pharmacie (utils/drugInteractions.js), 15 règles au lieu de 2.
     const meds = (data.lignes || []).map(l => (l.medicament_nom || '').toLowerCase());

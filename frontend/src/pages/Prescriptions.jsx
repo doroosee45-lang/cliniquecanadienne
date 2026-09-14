@@ -563,6 +563,14 @@ export default function Ordonnances() {
     ev.preventDefault();
     if (!formOrd.patient_id) { toast.error("Veuillez sélectionner un patient."); return; }
     if (!formOrd.diagnostic)  { toast.error("Le diagnostic est obligatoire."); return; }
+    // RX-EMPTY-003 (audit métier du 13 sept. 2026, Phase 4) — une ordonnance
+    // sans aucun médicament n'a pas de sens clinique ; le backend refuse
+    // désormais aussi ce cas (prescriptions.controller.js::create), mais
+    // l'erreur doit être vue avant l'envoi, pas comme un 400 confus.
+    if (!(formOrd.medicaments || []).some(m => (m.medicament || "").trim())) {
+      toast.error("Au moins un médicament est obligatoire.");
+      return;
+    }
     setSaving(true);
     try {
       // Mapper les champs frontend → backend (Prescription model)
