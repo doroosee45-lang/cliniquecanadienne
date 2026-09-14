@@ -193,6 +193,15 @@ exports.getStats = async (req, res, next) => {
 
     const cats = {};
     catCounts.forEach(c => { cats[c._id] = c.count; });
+    // A-ARC-01 (audit métier du 13 sept. 2026, Phase 4) — LIMITE DOCUMENTÉE :
+    // volume synthétique (512 Ko/entrée arbitraire), jamais une vraie somme
+    // de tailles de fichiers — ArchiveEntry.taille existe dans le schéma
+    // mais n'est jamais renseigné par le moissonnage (harvestArchivables).
+    // Calculer la vraie somme exigerait d'abord de renseigner ce champ à
+    // chaque moissonnage source par source — un chantier de fond distinct,
+    // hors périmètre d'un correctif ponctuel. En attendant, kpis.taille_totale
+    // reste toujours explicitement libellé "(estimé)" côté frontend
+    // (Archive.jsx), jamais présenté comme une mesure réelle.
     const taille_estimee = total * 512 * 1024;
 
     res.json({

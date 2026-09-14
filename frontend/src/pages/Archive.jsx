@@ -854,7 +854,7 @@ export default function Archivage() {
       { Indicateur:'Hospitalisations',     Valeur: kpis.hospitalisations },
       { Indicateur:'Laboratoire',          Valeur: kpis.labo },
       { Indicateur:'Imagerie',             Valeur: kpis.imagerie },
-      { Indicateur:'Taille totale',        Valeur: kpis.taille_totale },
+      { Indicateur:'Taille totale (estimée)', Valeur: kpis.taille_totale },
       { Indicateur:'Dernière opération',   Valeur: kpis.derniere_op },
     ];
     const wsKpi = XLSX.utils.json_to_sheet(kpiData);
@@ -942,7 +942,14 @@ export default function Archivage() {
           <div className="arc-card">
             <div className="arc-card-hdr">
               <h3>📊 Répartition par catégorie</h3>
-              <Badge cls="blue">{kpis.taille_totale} total</Badge>
+              {/* A-ARC-01 (audit métier du 13 sept. 2026, Phase 4) — taille_totale
+                  (archive.controller.js::getStats) est un volume synthétique
+                  (512 Ko/entrée), jamais une vraie somme de tailles de
+                  fichiers (ArchiveEntry.taille n'est jamais renseigné par le
+                  moissonnage) : toujours libellé "estimé", jamais présenté
+                  comme une mesure réelle — même convention déjà appliquée
+                  plus bas sur cette page ("Utilisé (estimé)"). */}
+              <Badge cls="blue">{kpis.taille_totale} total (estimé)</Badge>
             </div>
             <div className="arc-card-body">
               {/* Sous-phase 5.1 — "Urgences"/"Pédiatrie"/"Maternité"/
@@ -1451,7 +1458,7 @@ export default function Archivage() {
         <Hero
           icon={ArchiveIcon}
           title="Archivage"
-          dateLabel={`${kpis.total} archives · ${kpis.taille_totale}`}
+          dateLabel={`${kpis.total} archives · ${kpis.taille_totale} (estimé)`}
         />
 
         <div className="arc-wrap">
