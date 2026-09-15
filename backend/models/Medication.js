@@ -36,6 +36,15 @@ const MedicationSchema = new mongoose.Schema({
   interactions: [String],
   ordonnance_requise: { type: Boolean, default: false },
   photo:              { type: String,  default: null },
+  // POST5-004 (audit indépendant post-Phase 5, 14 sept. 2026) — même
+  // traitement que Patient.photo_public_id/resource_type/format/version :
+  // permet de régénérer une URL Cloudinary signée à courte durée de vie à
+  // chaque lecture autorisée, au lieu de resservir indéfiniment l'URL
+  // signée sans expiration stockée dans `photo`.
+  photo_public_id:    { type: String, default: null },
+  photo_resource_type:{ type: String, default: null },
+  photo_format:       { type: String, default: null },
+  photo_version:      { type: Number, default: null },
 }, { timestamps: true });
 
 MedicationSchema.index({ nom_commercial: 'text', dci: 'text' });

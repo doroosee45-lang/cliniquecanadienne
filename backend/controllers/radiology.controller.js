@@ -7,8 +7,29 @@ const { logAction, createNotification, paginate, escapeRegex } = require('../uti
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
 const { storeUploadedFile } = require('../utils/fileStorage');
+const cloudinaryUtil = require('../utils/cloudinary');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
+// POST5-004 (audit indépendant post-Phase 5, 14 sept. 2026) — même principe
+// que document.controller.js::withFreshDeliveryUrl (SEC-DOC-01), jamais
+// appliqué jusqu'ici aux images d'examen : régénère une URL Cloudinary
+// signée à courte durée de vie pour CHAQUE image à CHAQUE lecture
+// autorisée, au lieu de resservir l'URL figée (signée sans expiration)
+// stockée en base. Une image en repli disque local (cloudinary_public_id
+// absent) n'est pas concernée — déjà protégée par rôle à la livraison.
+const withFreshImageUrls = (images) => (images || []).map(img => {
+  if (!img.cloudinary_public_id) return img;
+  return {
+    ...img,
+    path: cloudinaryUtil.getSignedDeliveryUrl({
+      public_id: img.cloudinary_public_id,
+      resource_type: img.cloudinary_resource_type,
+      format: img.cloudinary_format,
+      version: img.cloudinary_version,
+    }),
+  };
+});
 
 // Aplatit un document peuplé en objet safe pour le frontend (pas d'objets imbriqués)
 const normalize = a => {
@@ -29,6 +50,7 @@ const normalize = a => {
     medecin_prescripteur: a.medecin_prescripteur?._id ?? a.medecin_prescripteur,
     radiologue:           a.radiologue?._id   ?? a.radiologue,
     examen:               a.examen?._id       ?? a.examen,
+    images:                withFreshImageUrls(a.images),
   };
 };
 
@@ -334,8 +356,12 @@ exports.uploadImages = async (req, res, next) => {
       const ext = path.extname(f.originalname);
       const base = path.basename(f.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
       const filenameBase = `${Date.now()}-${i}-${base}`;
-      const { url } = await storeUploadedFile(f, { folder: 'radiology', filenameBase });
-      return { filename: `${filenameBase}${ext}`, path: url, type_mime: f.mimetype, taille: f.size };
+      const { url, public_id, resource_type, format, version } = await storeUploadedFile(f, { folder: 'radiology', filenameBase });
+      return {
+        filename: `${filenameBase}${ext}`, path: url, type_mime: f.mimetype, taille: f.size,
+        cloudinary_public_id: public_id, cloudinary_resource_type: resource_type,
+        cloudinary_format: format, cloudinary_version: version,
+      };
     }));
 
     const avant = await ImagingResult.findById(req.params.id).lean();

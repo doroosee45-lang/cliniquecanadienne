@@ -7,6 +7,24 @@ const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
 const { storeUploadedFile } = require('../utils/fileStorage');
 const { isObjectId } = require('../middleware/upload');
+const cloudinaryUtil = require('../utils/cloudinary');
+
+// POST5-004 (audit indépendant post-Phase 5, 14 sept. 2026) — même principe
+// que document.controller.js::withFreshDeliveryUrl (SEC-DOC-01), jamais
+// appliqué jusqu'ici à la photo médicament : régénère une URL Cloudinary
+// signée à courte durée de vie à CHAQUE lecture autorisée, au lieu de
+// resservir l'URL figée (signée sans expiration) stockée en base.
+const withFreshMedPhotoUrl = (med) => {
+  const plain = typeof med.toObject === 'function' ? med.toObject() : med;
+  if (!plain.photo_public_id) return plain;
+  plain.photo = cloudinaryUtil.getSignedDeliveryUrl({
+    public_id: plain.photo_public_id,
+    resource_type: plain.photo_resource_type,
+    format: plain.photo_format,
+    version: plain.photo_version,
+  });
+  return plain;
+};
 
 exports.getAll = async (req, res, next) => {
   try {
@@ -38,7 +56,7 @@ exports.getAll = async (req, res, next) => {
       Medication.countDocuments(filter),
       paginate(Medication.find(filter).sort('nom_commercial'), page, limit),
     ]);
-    res.json({ success: true, total, medications });
+    res.json({ success: true, total, medications: medications.map(withFreshMedPhotoUrl) });
   } catch (err) { next(err); }
 };
 
@@ -350,7 +368,7 @@ exports.getOne = async (req, res, next) => {
   try {
     const med = await Medication.findById(req.params.id);
     if (!med) return res.status(404).json({ success: false, message: 'Médicament introuvable.' });
-    res.json({ success: true, medication: med });
+    res.json({ success: true, medication: withFreshMedPhotoUrl(med) });
   } catch (err) { next(err); }
 };
 
@@ -411,12 +429,17 @@ exports.uploadPhoto = async (req, res, next) => {
     if (!req.file) return res.status(400).json({ message: 'Aucun fichier fourni.' });
     // AUDIT-3.5 (SEC-02) — même garde qu'avant cette migration (middleware/upload.js).
     if (!isObjectId(req.params.id)) return res.status(400).json({ message: 'Identifiant médicament invalide.' });
-    const { url } = await storeUploadedFile(req.file, { folder: 'medications', filenameBase: `med-${req.params.id}-${Date.now()}` });
+    const { url, public_id, resource_type, format, version } = await storeUploadedFile(req.file, { folder: 'medications', filenameBase: `med-${req.params.id}-${Date.now()}` });
     const avant = await Medication.findById(req.params.id).select('photo').lean();
     if (!avant) return res.status(404).json({ message: 'Médicament introuvable.' });
-    const med = await Medication.findByIdAndUpdate(req.params.id, { photo: url }, { new: true });
+    const med = await Medication.findByIdAndUpdate(
+      req.params.id,
+      { photo: url, photo_public_id: public_id, photo_resource_type: resource_type, photo_format: format, photo_version: version },
+      { new: true }
+    );
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: med._id, ip: req.ip, avant: { photo: avant.photo }, apres: { photo: url }, message: 'Photo mise à jour' });
-    res.json({ success: true, photo: url, medication: med });
+    const fresh = withFreshMedPhotoUrl(med);
+    res.json({ success: true, photo: fresh.photo, medication: fresh });
   } catch (err) { next(err); }
 };
 

@@ -29,6 +29,17 @@ const PatientSchema = new Schema({
   // remplacement (patients.controller.js::uploadPhoto), même comportement
   // que la suppression disque déjà existante avant cette migration.
   photo_public_id: { type: String, default: null },
+  // POST5-004 (audit indépendant post-Phase 5, 14 sept. 2026) — SEC-DOC-01
+  // (re-signature à courte durée de vie à chaque lecture autorisée) n'avait
+  // été appliqué qu'à Document ; `photo` stockait l'URL Cloudinary signée
+  // SANS expires_at (utils/cloudinary.js::uploadBuffer), valide et
+  // partageable indéfiniment une fois obtenue. Ces 3 champs permettent de
+  // régénérer une URL signée éphémère à chaque lecture autorisée
+  // (getSignedDeliveryUrl), exactement comme document.controller.js —
+  // jamais une nouvelle info persistée à des fins de duplication.
+  photo_resource_type: { type: String, default: null },
+  photo_format:        { type: String, default: null },
+  photo_version:       { type: Number, default: null },
   // Suite du balayage T5.2 — Patients.jsx collecte ces deux champs depuis
   // toujours et les affiche sur la fiche patient, mais ni l'un ni l'autre
   // n'était déclaré ici : silencieusement supprimés par Mongoose à chaque

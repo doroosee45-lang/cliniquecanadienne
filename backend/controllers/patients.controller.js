@@ -32,7 +32,26 @@ const hashActivationToken = (token) => crypto.createHash('sha256').update(token)
 // (pas clinique), nécessaire pour que le badge "Profil à compléter" côté
 // Patients.jsx/PatientDetail.jsx s'affiche aussi pour les rôles restreints
 // (réceptionniste en particulier — c'est elle qui doit relancer le patient).
-const DEMO_FIELDS = 'nom prenom numero_dossier date_naissance sexe telephone email photo adresse statut createdAt profil_a_completer';
+const DEMO_FIELDS = 'nom prenom numero_dossier date_naissance sexe telephone email photo photo_public_id photo_resource_type photo_format photo_version adresse statut createdAt profil_a_completer';
+
+// POST5-004 (audit indépendant post-Phase 5, 14 sept. 2026) — même principe
+// que document.controller.js::withFreshDeliveryUrl (SEC-DOC-01), jamais
+// appliqué jusqu'ici à la photo patient : régénère une URL Cloudinary
+// signée à courte durée de vie à CHAQUE lecture autorisée, au lieu de
+// resservir l'URL figée (signée sans expiration) stockée en base. Un
+// patient en repli disque local (photo_public_id absent) n'est pas
+// concerné — déjà protégé par rôle à la livraison (uploads.controller.js).
+const withFreshPhotoUrl = (patient) => {
+  const plain = typeof patient.toObject === 'function' ? patient.toObject() : patient;
+  if (!plain.photo_public_id) return plain;
+  plain.photo = cloudinaryUtil.getSignedDeliveryUrl({
+    public_id: plain.photo_public_id,
+    resource_type: plain.photo_resource_type,
+    format: plain.photo_format,
+    version: plain.photo_version,
+  });
+  return plain;
+};
 const RESTRICTED_FIELDS = {
   // Risque clinique immédiat (prélèvement) → groupe sanguin + allergies.
   laborantin:     `${DEMO_FIELDS} groupe_sanguin allergies`,
@@ -74,7 +93,7 @@ exports.getAll = async (req, res, next) => {
       Patient.countDocuments(filter),
       paginate(query, page, limit),
     ]);
-    res.json({ success: true, total, count: patients.length, patients });
+    res.json({ success: true, total, count: patients.length, patients: patients.map(withFreshPhotoUrl) });
   } catch (err) { next(err); }
 };
 
@@ -92,7 +111,7 @@ exports.getOne = async (req, res, next) => {
 
     const patient = await query;
     if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
-    res.json({ success: true, patient });
+    res.json({ success: true, patient: withFreshPhotoUrl(patient) });
   } catch (err) { next(err); }
 };
 
@@ -707,9 +726,12 @@ exports.uploadPhoto = async (req, res, next) => {
       if (fs.existsSync(old)) fs.unlinkSync(old);
     }
 
-    const { url, public_id } = await storeUploadedFile(req.file, { folder: 'patients', filenameBase: `patient-${req.params.id}-${Date.now()}` });
+    const { url, public_id, resource_type, format, version } = await storeUploadedFile(req.file, { folder: 'patients', filenameBase: `patient-${req.params.id}-${Date.now()}` });
     patient.photo = url;
     patient.photo_public_id = public_id;
+    patient.photo_resource_type = resource_type;
+    patient.photo_format = format;
+    patient.photo_version = version;
     await patient.save();
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'patients', entite_id: patient._id, ip: req.ip, avant: { photo: ancienPhoto }, apres: { photo: patient.photo }, message: 'Photo mise à jour' });
     // AUDIT-PHASE4-G2 — dashboard:refresh seul : une photo mise à jour doit
@@ -717,6 +739,7 @@ exports.uploadPhoto = async (req, res, next) => {
     // pas un événement digne du flux d'activité clinique (pas d'emitActivity).
     emitDashboardUpdate();
 
-    res.json({ success: true, photo: patient.photo, patient });
+    const fresh = withFreshPhotoUrl(patient);
+    res.json({ success: true, photo: fresh.photo, patient: fresh });
   } catch (err) { next(err); }
 };
