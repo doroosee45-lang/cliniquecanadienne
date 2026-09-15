@@ -449,12 +449,16 @@ function ConsultationDetail({ c, isMobile, onBack, examCatalogue }) {
     });
   };
 
-  const handleSendInvoice = async () => {
+    const handleSendInvoice = async () => {
     if (!invoice || sendingInvoice) return;
     setSendingInvoice(true);
     try {
       const { data } = await api.post(`/consultations/${c._id}/facture/envoyer`);
-      toast.success(`✅ ${data.message}`);
+      if (data.simulated) {
+        toast(`⚠️ ${data.message}`, { icon: '📧' });
+      } else {
+        toast.success(`✅ ${data.message}`);
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || "Échec de l'envoi de la facture.");
     } finally {
@@ -1142,7 +1146,7 @@ export default function Consultation() {
       patient_nom:          p.nom       || '',
       patient_prenom:       p.prenom    || '',
       patient_sexe:         p.sexe      || 'M',
-      patient_ddn:          p.date_naissance || '',
+      patient_ddn:          p.date_naissance ? String(p.date_naissance).slice(0, 10) : '',
       patient_tel:          p.telephone || '',
       patient_adresse:      p.adresse?.rue || '',
       patient_groupe_sanguin: p.groupe_sanguin || '',
@@ -1566,29 +1570,29 @@ export default function Consultation() {
 
               <div className="cons-g2">
                 <div className="cons-card">
-                  <div className="cons-card-hdr"><h3>👤 Identité</h3></div>
+                  <div className="cons-card-hdr"><h3>👤 Identité</h3><p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--cm)" }}>Renseignée automatiquement à la sélection du patient — non modifiable ici.</p></div>
                   <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
                     <div className="cons-g2-sm">
                       <div>
                         <label className="clbl req">Nom</label>
-                        <input className="cinp" value={form.patient_nom} onChange={e => setF("patient_nom", e.target.value)} placeholder="DUPONT" style={{ textTransform: "uppercase" }} />
+                        <input className="cinp" value={form.patient_nom} readOnly disabled placeholder="Sélectionnez un patient…" style={{ textTransform: "uppercase", background: "#F3F7FF", cursor: "not-allowed" }} />
                       </div>
                       <div>
                         <label className="clbl req">Prénom</label>
-                        <input className="cinp" value={form.patient_prenom} onChange={e => setF("patient_prenom", e.target.value)} placeholder="Jean" />
+                        <input className="cinp" value={form.patient_prenom} readOnly disabled placeholder="Sélectionnez un patient…" style={{ background: "#F3F7FF", cursor: "not-allowed" }} />
                       </div>
                     </div>
                     <div className="cons-g2-sm">
                       <div>
                         <label className="clbl">Sexe</label>
-                        <select className="cinp" value={form.patient_sexe} onChange={e => setF("patient_sexe", e.target.value)}>
+                        <select className="cinp" value={form.patient_sexe} disabled style={{ background: "#F3F7FF", cursor: "not-allowed" }}>
                           <option value="homme">Masculin</option>
                           <option value="femme">Féminin</option>
                         </select>
                       </div>
                       <div>
                         <label className="clbl">Date de naissance</label>
-                        <input type="date" className="cinp" value={form.patient_ddn} onChange={e => setF("patient_ddn", e.target.value)} />
+                        <input type="date" className="cinp" value={form.patient_ddn} readOnly disabled style={{ background: "#F3F7FF", cursor: "not-allowed" }} />
                       </div>
                     </div>
                     {age && (
@@ -1598,15 +1602,15 @@ export default function Consultation() {
                     )}
                     <div>
                       <label className="clbl">Téléphone</label>
-                      <input className="cinp" value={form.patient_tel} onChange={e => setF("patient_tel", e.target.value)} placeholder="+242 06 000 0000" />
+                      <input className="cinp" value={form.patient_tel} readOnly disabled placeholder="—" style={{ background: "#F3F7FF", cursor: "not-allowed" }} />
                     </div>
                     <div>
                       <label className="clbl">Adresse</label>
-                      <input className="cinp" value={form.patient_adresse} onChange={e => setF("patient_adresse", e.target.value)} placeholder="Quartier, Ville" />
+                      <input className="cinp" value={form.patient_adresse} readOnly disabled placeholder="—" style={{ background: "#F3F7FF", cursor: "not-allowed" }} />
                     </div>
                     <div>
                       <label className="clbl">Groupe sanguin</label>
-                      <select className="cinp" value={form.patient_groupe_sanguin} onChange={e => setF("patient_groupe_sanguin", e.target.value)}>
+                      <select className="cinp" value={form.patient_groupe_sanguin} disabled style={{ background: "#F3F7FF", cursor: "not-allowed" }}>
                         <option value="">— Inconnu —</option>
                         {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(g => <option key={g} value={g}>{g}</option>)}
                       </select>
@@ -1619,11 +1623,11 @@ export default function Consultation() {
                   <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
                     <div>
                       <label className="clbl">Antécédents médicaux</label>
-                      <textarea className="cinp" rows={4} value={form.patient_antecedents} onChange={e => setF("patient_antecedents", e.target.value)} placeholder="HTA, Diabète, Asthme, maladies chroniques..." />
+                      <textarea className="cinp" rows={4} value={form.patient_antecedents} readOnly disabled placeholder="—" style={{ background: "#F3F7FF", cursor: "not-allowed" }} />
                     </div>
                     <div>
                       <label className="clbl">⚠ Allergies connues</label>
-                      <input className="cinp" value={form.patient_allergies} onChange={e => setF("patient_allergies", e.target.value)} placeholder="Pénicilline, Aspirine, Latex..." style={{ borderColor: form.patient_allergies ? "#FECACA" : "", background: form.patient_allergies ? "#FEF2F2" : "" }} />
+                      <input className="cinp" value={form.patient_allergies} readOnly disabled placeholder="—" style={{ borderColor: form.patient_allergies ? "#FECACA" : "", background: form.patient_allergies ? "#FEF2F2" : "#F3F7FF", cursor: "not-allowed" }} />
                       {form.patient_allergies && (
                         <div style={{ fontSize: 11, color: "var(--cr)", marginTop: 4, fontWeight: 600 }}>⚠ Attention lors de la prescription</div>
                       )}

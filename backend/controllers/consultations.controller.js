@@ -139,16 +139,19 @@ exports.envoyerFacture = async (req, res, next) => {
     const patient = await Patient.findById(invoice.patient).select('nom prenom email').lean();
     if (!patient?.email) return res.status(400).json({ success: false, message: "Ce patient n'a pas d'adresse email enregistrée — impossible d'envoyer la facture." });
 
-    await mail.sendInvoiceEmail({
+    const result = await mail.sendInvoiceEmail({
       email: patient.email, prenom: patient.prenom, nom: patient.nom,
       numero_facture: invoice.numero_facture, montant_ttc: invoice.montant_ttc,
       lignes: invoice.lignes, date_facture: invoice.date_facture,
     });
+    const simulated = !!result?.simulated;
 
-    await logAction({ utilisateur: req.user._id, action: 'SEND_INVOICE_EMAIL', module: 'consultations', entite_id: invoice._id, ip: req.ip, message: `Facture ${invoice.numero_facture} envoyée par email à ${patient.email}` });
-    res.json({ success: true, message: `Facture envoyée à ${patient.email}.` });
+    await logAction({ utilisateur: req.user._id, action: 'SEND_INVOICE_EMAIL', module: 'consultations', entite_id: invoice._id, ip: req.ip, message: `Facture ${invoice.numero_facture} ${simulated ? 'SIMULÉE (Resend non configuré)' : 'envoyée'} par email à ${patient.email}` });
+    res.json({ success: true, simulated, message: simulated ? `Email simulé (Resend non configuré) — la facture n'a pas réellement été envoyée à ${patient.email}.` : `Facture envoyée à ${patient.email}.` });
   } catch (err) { next(err); }
 };
+
+
 
 exports.create = async (req, res, next) => {
   try {
