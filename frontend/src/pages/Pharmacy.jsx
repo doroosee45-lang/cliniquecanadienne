@@ -1558,7 +1558,7 @@ ${lignes}
         {/* ── HERO ── */}
         <Hero
           icon={Pill}
-          title="Module Pharmacie"
+          title="Pharmacie"
           dateLabel={`${kpis.total} médicament(s) · ${kpis.ruptures} rupture(s) · Stock : ${fmtCFA(kpis.valeur_stock)}`}
           right={
             <>

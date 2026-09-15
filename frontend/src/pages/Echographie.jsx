@@ -2073,7 +2073,7 @@ export default function Echographie() {
         {/* ── HERO ── */}
         <Hero
           icon={Activity}
-          title="Module Échographie"
+          title="Échographie"
           dateLabel={
             <span className="flex items-center gap-3 flex-wrap">
               <span>{demandes.length} demande(s) · {demandes.filter(d=>d.statut==="planifiee").length} planifiée(s)</span>

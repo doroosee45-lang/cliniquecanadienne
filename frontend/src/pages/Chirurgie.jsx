@@ -652,7 +652,7 @@ export default function Chirurgie() {
         {/* ── HERO ── */}
         <Hero
           icon={Scissors}
-          title="Module Chirurgie"
+          title="Chirurgie"
           dateLabel={`${kpis.total} dossiers · Clinique Canadienne de Souanké`}
           right={
             <>

@@ -607,7 +607,7 @@ export default function Imagerie() {
         {/* ── HERO ── */}
         <Hero
           icon={ScanLine}
-          title="Module Imagerie Médicale"
+          title="Imagerie Médicale"
           dateLabel={`${kpis.total} examens · Radiologie / Échographie / Scanner / IRM`}
           right={
             <>

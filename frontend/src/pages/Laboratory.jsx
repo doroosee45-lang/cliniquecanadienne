@@ -796,7 +796,7 @@ export default function Laboratoire() {
         {/* ── HERO ── */}
         <Hero
           icon={FlaskConical}
-          title="Module Laboratoire"
+          title="Laboratoire"
           dateLabel={`${kpis.total} analyses · Clinique Canadienne de Souanké`}
           right={
             <>
