@@ -108,6 +108,9 @@ router.get('/budget',              protect, authorize(...CAN_ACCESS), finC.getBu
 router.put('/budget/:categorie',   protect, authorize(...CAN_ACCESS), finC.updateBudget);
 router.post('/caisse',    protect, authorize(...CAN_ACCESS), finC.caisse);
 
+router.get('/bilan', protect, authorize(...CAN_ACCESS), finC.getBilan);
+router.put('/bilan', protect, authorize(...CAN_ACCESS), finC.updateBilanManuel);
+
 router.get('/',             protect, authorize(...CAN_ACCESS), finC.getAll);
 router.post('/',            protect, authorize(...CAN_ACCESS), finC.create);
 router.get('/:id',          protect, authorize(...CAN_ACCESS), finC.getOne);

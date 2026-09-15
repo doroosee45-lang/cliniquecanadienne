@@ -547,6 +547,9 @@ export default function Finance() {
   const [assurances, setAssurances] = useState([]);
   const [salaires, setSalaires] = useState([]);
   const [kpis, setKpis] = useState({});
+  const [bilan, setBilan] = useState(null);
+  const [bilanEdits, setBilanEdits] = useState({});
+  const [savingBilan, setSavingBilan] = useState(false);
 
   // Modals
   const [modalRevenu, setModalRevenu] = useState(false);
@@ -605,7 +608,7 @@ export default function Finance() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [revRes, depRes, factRes, payRes, assRes, salRes, kpiRes] = await Promise.allSettled([
+      const [revRes, depRes, factRes, payRes, assRes, salRes, kpiRes, bilRes] = await Promise.allSettled([
         api.get("/finance/revenus?limit=50"),
         api.get("/finance/depenses?limit=50"),
         api.get("/finance/factures?limit=50"),
@@ -613,6 +616,7 @@ export default function Finance() {
         api.get("/finance/assurances"),
         api.get("/finance/salaires"),
         api.get("/finance/kpis"),
+        api.get(`/finance/bilan?annee=${currentYear}`),
       ]);
       if (revRes.status  === "fulfilled") setRevenus((revRes.value.data.revenus || revRes.value.data.data || []).map(r => ({ ...r, patient: r.patient && typeof r.patient === 'object' ? `${r.patient.prenom||''} ${r.patient.nom||''}`.trim() : (r.patient || r.patient_nom || '—') })));
       if (depRes.status  === "fulfilled") setDepenses(depRes.value.data.depenses || depRes.value.data.data  || []);
@@ -623,6 +627,7 @@ export default function Finance() {
       if (payRes.status  === "fulfilled") setPaiements((payRes.value.data.paiements || payRes.value.data.data || []).map(p => ({ ...p, patient: p.patient && typeof p.patient === 'object' ? `${p.patient.prenom||''} ${p.patient.nom||''}`.trim() : (p.patient || '—') })));
       if (assRes.status  === "fulfilled") setAssurances(assRes.value.data.assurances || []);
       if (salRes.status  === "fulfilled") setSalaires(salRes.value.data.salaires   || []);
+      if (bilRes.status  === "fulfilled") setBilan(bilRes.value.data);
       if (kpiRes.status  === "fulfilled") setKpis(kpiRes.value.data || {});
     } catch (err) {
       console.error("Erreur chargement finance:", err);
@@ -1077,7 +1082,7 @@ export default function Finance() {
         {/* ── HERO ── */}
         <Hero
           icon={Wallet}
-          title="Module Finance"
+          title="Finance"
           dateLabel={
             <>
               {CLINIC_NAME} {CLINIC_SUBTITLE} ·
@@ -1793,9 +1798,9 @@ export default function Finance() {
               <div style={{ fontSize:16, fontWeight:700, color:"var(--fn)", marginBottom:20 }}>Plan comptable & Écritures</div>
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:20, marginBottom:24 }}>
                 {[
-                  { titre:"Actifs", couleur:"var(--fg)", items:[["Trésorerie caisse", 485000], ["Créances clients", montantImpaye], ["Créances assurances", creanceAssur], ["Stocks pharmacie", 1200000]] },
-                  { titre:"Passifs", couleur:"var(--fr)", items:[["Fournisseurs", 320000], ["Salaires à payer", salaires.filter(s=>s.statut!=="paye").reduce((s,x)=>s+Number(x.net),0)], ["Charges sociales", 185000], ["Impôts à payer", 95000]] },
-                  { titre:"Capitaux propres", couleur:"var(--fb)", items:[["Capital social", 5000000], ["Réserves", 1200000], ["Résultat exercice", beneficeNet], ["Report à nouveau", 800000]] },
+                  { titre:"Actifs", couleur:"var(--fg)", items:[["Trésorerie caisse", bilan?.actifs?.tresorerie_caisse ?? 0], ["Créances clients", montantImpaye], ["Créances assurances", creanceAssur], ["Stocks pharmacie", bilan?.actifs?.stocks_pharmacie ?? 0]] },
+                  { titre:"Passifs", couleur:"var(--fr)", items:[["Fournisseurs", bilan?.passifs?.fournisseurs ?? 0], ["Salaires à payer", salaires.filter(s=>s.statut!=="paye").reduce((s,x)=>s+Number(x.net),0)], ["Charges sociales", bilan?.passifs?.charges_sociales ?? 0], ["Impôts à payer", bilan?.passifs?.impots_a_payer ?? 0]] },
+                  { titre:"Capitaux propres", couleur:"var(--fb)", items:[["Capital social", bilan?.capitaux_propres?.capital_social ?? 0], ["Réserves", bilan?.capitaux_propres?.reserves ?? 0], ["Résultat exercice", beneficeNet], ["Report à nouveau", bilan?.capitaux_propres?.report_a_nouveau ?? 0]] },
                 ].map(({ titre, couleur, items }) => (
                   <div key={titre} className="fin-card ffu">
                     <div className="fin-card-hdr"><h3 style={{ color:couleur }}>{titre}</h3></div>
@@ -1813,6 +1818,69 @@ export default function Finance() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Panneau d'édition des valeurs manuelles du bilan */}
+              <div className="fin-card ffu" style={{ marginBottom:24 }}>
+                <div className="fin-card-hdr">
+                  <h3>✏️ Saisie manuelle du bilan {currentYear}</h3>
+                </div>
+                <div style={{ padding:16 }}>
+                  <p style={{ fontSize:12, color:"var(--cm)", marginBottom:12 }}>
+                    Ces 6 valeurs proviennent de la comptabilité externe (déclarations fiscales,
+                    statuts de société) et ne peuvent pas être calculées automatiquement.
+                    {bilan?.derniere_maj_manuelle
+                      ? ` Dernière mise à jour : ${new Date(bilan.derniere_maj_manuelle).toLocaleString('fr-FR')}.`
+                      : ' Aucune saisie effectuée pour le moment — valeurs à 0.'}
+                  </p>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:12, marginBottom:12 }}>
+                    {[
+                      ["fournisseurs",     "Fournisseurs",      bilan?.passifs?.fournisseurs],
+                      ["charges_sociales", "Charges sociales",  bilan?.passifs?.charges_sociales],
+                      ["impots_a_payer",   "Impôts à payer",    bilan?.passifs?.impots_a_payer],
+                      ["capital_social",   "Capital social",    bilan?.capitaux_propres?.capital_social],
+                      ["reserves",         "Réserves",          bilan?.capitaux_propres?.reserves],
+                      ["report_a_nouveau", "Report à nouveau",  bilan?.capitaux_propres?.report_a_nouveau],
+                    ].map(([key, label, current]) => (
+                      <div key={key}>
+                        <label style={{ fontSize:11, color:"var(--cm)", display:"block", marginBottom:4 }}>{label} (CFA)</label>
+                        <input
+                          type="number"
+                          className="finp"
+                          style={{ width:"100%" }}
+                          value={bilanEdits[key] ?? current ?? 0}
+                          onChange={(e) => setBilanEdits(prev => ({ ...prev, [key]: e.target.value }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    className="fbtn fbtn-primary"
+                    disabled={savingBilan || Object.keys(bilanEdits).length === 0}
+                    onClick={async () => {
+                      setSavingBilan(true);
+                      try {
+                        const payload = {};
+                        Object.entries(bilanEdits).forEach(([k, v]) => { payload[k] = Number(v); });
+                        const { data } = await api.put(`/finance/bilan?annee=${currentYear}`, payload);
+                        setBilan(prev => ({
+                          ...prev,
+                          derniere_maj_manuelle: data.ecriture.updatedAt,
+                          passifs: { ...prev?.passifs, fournisseurs: data.ecriture.fournisseurs, charges_sociales: data.ecriture.charges_sociales, impots_a_payer: data.ecriture.impots_a_payer },
+                          capitaux_propres: { ...prev?.capitaux_propres, capital_social: data.ecriture.capital_social, reserves: data.ecriture.reserves, report_a_nouveau: data.ecriture.report_a_nouveau },
+                        }));
+                        setBilanEdits({});
+                        toast.success('Bilan mis à jour.');
+                      } catch (err) {
+                        toast.error(err?.response?.data?.message || 'Échec de la mise à jour du bilan.');
+                      } finally {
+                        setSavingBilan(false);
+                      }
+                    }}
+                  >
+                    {savingBilan ? 'Enregistrement…' : 'Enregistrer les modifications'}
+                  </button>
+                </div>
               </div>
 
               {/* Journaux */}

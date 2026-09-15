@@ -1,3 +1,5 @@
+const EcritureBilan = require('../models/EcritureBilan');
+const Medication = require('../models/Medication');
 const Invoice = require('../models/Invoice');
 const Depense = require('../models/Depense');
 const Salaire = require('../models/Salaire');
@@ -597,5 +599,121 @@ exports.getAssurances = async (req, res, next) => {
       };
     });
     res.json({ success: true, assurances });
+  } catch (err) { next(err); }
+};
+
+// ── BILAN COMPTABLE ─────────────────────────────────────────────────────
+// AUDIT-FINANCE-BILAN — l'onglet "Comptabilité" de Finance.jsx affichait 8
+// valeurs sur 12 codées en dur. Correction en deux volets :
+//  1. Trésorerie caisse & Stocks pharmacie : calculables depuis Invoice/
+//     Depense/Medication — jamais saisis manuellement.
+//  2. Fournisseurs, Charges sociales, Impôts à payer, Capital social,
+//     Réserves, Report à nouveau : comptabilité externe, saisie manuelle
+//     dans EcritureBilan (même principe que BudgetCible).
+exports.getBilan = async (req, res, next) => {
+  try {
+    const annee = Number(req.query.annee) || new Date().getFullYear();
+    const debut = new Date(annee, 0, 1);
+    const fin   = new Date(annee, 11, 31, 23, 59, 59, 999);
+
+    const [
+      encaissements, decaissements, stocksAgg,
+      creancesAgg, salairesDus, manuel,
+    ] = await Promise.all([
+      Invoice.aggregate([
+        { $unwind: { path: '$paiements', preserveNullAndEmptyArrays: false } },
+        { $group: { _id: null, total: { $sum: '$paiements.montant' } } },
+      ]),
+      Depense.aggregate([
+        { $match: { statut: 'paye' } },
+        { $group: { _id: null, total: { $sum: '$montant' } } },
+      ]),
+      Medication.aggregate([
+        { $group: { _id: null, total: { $sum: { $multiply: ['$stock_actuel', '$prix_achat'] } } } },
+      ]),
+      Invoice.aggregate([
+        { $match: { statut: { $in: ['emise', 'partiellement_payee'] } } },
+        { $group: { _id: null, total: { $sum: '$montant_restant' } } },
+      ]),
+      Salaire.aggregate([
+        { $match: { mois: { $regex: `^${annee}` }, statut: { $ne: 'paye' } } },
+        { $group: { _id: null, total: { $sum: '$net' } } },
+      ]),
+      EcritureBilan.findOne({ annee }).lean(),
+    ]);
+
+    const [caAnnee, depensesAnnee] = await Promise.all([
+      Invoice.aggregate([
+        { $match: { date_facture: { $gte: debut, $lte: fin } } },
+        { $group: { _id: null, total: { $sum: '$montant_paye' } } },
+      ]),
+      Depense.aggregate([
+        { $match: { date: { $gte: debut, $lte: fin }, statut: 'paye' } },
+        { $group: { _id: null, total: { $sum: '$montant' } } },
+      ]),
+    ]);
+    const resultat_exercice = (caAnnee[0]?.total || 0) - (depensesAnnee[0]?.total || 0);
+
+    const m = manuel || {};
+
+    res.json({
+      success: true,
+      annee,
+      derniere_maj_manuelle: manuel?.updatedAt || null,
+      actifs: {
+        tresorerie_caisse: (encaissements[0]?.total || 0) - (decaissements[0]?.total || 0),
+        creances_clients:  creancesAgg[0]?.total || 0,
+        stocks_pharmacie:  stocksAgg[0]?.total || 0,
+      },
+      passifs: {
+        salaires_a_payer: salairesDus[0]?.total || 0,
+        fournisseurs:     m.fournisseurs || 0,
+        charges_sociales: m.charges_sociales || 0,
+        impots_a_payer:   m.impots_a_payer || 0,
+      },
+      capitaux_propres: {
+        resultat_exercice,
+        capital_social:   m.capital_social || 0,
+        reserves:         m.reserves || 0,
+        report_a_nouveau: m.report_a_nouveau || 0,
+      },
+    });
+  } catch (err) { next(err); }
+};
+
+exports.updateBilanManuel = async (req, res, next) => {
+  try {
+    const annee = Number(req.query.annee) || new Date().getFullYear();
+    const CHAMPS_AUTORISES = [
+      'fournisseurs', 'charges_sociales', 'impots_a_payer',
+      'capital_social', 'reserves', 'report_a_nouveau',
+    ];
+    const updates = {};
+    for (const champ of CHAMPS_AUTORISES) {
+      if (req.body[champ] !== undefined) {
+        const val = Number(req.body[champ]);
+        if (Number.isNaN(val)) {
+          return res.status(400).json({ success: false, message: `Valeur invalide pour ${champ}.` });
+        }
+        updates[champ] = val;
+      }
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, message: 'Aucun champ valide fourni.' });
+    }
+    updates.modifie_par = req.user._id;
+
+    const avant = await EcritureBilan.findOne({ annee }).lean();
+    const ecriture = await EcritureBilan.findOneAndUpdate(
+      { annee }, updates, { new: true, upsert: true, runValidators: true }
+    );
+
+    await logAction({
+      utilisateur: req.user._id, action: avant ? 'UPDATE' : 'CREATE', module: 'finance',
+      entite_id: ecriture._id, ip: req.ip,
+      message: `Bilan comptable ${annee} mis à jour : ${Object.keys(updates).filter(k => k !== 'modifie_par').join(', ')}`,
+    });
+    emitDashboardUpdate();
+    res.json({ success: true, ecriture });
   } catch (err) { next(err); }
 };
