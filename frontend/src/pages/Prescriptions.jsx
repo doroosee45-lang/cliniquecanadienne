@@ -257,7 +257,7 @@ const TOP_COLORS = ["var(--success)", "var(--primary)", "var(--accent)", "var(--
 function buildTopMedicaments(ordonnances) {
   const counts = new Map();
   ordonnances.forEach(o => (o.medicaments || []).forEach(m => {
-    const nom = (m.medicament || "").trim();
+    const nom = (m.medicament_nom || (typeof m.medicament === "string" ? m.medicament : m.medicament?.nom_commercial) || "").trim();
     if (nom) counts.set(nom, (counts.get(nom) || 0) + 1);
   }));
   const total = ordonnances.length || 1;
@@ -567,7 +567,7 @@ export default function Ordonnances() {
     // sans aucun médicament n'a pas de sens clinique ; le backend refuse
     // désormais aussi ce cas (prescriptions.controller.js::create), mais
     // l'erreur doit être vue avant l'envoi, pas comme un 400 confus.
-    if (!(formOrd.medicaments || []).some(m => (m.medicament || "").trim())) {
+    if (!(formOrd.medicaments || []).some(m => (m.medicament_nom || (typeof m.medicament === "string" ? m.medicament : m.medicament?.nom_commercial) || "").trim())) {
       toast.error("Au moins un médicament est obligatoire.");
       return;
     }
