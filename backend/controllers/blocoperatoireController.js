@@ -2,6 +2,7 @@ const DossierChirurgical = require('../models/DossierChirurgical');
 const Patient = require('../models/Patient');
 const User    = require('../models/User');
 const Invoice = require('../models/Invoice');
+const MaterielMedical = require('../models/MaterielMedical');
 const { logAction, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
@@ -212,6 +213,13 @@ exports.getPlanning = async (req, res, next) => {
     const tauxComplications = operes > 0 ? Math.round((operesAvecComplications / operes) * 1000) / 10 : 0;
     const tauxSucces = cloturesAvecEtat > 0 ? Math.round((cloturesReussies / cloturesAvecEtat) * 100) : 0;
 
+    const parSpecialiteAgg = await DossierChirurgical.aggregate([
+      { $match: { specialite: { $nin: [null, ''] } } },
+      { $group: { _id: '$specialite', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+    const parSpecialite = parSpecialiteAgg.map(x => ({ specialite: x._id, nombreInterventions: x.count }));
+
     const volumeLabels = [];
     const volumeData = new Array(12).fill(0);
     for (let i = 11; i >= 0; i--) {
@@ -242,6 +250,7 @@ exports.getPlanning = async (req, res, next) => {
         taux_succes: tauxSucces,
         duree_moyenne_min: dureeMoyenneMin,
         volume_12_mois: { labels: volumeLabels, data: volumeData },
+        par_specialite: parSpecialite,
       },
     });
   } catch (err) { next(err); }
@@ -251,7 +260,7 @@ exports.getPlanning = async (req, res, next) => {
 exports.createIntervention = async (req, res, next) => {
   try {
     const { patient: patient_id, dossier_id, salle, date_heure_op, type_intervention,
-            niveau_urgence, chirurgien, chirurgien_id, diagnostic_preop,
+            specialite, niveau_urgence, chirurgien, chirurgien_id, diagnostic_preop,
             duree_estimee, statut = 'preoperatoire', assistant, anesthesiste,
             infirmier_instru, infirmier_circu, notes, service_demandeur } = req.body;
 
@@ -304,6 +313,7 @@ exports.createIntervention = async (req, res, next) => {
     if (salle)            dossier.salle_prevue            = salle;
     if (date_heure_op)    dossier.date_intervention_prev  = new Date(date_heure_op);
     if (type_intervention)dossier.type_intervention       = type_intervention;
+    if (specialite)        dossier.specialite               = specialite;
     if (duree_estimee)    dossier.duree_intervention_min  = duree_estimee;
     if (chirurgien_id)    dossier.chirurgien_id            = chirurgien_id;
     if (diagnostic_preop) dossier.diagnostic_chirurgical  = diagnostic_preop;
@@ -582,7 +592,7 @@ exports.updateIntervention = async (req, res, next) => {
   try {
     const allowed = [
       'salle_prevue', 'date_intervention_prev', 'date_intervention_reelle',
-      'statut', 'type_intervention', 'duree_intervention_min',
+      'statut', 'type_intervention', 'specialite', 'duree_intervention_min',
       'cr_operatoire', 'evolution_immediate', 'chirurgien_id', 'niveau_urgence',
       'service_demandeur',
     ];
@@ -682,5 +692,81 @@ exports.updateIntervention = async (req, res, next) => {
     });
 
     res.json({ success: true, intervention: dossier });
+  } catch (err) { next(err); }
+};
+
+
+// ── GET /materiels — catalogue des consommables ──────────────────────────
+exports.getMateriels = async (req, res, next) => {
+  try {
+    const materiels = await MaterielMedical.find().sort('designation').lean();
+    res.json({ success: true, materiels });
+  } catch (err) { next(err); }
+};
+
+// ── POST /:id/materiel — enregistrer une consommation réelle ─────────────
+exports.addConsommation = async (req, res, next) => {
+  try {
+    const { materiel_id, quantite } = req.body;
+    if (!materiel_id || !quantite || quantite < 1)
+      return res.status(400).json({ success: false, message: 'materiel_id et quantite (\u22651) requis.' });
+
+    const dossier = await DossierChirurgical.findById(req.params.id);
+    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
+
+    const materiel = await MaterielMedical.findById(materiel_id);
+    if (!materiel) return res.status(404).json({ success: false, message: 'Matériel introuvable.' });
+    if (materiel.stock_actuel < quantite)
+      return res.status(400).json({ success: false, message: `Stock insuffisant pour ${materiel.designation} (disponible: ${materiel.stock_actuel}).` });
+
+    dossier.materiel_utilise.push({
+      materiel: materiel._id, designation: materiel.designation, quantite,
+      unite: materiel.unite, utilisateur: req.user._id,
+    });
+    materiel.stock_actuel -= quantite;
+    if (materiel.stock_actuel <= materiel.stock_minimum) materiel.statut = 'rupture';
+
+    await Promise.all([dossier.save(), materiel.save()]);
+
+    await logAction({
+      utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire',
+      entite_id: dossier._id, ip: req.ip,
+      message: `Consommation enregistrée — ${materiel.designation} ×${quantite} — ${dossier.patient_nom}`,
+    });
+    emitDashboardUpdate();
+
+    res.json({ success: true, intervention: dossier, materiel });
+  } catch (err) { next(err); }
+};
+
+// ── GET /statistiques/consommation — consommation réelle agrégée ─────────
+exports.getConsommationStats = async (req, res, next) => {
+  try {
+    const { startDate, endDate, specialite } = req.query;
+    const matchDossier = {};
+    if (specialite) matchDossier.specialite = specialite;
+
+    const pipeline = [
+      { $match: matchDossier },
+      { $unwind: '$materiel_utilise' },
+    ];
+    const dateFilter = {};
+    if (startDate) dateFilter.$gte = new Date(startDate);
+    if (endDate)   dateFilter.$lte = new Date(endDate);
+    if (Object.keys(dateFilter).length) pipeline.push({ $match: { 'materiel_utilise.date': dateFilter } });
+
+    pipeline.push(
+      { $group: { _id: '$materiel_utilise.designation', quantite: { $sum: '$materiel_utilise.quantite' } } },
+      { $sort: { quantite: -1 } },
+    );
+
+    const parMateriel = await DossierChirurgical.aggregate(pipeline);
+    const totalConsomme = parMateriel.reduce((s, x) => s + x.quantite, 0);
+
+    res.json({
+      success: true,
+      data: parMateriel.map(x => ({ materiel: x._id, quantite: x.quantite })),
+      total_consomme: totalConsomme,
+    });
   } catch (err) { next(err); }
 };

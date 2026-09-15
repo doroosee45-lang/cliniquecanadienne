@@ -36,6 +36,16 @@ const dossierChirurgicalSchema = new mongoose.Schema({
   diagnostic_chirurgical: String,
   decision: { type: String, enum: ['intervention', 'traitement_medical', 'examens_complementaires', 'hospitalisation'], default: 'intervention' },
   type_intervention: String,
+  // Correction Sous-phase "Bloc Opératoire" (audit du 15 sept. 2026) —
+  // formInterv.specialite (Blocoperatoire.jsx) capturait déjà cette valeur
+  // côté client mais aucun champ homonyme n'existait ici : Mongoose la
+  // supprimait silencieusement à chaque save(). Enum aligné sur
+  // SPECIALITE_BO (Blocoperatoire.jsx) pour rester la seule source de
+  // vérité côté UI ↔ backend.
+  specialite: {
+    type: String,
+    enum: ['chirurgie_generale', 'gynecologie', 'orthopédie', 'urologie', 'orl', 'ophtalmologie', 'autre'],
+  },
 
   date_intervention_prev: Date,
   date_intervention_reelle: Date,
@@ -81,6 +91,19 @@ const dossierChirurgicalSchema = new mongoose.Schema({
 
   ia_risque_score: { type: Number, default: 0, min: 0, max: 100 },
   ia_risque_niveau: { type: String, enum: ['faible', 'modere', 'eleve', 'critique'], default: 'faible' },
+
+  // Correction Sous-phase "Bloc Opératoire" — suivi réel de la consommation
+  // de matériel/consommables par intervention. Snapshot de designation/unite
+  // au moment de l'usage (indépendant d'un renommage ultérieur du catalogue
+  // MaterielMedical), même pattern que Commande.js::LigneCommandeSchema.
+  materiel_utilise: [{
+    materiel:    { type: mongoose.Schema.Types.ObjectId, ref: 'MaterielMedical', required: true },
+    designation: { type: String, required: true },
+    quantite:    { type: Number, required: true, min: 1 },
+    unite:       String,
+    date:        { type: Date, default: Date.now },
+    utilisateur: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  }],
 
   nb_complications: { type: Number, default: 0 },
   nb_suivis: { type: Number, default: 0 },

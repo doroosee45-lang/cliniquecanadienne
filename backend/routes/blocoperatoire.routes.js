@@ -36,4 +36,9 @@ router.post('/:id/reveil',     protect, authorize(...BLOC_MANAGE), boC.saveRevei
 router.put('/:id/entree-salle', protect, authorize(...BLOC_MANAGE), boC.entreeSalle);
 router.put('/:id/sortie-salle', protect, authorize(...BLOC_MANAGE), boC.sortieSalle);
 
+// Matériel / consommables (correction Sous-phase Bloc Opératoire)
+router.get('/materiels',                     protect, authorize(...BLOC_ROLES),  boC.getMateriels);
+router.post('/:id/materiel',                 protect, authorize(...BLOC_MANAGE), boC.addConsommation);
+router.get('/statistiques/consommation',     protect, authorize(...BLOC_ROLES),  boC.getConsommationStats);
+
 module.exports = router;

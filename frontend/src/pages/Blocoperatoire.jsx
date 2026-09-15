@@ -497,6 +497,13 @@ export default function BlocOperatoire() {
   const chartMois = kpis.volume_12_mois?.labels || [];
   const chartData = kpis.volume_12_mois?.data || [];
 
+  // Correction Sous-phase "Bloc Opératoire" (audit du 15 sept. 2026) —
+  // catalogue des consommables (GET /blocoperatoire/materiels) et
+  // consommation réelle agrégée (GET /blocoperatoire/statistiques/consommation).
+  const [materiels, setMateriels] = useState([]);
+  const [consoStats, setConsoStats] = useState({ data: [], total_consomme: 0 });
+  const [consoForm, setConsoForm] = useState({ materiel_id: "", quantite: 1 });
+
   // ── Load interventions ─────────────────────────────────────
   const loadInterventions = useCallback(async () => {
     setLoading(true);
@@ -555,7 +562,47 @@ export default function BlocOperatoire() {
     }
   }, []);
 
-  useEffect(() => { loadInterventions(); loadStats(); loadPatients(); }, [loadInterventions, loadStats, loadPatients]);
+  // ── Load matériel catalogue ──────────────────────────────────
+  const loadMateriels = useCallback(async () => {
+    try {
+      const { data } = await api.get("/blocoperatoire/materiels");
+      setMateriels(data.materiels || []);
+    } catch (err) {
+      console.error("Erreur chargement catalogue matériel:", err);
+    }
+  }, []);
+
+  // ── Load consommation réelle agrégée ────────────────────────
+  const loadConsoStats = useCallback(async () => {
+    try {
+      const { data } = await api.get("/blocoperatoire/statistiques/consommation");
+      setConsoStats({ data: data.data || [], total_consomme: data.total_consomme || 0 });
+    } catch (err) {
+      console.error("Erreur chargement statistiques de consommation:", err);
+    }
+  }, []);
+
+  // ── Enregistrer une consommation réelle sur l'intervention ouverte ──
+  const addConso = async () => {
+    if (!currentInterv) return;
+    if (!consoForm.materiel_id || !consoForm.quantite || consoForm.quantite < 1) {
+      toast.error("Sélectionnez un matériel et une quantité valide.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data } = await api.post(`/blocoperatoire/${currentInterv._id}/materiel`, consoForm);
+      toast.success("✅ Consommation enregistrée");
+      if (data?.intervention) setCurrentInterv(normalizeInterv(data.intervention));
+      setConsoForm({ materiel_id: "", quantite: 1 });
+      loadMateriels();
+      loadConsoStats();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement de la consommation");
+    } finally { setSaving(false); }
+  };
+
+  useEffect(() => { loadInterventions(); loadStats(); loadPatients(); loadMateriels(); loadConsoStats(); }, [loadInterventions, loadStats, loadPatients, loadMateriels, loadConsoStats]);
   useRealtimeRefresh(loadInterventions);
   // REALTIME-SALLES-001 (rapport de clôture du 11 sept. 2026) — NEW-007 a
   // unifié la source des salles sur loadStats()/`salles` (état local), déjà
@@ -763,22 +810,32 @@ export default function BlocOperatoire() {
                     <BarChart labels={chartMois} data={chartData} color="#1A5276" />
                   </div>
                 </div>
-                {/* Sous-phase 5.1 — "Par spécialité" affichait une répartition
-                    fixe [40,22,15,10,8,5] jamais recalculée. Aucun champ
-                    "specialite" n'existe sur DossierChirurgical : le formulaire
-                    (formInterv.specialite) le capture côté client mais
-                    createIntervention()/updateIntervention() (backend) ne le
-                    persistent nulle part (même limite que Prescriptions.jsx,
-                    formOrd.specialite — annexe non corrigée ici, hors
-                    périmètre de cette correction). Désactivé honnêtement
-                    plutôt que d'afficher une répartition inventée. */}
+                {/* Correction Sous-phase "Bloc Opératoire" (audit du
+                    15 sept. 2026) — specialite est réellement persisté
+                    (DossierChirurgical.specialite) et agrégé par
+                    blocoperatoireController.js::getPlanning, exposé via
+                    kpis.par_specialite. */}
                 <div className="bo-card bofu">
                   <div className="bo-card-hdr">
                     <div><h3>Par spécialité</h3><p>Répartition des interventions</p></div>
                   </div>
-                  <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                    <div style={{ fontSize:32, marginBottom:10, opacity:.4 }}>📊</div>
-                    <div style={{ fontSize:13 }}>🚧 Fonctionnalité indisponible — la spécialité saisie à la création n'est pas encore enregistrée en base.</div>
+                  <div style={{ padding:20 }}>
+                    {(kpis.par_specialite || []).length === 0 ? (
+                      <div style={{ padding:20, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucune intervention avec spécialité enregistrée.</div>
+                    ) : (() => {
+                      const maxCount = Math.max(...kpis.par_specialite.map(x => x.nombreInterventions));
+                      return kpis.par_specialite.map(x => (
+                        <div key={x.specialite} style={{ marginBottom:10 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"var(--bn)", marginBottom:4 }}>
+                            <span>{SPECIALITE_BO[x.specialite] || x.specialite}</span>
+                            <span style={{ fontWeight:700 }}>{x.nombreInterventions}</span>
+                          </div>
+                          <div style={{ background:"#EAF4FB", borderRadius:6, height:8 }}>
+                            <div style={{ background:"#1A5276", borderRadius:6, height:8, width: Math.round((x.nombreInterventions / maxCount) * 100) + "%" }} />
+                          </div>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1665,25 +1722,60 @@ export default function BlocOperatoire() {
               )}
 
               {/* ── CONSOMMABLES ── */}
-              {/* Sous-phase 5.1 — cet onglet était entièrement fictif :
-                  DEMO_CONSO=[] jamais alimenté, boutons "Ajouter article"/
-                  "Valider déduction stock" affichant un toast de succès sans
-                  aucun appel réseau, compteurs +/- ne mutant qu'un état local
-                  jamais persisté, et un encart affirmant une "liaison
-                  automatique avec le stock médical" qui n'existe pas. Aucun
-                  modèle de données (consommable, mouvement de stock lié à une
-                  intervention) n'existe pour ce module — vérifié dans
-                  blocoperatoireController.js (seule mention de "consommable"
-                  concerne la facturation, déjà documentée comme hors
-                  périmètre). Désactivé honnêtement plutôt que de laisser
-                  cette simulation. */}
+              {/* Correction Sous-phase "Bloc Opératoire" (audit du
+                  15 sept. 2026) — suivi réel de la consommation de matériel
+                  par intervention : DossierChirurgical.materiel_utilise
+                  (persisté), catalogue réel MaterielMedical (stock décrémenté
+                  à chaque ajout, POST /:id/materiel), plus de simulation. */}
               {section === "consommables" && (
                 <div style={{ marginTop:20 }}>
-                  <div className="bo-card">
-                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>📦</div>
-                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des consommables n'existe dans ce système.</div>
+                  <div className="bo-card" style={{ marginBottom:16 }}>
+                    <div className="bo-card-hdr"><h3>📦 Matériel utilisé pour cette intervention</h3></div>
+                    <div style={{ padding:16 }}>
+                      {(!currentInterv?.materiel_utilise || currentInterv.materiel_utilise.length === 0) ? (
+                        <div style={{ padding:20, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucun matériel enregistré pour cette intervention.</div>
+                      ) : (
+                        <table className="bo-tbl">
+                          <thead><tr><th>Désignation</th><th>Quantité</th><th>Unité</th><th>Date</th></tr></thead>
+                          <tbody>
+                            {currentInterv.materiel_utilise.map((m, i) => (
+                              <tr key={m._id || i}>
+                                <td>{m.designation}</td>
+                                <td>{m.quantite}</td>
+                                <td>{m.unite || "—"}</td>
+                                <td>{m.date ? new Date(m.date).toLocaleString("fr-FR") : "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
+                  </div>
+                  <div className="bo-card">
+                    <div className="bo-card-hdr"><h3>➕ Ajouter une consommation</h3></div>
+                    <div style={{ padding:16, display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr auto", gap:12, alignItems:"end" }}>
+                      <div>
+                        <label className="blbl">Matériel</label>
+                        <select className="binp" value={consoForm.materiel_id} onChange={e => setConsoForm(f => ({ ...f, materiel_id: e.target.value }))}>
+                          <option value="">— Sélectionner un matériel —</option>
+                          {materiels.map(m => (
+                            <option key={m._id} value={m._id} disabled={m.stock_actuel <= 0}>
+                              {m.designation} — stock: {m.stock_actuel} {m.unite}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="blbl">Quantité</label>
+                        <input type="number" className="binp" min={1} value={consoForm.quantite} onChange={e => setConsoForm(f => ({ ...f, quantite: e.target.value }))} />
+                      </div>
+                      <button className="bbtn bbtn-teal" disabled={saving || !currentInterv} onClick={addConso}>
+                        {I.plus} Ajouter
+                      </button>
+                    </div>
+                    {materiels.length === 0 && (
+                      <div style={{ padding:"0 16px 16px", fontSize:12, color:"var(--cm)" }}>Aucun matériel dans le catalogue. Ajoutez-en depuis le module Pharmacie/Stock.</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1826,13 +1918,27 @@ export default function BlocOperatoire() {
                   <div className="bo-card-hdr"><h3>{I.trend} Interventions par mois</h3></div>
                   <div style={{ padding:20 }}><BarChart labels={chartMois} data={chartData} color="#1A5276" /></div>
                 </div>
-                {/* Répartition par spécialité — désactivé, même limite que le
-                    Dashboard ci-dessus (aucun champ specialite persisté). */}
+                {/* Correction Sous-phase "Bloc Opératoire" — même source
+                    réelle que le widget Dashboard (kpis.par_specialite). */}
                 <div className="bo-card">
                   <div className="bo-card-hdr"><h3>Répartition par spécialité</h3></div>
-                  <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                    <div style={{ fontSize:32, marginBottom:10, opacity:.4 }}>📊</div>
-                    <div style={{ fontSize:13 }}>🚧 Fonctionnalité indisponible — la spécialité saisie à la création n'est pas encore enregistrée en base.</div>
+                  <div style={{ padding:20 }}>
+                    {(kpis.par_specialite || []).length === 0 ? (
+                      <div style={{ padding:20, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucune intervention avec spécialité enregistrée.</div>
+                    ) : (() => {
+                      const maxCount = Math.max(...kpis.par_specialite.map(x => x.nombreInterventions));
+                      return kpis.par_specialite.map(x => (
+                        <div key={x.specialite} style={{ marginBottom:10 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"var(--bn)", marginBottom:4 }}>
+                            <span>{SPECIALITE_BO[x.specialite] || x.specialite}</span>
+                            <span style={{ fontWeight:700 }}>{x.nombreInterventions}</span>
+                          </div>
+                          <div style={{ background:"#EAF4FB", borderRadius:6, height:8 }}>
+                            <div style={{ background:"#1A5276", borderRadius:6, height:8, width: Math.round((x.nombreInterventions / maxCount) * 100) + "%" }} />
+                          </div>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1860,14 +1966,25 @@ export default function BlocOperatoire() {
                     ))}
                   </div>
                 </div>
-                {/* Consommation de matériel — désactivé, cf. onglet
-                    "Consommables" ci-dessous : aucun modèle de données réel
-                    n'existe pour le suivi des consommables de bloc opératoire. */}
+                {/* Correction Sous-phase "Bloc Opératoire" — consommation
+                    réelle agrégée (GET /blocoperatoire/statistiques/consommation),
+                    calculée à partir de DossierChirurgical.materiel_utilise. */}
                 <div className="bo-card">
                   <div className="bo-card-hdr"><h3>💊 Consommation de matériel</h3></div>
-                  <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                    <div style={{ fontSize:32, marginBottom:10, opacity:.4 }}>💊</div>
-                    <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel des consommables n'existe dans ce système.</div>
+                  <div style={{ padding:16 }}>
+                    {consoStats.data.length === 0 ? (
+                      <div style={{ padding:24, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucune consommation enregistrée.</div>
+                    ) : (
+                      <>
+                        {consoStats.data.map(x => (
+                          <div key={x.materiel} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid #EAF4FB" }}>
+                            <span style={{ fontSize:12, color:"var(--cm)" }}>{x.materiel}</span>
+                            <Badge cls="blue">{x.quantite}</Badge>
+                          </div>
+                        ))}
+                        <div style={{ marginTop:10, fontSize:12, fontWeight:700, color:"var(--bn)", textAlign:"right" }}>Total : {consoStats.total_consomme}</div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
