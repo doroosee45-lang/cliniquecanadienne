@@ -4,9 +4,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions,
+  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary,
   selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading, selectAIAnalyzing,
+  selectPatientSummary, selectPatientSummaryLoading,
 } from '../store/slices/aiSlice';
+import { fetchPatients, selectPatients } from '../store/slices/patientsSlice';
 import api from '../api';
 import toast from 'react-hot-toast';
 import { CLINIC_NAME, CLINIC_SUBTITLE } from '../config/clinic';
@@ -354,6 +356,9 @@ export default function IntelligenceArtificielle() {
   const reduxWarnings    = useSelector(selectAIWarnings);
   const reduxLoading     = useSelector(selectAILoading);
   const reduxAnalyzing   = useSelector(selectAIAnalyzing);
+  const reduxPatientsList     = useSelector(selectPatients);
+  const patientSummary        = useSelector(selectPatientSummary);
+  const patientSummaryLoading = useSelector(selectPatientSummaryLoading);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -415,6 +420,7 @@ export default function IntelligenceArtificielle() {
   const [formBioResults, setFormBioResults] = useState("");
   const [formMedicament, setFormMedicament] = useState("");
   const [formAllergiesPatient, setFormAllergiesPatient] = useState("");
+  const [selectedPatientId, setSelectedPatientId] = useState("");
 
   // Settings
   const AI_SETTINGS_DEFAULTS = {
@@ -567,6 +573,22 @@ export default function IntelligenceArtificielle() {
     }
   };
 
+  // ── Analyse patient (résumé IA réel) ──────────────────────
+  useEffect(() => {
+    if (section === "patient" && reduxPatientsList.length === 0) {
+      dispatch(fetchPatients({ limit: 100 }));
+    }
+  }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const analyserDossierPatient = async () => {
+    if (!selectedPatientId) return;
+    try {
+      await dispatch(fetchPatientSummary(selectedPatientId)).unwrap();
+    } catch (err) {
+      toast.error(typeof err === 'string' ? err : "Erreur lors de l'analyse du dossier");
+    }
+  };
+
   // ── Chat ──────────────────────────────────────────────────
   // A-1 (audit Phases 2-9) — neutralisé, pas implémenté : ce chat n'a jamais
   // été relié à un backend (aucune route /ai/chat n'existe — voir
@@ -622,9 +644,6 @@ export default function IntelligenceArtificielle() {
     { id:"finance",       label:"💰 Finance IA" },
     { id:"alertes",       label:`🔔 Alertes (${reduxStats.alertes_risque ?? flatAlerts.length})`, warn:true },
     { id:"chat",          label:"💬 Chat IA" },
-    { id:"knowledge",     label:"📚 Base de connaissances" },
-    { id:"historique",    label:"📊 Historique" },
-    { id:"parametres",    label:"⚙️ Paramètres" },
   ];
 
   const GRAVITE_CFG = { critique:{cls:"red",label:"Critique"}, eleve:{cls:"orange",label:"Élevé"}, modere:{cls:"yellow",label:"Modéré"}, faible:{cls:"green",label:"Faible"} };
@@ -732,39 +751,25 @@ export default function IntelligenceArtificielle() {
               </div>
 
               {/* Charts + reco */}
-              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr", gap:20, marginBottom:20 }}>
+              {/* POST5-011 (audit indépendant post-Phase 5, 14 sept. 2026) —
+                  "Activité IA" affichait un tableau littéral codé en dur
+                  ([12,18,9,24,16,7,4]), jamais issu d'une requête réelle,
+                  juste à côté de vrais KPI Redux — désormais alimenté par
+                  ai.controller.js::getStats (agrégation réelle sur
+                  AIPrediction.createdAt, 7 derniers jours). "Modules actifs"
+                  (pourcentages "Assistant médical 95%", etc.) est retiré :
+                  aucune donnée ni définition réelle de ce que mesurerait un
+                  tel pourcentage n'existe nulle part dans ce système (aucun
+                  suivi d'usage par sous-module) — jamais remplacé par une
+                  autre valeur inventée, même principe que Analytics.jsx
+                  (onglet Performance, déjà corrigé). */}
+              <div style={{ marginBottom:20 }}>
                 <div className="ia-card fu">
                   <div className="ia-card-hdr">
                     <div><h3>{I.trend} Activité IA — 7 derniers jours</h3><p>Volume d'analyses et alertes générées</p></div>
                   </div>
                   <div style={{ padding:20 }}>
-                    <BarChart labels={["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"]} data={[12,18,9,24,16,7,4]} color="#1B4F9E" />
-                  </div>
-                </div>
-                <div className="ia-card fu">
-                  <div className="ia-card-hdr"><h3>📊 Modules actifs</h3></div>
-                  <div style={{ padding:20 }}>
-                    {[
-                      ["Assistant médical", 95, "#1B4F9E"],
-                      ["Analyse labo",      88, "#0EA5A0"],
-                      ["Ordonnance IA",     76, "#7C3AED"],
-                      ["Alertes auto",      100,"#DC2626"],
-                      ["Gestion RDV",       62, "#D97706"],
-                      ["Finance IA",        0,  "#9CA3AF"],
-                    ].map(([lbl, pct, col]) => (
-                      <div key={lbl} style={{ marginBottom:10 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:12, color:"var(--cm)", display:"flex", alignItems:"center", gap:6 }}>
-                            <span style={{ width:8, height:8, borderRadius:3, background:col, display:"inline-block" }}/>
-                            {lbl}
-                          </span>
-                          <span style={{ fontSize:12, fontWeight:700, color:pct===0?"#9CA3AF":"var(--cn)" }}>
-                            {pct === 0 ? "Inactif" : `${pct}%`}
-                          </span>
-                        </div>
-                        <Prog pct={pct} color={col} />
-                      </div>
-                    ))}
+                    <BarChart labels={reduxStats.activite_7j?.labels?.length ? reduxStats.activite_7j.labels : ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"]} data={reduxStats.activite_7j?.data?.length ? reduxStats.activite_7j.data : [0,0,0,0,0,0,0]} color="#1B4F9E" />
                   </div>
                 </div>
               </div>
@@ -960,10 +965,90 @@ export default function IntelligenceArtificielle() {
                     honnêtement, même pattern que Chat IA (ligne ~1290) :
                     aucune donnée fabriquée ne peut plus s'afficher ici. */}
                 {section === "patient" && (
-                  <div className="ia-card fu">
-                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>👤</div>
-                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>👤 Sélectionner un patient</h3></div>
+                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+                        <select className="iinp" value={selectedPatientId} onChange={e => setSelectedPatientId(e.target.value)}>
+                          <option value="">— Choisir un patient —</option>
+                          {reduxPatientsList.map(p => (
+                            <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier || p._id}</option>
+                          ))}
+                        </select>
+                        <button className="ibtn ibtn-teal" disabled={!selectedPatientId || patientSummaryLoading} onClick={analyserDossierPatient}>
+                          {patientSummaryLoading ? <><span className="spin" style={{ display:"inline-block" }}>{I.iaS}</span> Analyse en cours...</> : <>{I.iaS} Analyser le dossier</>}
+                        </button>
+                        {!patientSummaryLoading && !patientSummary && (
+                          <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:12 }}>Sélectionnez un patient puis lancez l'analyse pour voir les scores de risque calculés sur ses données réelles.</div>
+                        )}
+                        {patientSummary && !patientSummaryLoading && (
+                          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                            {[
+                              ["Risque cardiovasculaire", patientSummary.risks?.cardiovasculaire ?? 0, "#DC2626"],
+                              ["Risque diabétique",       patientSummary.risks?.diabetique ?? 0,       "#D97706"],
+                              ["Risque global",           patientSummary.risks?.diagnostic ?? 0,        "#CA8A04"],
+                              ["Risque obstétrical",      patientSummary.risks?.obstetrical ?? 0,        "#059669"],
+                            ].map(([lbl,val,col]) => (
+                              <div key={lbl}>
+                                <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:4 }}>
+                                  <span style={{ color:"var(--cm)" }}>{lbl}</span>
+                                  <span style={{ fontWeight:700, color:col }}>{val}/100</span>
+                                </div>
+                                <Prog pct={val} color={col} />
+                              </div>
+                            ))}
+                            <div style={{ fontSize:10, color:"var(--cm)", fontStyle:"italic", marginTop:4 }}>Scores calculés à partir des constantes vitales de la dernière consultation et des antécédents — pas de plainte active saisie.</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>📋 Résumé du dossier</h3></div>
+                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
+                        {!patientSummary && !patientSummaryLoading && (
+                          <div style={{ textAlign:"center", padding:20, color:"var(--cm)" }}>
+                            <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>👤</div>
+                            <div style={{ fontSize:13 }}>Aucune analyse en cours — sélectionnez un patient à gauche.</div>
+                          </div>
+                        )}
+                        {patientSummaryLoading && (
+                          <div style={{ textAlign:"center", padding:40 }}>
+                            <div style={{ fontSize:36, animation:"iaPulse 1s infinite", marginBottom:10 }}>👤</div>
+                            <div style={{ fontSize:13, color:"var(--cm)" }}>Chargement du dossier…</div>
+                          </div>
+                        )}
+                        {patientSummary && !patientSummaryLoading && (
+                          <>
+                            {[
+                              { icon:"🩺", label:"Antécédents",          value: patientSummary.patient_context?.antecedents?.join(', ') || 'Aucun renseigné' },
+                              { icon:"💊", label:"Prescriptions actives", value: patientSummary.active_prescriptions?.flatMap(p => p.medicaments).join(', ') || 'Aucune' },
+                              { icon:"⚠️", label:"Allergies",             value: patientSummary.patient_context?.allergies?.join(', ') || 'Aucune renseignée', warn: (patientSummary.patient_context?.allergies?.length || 0) > 0 },
+                              { icon:"📅", label:"Dernière consultation", value: patientSummary.last_consultation ? `${fmtDate(patientSummary.last_consultation.date)} — ${patientSummary.last_consultation.diagnostic || 'diagnostic non renseigné'}` : 'Aucune' },
+                              { icon:"🔬", label:"Résultats labo récents", value: patientSummary.recent_labs?.length ? `${patientSummary.recent_labs.length} résultat(s)${patientSummary.lab_critiques_count > 0 ? ` · ${patientSummary.lab_critiques_count} critique(s)` : ''}` : 'Aucun', warn: patientSummary.lab_critiques_count > 0 },
+                              { icon:"🏥", label:"Hospitalisations",     value: `${patientSummary.hospitalisations_count ?? 0} séjour(s)` },
+                            ].map(r => (
+                              <div key={r.label} style={{ display:"flex", gap:10, background:r.warn?"#FEF2F2":"#F8FAFD", border:`1.5px solid ${r.warn?"#FECACA":"var(--cbr)"}`, borderRadius:10, padding:"10px 12px" }}>
+                                <span style={{ fontSize:16, flexShrink:0 }}>{r.icon}</span>
+                                <div>
+                                  <div style={{ fontSize:10, fontWeight:700, color:r.warn?"#B91C1C":"var(--cm)", textTransform:"uppercase" }}>{r.label}</div>
+                                  <div style={{ fontSize:12, color:r.warn?"#DC2626":"var(--cn)", marginTop:2, fontWeight:r.warn?700:400 }}>{r.value}</div>
+                                </div>
+                              </div>
+                            ))}
+                            {patientSummary.simulated && (
+                              <div className="al-warn">
+                                <div style={{ fontSize:12, color:"#92400E" }}>⚠ Synthèse narrative indisponible (assistant IA non configuré) — seules les données brutes ci-dessus sont affichées.</div>
+                              </div>
+                            )}
+                            {patientSummary.synthese && (
+                              <div style={{ background:"#F0FDFC", border:"1.5px solid #99F6E4", borderRadius:12, padding:14 }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:"var(--ct)", marginBottom:6 }}>🤖 SYNTHÈSE IA</div>
+                                <div style={{ fontSize:12, color:"var(--cn)", whiteSpace:"pre-line" }}>{patientSummary.synthese}</div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

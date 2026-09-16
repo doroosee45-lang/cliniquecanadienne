@@ -52,6 +52,18 @@ export const fetchAIStats = createAsyncThunk(
   }
 );
 
+export const fetchPatientSummary = createAsyncThunk(
+  'ai/fetchPatientSummary',
+  async (patientId, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get(`/ai/patient-summary/${patientId}`);
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur résumé patient IA');
+    }
+  }
+);
+
 const aiSlice = createSlice({
   name: 'ai',
   initialState: {
@@ -77,8 +89,15 @@ const aiSlice = createSlice({
       labo_anomalies_ia: 0,
       imagerie_urgentes: 0,
       patients_analyses: 0,
+      // POST5-011 (audit indépendant post-Phase 5, 14 sept. 2026) — agrégation
+      // réelle (ai.controller.js::getStats), plus jamais un tableau codé en
+      // dur ([12,18,9,24,16,7,4]) côté composant.
+      activite_7j: { labels: [], data: [] },
     },
     filters: { type: '', patient: '' },
+    patientSummary: null,
+    patientSummaryLoading: false,
+    patientSummaryError: null,
   },
   reducers: {
     setSuggestions(state, action) { state.suggestions = action.payload; },
@@ -87,6 +106,7 @@ const aiSlice = createSlice({
     clearAnalysis(state) { state.currentAnalysis = null; state.suggestions = []; state.warnings = []; },
     setFilters(state, action) { state.filters = { ...state.filters, ...action.payload }; },
     clearError(state) { state.error = null; },
+    clearPatientSummary(state) { state.patientSummary = null; state.patientSummaryError = null; },
   },
   extraReducers: (builder) => {
     builder
@@ -115,11 +135,20 @@ const aiSlice = createSlice({
       })
       .addCase(fetchAIStats.fulfilled, (state, action) => {
         state.stats = { ...state.stats, ...action.payload };
+      })
+      .addCase(fetchPatientSummary.pending, (state) => { state.patientSummaryLoading = true; state.patientSummaryError = null; })
+      .addCase(fetchPatientSummary.fulfilled, (state, action) => {
+        state.patientSummaryLoading = false;
+        state.patientSummary = action.payload;
+      })
+      .addCase(fetchPatientSummary.rejected, (state, action) => {
+        state.patientSummaryLoading = false;
+        state.patientSummaryError = action.payload;
       });
   },
 });
 
-export const { setSuggestions, setWarnings, toggleIA, clearAnalysis, setFilters, clearError } = aiSlice.actions;
+export const { setSuggestions, setWarnings, toggleIA, clearAnalysis, setFilters, clearError, clearPatientSummary } = aiSlice.actions;
 
 export const selectAIPredictions = (state) => state.ai.predictions;
 export const selectAISuggestions = (state) => state.ai.suggestions;
@@ -129,5 +158,8 @@ export const selectAILoading = (state) => state.ai.loading;
 export const selectAIAnalyzing = (state) => state.ai.analyzing;
 export const selectAIEnabled = (state) => state.ai.iaEnabled;
 export const selectAIStats = (state) => state.ai.stats;
+export const selectPatientSummary = (state) => state.ai.patientSummary;
+export const selectPatientSummaryLoading = (state) => state.ai.patientSummaryLoading;
+export const selectPatientSummaryError = (state) => state.ai.patientSummaryError;
 
 export default aiSlice.reducer;

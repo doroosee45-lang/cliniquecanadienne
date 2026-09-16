@@ -13,6 +13,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { vi } from 'vitest';
 import aiReducer from '../../store/slices/aiSlice';
+import patientsReducer from '../../store/slices/patientsSlice';
 import AI from '../AI.jsx';
 import api from '../../api';
 
@@ -26,7 +27,10 @@ vi.mock('../../api', () => ({
 Element.prototype.scrollIntoView = vi.fn();
 
 function renderAI() {
-  const store = configureStore({ reducer: { ai: aiReducer } });
+  // patients requis depuis que l'onglet "Analyse patient" (fonctionnalité
+  // réelle de l'utilisateur, préservée telle quelle) lit selectPatients au
+  // montage du composant — sans rapport avec CHAT-001.
+  const store = configureStore({ reducer: { ai: aiReducer, patients: patientsReducer } });
   return render(<Provider store={store}><MemoryRouter><AI /></MemoryRouter></Provider>);
 }
 

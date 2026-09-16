@@ -4,6 +4,7 @@ const LabResult     = require('../models/LabResult');
 const ImagingResult = require('../models/ImagingResult');
 const Prescription  = require('../models/Prescription');
 const Hospitalization = require('../models/Hospitalization');
+const Consultation  = require('../models/Consultation');
 const { logAction } = require('../utils/helpers');
 const { detectInteractions } = require('../utils/drugInteractions');
 const { logger } = require('../utils/logger');
@@ -175,6 +176,32 @@ exports.getStats = async (req, res, next) => {
     // alertes_risque ne compte plus que les deux sources réellement produites.
     const alertes_risque = labo_critiques + imagerie_urgentes;
 
+    // POST5-011 (audit indépendant post-Phase 5, 14 sept. 2026) — le
+    // graphique "Activité IA — 7 derniers jours" (AI.jsx, onglet Tableau
+    // de bord) était alimenté par un tableau littéral codé en dur
+    // ([12,18,9,24,16,7,4]), jamais issu d'une requête réelle, alors que
+    // AIPrediction (createdAt réel sur chaque prédiction) permet un vrai
+    // comptage quotidien — même principe que echographieController.js::
+    // getStats (agrégation par période réelle, jamais une valeur inventée
+    // quand la donnée source existe réellement).
+    const septJoursAgo = new Date();
+    septJoursAgo.setDate(septJoursAgo.getDate() - 6);
+    septJoursAgo.setHours(0, 0, 0, 0);
+    const activiteAgg = await AIPrediction.aggregate([
+      { $match: { createdAt: { $gte: septJoursAgo } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+    ]);
+    const activiteLabels = [];
+    const activiteData = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      activiteLabels.push(d.toLocaleDateString('fr-FR', { weekday: 'short' }));
+      const entry = activiteAgg.find(a => a._id === key);
+      activiteData.push(entry ? entry.count : 0);
+    }
+
     res.json({
       success: true,
       stats: {
@@ -187,6 +214,7 @@ exports.getStats = async (req, res, next) => {
         labo_anomalies_ia,
         imagerie_urgentes,
         patients_analyses: patients_analyses.length,
+        activite_7j: { labels: activiteLabels, data: activiteData },
       },
     });
   } catch (err) { next(err); }
@@ -504,6 +532,118 @@ exports.chat = async (req, res) => {
     await logAction({ utilisateur: req.user?._id, action: 'AI_CHAT', module: 'ai', ip: req.ip, statut: 'echec', message: `Échec appel assistant IA : ${err.message}` });
     res.status(502).json({ success: false, message: "Assistant IA temporairement indisponible. Réessayez plus tard." });
   }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// GET /api/ai/patient-summary/:patientId
+// ═══════════════════════════════════════════════════════════════
+exports.getPatientSummary = async (req, res, next) => {
+  try {
+    const { patientId } = req.params;
+    if (!patientId) return res.status(400).json({ success: false, message: 'patientId requis' });
+
+    const [patient, recentLabs, recentImaging, recentPrescriptions, hospitalizations, lastConsultation] =
+      await Promise.all([
+        Patient.findById(patientId).lean(),
+        LabResult.find({ patient: patientId }).sort('-createdAt').limit(5).lean(),
+        ImagingResult.find({ patient: patientId }).sort('-createdAt').limit(5).lean(),
+        Prescription.find({ patient: patientId, statut: { $in: ['active', 'publiee'] } }).sort('-createdAt').limit(5).lean(),
+        Hospitalization.find({ patient: patientId }).sort('-createdAt').limit(3).lean(),
+        Consultation.findOne({ patient: patientId }).sort('-date_consultation').lean(),
+      ]);
+
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable' });
+
+    // Constantes vitales de la derniere consultation, si disponible - aucun
+    // symptome fabrique ici (pas de plainte active saisie par l'utilisateur).
+    const vitals = lastConsultation?.signes_vitaux ? {
+      temperature: lastConsultation.signes_vitaux.temperature,
+      frequence_cardiaque: lastConsultation.signes_vitaux.pouls,
+      pression_arterielle: (lastConsultation.signes_vitaux.tension_systolique && lastConsultation.signes_vitaux.tension_diastolique)
+        ? `${lastConsultation.signes_vitaux.tension_systolique}/${lastConsultation.signes_vitaux.tension_diastolique}` : undefined,
+      glycemie: lastConsultation.signes_vitaux.glycemie,
+      poids: lastConsultation.signes_vitaux.poids,
+      taille: lastConsultation.signes_vitaux.taille,
+    } : {};
+
+    const risks = computeRisks(patient, [], vitals);
+
+    const patient_context = {
+      nom: `${patient.prenom || ''} ${patient.nom || ''}`.trim(),
+      numero_dossier: patient.numero_dossier,
+      age: patient.date_naissance
+        ? Math.floor((Date.now() - new Date(patient.date_naissance)) / (365.25 * 24 * 3600 * 1000))
+        : null,
+      sexe: patient.sexe,
+      groupe_sanguin: patient.groupe_sanguin,
+      allergies: patient.allergies || [],
+      antecedents: patient.antecedents_medicaux || [],
+      hospitalisations_recentes: hospitalizations.length,
+    };
+
+    const labCritiques = recentLabs.filter(l => l.est_critique || l.ia_anomalie);
+
+    // Synthese narrative - meme utilitaire que Chat IA
+    // (utils/openai.js::generateReport), repli honnete si OPENAI_API_KEY
+    // n'est pas configuree : jamais de texte fabrique presente comme reel.
+    const systemPrompt = "Tu es un assistant clinique d'aide a la synthese de dossier patient dans un logiciel hospitalier. Redige une synthese courte et factuelle EXCLUSIVEMENT a partir des donnees fournies, sans jamais inventer de diagnostic, de valeur ou d'antecedent absent des donnees. Termine systematiquement par : « Cette synthese est une aide et doit etre validee par un professionnel de sante avant toute decision clinique. »";
+    const userPrompt = `Dossier patient :
+- Identite : ${patient_context.nom}, ${patient_context.age ?? '?'} ans, ${patient_context.sexe || 'sexe non renseigne'}
+- Antecedents : ${patient_context.antecedents.join(', ') || 'aucun renseigne'}
+- Allergies : ${patient_context.allergies.join(', ') || 'aucune renseignee'}
+- Prescriptions actives : ${recentPrescriptions.map(p => p.lignes?.map(l => l.medicament_nom).filter(Boolean).join(', ')).filter(Boolean).join(' ; ') || 'aucune'}
+- Derniers resultats labo : ${recentLabs.map(l => `${l.statut}${l.est_critique ? ' (critique)' : ''}`).join(', ') || 'aucun'}
+- Derniere imagerie : ${recentImaging[0]?.conclusion || recentImaging[0]?.type_examen || 'aucune'}
+- Derniere consultation : ${lastConsultation ? `${lastConsultation.diagnostic || 'diagnostic non renseigne'} (${new Date(lastConsultation.date_consultation).toLocaleDateString('fr-FR')})` : 'aucune'}
+- Hospitalisations recentes : ${hospitalizations.length}`;
+
+    let synthese = null;
+    let simulated = false;
+    try {
+      const result = await openai.generateReport({ systemPrompt, userPrompt });
+      if (result.simulated) simulated = true;
+      else synthese = result.content;
+    } catch (err) {
+      logger.error('[AI PATIENT SUMMARY] Echec generateReport', { error: err.message });
+    }
+
+    await logAction({
+      utilisateur: req.user?._id,
+      action: 'IA_PATIENT_SUMMARY',
+      module: 'ia',
+      entite_id: patient._id,
+      ip: req.ip,
+      ua: req.headers['user-agent'],
+      message: `Resume IA patient - ${patient_context.nom}`,
+    });
+
+    res.json({
+      success: true,
+      patient_context,
+      risks,
+      synthese,
+      simulated,
+      recent_labs: recentLabs.map(l => ({
+        id: l._id, date: l.date_prescription, statut: l.statut,
+        critique: l.est_critique, ia_anomalie: l.ia_anomalie,
+      })),
+      recent_imaging: recentImaging.map(i => ({
+        id: i._id, type_examen: i.type_examen, date: i.date_prescription,
+        conclusion: i.conclusion, priorite: i.priorite,
+      })),
+      active_prescriptions: recentPrescriptions.map(p => ({
+        id: p._id, numero_rx: p.numero_rx,
+        medicaments: p.lignes?.map(l => l.medicament_nom).filter(Boolean) || [],
+      })),
+      last_consultation: lastConsultation ? {
+        date: lastConsultation.date_consultation,
+        diagnostic: lastConsultation.diagnostic,
+        medecin: lastConsultation.medecin,
+      } : null,
+      hospitalisations_count: hospitalizations.length,
+      lab_critiques_count: labCritiques.length,
+    });
+  } catch (err) { next(err); }
 };
 
 // ═══════════════════════════════════════════════════════════════
