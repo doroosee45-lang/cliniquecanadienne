@@ -373,7 +373,8 @@ exports.uploadImages = async (req, res, next) => {
     if (!examen) return res.status(404).json({ success: false, message: 'Examen introuvable.' });
 
     await logAction({ utilisateur: req.user._id, action: 'UPLOAD_IMAGES', module: 'radiology', entite_id: examen._id, ip: req.ip, avant, apres: examen });
-    res.json({ success: true, images: examen.images, examen: normalize(examen) });
+    const normalise = normalize(examen);
+    res.json({ success: true, images: normalise.images, examen: normalise });
   } catch (err) { next(err); }
 };
 

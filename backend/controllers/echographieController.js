@@ -6,8 +6,30 @@ const Patient = require('../models/Patient');
 const { emitDashboardUpdate } = require('../utils/socket');
 const { logAction, escapeRegex } = require('../utils/helpers');
 const { storeUploadedFile } = require('../utils/fileStorage');
+const cloudinaryUtil = require('../utils/cloudinary');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
+// POST5-004 (audit indépendant post-Phase 5, 14 sept. 2026) — même principe
+// que document.controller.js::withFreshDeliveryUrl (SEC-DOC-01), jamais
+// appliqué jusqu'ici aux images d'échographie : régénère une URL Cloudinary
+// signée à courte durée de vie pour CHAQUE image à CHAQUE lecture
+// autorisée, au lieu de resservir l'URL figée (signée sans expiration)
+// stockée en base. Une image en repli disque local (cloudinary_public_id
+// absent) n'est pas concernée — déjà protégée par rôle à la livraison.
+const withFreshEchoImageUrls = (images) => (images || []).map(img => {
+  const plain = typeof img.toObject === 'function' ? img.toObject() : img;
+  if (!plain.cloudinary_public_id) return plain;
+  return {
+    ...plain,
+    url: cloudinaryUtil.getSignedDeliveryUrl({
+      public_id: plain.cloudinary_public_id,
+      resource_type: plain.cloudinary_resource_type,
+      format: plain.cloudinary_format,
+      version: plain.cloudinary_version,
+    }),
+  };
+});
 
 // Correction 2 (module 3/6) — même source de tarif réelle que Radiology
 // (ExamCatalogue.type:'imagerie'), déjà réellement peuplée avec des entrées
@@ -138,7 +160,12 @@ exports.getAll = async (req, res, next) => {
       Echographie.countDocuments(filter),
     ]);
 
-    res.json({ success: true, demandes, total, page: +page });
+    const demandesFraiches = demandes.map(d => {
+      const plain = d.toObject();
+      plain.images = withFreshEchoImageUrls(plain.images);
+      return plain;
+    });
+    res.json({ success: true, demandes: demandesFraiches, total, page: +page });
   } catch (err) { next(err); }
 };
 
@@ -148,7 +175,9 @@ exports.getOne = async (req, res, next) => {
     const demande = await Echographie.findById(req.params.id);
     if (!demande) return res.status(404).json({ message: 'Demande non trouvée' });
     const invoice = await Invoice.findOne({ source_module: 'echographie', source_id: demande._id });
-    res.json({ success: true, demande, invoice });
+    const plain = demande.toObject();
+    plain.images = withFreshEchoImageUrls(plain.images);
+    res.json({ success: true, demande: plain, invoice });
   } catch (err) { next(err); }
 };
 
@@ -361,8 +390,12 @@ exports.uploadImages = async (req, res, next) => {
     const nouvelles = await Promise.all(req.files.map(async (f, i) => {
       const ext = path.extname(f.originalname);
       const base = path.basename(f.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
-      const { url } = await storeUploadedFile(f, { folder: 'echographie', filenameBase: `${Date.now()}-${i}-${base}` });
-      return { url, description: f.originalname, date: new Date() };
+      const { url, public_id, resource_type, format, version } = await storeUploadedFile(f, { folder: 'echographie', filenameBase: `${Date.now()}-${i}-${base}` });
+      return {
+        url, description: f.originalname, date: new Date(),
+        cloudinary_public_id: public_id, cloudinary_resource_type: resource_type,
+        cloudinary_format: format, cloudinary_version: version,
+      };
     }));
 
     const avant = await Echographie.findById(req.params.id).lean();
@@ -374,7 +407,8 @@ exports.uploadImages = async (req, res, next) => {
     if (!demande) return res.status(404).json({ success: false, message: 'Demande non trouvée' });
 
     await logAction({ utilisateur: req.user?._id, action: 'UPLOAD_IMAGES', module: 'echographie', entite_id: demande._id, ip: req.ip, message: `${nouvelles.length} image(s) ajoutée(s) à la demande ${demande.numero}`, avant, apres: demande });
-    res.json({ success: true, images: demande.images, demande });
+    const imagesFraiches = withFreshEchoImageUrls(demande.images);
+    res.json({ success: true, images: imagesFraiches, demande: { ...demande.toObject(), images: imagesFraiches } });
   } catch (err) { next(err); }
 };
 

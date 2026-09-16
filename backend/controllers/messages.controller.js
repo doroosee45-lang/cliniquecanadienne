@@ -9,6 +9,30 @@ const { logAction, escapeHtml } = require('../utils/helpers');
 const mail = require('../utils/mail');
 const sms = require('../utils/sms');
 const { storeUploadedFile } = require('../utils/fileStorage');
+const cloudinaryUtil = require('../utils/cloudinary');
+
+// POST5-004 (audit indépendant post-Phase 5, 14 sept. 2026) — même principe
+// que document.controller.js::withFreshDeliveryUrl (SEC-DOC-01), jamais
+// appliqué jusqu'ici aux pièces jointes de messagerie : régénère une URL
+// Cloudinary signée à courte durée de vie à CHAQUE lecture autorisée, au
+// lieu de resservir l'URL figée (signée sans expiration) stockée en base.
+// Une pièce jointe en repli disque local (cloudinary_public_id absent)
+// n'est pas concernée — déjà protégée par rôle à la livraison
+// (uploads.controller.js::serveUpload).
+const withFreshAttachmentUrl = (msg) => {
+  const plain = typeof msg.toObject === 'function' ? msg.toObject() : msg;
+  if (!plain.pieceJointe?.cloudinary_public_id) return plain;
+  plain.pieceJointe = {
+    ...plain.pieceJointe,
+    path: cloudinaryUtil.getSignedDeliveryUrl({
+      public_id: plain.pieceJointe.cloudinary_public_id,
+      resource_type: plain.pieceJointe.cloudinary_resource_type,
+      format: plain.pieceJointe.cloudinary_format,
+      version: plain.pieceJointe.cloudinary_version,
+    }),
+  };
+  return plain;
+};
 
 // MIGRATION-CLOUDINARY — AUDIT-MESSAGES-PhaseB validait qu'un pieceJointe.path
 // transféré ("Transférer", pas un nouvel upload) commence bien par
@@ -114,12 +138,23 @@ exports.sendMessage = async (req, res, next) => {
         path: pieceJointe.path,
         type: pieceJointe.type,
         duration: pieceJointe.duration,
+        // POST5-004 — transférées si le message d'origine les fournit (pour
+        // que ce nouveau message puisse lui aussi régénérer une URL fraîche
+        // plus tard) ; jamais la seule autorité — `path` reste validé
+        // ci-dessus par isLegitimateMessageAttachmentPath, et un public_id
+        // fabriqué/dépareillé échouerait simplement côté Cloudinary (401),
+        // jamais un contournement d'autorisation applicative.
+        cloudinary_public_id: pieceJointe.cloudinary_public_id || undefined,
+        cloudinary_resource_type: pieceJointe.cloudinary_resource_type || undefined,
+        cloudinary_format: pieceJointe.cloudinary_format || undefined,
+        cloudinary_version: pieceJointe.cloudinary_version || undefined,
       };
       apercu = { audio: '🎙️ Message vocal', image: '🖼️ Image', document: '📄 Document' }[pieceJointe.type] || '📎 Pièce jointe';
     }
 
     let msg = await Message.create(msgData);
     await msg.populate('expediteur', 'nom prenom avatar role');
+    const fresh = withFreshAttachmentUrl(msg);
 
     await Conversation.updateOne({ _id: conv._id }, {
       dernier_message: new Date(),
@@ -132,19 +167,19 @@ exports.sendMessage = async (req, res, next) => {
     // Émettre le message à la room de la conversation
     emitTo(`conversation:${conv._id}`, 'message:new', {
       conversationId: conv._id,
-      message: msg,
+      message: fresh,
     });
     // Notifier aussi chaque membre via sa room privée (badge non-lus)
     conv.membres.forEach(memberId => {
       if (memberId.toString() !== req.user._id.toString()) {
         emitTo(`user:${memberId}`, 'message:new', {
           conversationId: conv._id,
-          message: msg,
+          message: fresh,
         });
       }
     });
 
-    res.json({ success: true, message: msg });
+    res.json({ success: true, message: fresh });
   } catch (err) { next(err); }
 };
 
@@ -197,12 +232,16 @@ exports.sendAttachment = async (req, res, next) => {
     const { type, duration } = req.body;
     const ext = path.extname(req.file.originalname);
     const base = path.basename(req.file.originalname, ext).replace(/\s+/g, '_').slice(0, 40);
-    const { url } = await storeUploadedFile(req.file, { folder: 'messages', filenameBase: `${Date.now()}-${base}` });
+    const { url, public_id, resource_type, format, version } = await storeUploadedFile(req.file, { folder: 'messages', filenameBase: `${Date.now()}-${base}` });
     const pieceJointe = {
       filename: req.file.originalname,
       path: url,
       type: type || 'document',
       duration: duration ? Number(duration) : undefined,
+      cloudinary_public_id: public_id || undefined,
+      cloudinary_resource_type: resource_type || undefined,
+      cloudinary_format: format || undefined,
+      cloudinary_version: version || undefined,
     };
     const apercu = { audio: '🎙️ Message vocal', image: '🖼️ Image', document: '📄 Document' }[pieceJointe.type] || '📎 Pièce jointe';
 
@@ -211,15 +250,16 @@ exports.sendAttachment = async (req, res, next) => {
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'messages', entite_id: conv._id, ip: req.ip, message: `Pièce jointe envoyée (${pieceJointe.type})` });
 
     await msg.populate('expediteur', 'nom prenom avatar role');
+    const fresh = withFreshAttachmentUrl(msg);
 
-    emitTo(`conversation:${conv._id}`, 'message:new', { conversationId: conv._id, message: msg });
+    emitTo(`conversation:${conv._id}`, 'message:new', { conversationId: conv._id, message: fresh });
     conv.membres.forEach(memberId => {
       if (memberId.toString() !== req.user._id.toString()) {
-        emitTo(`user:${memberId}`, 'message:new', { conversationId: conv._id, message: msg });
+        emitTo(`user:${memberId}`, 'message:new', { conversationId: conv._id, message: fresh });
       }
     });
 
-    res.json({ success: true, message: msg });
+    res.json({ success: true, message: fresh });
   } catch (err) { next(err); }
 };
 
@@ -261,7 +301,7 @@ exports.getMessages = async (req, res, next) => {
       .lean();
 
     const hasMore = page.length > limit;
-    const messages = page.slice(0, limit).reverse(); // ordre chronologique pour l'affichage
+    const messages = page.slice(0, limit).reverse().map(withFreshAttachmentUrl); // ordre chronologique pour l'affichage
 
     res.json({ success: true, messages, hasMore });
   } catch (err) { next(err); }

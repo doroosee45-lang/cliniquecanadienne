@@ -4,6 +4,15 @@ const ImageSchema = new mongoose.Schema({
   url:         { type: String },
   description: { type: String },
   date:        { type: Date, default: Date.now },
+  // POST5-004 (audit indépendant post-Phase 5, 14 sept. 2026) — même
+  // traitement que Patient.photo_public_id/resource_type/format/version :
+  // permet de régénérer une URL Cloudinary signée à courte durée de vie à
+  // chaque lecture autorisée, au lieu de resservir indéfiniment l'URL
+  // signée sans expiration stockée dans `url`.
+  cloudinary_public_id:     { type: String, default: null },
+  cloudinary_resource_type: { type: String, default: null },
+  cloudinary_format:        { type: String, default: null },
+  cloudinary_version:       { type: Number, default: null },
 }, { _id: true });
 
 const EchographieSchema = new mongoose.Schema({
