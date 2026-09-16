@@ -5,6 +5,7 @@ const Depense = require('../models/Depense');
 const Salaire = require('../models/Salaire');
 const Staff = require('../models/Staff');
 const BudgetCible = require('../models/BudgetCible');
+const Patient = require('../models/Patient');
 const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 
@@ -89,8 +90,23 @@ exports.create = async (req, res, next) => {
         body.patient_nom   = String(body.patient);
         body.service_label = body.service || body.service_label || '';
         delete body.patient;
+      } else {
+        // POST5-008 (audit indépendant post-Phase 5, 14 sept. 2026) — un
+        // `patient` au format ObjectId valide était gardé tel quel sans
+        // jamais vérifier qu'il référence réellement un Patient existant
+        // — contrairement à tous les autres contrôleurs cliniques
+        // (laboratoire/radiologie corrigés en POST5-007, consultations/
+        // prescriptions/echographie/hospitalization/maternity/chirurgie/
+        // pediatrie déjà alignés). Un ObjectId fabriqué/orphelin était
+        // accepté tel quel : une transaction financière réelle attachée à
+        // un patient inexistant. `patient` reste par ailleurs optionnel
+        // ici (texte libre via patient_nom déjà géré ci-dessus) — seul le
+        // cas où le client prétend fournir un vrai ObjectId est vérifié.
+        const patientDoc = await Patient.findById(body.patient).select('_id').lean();
+        if (!patientDoc) {
+          return res.status(400).json({ success: false, message: 'Patient introuvable pour l\'identifiant fourni.' });
+        }
       }
-      // sinon ObjectId valide — on garde tel quel
     }
     delete body.service;
 
