@@ -444,6 +444,18 @@ export default function Pharmacie() {
   const [mvts30j, setMvts30j] = useState({ labels: ["S.1","S.2","S.3","S.4","Auj."], data: [0,0,0,0,0] });
   const [ventesParMoisChart, setVentesParMoisChart] = useState({ labels: [], data: [] });
   const [topMedicamentsVendus, setTopMedicamentsVendus] = useState([]);
+  // POST5-012 (audit indépendant post-Phase 5, 14 sept. 2026) — onglet
+  // Rapports : "Consommation mensuelle"/"Top médicaments consommés" et
+  // "Revenus par catégorie" étaient 2 tableaux littéraux codés en dur
+  // (["Paracet.","Amoxic.",...]/[450,320,...] et 5 montants fixes par
+  // catégorie), jamais issus d'une requête réelle. Calculés ici depuis les
+  // vrais mouvements du mois en cours (mêmes mouvements réels que
+  // ventes_jour/ventes_mois ci-dessus) : consommation = quantité réelle
+  // sortie (vente + dispensation + sortie manuelle), revenus = montant réel
+  // des ventes (seul type de mouvement portant un montant), groupé par
+  // Medication.categorie.
+  const [consommationMensuelle, setConsommationMensuelle] = useState({ labels: [], data: [] });
+  const [revenusParCategorie, setRevenusParCategorie] = useState([]);
   const [opsCount, setOpsCount] = useState({ total:0, entrees:0, dispensations:0, sorties:0, ajustements:0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
@@ -557,6 +569,16 @@ export default function Pharmacie() {
       // "Top 5 médicaments vendus" (quantité réellement vendue), remplace la
       // liste fixe (Paracétamol 28%, Amoxicilline 22%...).
       const qteParMed = {};
+      // POST5-012 — "Consommation mensuelle" (onglet Rapports) : quantité
+      // réelle sortie du stock ce mois-ci, toutes causes de consommation
+      // réelle confondues (vente comptoir + dispensation sur ordonnance +
+      // sortie manuelle) — délibérément plus large que "Top médicaments
+      // vendus" (Onglet Ventes, vente seule, toute période) car "Rapports"
+      // mesure la consommation clinique, pas seulement les ventes au comptoir.
+      const qteConsoMoisParMed = {};
+      // "Revenus par catégorie" (onglet Rapports) : seul 'vente' porte un
+      // montant CFA réel — regroupé par Medication.categorie, mois en cours.
+      const revenusMoisParCategorie = {};
       d.forEach(m => {
         (m.mouvements || []).forEach(mv => {
           if (!mv.date) return;
@@ -571,6 +593,11 @@ export default function Pharmacie() {
             if (moisIdx !== -1) ventesParMois[moisIdx] += (mv.montant || 0);
 
             qteParMed[m.nom_commercial] = (qteParMed[m.nom_commercial] || 0) + Math.abs(mv.quantite || 0);
+
+            if (dt >= debutMois) {
+              const cat = m.categorie || 'Non catégorisé';
+              revenusMoisParCategorie[cat] = (revenusMoisParCategorie[cat] || 0) + (mv.montant || 0);
+            }
           }
           if (['entree','sortie','dispensation','vente'].includes(mv.type)) {
             const joursEcart = Math.floor((now - dt) / 86400000);
@@ -578,9 +605,14 @@ export default function Pharmacie() {
             const idx = joursEcart === 0 ? 4 : 4 - Math.min(4, Math.ceil(joursEcart / 7));
             buckets[Math.max(0, idx)] += Math.abs(mv.quantite || 0);
           }
+          if (['vente','dispensation','sortie'].includes(mv.type) && dt >= debutMois) {
+            qteConsoMoisParMed[m.nom_commercial] = (qteConsoMoisParMed[m.nom_commercial] || 0) + Math.abs(mv.quantite || 0);
+          }
         });
       });
       const totalQteVendue = Object.values(qteParMed).reduce((s,n)=>s+n,0);
+      const topConso = Object.entries(qteConsoMoisParMed).sort((a,b) => b[1]-a[1]).slice(0,5);
+      const revenusCatTries = Object.entries(revenusMoisParCategorie).sort((a,b) => b[1]-a[1]);
       const topMeds = Object.entries(qteParMed)
         .sort((a,b) => b[1]-a[1])
         .slice(0,5)
@@ -608,6 +640,8 @@ export default function Pharmacie() {
       setMvts30j({ labels: ["S.1","S.2","S.3","S.4","Auj."], data: buckets });
       setVentesParMoisChart({ labels: moisLabels, data: ventesParMois });
       setTopMedicamentsVendus(topMeds);
+      setConsommationMensuelle({ labels: topConso.map(([nom]) => nom), data: topConso.map(([,qte]) => qte) });
+      setRevenusParCategorie(revenusCatTries);
 
       setKpis({
         total: data.total || d.length,
@@ -2317,23 +2351,33 @@ ${lignes}
             <div>
               <div className="ph-g11" style={{ marginBottom:24 }}>
                 <div className="ph-card">
-                  <div className="ph-card-hdr"><div><h3>{I.trend} Consommation mensuelle</h3><p>Top médicaments consommés</p></div></div>
+                  <div className="ph-card-hdr"><div><h3>{I.trend} Consommation mensuelle</h3><p>Top médicaments consommés (ventes + dispensations + sorties, mois en cours)</p></div></div>
                   <div style={{ padding:20 }}>
-                    <BarChartCanvas labels={["Paracet.","Amoxic.","Artémét.","Métron.","Omépraz."]} data={[450,320,280,210,180]} color="#1B4F9E" height={180} />
+                    {consommationMensuelle.labels.length === 0 ? (
+                      <div style={{ textAlign:"center", padding:"20px 0", color:"var(--pm)", fontSize:12 }}>Aucun mouvement de consommation enregistré ce mois-ci.</div>
+                    ) : (
+                      <BarChartCanvas labels={consommationMensuelle.labels} data={consommationMensuelle.data} color="#1B4F9E" height={180} />
+                    )}
                   </div>
                 </div>
                 <div className="ph-card">
-                  <div className="ph-card-hdr"><div><h3>💰 Revenus par catégorie</h3></div></div>
+                  <div className="ph-card-hdr"><div><h3>💰 Revenus par catégorie</h3><p>Ventes comptoir, mois en cours</p></div></div>
                   <div style={{ padding:20 }}>
-                    {[["Antibiotiques",850000,"var(--pb)"],["Antipaludéens",620000,"var(--pt)"],["Analgésiques",490000,"var(--pg)"],["Antidiabétiques",380000,"var(--pp)"],["Solutés",240000,"var(--po)"]].map(([cat,rev,col])=>(
-                      <div key={cat} style={{ marginBottom:12 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
-                          <span style={{ color:"var(--pm)", fontWeight:600 }}>{cat}</span>
-                          <span style={{ fontWeight:700, color:"var(--pn)" }}>{fmtCFA(rev)}</span>
+                    {revenusParCategorie.length === 0 ? (
+                      <div style={{ textAlign:"center", padding:"20px 0", color:"var(--pm)", fontSize:12 }}>Aucune vente enregistrée ce mois-ci.</div>
+                    ) : (() => {
+                      const maxRev = revenusParCategorie[0][1] || 1;
+                      const palette = ["var(--pb)","var(--pt)","var(--pg)","var(--pp)","var(--po)"];
+                      return revenusParCategorie.map(([cat,rev],i)=>(
+                        <div key={cat} style={{ marginBottom:12 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
+                            <span style={{ color:"var(--pm)", fontWeight:600 }}>{cat}</span>
+                            <span style={{ fontWeight:700, color:"var(--pn)" }}>{fmtCFA(rev)}</span>
+                          </div>
+                          <Prog pct={Math.round(rev/maxRev*100)} color={palette[i % palette.length]} />
                         </div>
-                        <Prog pct={Math.round(rev/850000*100)} color={col} />
-                      </div>
-                    ))}
+                      ));
+                    })()}
                   </div>
                 </div>
               </div>
