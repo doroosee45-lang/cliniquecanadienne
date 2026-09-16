@@ -3,6 +3,7 @@ const ImagingResult = require('../models/ImagingResult');
 const ExamCatalogue = require('../models/ExamCatalogue');
 const Consultation = require('../models/Consultation');
 const Invoice = require('../models/Invoice');
+const Patient = require('../models/Patient');
 const { logAction, createNotification, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
@@ -133,8 +134,17 @@ exports.getOne = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
+    // POST5-007 (audit indépendant post-Phase 5, 14 sept. 2026) — `patient`
+    // n'était vérifié que pour sa présence (truthiness), jamais son format
+    // ObjectId ni son existence réelle en base — même correctif que
+    // laboratory.controller.js::create, alignant ce contrôleur sur le
+    // garde-fou déjà appliqué partout ailleurs dans ce projet
+    // (consultations/prescriptions/echographie/hospitalization/maternity/
+    // chirurgie/pediatrie).
     const patient = req.body.patient || req.body.patient_id;
-    if (!patient) return res.status(400).json({ success: false, message: 'Patient obligatoire.' });
+    if (!patient || !isObjectId(patient)) return res.status(400).json({ success: false, message: 'Patient réel obligatoire (référence invalide).' });
+    const patientDoc = await Patient.findById(patient).select('_id').lean();
+    if (!patientDoc) return res.status(400).json({ success: false, message: 'Patient introuvable.' });
 
     // Médecin prescripteur
     let medecin_prescripteur     = null;

@@ -2,6 +2,7 @@ const LabResult = require('../models/LabResult');
 const ExamCatalogue = require('../models/ExamCatalogue');
 const Consultation = require('../models/Consultation');
 const Invoice = require('../models/Invoice');
+const Patient = require('../models/Patient');
 const { logAction, createNotification, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
@@ -124,8 +125,20 @@ exports.getOne = async (req, res, next) => {
 exports.create = async (req, res, next) => {
   try {
     // ── Normalisation des champs du formulaire ──────────────────
+    // POST5-007 (audit indépendant post-Phase 5, 14 sept. 2026) — `patient`
+    // n'était vérifié que pour sa présence (truthiness), jamais son format
+    // ObjectId ni son existence réelle en base — seul contrôleur clinique
+    // dans ce projet à ne pas le faire (voir consultations.controller.js,
+    // prescriptions.controller.js, echographieController.js,
+    // hospitalization.controller.js, maternityController.js,
+    // chirurgieController.js, pediatrieController.js, tous alignés sur ce
+    // même garde-fou). Un ObjectId fabriqué/orphelin était accepté tel
+    // quel : un LabResult persisté sans qu'aucun vrai Patient ne le
+    // référence réellement.
     const patient = req.body.patient || req.body.patient_id;
-    if (!patient) return res.status(400).json({ success: false, message: 'Patient obligatoire.' });
+    if (!patient || !isObjectId(patient)) return res.status(400).json({ success: false, message: 'Patient réel obligatoire (référence invalide).' });
+    const patientDoc = await Patient.findById(patient).select('_id').lean();
+    if (!patientDoc) return res.status(400).json({ success: false, message: 'Patient introuvable.' });
 
     // medecin_prescripteur : ObjectId ou texte libre
     let medecin_prescripteur = null;
