@@ -382,6 +382,29 @@ exports.update = async (req, res, next) => {
 
 exports.remove = async (req, res, next) => {
   try {
+    // POST5-006 (audit indépendant post-Phase 5, 14 sept. 2026) — remove()
+    // supprimait la Consultation sans jamais vérifier Invoice.consultation
+    // (le champ dédié que create() renseigne réellement, ligne ~262) : une
+    // consultation ayant déjà produit une facture pouvait être supprimée,
+    // laissant la facture — payée ou non — référencer un acte clinique
+    // inexistant, détruisant sa justification et sa traçabilité
+    // comptables. Aucun mécanisme d'archivage/désactivation n'existe
+    // aujourd'hui pour Consultation (statut n'a que en_cours/terminee/
+    // suspendue — vérifié sur le schéma) : plutôt que d'inventer un tel
+    // mécanisme sans qu'aucune règle métier ne le spécifie, même principe
+    // que le garde-fou déjà établi pour Patient
+    // (models/Patient.js::pre('findOneAndDelete')) — refus explicite tant
+    // qu'un historique financier réel existe, quel que soit son statut de
+    // paiement (une facture impayée orpheline resterait tout autant une
+    // incohérence comptable qu'une facture payée orpheline).
+    const factureExistante = await Invoice.findOne({ consultation: req.params.id }).select('_id numero_facture statut');
+    if (factureExistante) {
+      return res.status(409).json({
+        success: false,
+        message: `Impossible de supprimer cette consultation : la facture ${factureExistante.numero_facture} (statut : ${factureExistante.statut}) y fait encore référence.`,
+      });
+    }
+
     const c = await Consultation.findByIdAndDelete(req.params.id);
     if (!c) return res.status(404).json({ success: false, message: 'Consultation introuvable.' });
     // AUDIT-3.4 — une prescription générée automatiquement à la clôture de
