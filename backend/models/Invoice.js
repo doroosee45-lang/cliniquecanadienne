@@ -78,7 +78,23 @@ InvoiceSchema.pre('save', async function(next) {
 
 InvoiceSchema.index({ patient: 1, date_facture: -1 });
 InvoiceSchema.index({ statut: 1 });
-InvoiceSchema.index({ source_module: 1, source_id: 1 });
+// POST5-005 (audit indépendant post-Phase 5, 14 sept. 2026) — même
+// justification et même remède que FACTURATION-CONSULTATION-001
+// juste en dessous : un acte source (laboratoire/imagerie/echographie/
+// urgences/chirurgie/blocoperatoire) ne doit jamais produire plus d'une
+// facture. laboratory.controller.js::validate/radiology.controller.js::
+// validation/echographieController.js::saveRapport ferment déjà cette
+// course au niveau applicatif (POST5-002, findOneAndUpdate filtré sur le
+// statut avant transition) ; urgencesController.js::update, lui, ne
+// vérifiait l'absence de facture existante que par un Invoice.findOne()
+// non atomique avec l'Invoice.create() qui suit — même classe de course
+// que POST5-002, fenêtre plus étroite. La garantie réelle contre un
+// doublon doit vivre côté base, pas seulement dans chaque contrôleur
+// appelant. `sparse` : la plupart des factures (création manuelle,
+// revenu direct, caisse...) n'ont ni l'un ni l'autre champ, jamais en
+// conflit entre elles — vérifié en base avant application (0 doublon
+// existant sur (source_module, source_id) au moment de ce correctif).
+InvoiceSchema.index({ source_module: 1, source_id: 1 }, { unique: true, sparse: true });
 // FACTURATION-CONSULTATION-001 (rapport de clôture du 11 sept. 2026) — une
 // consultation ne doit jamais avoir plus d'une facture (consultations.
 // controller.js::create ne devrait déjà en créer qu'une par conception,

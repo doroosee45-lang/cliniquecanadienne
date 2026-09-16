@@ -345,18 +345,41 @@ exports.update = async (req, res, next) => {
         }
         if (lignes.length > 0) {
           const montant = lignes.reduce((s, l) => s + l.montant, 0);
-          factureGeneree = await Invoice.create({
-            patient: u.patient || undefined,
-            patient_nom: u.patient_nom,
-            service_label: 'Urgences',
-            source_module: 'urgences',
-            source_id: u._id,
-            created_by: req.user._id,
-            lignes,
-            montant_ht: montant,
-            montant_ttc: montant,
-          });
-          await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: factureGeneree._id, ip: req.ip, message: `Facture ${factureGeneree.numero_facture} générée automatiquement depuis la clôture du dossier urgences ${u.numero}` });
+          // POST5-005 (audit indépendant post-Phase 5, 14 sept. 2026) — le
+          // `dejaFacture` ci-dessus n'est pas atomique avec ce
+          // Invoice.create() : deux clôtures concurrentes du même dossier
+          // urgences pouvaient toutes deux lire dejaFacture === null avant
+          // qu'aucune insertion n'ait abouti, produisant deux factures pour
+          // le même épisode — même classe de course que POST5-002
+          // (laboratoire/imagerie/echographie), fenêtre plus étroite ici.
+          // La garantie réelle vit désormais côté base (index unique+sparse
+          // sur (source_module, source_id), models/Invoice.js) : la requête
+          // qui perd la course reçoit une erreur de clé dupliquée (E11000),
+          // jamais une deuxième facture — u.save() plus haut (la vraie
+          // transition de statut du dossier) reste acquis dans tous les cas,
+          // seule la génération de facture en double est empêchée.
+          try {
+            factureGeneree = await Invoice.create({
+              patient: u.patient || undefined,
+              patient_nom: u.patient_nom,
+              service_label: 'Urgences',
+              source_module: 'urgences',
+              source_id: u._id,
+              created_by: req.user._id,
+              lignes,
+              montant_ht: montant,
+              montant_ttc: montant,
+            });
+            await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: factureGeneree._id, ip: req.ip, message: `Facture ${factureGeneree.numero_facture} générée automatiquement depuis la clôture du dossier urgences ${u.numero}` });
+          } catch (err) {
+            if (err.code !== 11000) throw err;
+            // Perdu la course : une autre requête concurrente a déjà créé
+            // la facture pour ce dossier entre notre lecture dejaFacture et
+            // cette écriture — jamais un doublon, jamais une erreur 500
+            // pour l'utilisateur (la clôture du dossier elle-même a bien
+            // réussi, seule la génération de facture était en trop).
+            factureGeneree = await Invoice.findOne({ source_module: 'urgences', source_id: u._id });
+          }
         }
       }
     }
