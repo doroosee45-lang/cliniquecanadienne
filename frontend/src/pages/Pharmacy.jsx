@@ -237,6 +237,12 @@ const normalizeMed = (m) => ({
   fournisseur: m.fournisseur || m.fabricant || "",
   code: m.code || "",
   emplacement: m.emplacement || "",
+  // POST5-010 (audit indépendant post-Phase 5, 14 sept. 2026) — jamais
+  // normalisé, contrairement à code/emplacement juste au-dessus : un
+  // médicament rechargé depuis l'API affichait toujours 500 (EMPTY_MED),
+  // jamais la vraie valeur enregistrée (maintenant que le backend la
+  // persiste réellement — voir models/Medication.js).
+  stock_maximum: m.stock_maximum ?? 500,
   prix_vente: m.prix_vente ?? 0,
   stock_minimum: m.stock_minimum ?? m.seuil_alerte ?? 10,
 });
@@ -687,6 +693,9 @@ export default function Pharmacie() {
     e.preventDefault();
     setSaving(true);
     // Mapper les champs frontend → modèle Mongoose
+    // POST5-010 (audit indépendant post-Phase 5, 14 sept. 2026) — code/
+    // emplacement/stock_maximum étaient saisis dans le formulaire mais
+    // jamais transmis à l'API, silencieusement perdus.
     const payload = {
       nom_commercial: formMed.nom_commercial,
       dci: formMed.dci,
@@ -695,8 +704,11 @@ export default function Pharmacie() {
       categorie: formMed.categorie,
       fabricant: formMed.fabricant || formMed.fournisseur || "",
       numero_lot: formMed.lot || "",
+      code: formMed.code || "",
+      emplacement: formMed.emplacement || "",
       stock_actuel: Number(formMed.stock_quantite) || 0,
       stock_minimum: Number(formMed.stock_minimum) || 10,
+      stock_maximum: Number(formMed.stock_maximum) || undefined,
       prix_achat: Number(formMed.prix_achat) || 0,
       prix_vente: Number(formMed.prix_vente) || 0,
       date_peremption: formMed.date_expiration || null,
@@ -720,6 +732,7 @@ export default function Pharmacie() {
     e.preventDefault();
     if (!currentMed) return;
     setSaving(true);
+    // POST5-010 — même correctif que createMed ci-dessus.
     const payload = {
       nom_commercial: formMed.nom_commercial,
       dci: formMed.dci,
@@ -728,7 +741,10 @@ export default function Pharmacie() {
       categorie: formMed.categorie,
       fabricant: formMed.fabricant || formMed.fournisseur || "",
       numero_lot: formMed.lot || formMed.numero_lot || "",
+      code: formMed.code || "",
+      emplacement: formMed.emplacement || "",
       stock_minimum: Number(formMed.stock_minimum) || 10,
+      stock_maximum: Number(formMed.stock_maximum) || undefined,
       prix_achat: Number(formMed.prix_achat) || 0,
       prix_vente: Number(formMed.prix_vente) || 0,
       date_peremption: formMed.date_expiration || formMed.date_peremption || null,

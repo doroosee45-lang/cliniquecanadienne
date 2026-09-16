@@ -27,6 +27,18 @@ const MedicationSchema = new mongoose.Schema({
   numero_lot: String,
   stock_actuel: { type: Number, default: 0, min: 0 },
   stock_minimum: { type: Number, default: 10 },
+  // POST5-010 (audit indépendant post-Phase 5, 14 sept. 2026) — code/
+  // emplacement/stock_maximum sont saisis par de vrais champs du
+  // formulaire Pharmacy.jsx (Ajouter/Modifier médicament) depuis
+  // toujours, mais n'existaient pas du tout sur ce schéma : silencieusement
+  // supprimés par Mongoose à chaque enregistrement (jamais envoyés au
+  // payload non plus, côté frontend — les deux bouts de la chaîne étaient
+  // cassés). Complète la chaîne UI → payload → modèle → MongoDB → réponse
+  // → réaffichage, plutôt que de retirer des champs de formulaire déjà
+  // conçus et déjà utilisés par le personnel pharmacie.
+  code: { type: String, default: null },
+  emplacement: { type: String, default: null },
+  stock_maximum: { type: Number, default: null },
   seuil_alerte: { type: Number, default: 20 },
   prix_achat: { type: Number, default: 0 },
   prix_vente: { type: Number, default: 0 },
