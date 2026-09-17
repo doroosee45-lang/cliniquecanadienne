@@ -51,7 +51,16 @@ test('Caisse — le journal affiche les vrais paiements/dépenses du jour, jamai
   expect(screen.getByText(/FAC-REEL-0001/)).toBeInTheDocument();
   expect(screen.getByText(/Achat gants latex/)).toBeInTheDocument();
 
-  // Les anciennes lignes fabriquées ne doivent plus jamais apparaître.
+  // Carte "Solde de caisse actuel" — mêmes vrais totaux du jour que le
+  // journal (12000 encaissé, 4000 décaissé), jamais les anciens chiffres
+  // fabriqués (450000/120000/85000, identiques quelle que soit la donnée réelle).
+  const norm = (s) => s.replace(/[^\d]/g, '');
+  const caisseItems = document.querySelectorAll('.caisse-item');
+  expect([...caisseItems].some(el => norm(el.textContent) === '12000')).toBe(true);
+  expect([...caisseItems].some(el => norm(el.textContent) === '4000')).toBe(true);
+  expect([...caisseItems].some(el => norm(el.textContent) === '450000')).toBe(false);
+
+  // Les anciennes lignes/chiffres fabriqués ne doivent plus jamais apparaître.
   expect(screen.queryByText(/Jean Dupont/)).not.toBeInTheDocument();
   expect(screen.queryByText(/Marie Paul/)).not.toBeInTheDocument();
   expect(screen.queryByText(/FAC-2026-0041/)).not.toBeInTheDocument();

@@ -1461,18 +1461,28 @@ export default function Finance() {
                       💰 Solde de caisse actuel
                     </div>
                     <div className="caisse-val">{fmtMontant(soldeCaisse)}</div>
+                    {/* Vague 4 — les 3 valeurs ci-dessous étaient codées en
+                        dur (450000/120000/85000), les mêmes chiffres
+                        fabriqués que l'ancien "Journal de caisse". Solde
+                        ouverture n'a pas de valeur stockée réelle (aucun
+                        modèle de solde d'ouverture journalier dans ce
+                        projet) — dérivé honnêtement du seul solde réel
+                        connu (soldeCaisse) moins le vrai mouvement net du
+                        jour, jamais un nombre inventé indépendamment.
+                        Encaissements/Décaissements reprennent exactement
+                        les mêmes totaux réels que le journal ci-dessous. */}
                     <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:12, marginTop:20 }}>
                       <div className="caisse-item">
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginBottom:4 }}>Solde ouverture</div>
-                        <div style={{ fontSize:16, fontWeight:700, color:"#A7F3D0" }}>{fmtMontant(450000)}</div>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginBottom:4 }}>Solde avant aujourd'hui</div>
+                        <div style={{ fontSize:16, fontWeight:700, color:"#A7F3D0" }}>{fmtMontant(soldeCaisse - (totalEntreesJour - totalSortiesJour))}</div>
                       </div>
                       <div className="caisse-item">
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginBottom:4 }}>Encaissements</div>
-                        <div style={{ fontSize:16, fontWeight:700, color:"#A7F3D0" }}>{fmtMontant(120000)}</div>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginBottom:4 }}>Encaissements du jour</div>
+                        <div style={{ fontSize:16, fontWeight:700, color:"#A7F3D0" }}>{fmtMontant(totalEntreesJour)}</div>
                       </div>
                       <div className="caisse-item">
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginBottom:4 }}>Décaissements</div>
-                        <div style={{ fontSize:16, fontWeight:700, color:"#FCA5A5" }}>{fmtMontant(85000)}</div>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginBottom:4 }}>Décaissements du jour</div>
+                        <div style={{ fontSize:16, fontWeight:700, color:"#FCA5A5" }}>{fmtMontant(totalSortiesJour)}</div>
                       </div>
                     </div>
                     <div style={{ marginTop:16, display:"flex", gap:8, flexWrap:"wrap" }}>
