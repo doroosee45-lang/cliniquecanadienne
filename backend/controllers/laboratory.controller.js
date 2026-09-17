@@ -3,6 +3,7 @@ const ExamCatalogue = require('../models/ExamCatalogue');
 const Consultation = require('../models/Consultation');
 const Invoice = require('../models/Invoice');
 const Patient = require('../models/Patient');
+const { fieldsFor } = require('./patients.controller');
 const { logAction, createNotification, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
@@ -120,8 +121,16 @@ exports.getAll = async (req, res, next) => {
 
 exports.getOne = async (req, res, next) => {
   try {
+    // Mission harmonisation sélection patient (17 sept. 2026) — `patient`
+    // était peuplé ici sans aucune restriction, renvoyant le dossier
+    // complet (antecedents_medicaux, notes...) à n'importe quel rôle
+    // autorisé à lire un résultat de labo, y compris laborantin (rôle
+    // restreint : démographique + groupe_sanguin + allergies uniquement
+    // selon RESTRICTED_FIELDS). Alignée sur la même source unique
+    // fieldsFor() (déjà réutilisée par prescriptions.controller.js::getOne).
+    const patientFields = fieldsFor(req.user.role);
     const result = await LabResult.findById(req.params.id)
-      .populate('patient')
+      .populate('patient', patientFields || undefined)
       .populate('medecin_prescripteur', 'nom prenom')
       .populate('examen')
       // LAB-03 — technicien/validateur réels (voir saisirResultats/validate

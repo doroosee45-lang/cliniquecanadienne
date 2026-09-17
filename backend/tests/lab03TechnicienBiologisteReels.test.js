@@ -67,7 +67,11 @@ test('LAB-03 — technicien et biologiste sont dérivés du compte réel, jamais
     });
 
     await t.test('getOne() renvoie technicien/validateur réellement peuplés (nom/prenom), pas de simples ObjectId opaques', async () => {
-      const { body } = await call(labC.getOne, { params: { id: lab._id.toString() } });
+      // req.user est toujours présent en réel (posé par le middleware protect
+      // avant ce contrôleur) — requis depuis la mission harmonisation
+      // sélection patient (17 sept. 2026), getOne() applique désormais
+      // fieldsFor(req.user.role) sur le patient peuplé.
+      const { body } = await call(labC.getOne, { params: { id: lab._id.toString() }, user: { role: 'medecin' } });
       assert.equal(body.result.technicien.prenom, 'Alice');
       assert.equal(body.result.validateur.prenom, 'Paul');
     });

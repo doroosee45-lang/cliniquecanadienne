@@ -54,7 +54,10 @@ test('POST5-009 — téléphone live du Patient préféré à la copie figée (l
 
       await Patient.findByIdAndUpdate(patient._id, { telephone: NOUVEAU });
 
-      const rOne = await call(laboC.getOne, { params: { id: String(lab._id) } });
+      // req.user est toujours présent en réel (posé par protect) — requis
+      // depuis la mission harmonisation sélection patient (17 sept. 2026),
+      // getOne() applique fieldsFor(req.user.role) sur le patient peuplé.
+      const rOne = await call(laboC.getOne, { params: { id: String(lab._id) }, user: { role: 'medecin' } });
       assert.equal(rOne.status, 200, JSON.stringify(rOne.body));
       assert.equal(rOne.body.result.telephone, NOUVEAU, 'getOne doit renvoyer le téléphone live du Patient, jamais la copie figée');
 
@@ -107,7 +110,7 @@ test('POST5-009 — téléphone live du Patient préféré à la copie figée (l
       const orphanId = new mongoose.Types.ObjectId();
       const lab = await LabResult.create({ patient: orphanId, patient_nom: 'Orphelin', telephone: ANCIEN, statut: 'prescrit' });
       cleanup.push(() => LabResult.findByIdAndDelete(lab._id));
-      const r = await call(laboC.getOne, { params: { id: String(lab._id) } });
+      const r = await call(laboC.getOne, { params: { id: String(lab._id) }, user: { role: 'medecin' } });
       assert.equal(r.status, 200, JSON.stringify(r.body));
       assert.equal(r.body.result.telephone, ANCIEN, 'sans Patient réel lié, la copie figée reste affichée — jamais vidée ni inventée');
     });

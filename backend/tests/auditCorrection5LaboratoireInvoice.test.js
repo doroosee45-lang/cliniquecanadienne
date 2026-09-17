@@ -79,8 +79,11 @@ test('Correction 5 (Laboratoire) — validate() génère une vraie Invoice depui
       assert.ok(freshInvoice.lignes.some(l => l.libelle === 'NFS Test Correction5' && l.montant === 5500));
       assert.ok(freshInvoice.lignes.some(l => l.libelle === 'Glycémie Test Correction5' && l.montant === 3500));
 
-      // GET /laboratory/:id doit aussi renvoyer cette même vraie facture
-      const { body: bGet } = await call(labC.getOne, { params: { id: labId } });
+      // GET /laboratory/:id doit aussi renvoyer cette même vraie facture.
+      // req.user est toujours présent en réel (posé par protect) — requis
+      // depuis la mission harmonisation sélection patient (17 sept. 2026),
+      // getOne() applique fieldsFor(req.user.role) sur le patient peuplé.
+      const { body: bGet } = await call(labC.getOne, { params: { id: labId }, user: medecin });
       assert.equal(String(bGet.invoice._id), String(freshInvoice._id));
     });
 
