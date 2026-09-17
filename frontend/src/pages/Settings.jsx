@@ -645,22 +645,20 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="set-card">
-          <div className="set-card-hdr"><h3>📄 Documents officiels</h3></div>
-          <div className="set-card-body">
-            {[["Licence d'exploitation","EXP-2024-CG-001","2026-12-31"],["Agrément Ministère Santé","AGR-MS-2024-042","2025-06-30"],["Certificat ISO 9001","ISO-9001-2024","2025-03-15"]].map(([nom,ref,exp])=>(
-              <div key={nom} style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 0", borderBottom:"1px solid #F3F7FF" }}>
-                <div style={{ fontSize:24 }}>📋</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:600, color:"var(--ink)", fontSize:13 }}>{nom}</div>
-                  <div style={{ fontSize:11, color:"var(--muted)" }}>Réf : {ref} · Expire le {exp}</div>
-                </div>
-                <Badge cls={new Date(exp)>new Date()?"green":"red"}>{new Date(exp)>new Date()?"✅ Valide":"❌ Expiré"}</Badge>
-                <button className="sbtn sbtn-ghost sbtn-sm">{I.upload} Mettre à jour</button>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* POST5-013 (audit indépendant post-Phase 5, 14 sept. 2026) — la
+            carte "Documents officiels" affichait 3 documents réglementaires
+            (licence d'exploitation, agrément ministériel, certificat ISO
+            9001) entièrement fabriqués : numéros de référence et dates
+            d'expiration en dur, badge "✅ Valide/❌ Expiré" calculé sur ces
+            dates fictives, bouton "Mettre à jour" sans handler — faux
+            sentiment de conformité réglementaire. Aucun modèle ne persiste
+            de document réglementaire réel (Document.js gère des documents
+            patient/dossier médical, pas des certificats d'établissement) :
+            retirée plutôt que remplacée par une autre donnée inventée, même
+            précédent que "Modules actifs" (POST5-011). Si un suivi réel des
+            documents réglementaires est requis un jour, cela nécessite une
+            vraie fonctionnalité dédiée (modèle, upload, permissions), pas
+            une carte de démonstration. */}
       </div>
     );
 
