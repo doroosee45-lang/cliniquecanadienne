@@ -158,7 +158,7 @@ exports.create = async (req, res, next) => {
   try {
     if (!req.body.patient_id) return res.status(400).json({ message: 'Patient obligatoire pour créer un dossier pédiatrique.' });
     if (!isObjectId(req.body.patient_id)) return res.status(400).json({ message: 'Référence patient invalide.' });
-    const patientDoc = await Patient.findById(req.body.patient_id).select('_id');
+    const patientDoc = await Patient.findById(req.body.patient_id).select('_id prenom nom');
     if (!patientDoc) return res.status(404).json({ message: 'Patient introuvable.' });
 
     // Même liste blanche que CHILD_BLOCKED_FIELDS ci-dessous (les champs
@@ -168,6 +168,18 @@ exports.create = async (req, res, next) => {
     const body = {};
     for (const [k, v] of Object.entries(req.body)) { if (!CHILD_BLOCKED_FIELDS.includes(k)) body[k] = v; }
     body.patient_id = patientDoc._id;
+    // POST5-016 (audit indépendant post-Phase 5, 14 sept. 2026) — nom/prenom
+    // étaient pris bruts du client même quand patient_id référence un
+    // Patient réellement vérifié ci-dessus : un client pouvait envoyer un
+    // patient_id réel avec un nom/prénom arbitraires, créant une
+    // incohérence nom/ID jamais détectée. patient_id est obligatoire pour ce
+    // module (contrairement à Urgences, aucun intake anonyme ici) : dérivés
+    // sans condition du Patient vérifié, jamais du client. parent_nom
+    // (personne différente de l'enfant, aucune référence Patient/ID
+    // vérifiable pour un parent dans ce schéma) reste hors périmètre de ce
+    // garde-fou — rien à vérifier contre.
+    body.nom = patientDoc.nom;
+    body.prenom = patientDoc.prenom;
     body.created_by = req.user._id;
     if (body.date_naissance) body.date_naissance = new Date(body.date_naissance);
     const child = await Child.create(body);
@@ -183,7 +195,13 @@ exports.create = async (req, res, next) => {
 // addMaladieChron (chacun avec sa propre validation, cf. P6-4 pour
 // mesures_croissance) — les laisser passer par cette édition générique
 // permettrait d'écraser tout l'historique en un seul appel.
-const CHILD_BLOCKED_FIELDS = ['patient_id', 'numero', 'created_by', 'vaccinations', 'mesures_croissance', 'maladies_chroniques'];
+// POST5-016 — nom/prenom rejoignent ce blocage : dérivés une fois pour
+// toutes du Patient vérifié à la création (voir create() ci-dessus),
+// jamais indépendamment réécrits via cette édition générique (patient_id
+// lui-même déjà bloqué, immuable après création — nom/prenom doivent
+// rester cohérents avec lui en permanence, jamais un second point de
+// vérité éditable côté client).
+const CHILD_BLOCKED_FIELDS = ['patient_id', 'numero', 'created_by', 'nom', 'prenom', 'vaccinations', 'mesures_croissance', 'maladies_chroniques'];
 
 exports.update = async (req, res, next) => {
   try {

@@ -236,12 +236,13 @@ exports.create = async (req, res, next) => {
     // par nom seul (patient_nom, requis par le schéma) reste un intake ER
     // légitime (arrivée non identifiée), jamais un blocage artificiel.
     let patientId;
+    let patientDoc;
     if (req.body.patient) {
       if (!isObjectId(req.body.patient)) {
         return res.status(400).json({ success: false, message: 'Référence patient invalide.' });
       }
       const Patient = require('../models/Patient');
-      const patientDoc = await Patient.findById(req.body.patient).select('_id');
+      patientDoc = await Patient.findById(req.body.patient).select('_id prenom nom');
       if (!patientDoc) return res.status(404).json({ success: false, message: 'Patient introuvable.' });
       patientId = patientDoc._id;
     }
@@ -249,6 +250,16 @@ exports.create = async (req, res, next) => {
     const body = {};
     for (const k of URG_CREATE_ALLOWED_FIELDS) { if (req.body[k] !== undefined) body[k] = req.body[k]; }
     body.patient = patientId;
+    // POST5-016 (audit indépendant post-Phase 5, 14 sept. 2026) — quand
+    // `patient` référence un Patient réellement vérifié ci-dessus,
+    // patient_nom doit en être dérivé, jamais accepté tel quel du client :
+    // sans ce garde-fou, un client pouvait envoyer un patient_id réel avec
+    // un patient_nom arbitraire, créant une incohérence nom/ID jamais
+    // détectée (le nom affiché ne correspondait plus au dossier réellement
+    // lié). Un intake ER sans patient_id identifié (cas légitime, voir
+    // commentaire ci-dessus) continue de faire confiance au nom saisi
+    // manuellement à l'accueil.
+    if (patientDoc) body.patient_nom = `${patientDoc.prenom || ''} ${patientDoc.nom || ''}`.trim();
     if (!body.date_arrivee) body.date_arrivee = new Date();
     const u = new Urgence(body);
 
@@ -282,6 +293,15 @@ exports.update = async (req, res, next) => {
     // dossier : jamais réassignables après création (même principe que
     // *_BLOCKED_FIELDS déjà utilisé par les autres contrôleurs cliniques).
     const { soins, prescriptions, examens, timeline, admission_status, patient, numero, ...fields } = req.body;
+    // POST5-016 (audit indépendant post-Phase 5, 14 sept. 2026) — patient
+    // est déjà immuable ci-dessus, mais patient_nom restait librement
+    // réassignable même quand u.patient référence un Patient réellement
+    // vérifié (create() ci-dessus le dérive désormais du Patient à la
+    // création) : un client pouvait ensuite le réécrire arbitrairement,
+    // rouvrant l'incohérence nom/ID que create() empêche. Un intake ER
+    // encore non identifié (u.patient absent, cas légitime documenté dans
+    // create()) peut toujours voir son nom corrigé manuellement.
+    if (u.patient) delete fields.patient_nom;
     const decisionAvant = u.decision;
     const statutAvant   = u.statut;
     // AUDIT-URG-STATUT-BUG — la comparaison `fields.statut !== u.statut` ci-
