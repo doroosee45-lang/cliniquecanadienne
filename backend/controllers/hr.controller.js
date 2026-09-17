@@ -10,6 +10,7 @@ const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const mail = require('../utils/mail');
 const sms = require('../utils/sms');
 const { logger } = require('../utils/logger');
+const ai = require('../utils/openai');
 
 // Aplatir Staff + utilisateur populé en un objet frontend-compatible
 function normalizeStaff(s) {
@@ -552,4 +553,146 @@ exports.createSanction = async (req, res, next) => {
     }
     next(err);
   }
+};
+
+// ── PLANNING GÉNÉRÉ PAR IA ──────────────────────────────────────────────
+// POST /hr/planning/generer-ia — propose une répartition Matin(07-15h)/
+// Soir(15-23h)/Nuit(23-07h, type 'garde') sur une période, pour un service
+// donné, en tenant compte des congés déjà approuvés et des créneaux déjà
+// posés. Toujours créé en statut 'brouillon' — jamais publié automatiquement.
+// Si OPENAI_API_KEY n'est pas configurée : simulated:true, aucun créneau créé.
+const CRENEAUX_HORAIRES = {
+  matin: { heure_debut: '07:00', heure_fin: '15:00', type: 'travail' },
+  soir:  { heure_debut: '15:00', heure_fin: '23:00', type: 'travail' },
+  nuit:  { heure_debut: '23:00', heure_fin: '07:00', type: 'garde' },
+};
+
+function dateEstEnConge(staff, dateStr) {
+  const d = new Date(dateStr);
+  return (staff.conges || []).some(c =>
+    c.statut === 'approuve' &&
+    new Date(c.date_debut) <= d && d <= new Date(c.date_fin)
+  );
+}
+
+function dejaPlanifie(staff, dateStr) {
+  const d = new Date(dateStr).toDateString();
+  return (staff.planning || []).some(p => new Date(p.date).toDateString() === d);
+}
+
+exports.genererPlanningIA = async (req, res, next) => {
+  try {
+    const { service_id, date_debut, date_fin } = req.body;
+    if (!service_id || !date_debut || !date_fin) {
+      return res.status(400).json({ success: false, message: 'service_id, date_debut et date_fin sont requis.' });
+    }
+    const debut = new Date(date_debut);
+    const fin = new Date(date_fin);
+    if (Number.isNaN(debut.getTime()) || Number.isNaN(fin.getTime()) || fin < debut) {
+      return res.status(400).json({ success: false, message: 'Plage de dates invalide.' });
+    }
+    const nbJours = Math.round((fin - debut) / (24 * 3600 * 1000)) + 1;
+    if (nbJours > 14) {
+      return res.status(400).json({ success: false, message: 'La génération IA est limitée à 14 jours maximum par appel.' });
+    }
+
+    const staffList = await Staff.find({ service: service_id, statut: 'actif' });
+    if (staffList.length === 0) {
+      return res.status(400).json({ success: false, message: 'Aucun employé actif dans ce service.' });
+    }
+
+    const dates = Array.from({ length: nbJours }, (_, i) => {
+      const d = new Date(debut);
+      d.setDate(debut.getDate() + i);
+      return d.toISOString().substring(0, 10);
+    });
+
+    const employesContext = staffList.map(s => ({
+      employe_id: s._id.toString(),
+      nom: ((s.prenom || '') + ' ' + (s.nom || '')).trim(),
+      poste: s.poste,
+      dates_indisponibles: dates.filter(d => dateEstEnConge(s, d) || dejaPlanifie(s, d)),
+    }));
+
+    if (!ai.isConfigured()) {
+      logger.warn('[HR-PLANNING-IA] OPENAI_API_KEY non configurée — génération simulée, aucun créneau créé');
+      return res.json({
+        success: true, simulated: true,
+        message: "Génération IA simulée — clé OpenAI non configurée côté serveur. Aucun créneau n'a été créé.",
+      });
+    }
+
+    const systemPrompt = "Tu es un planificateur RH pour une clinique. Tu dois répartir le personnel d'un service sur des créneaux Matin/Soir/Nuit, jour par jour, en respectant STRICTEMENT ces règles :\n" +
+      "1. Un employé \"dates_indisponibles\" ne peut RIEN se voir assigner ce jour-là.\n" +
+      "2. Un employé qui travaille \"nuit\" un jour J ne peut pas être assigné \"matin\" le jour J+1.\n" +
+      "3. Répartis la charge le plus équitablement possible entre les employés du service.\n" +
+      "4. Vise au moins 1 employé par créneau (matin/soir/nuit) chaque jour si l'effectif le permet.\n" +
+      "5. Ne planifie QUE des jours de travail (n'invente pas d'entrées \"repos\").\n\n" +
+      "Réponds UNIQUEMENT avec un tableau JSON valide, sans texte autour, sans balises markdown, de cette forme exacte :\n" +
+      "[{\"employe_id\":\"...\",\"date\":\"YYYY-MM-DD\",\"creneau\":\"matin|soir|nuit\"}, ...]";
+
+    const userPrompt = JSON.stringify({ periode: { debut: dates[0], fin: dates[dates.length - 1] }, employes: employesContext });
+
+    const result = await ai.generateReport({ systemPrompt, userPrompt });
+
+    let propositions;
+    try {
+      let cleaned = result.content.trim();
+      cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, '').replace(/```\s*$/, '').trim();
+      propositions = JSON.parse(cleaned);
+      if (!Array.isArray(propositions)) throw new Error('not an array');
+    } catch (parseErr) {
+      logger.error('[HR-PLANNING-IA] Réponse IA non parsable', { error: parseErr.message });
+      return res.status(502).json({ success: false, message: "La réponse de l'IA n'a pas pu être interprétée. Réessayez." });
+    }
+
+    const staffMap = new Map(staffList.map(s => [s._id.toString(), s]));
+    let creees = 0;
+    const rejetees = [];
+
+    for (const prop of propositions) {
+      const staff = staffMap.get(String(prop.employe_id));
+      const horaire = CRENEAUX_HORAIRES[prop.creneau];
+      if (!staff || !horaire || !dates.includes(prop.date)) {
+        rejetees.push(Object.assign({}, prop, { raison: 'Employé, créneau ou date invalide.' }));
+        continue;
+      }
+      if (dateEstEnConge(staff, prop.date)) {
+        rejetees.push(Object.assign({}, prop, { raison: 'Employé en congé approuvé à cette date.' }));
+        continue;
+      }
+      if (dejaPlanifie(staff, prop.date)) {
+        rejetees.push(Object.assign({}, prop, { raison: 'Un créneau existe déjà pour cet employé à cette date.' }));
+        continue;
+      }
+      const veille = new Date(prop.date);
+      veille.setDate(veille.getDate() - 1);
+      const veilleStr = veille.toISOString().substring(0, 10);
+      const aTravailleNuitVeille = (staff.planning || []).some(p =>
+        new Date(p.date).toISOString().substring(0, 10) === veilleStr && p.heure_debut === '23:00'
+      );
+      if (prop.creneau === 'matin' && aTravailleNuitVeille) {
+        rejetees.push(Object.assign({}, prop, { raison: 'Repos obligatoire après une garde de nuit.' }));
+        continue;
+      }
+
+      staff.planning.push(Object.assign({ date: prop.date }, horaire, { statut: 'brouillon' }));
+      creees++;
+    }
+
+    await Promise.all(staffList.map(s => s.save()));
+
+    await logAction({
+      utilisateur: req.user._id, action: 'SCHEDULE_ADD', module: 'hr', ip: req.ip,
+      message: 'Planning généré par IA pour le service (' + date_debut + ' -> ' + date_fin + ') : ' + creees + ' créneau(x) créé(s) en brouillon, ' + rejetees.length + ' rejeté(s).',
+    });
+    emitDashboardUpdate();
+
+    res.json({
+      success: true, simulated: false,
+      creneaux_crees: creees,
+      creneaux_rejetes: rejetees,
+      message: creees + ' créneau(x) généré(s) en brouillon.' + (rejetees.length ? (' ' + rejetees.length + ' proposition(s) rejetée(s) (voir détail).') : ''),
+    });
+  } catch (err) { next(err); }
 };

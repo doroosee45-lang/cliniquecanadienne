@@ -195,6 +195,9 @@ const POSTE_COLORS = {
   administratif:   { cls:"gray",   label:"Administratif",       color:"#6B7280" },
   aide_soignant:   { cls:"yellow", label:"Aide-soignant",       color:"#CA8A04" },
   maintenance:     { cls:"red",    label:"Maintenance",         color:"#DC2626" },
+  sage_femme:      { cls:"pink",   label:"Sage-femme",          color:"#EC4899" },
+  nutritionniste:  { cls:"lime",   label:"Nutritionniste Diabétique", color:"#65A30D" },
+  ag:              { cls:"indigo", label:"Administration Gestionnaire (AG)", color:"#4F46E5" },
 };
 
 const CONTRAT_CFG = {
@@ -457,6 +460,9 @@ export default function RessourcesHumaines() {
   const [modalEmp,        setModalEmp]        = useState(false);
   const [modalConge,      setModalConge]       = useState(false);
   const [modalPlan,       setModalPlan]        = useState(false);
+  const [modalPlanIA,     setModalPlanIA]      = useState(false);
+  const [formPlanIA, setFormPlanIA] = useState({ service_id: '', date_debut: '', date_fin: '' });
+  const [generatingIA, setGeneratingIA] = useState(false);
   const [modalCandidat,   setModalCandidat]    = useState(false);
   const [modalEval,       setModalEval]        = useState(false);
   const [modalFormation,  setModalFormation]   = useState(false);
@@ -799,6 +805,32 @@ export default function RessourcesHumaines() {
       setModalPlan(false); setFormPlan(EMPTY_PLAN);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erreur lors de l'ajout du créneau");
+    }
+  };
+
+  const genererPlanningIA = async (ev) => {
+    ev.preventDefault();
+    if (!formPlanIA.service_id || !formPlanIA.date_debut || !formPlanIA.date_fin) {
+      toast.error("Veuillez renseigner le service et la période.");
+      return;
+    }
+    setGeneratingIA(true);
+    try {
+      const { data } = await api.post('/hr/planning/generer-ia', formPlanIA);
+      if (data.simulated) {
+        toast(data.message, { icon: '⚠️' });
+      } else {
+        await loadSchedules();
+        toast.success(data.message);
+        if (data.creneaux_rejetes && data.creneaux_rejetes.length > 0) {
+          console.warn('Créneaux rejetés par la génération IA :', data.creneaux_rejetes);
+        }
+        setModalPlanIA(false);
+      }
+    } catch (err) {
+      toast.error((err && err.response && err.response.data && err.response.data.message) || "Erreur lors de la génération du planning par IA.");
+    } finally {
+      setGeneratingIA(false);
     }
   };
 
@@ -2180,6 +2212,7 @@ export default function RessourcesHumaines() {
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:20 }}>
                 <div style={{ fontSize:16, fontWeight:700, color:"var(--rn)" }}>Planning hebdomadaire — Semaine du {weekLabels[0]} au {weekLabels[6]} {weekDates[6].toLocaleDateString('fr-FR',{month:'long',year:'numeric'})}</div>
                 <button className="rbtn rbtn-primary" onClick={() => { setFormPlan(EMPTY_PLAN); setModalPlan(true); }}>{I.plus} Nouveau créneau</button>
+                <button className="rbtn rbtn-teal" disabled={generatingIA} onClick={() => { setFormPlanIA({ service_id:'', date_debut: isoDay(weekDates[0]), date_fin: isoDay(weekDates[6]) }); setModalPlanIA(true); }}>✨ Générer avec IA</button>
               </div>
               <div className="rh-card fu" style={{ overflowX:"auto" }}>
                 <table style={{ width:"100%", borderCollapse:"collapse", minWidth:1000 }}>
@@ -2683,6 +2716,31 @@ export default function RessourcesHumaines() {
               <div style={{ display:"flex", gap:10 }}>
                 <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalPlan(false)}>Annuler</button>
                 <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }}>{I.save} Ajouter en brouillon</button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : GÉNÉRATION PLANNING PAR IA ═══ */}
+        <Modal open={modalPlanIA} onClose={() => setModalPlanIA(false)} title="✨ Générer le planning par IA" maxWidth={480}>
+          <form onSubmit={genererPlanningIA}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div><label className="rlbl">Service *</label>
+                <select className="rinp" required value={formPlanIA.service_id} onChange={e=>setFormPlanIA(f=>({...f,service_id:e.target.value}))}>
+                  <option value="">— Sélectionner —</option>
+                  {servicesReels.map(s => <option key={s._id} value={s._id}>{s.nom}</option>)}
+                </select>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div><label className="rlbl">Date début *</label><input type="date" className="rinp" required value={formPlanIA.date_debut} onChange={e=>setFormPlanIA(f=>({...f,date_debut:e.target.value}))} /></div>
+                <div><label className="rlbl">Date fin *</label><input type="date" className="rinp" required value={formPlanIA.date_fin} onChange={e=>setFormPlanIA(f=>({...f,date_fin:e.target.value}))} /></div>
+              </div>
+              <div style={{ background:"#F5F3FF", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#6D28D9" }}>
+                ✨ L'IA propose une répartition Matin/Soir/Nuit en respectant les congés déjà approuvés et en évitant les créneaux existants. Tous les créneaux générés restent en <strong>brouillon</strong> — à vérifier et publier manuellement.
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="rbtn rbtn-ghost" onClick={() => setModalPlanIA(false)}>Annuler</button>
+                <button type="submit" className="rbtn rbtn-teal" style={{ marginLeft:"auto" }} disabled={generatingIA}>{generatingIA ? "Génération..." : "✨ Générer"}</button>
               </div>
             </div>
           </form>

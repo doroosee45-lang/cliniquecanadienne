@@ -12,6 +12,7 @@ const { ADMIN, STAFF } = require('../utils/roles');
 router.get('/staff',     protect, authorize(...ADMIN), hrC.getAll);
 router.get('/leaves',    protect, authorize(...ADMIN), hrC.getLeaves);
 router.get('/schedules', protect, authorize(...ADMIN), hrC.getSchedules);
+router.post('/planning/generer-ia', protect, authorize(...ADMIN), hrC.genererPlanningIA);
 
 // Sous-phase 5.5.a — Recrutement (Candidature). Doit impérativement précéder
 // `/:id` ci-dessous : sinon GET /hr/candidatures serait capté par
