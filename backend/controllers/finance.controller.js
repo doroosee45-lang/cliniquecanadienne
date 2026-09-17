@@ -6,6 +6,17 @@ const Salaire = require('../models/Salaire');
 const Staff = require('../models/Staff');
 const BudgetCible = require('../models/BudgetCible');
 const Patient = require('../models/Patient');
+// POST5-019 (audit indépendant post-Phase 5, 14 sept. 2026) — getSalaires()
+// ci-dessous fait un populate() imbriqué sur Staff.utilisateur (ref:'User'),
+// jamais explicitement enregistré dans ce fichier. Mongoose résout un ref
+// par son nom de schéma enregistré (mongoose.model('User', ...)), pas par
+// un require() direct de ce fichier — quand rien d'autre dans le process
+// n'a encore chargé models/User.js (ex. un test qui importe uniquement les
+// modèles ci-dessus, en exécution isolée), le populate échoue réellement
+// ("Schema hasn't been registered for model 'User'"). En démarrage normal
+// du serveur, routes.js charge déjà tous les contrôleurs (donc User.js
+// indirectement) avant toute requête, ce qui masquait le problème.
+require('../models/User');
 const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 

@@ -2,14 +2,18 @@
 // stubs figés (tableaux vides) ; /finance/depenses n'avait même pas de
 // route POST (addDepense du frontend visait un endpoint inexistant).
 //
-// TODO(ticket 0007) — le test "payerSalaire" ci-dessous échoue de façon
-// intermittente en exécution parallèle (node --test tests/*.test.js, mode
-// par défaut) : getSalaires interroge tout le personnel actif de la base
-// sans le scoper aux données de CE test, donc une exécution concurrente
-// d'un autre fichier de test peut interférer. Passe proprement à chaque
-// fois avec --test-concurrency=1 — pas une régression de code, un problème
-// d'isolation de test. Voir docs/tickets/0007 pour le détail, non traité
-// pour l'instant (décision explicite, pas bloquant pour la Phase 7).
+// POST5-019 (audit indépendant post-Phase 5, 14 sept. 2026) — le commentaire
+// précédent attribuait un échec intermittent de "payerSalaire" à un manque
+// d'isolation des données entre fichiers de test concurrents. C'était
+// factuellement faux : la vraie cause, isolée avec certitude, est que
+// finance.controller.js::getSalaires effectue un populate() imbriqué sur
+// Staff.utilisateur (ref:'User') sans jamais avoir chargé models/User.js
+// lui-même — en exécution isolée (ce fichier seul, sans qu'aucun autre test
+// déjà exécuté dans le même process n'ait chargé User.js en premier), le
+// populate échoue réellement ("Schema hasn't been registered for model
+// 'User'"). Corrigé à la source (finance.controller.js charge désormais
+// explicitement models/User.js) — ce test ne devrait donc plus jamais
+// dépendre de l'ordre/la concurrence d'exécution des autres fichiers.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
