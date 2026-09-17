@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuthSafe } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
 import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
 import api from "../api";
@@ -1198,8 +1198,13 @@ function ComptableDashboard({ data, isMobile }) {
 // ─── MAIN DASHBOARD ─────────────────────────────────────────────
 // ════════════════════════════════════════════════════════════════
 export default function Dashboard() {
-  let authData = null;
-  try { authData = useAuth(); } catch { /* AuthProvider absent (ex. rendu isolé en test) — repli ci-dessous */ }
+  // POST5-015 (audit indépendant post-Phase 5, 14 sept. 2026) — même motif
+  // que LAB-HOOKS-001 (Laboratory.jsx, déjà corrigé) : useAuth() dans un
+  // try/catch viole react-hooks/rules-of-hooks (un hook ne doit jamais être
+  // appelé dans un bloc try/catch). useAuthSafe() appelle useContext
+  // directement (jamais conditionnellement) et renvoie null en l'absence de
+  // provider, sans jamais contourner les Rules of Hooks.
+  const authData = useAuthSafe();
   const user     = authData?.user || { prenom:"Utilisateur", nom:"", role:"patient" };
   const navigate = useNavigate();
 
