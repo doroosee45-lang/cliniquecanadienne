@@ -63,6 +63,16 @@ const findPatient = async (user) => {
   return patientViaEmail;
 };
 
+// Statuts couvrant un RDV pas encore soldé (ni terminé, ni annulé, ni
+// absent) — source unique, partagée entre getMe (KPI "Rendez-vous à
+// venir") et getDashboard, pour qu'elles ne puissent plus diverger
+// silencieusement. Corrige un bug réel : getMe ne comptait auparavant que
+// ['planifie','confirme'], jamais 'en_attente' — le statut initial posé
+// par createAppointment ci-dessous — si bien qu'un RDV réellement créé
+// par le patient n'incrémentait jamais ce compteur tant qu'un membre du
+// staff ne l'avait pas traité.
+const RDV_ACTIFS = ['planifie','en_attente','confirme','arrive','en_consultation','en_cours','reporte'];
+
 // ── ME : profil + statistiques ────────────────────────────────────────────────
 exports.getMe = async (req, res, next) => {
   try {
@@ -70,7 +80,7 @@ exports.getMe = async (req, res, next) => {
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
     const [nbRdv, nbOrd, nbLabo, nbImag, nbFact, nbFactImpayees] = await Promise.all([
-      Appointment.countDocuments({ patient: patient._id, statut: { $in: ['planifie','confirme'] } }),
+      Appointment.countDocuments({ patient: patient._id, statut: { $in: RDV_ACTIFS } }),
       Prescription.countDocuments({ patient: patient._id, statut: 'active' }),
       LabResult.countDocuments({ patient: patient._id, statut: 'valide' }),
       ImagingResult.countDocuments({ patient: patient._id, statut: { $in: ['rapporte','valide'] } }),
@@ -557,8 +567,7 @@ exports.getDashboard = async (req, res, next) => {
     if (!patient) return res.status(404).json({ success: false, message: 'Dossier patient introuvable.' });
 
     const now = new Date();
-    // Statuts couvrant un RDV pas encore soldé (ni terminé, ni annulé, ni absent).
-    const RDV_ACTIFS = ['planifie','en_attente','confirme','arrive','en_consultation','en_cours','reporte'];
+    // RDV_ACTIFS : constante partagée définie en tête de fichier (voir getMe).
 
     const [
       rdv_a_venir,
