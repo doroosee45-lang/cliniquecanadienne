@@ -1842,7 +1842,38 @@ export default function Urgences() {
 
               <div style={{ gridColumn: "1/-1" }}>
                 <label className="ulbl">Patient existant</label>
-                <select className="uinp" value={formUrg.patient_id} onChange={e => setFormUrg(f => ({ ...f, patient_id: e.target.value }))}>
+                {/* Mission harmonisation sélection patient (17 sept. 2026) —
+                    sélectionner un patient existant ici ne renseignait que
+                    patient_id, jamais les champs affichés (patient_nom/dob/
+                    sexe/tel), qui restaient un texte libre totalement
+                    indépendant tant que le personnel ne les retapait pas
+                    manuellement. Le backend (POST5-016, urgencesController.js
+                    ::create) dérive déjà patient_nom du vrai Patient référencé
+                    et ignore le texte client dès qu'un patient_id réel est
+                    fourni — donc jamais de dossier réellement incohérent en
+                    base — mais le formulaire pouvait afficher un nom sans
+                    rapport avec le patient réellement sélectionné avant
+                    l'envoi, risque de confusion en contexte urgences. Aligné
+                    sur le même principe que Consultations.jsx::selectPatient :
+                    la sélection recopie les champs réels déjà chargés, sans
+                    appel réseau supplémentaire (patients?limit=500 déjà en
+                    mémoire). L'intake non identifié (aucun patient existant)
+                    reste inchangé : les champs restent des textes libres
+                    éditables. */}
+                <select className="uinp" value={formUrg.patient_id} onChange={e => {
+                  const pid = e.target.value;
+                  const p = patients.find(x => x._id === pid);
+                  setFormUrg(f => ({
+                    ...f,
+                    patient_id: pid,
+                    ...(p ? {
+                      patient_nom:  `${p.prenom || ''} ${p.nom || ''}`.trim(),
+                      patient_dob:  p.date_naissance ? String(p.date_naissance).slice(0, 10) : f.patient_dob,
+                      patient_sexe: p.sexe === 'M' ? 'homme' : p.sexe === 'F' ? 'femme' : f.patient_sexe,
+                      patient_tel:  p.telephone || f.patient_tel,
+                    } : {}),
+                  }));
+                }}>
                   <option value="">— Sélectionner un patient —</option>
                   {patients.map(p => <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier}</option>)}
                 </select>

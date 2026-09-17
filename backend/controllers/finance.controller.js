@@ -6,6 +6,7 @@ const Salaire = require('../models/Salaire');
 const Staff = require('../models/Staff');
 const BudgetCible = require('../models/BudgetCible');
 const Patient = require('../models/Patient');
+const { fieldsFor } = require('./patients.controller');
 // POST5-019 (audit indépendant post-Phase 5, 14 sept. 2026) — getSalaires()
 // ci-dessous fait un populate() imbriqué sur Staff.utilisateur (ref:'User'),
 // jamais explicitement enregistré dans ce fichier. Mongoose résout un ref
@@ -75,7 +76,16 @@ exports.getAll = async (req, res, next) => {
 
 exports.getOne = async (req, res, next) => {
   try {
-    const invoice = await Invoice.findById(req.params.id).populate('patient').populate('created_by', 'nom prenom');
+    // Mission harmonisation sélection patient (17 sept. 2026) — `patient`
+    // était peuplé ici sans aucune restriction, renvoyant le dossier
+    // complet (antecedents_medicaux, notes...) à n'importe quel rôle
+    // autorisé à lire une facture, y compris comptable (rôle restreint :
+    // démographique + assurances uniquement selon RESTRICTED_FIELDS).
+    // getAll()/getAssurances() appliquaient déjà des jeux de champs sûrs ;
+    // seul getOne() exposait le dossier complet. Même défaut, même
+    // correctif que prescriptions/laboratory (Vagues 1/2).
+    const patientFields = fieldsFor(req.user.role);
+    const invoice = await Invoice.findById(req.params.id).populate('patient', patientFields || undefined).populate('created_by', 'nom prenom');
     if (!invoice) return res.status(404).json({ success: false, message: 'Facture introuvable.' });
     res.json({ success: true, invoice });
   } catch (err) { next(err); }
