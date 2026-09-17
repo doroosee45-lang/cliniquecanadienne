@@ -5,6 +5,7 @@ const ImagingResult = require('../models/ImagingResult');
 const Prescription  = require('../models/Prescription');
 const Hospitalization = require('../models/Hospitalization');
 const Consultation  = require('../models/Consultation');
+const Appointment   = require('../models/Appointment');
 const { logAction } = require('../utils/helpers');
 const { detectInteractions } = require('../utils/drugInteractions');
 const { logger } = require('../utils/logger');
@@ -777,6 +778,61 @@ exports.getImagingInsights = async (req, res, next) => {
       patient_context: { nom: `${patient.prenom || ''} ${patient.nom || ''}`.trim(), numero_dossier: patient.numero_dossier },
       examens,
       historique_count: historique.length,
+    });
+  } catch (err) { next(err); }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// GET /api/ai/rdv-insights
+// ═══════════════════════════════════════════════════════════════
+// Module AI — sous-module Rendez-vous (implémentation réelle). Remplace le
+// placeholder posé en Sous-phase 5.6 à la place d'une "prévision
+// d'affluence" et d'une "charge par médecin" entièrement inventées
+// (chiffres fixes, aucun modèle prédictif réel). Aucune prédiction n'est
+// calculée ici — ce système n'a ni historique suffisant ni modèle
+// entraîné pour prévoir une affluence future de façon honnête. À la
+// place : la charge RÉELLE de la semaine en cours (rendez-vous déjà
+// planifiés, statut ≠ annulé), agrégée par jour et par médecin. Aucune
+// "capacité" par médecin n'existe dans le schéma (vérifié — User/Staff ne
+// portent aucun champ de ce type) : jamais de ratio charge/capacité
+// inventé, jamais de suggestion de transfert fabriquée — seuls des
+// comptages réels, triés.
+exports.getRdvInsights = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const jourActuel = now.getDay(); // 0 = dimanche
+    const decalageLundi = jourActuel === 0 ? 6 : jourActuel - 1;
+    const debutSemaine = new Date(now);
+    debutSemaine.setDate(now.getDate() - decalageLundi);
+    debutSemaine.setHours(0, 0, 0, 0);
+    const finSemaine = new Date(debutSemaine);
+    finSemaine.setDate(debutSemaine.getDate() + 7);
+
+    const rdvSemaine = await Appointment.find({
+      date_heure: { $gte: debutSemaine, $lt: finSemaine },
+      statut: { $ne: 'annule' },
+    }).populate('medecin', 'nom prenom').lean();
+
+    const joursLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    const parJour = new Array(7).fill(0);
+    const parMedecin = new Map();
+    for (const rdv of rdvSemaine) {
+      const d = new Date(rdv.date_heure);
+      let idx = d.getDay() - 1;
+      if (idx < 0) idx = 6;
+      parJour[idx] += 1;
+      const medNom = rdv.medecin ? `Dr. ${rdv.medecin.prenom || ''} ${rdv.medecin.nom || ''}`.trim() : 'Médecin non assigné';
+      parMedecin.set(medNom, (parMedecin.get(medNom) || 0) + 1);
+    }
+    const chargeMedecins = [...parMedecin.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([medecin, nb]) => ({ medecin, nb }));
+
+    res.json({
+      success: true,
+      semaine: { debut: debutSemaine, fin: finSemaine, labels: joursLabels, data: parJour },
+      charge_medecins: chargeMedecins,
+      total_semaine: rdvSemaine.length,
     });
   } catch (err) { next(err); }
 };

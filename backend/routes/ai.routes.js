@@ -10,6 +10,7 @@ router.get('/alerts',           protect, authorize(...roles),            aiC.get
 router.get('/patient-summary/:patientId', protect, authorize(...roles),  aiC.getPatientSummary);
 router.get('/lab-insights/:patientId',    protect, authorize(...roles),  aiC.getLabInsights);
 router.get('/imaging-insights/:patientId',protect, authorize(...roles),  aiC.getImagingInsights);
+router.get('/rdv-insights',               protect, authorize(...roles),  aiC.getRdvInsights);
 router.post('/diagnose',        protect, authorize(...roles),            aiC.runDiagnosis);
 router.post('/interactions',    protect, authorize(...roles),            aiC.checkInteractions);
 router.post('/chat',            protect, authorize(...roles),            aiC.chat);

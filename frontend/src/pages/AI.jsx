@@ -4,10 +4,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights,
+  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights, fetchRdvInsights,
   selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading, selectAIAnalyzing,
   selectPatientSummary, selectPatientSummaryLoading, selectLabInsights, selectLabInsightsLoading,
-  selectImagingInsights, selectImagingInsightsLoading,
+  selectImagingInsights, selectImagingInsightsLoading, selectRdvInsights, selectRdvInsightsLoading,
 } from '../store/slices/aiSlice';
 import { fetchPatients, selectPatients } from '../store/slices/patientsSlice';
 import api from '../api';
@@ -364,6 +364,8 @@ export default function IntelligenceArtificielle() {
   const labInsightsLoading    = useSelector(selectLabInsightsLoading);
   const imagingInsights        = useSelector(selectImagingInsights);
   const imagingInsightsLoading = useSelector(selectImagingInsightsLoading);
+  const rdvInsights            = useSelector(selectRdvInsights);
+  const rdvInsightsLoading     = useSelector(selectRdvInsightsLoading);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -617,6 +619,15 @@ export default function IntelligenceArtificielle() {
       toast.error(typeof err === 'string' ? err : "Erreur lors de l'analyse imagerie");
     }
   };
+
+  // ── Rendez-vous IA (implémentation réelle — cf. AI.controller.js::
+  // getRdvInsights) : charge clinique en cours, aucun patient à
+  // sélectionner (donnée agrégée sur toute la clinique). ────────
+  useEffect(() => {
+    if (section === "rdv" && !rdvInsights && !rdvInsightsLoading) {
+      dispatch(fetchRdvInsights());
+    }
+  }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Chat ──────────────────────────────────────────────────
   // A-1 (audit Phases 2-9) — neutralisé, pas implémenté : ce chat n'a jamais
@@ -1316,14 +1327,52 @@ export default function IntelligenceArtificielle() {
                   </div>
                 )}
 
-                {/* Sous-phase 5.6 (module IA) — prévisions d'affluence et
-                    charge par médecin entièrement fabriquées (aucun modèle
-                    prédictif réel). Désactivé honnêtement. */}
+                {/* Rendez-vous — implémentation réelle. Sous-phase 5.6 avait
+                    désactivé ce panneau, qui affichait une "prévision
+                    d'affluence" et une "charge par médecin" entièrement
+                    fabriquées (aucun modèle prédictif réel). Ce système n'a
+                    ni historique suffisant ni modèle entraîné pour prévoir
+                    une affluence future honnêtement — affiche à la place la
+                    charge RÉELLE de la semaine en cours (voir
+                    ai.controller.js::getRdvInsights), jamais une valeur
+                    inventée. Aucun champ de "capacité" par médecin
+                    n'existe dans ce système : jamais de suggestion de
+                    transfert fabriquée. */}
                 {section === "rdv" && (
-                  <div className="ia-card fu">
-                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>📅</div>
-                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>📅 Charge de la semaine</h3><p>Rendez-vous réellement planifiés, statut ≠ annulé</p></div>
+                      <div style={{ padding:20 }}>
+                        {rdvInsightsLoading && <div style={{ textAlign:"center", padding:20, color:"var(--cm)" }}>Chargement…</div>}
+                        {!rdvInsightsLoading && rdvInsights && (
+                          rdvInsights.total_semaine > 0 ? (
+                            <BarChart labels={rdvInsights.semaine.labels} data={rdvInsights.semaine.data} color="#0EA5A0" height={140} />
+                          ) : (
+                            <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:12 }}>Aucun rendez-vous planifié cette semaine.</div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>👨‍⚕️ Charge par médecin</h3><p>Cette semaine — {rdvInsights?.total_semaine ?? 0} rendez-vous au total</p></div>
+                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+                        {rdvInsightsLoading && <div style={{ textAlign:"center", padding:20, color:"var(--cm)" }}>Chargement…</div>}
+                        {!rdvInsightsLoading && rdvInsights?.charge_medecins.length === 0 && (
+                          <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:12 }}>Aucun rendez-vous planifié cette semaine.</div>
+                        )}
+                        {!rdvInsightsLoading && rdvInsights?.charge_medecins.map(m => {
+                          const maxNb = rdvInsights.charge_medecins[0]?.nb || 1;
+                          return (
+                            <div key={m.medecin} style={{ background:"#F8FAFD", borderRadius:12, padding:"12px 14px" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                                <span style={{ fontSize:13, fontWeight:600, color:"var(--cn)" }}>{m.medecin}</span>
+                                <Badge cls="teal">{m.nb} RDV</Badge>
+                              </div>
+                              <Prog pct={Math.round(m.nb / maxNb * 100)} color="#0EA5A0" />
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}

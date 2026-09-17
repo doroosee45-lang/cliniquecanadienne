@@ -88,6 +88,18 @@ export const fetchImagingInsights = createAsyncThunk(
   }
 );
 
+export const fetchRdvInsights = createAsyncThunk(
+  'ai/fetchRdvInsights',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/ai/rdv-insights');
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur analyse rendez-vous IA');
+    }
+  }
+);
+
 const aiSlice = createSlice({
   name: 'ai',
   initialState: {
@@ -128,6 +140,9 @@ const aiSlice = createSlice({
     imagingInsights: null,
     imagingInsightsLoading: false,
     imagingInsightsError: null,
+    rdvInsights: null,
+    rdvInsightsLoading: false,
+    rdvInsightsError: null,
   },
   reducers: {
     setSuggestions(state, action) { state.suggestions = action.payload; },
@@ -194,6 +209,15 @@ const aiSlice = createSlice({
       .addCase(fetchImagingInsights.rejected, (state, action) => {
         state.imagingInsightsLoading = false;
         state.imagingInsightsError = action.payload;
+      })
+      .addCase(fetchRdvInsights.pending, (state) => { state.rdvInsightsLoading = true; state.rdvInsightsError = null; })
+      .addCase(fetchRdvInsights.fulfilled, (state, action) => {
+        state.rdvInsightsLoading = false;
+        state.rdvInsights = action.payload;
+      })
+      .addCase(fetchRdvInsights.rejected, (state, action) => {
+        state.rdvInsightsLoading = false;
+        state.rdvInsightsError = action.payload;
       });
   },
 });
@@ -217,5 +241,8 @@ export const selectLabInsightsError = (state) => state.ai.labInsightsError;
 export const selectImagingInsights = (state) => state.ai.imagingInsights;
 export const selectImagingInsightsLoading = (state) => state.ai.imagingInsightsLoading;
 export const selectImagingInsightsError = (state) => state.ai.imagingInsightsError;
+export const selectRdvInsights = (state) => state.ai.rdvInsights;
+export const selectRdvInsightsLoading = (state) => state.ai.rdvInsightsLoading;
+export const selectRdvInsightsError = (state) => state.ai.rdvInsightsError;
 
 export default aiSlice.reducer;
