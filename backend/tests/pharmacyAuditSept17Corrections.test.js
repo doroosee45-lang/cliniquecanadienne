@@ -98,6 +98,55 @@ test('Pharmacie — audit du 17 sept. 2026 (base réelle)', { skip: !process.env
       assert.equal(freshRx.statut, 'active', 'la prescription ne doit jamais transitionner sur un échec de validation');
     });
 
+    // ── Correction 5 — dispenser() facture réellement les médicaments
+    // dispensés (confirmé : paiement immédiat au comptoir, statut 'payee') ──
+    await t.test('dispenser — génère une vraie facture payee, prix relu depuis Medication, jamais une valeur inventée', async () => {
+      const Patient = require('../models/Patient');
+      const Prescription = require('../models/Prescription');
+      const patient = await Patient.create({ nom: `C5-Pat-${stamp}`, prenom: 'Synthetique', sexe: 'M', date_naissance: '1985-01-01' });
+      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+      const med1 = await Medication.create({ nom_commercial: `C5-Med1-${stamp}`, stock_actuel: 20, prix_vente: 1200, forme: 'comprime' });
+      cleanup.push(() => Medication.findByIdAndDelete(med1._id));
+      const med2 = await Medication.create({ nom_commercial: `C5-Med2-${stamp}`, stock_actuel: 20, prix_vente: 500, forme: 'sirop' });
+      cleanup.push(() => Medication.findByIdAndDelete(med2._id));
+      const rx = await Prescription.create({
+        patient: patient._id, medecin: user._id, statut: 'active',
+        lignes: [
+          { medicament: med1._id, medicament_nom: med1.nom_commercial, quantite: 2 },
+          { medicament: med2._id, medicament_nom: med2.nom_commercial, quantite: 3, prix_unitaire: 999999 }, // prix client ignoré : jamais fait confiance
+        ],
+      });
+      cleanup.push(() => Prescription.findByIdAndDelete(rx._id));
+
+      const r = await call(pharmaC.dispenser, { params: { id: String(rx._id) }, user, ip: '127.0.0.1' });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      assert.ok(r.body.invoice, 'la réponse doit inclure la vraie facture générée');
+      cleanup.push(() => Invoice.findByIdAndDelete(r.body.invoice._id));
+
+      const attendu = 2 * 1200 + 3 * 500; // jamais 3 * 999999
+      const inv = await Invoice.findById(r.body.invoice._id).lean();
+      assert.equal(inv.montant_ttc, attendu, 'le montant doit être la vraie somme des prix catalogue, jamais un prix envoyé par le client');
+      assert.equal(inv.montant_paye, attendu);
+      assert.equal(inv.statut, 'payee');
+      assert.equal(String(inv.patient), String(patient._id));
+      assert.equal(inv.lignes.length, 2);
+    });
+
+    await t.test('dispenser — non-régression : aucune ligne rattachée à une fiche Medication (texte libre uniquement) → aucune facture inventée', async () => {
+      const Patient = require('../models/Patient');
+      const Prescription = require('../models/Prescription');
+      const patient = await Patient.create({ nom: `C5b-Pat-${stamp}`, prenom: 'Synthetique', sexe: 'F', date_naissance: '1988-01-01' });
+      cleanup.push(() => Patient.findByIdAndDelete(patient._id));
+      const rx = await Prescription.create({
+        patient: patient._id, medecin: user._id, statut: 'active',
+        lignes: [{ medicament_nom: 'Médicament en texte libre, sans fiche catalogue', quantite: 1 }],
+      });
+      cleanup.push(() => Prescription.findByIdAndDelete(rx._id));
+      const r = await call(pharmaC.dispenser, { params: { id: String(rx._id) }, user, ip: '127.0.0.1' });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      assert.equal(r.body.invoice, null, 'aucune ligne réelle décrémentée : jamais de facture fabriquée');
+    });
+
     // ── Correction 2 — vente assurance routée dans montant_assurance ──
     await t.test('createVente — mode "assurance" : facture emise/montant_assurance=total, jamais payee/montant_paye', async () => {
       const med = await Medication.create({ nom_commercial: `C2-Med-${stamp}`, stock_actuel: 20, prix_vente: 2000, forme: 'comprime' });

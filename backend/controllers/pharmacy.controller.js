@@ -701,9 +701,51 @@ exports.dispenser = async (req, res, next) => {
       return res.status(409).json({ success: false, message: 'Cette ordonnance vient d\'être dispensée par une autre requête.' });
     }
 
+    // Audit du 17 sept. 2026 (Correction 5, confirmée : paiement immédiat au
+    // comptoir, même convention que createVente ci-dessus) — createVente()
+    // génère une vraie facture, mais dispenser() décrémentait le stock sans
+    // jamais rien facturer : Prescription n'a aucun champ prix, et
+    // consultations.controller.js ne facture que l'acte de consultation
+    // (categorie: 'consultation'), jamais les médicaments prescrits. Chaque
+    // médicament dispensé sur ordonnance sortait donc du stock sans jamais
+    // remonter en comptabilité — perte de revenu systématique et invisible.
+    // Prix relu depuis Medication au moment de la facturation (jamais une
+    // valeur envoyée par le client) ; lignes construites depuis
+    // `decrementees` (quantités réellement décrémentées ci-dessus, jamais
+    // recalculées). Générée seulement APRÈS la transition de statut réussie,
+    // pour ne jamais facturer une dispensation qui échoue ensuite sur la
+    // course de statut (voir crediterRetour ci-dessus).
+    let factureGeneree = null;
+    if (decrementees.length > 0) {
+      const medsInfo = await Medication.find({ _id: { $in: decrementees.map(d => d.id) } }).select('nom_commercial prix_vente').lean();
+      const medsMap = new Map(medsInfo.map(m => [m._id.toString(), m]));
+      const lignesFacture = decrementees.map(d => {
+        const med = medsMap.get(d.id);
+        const prixReel = Number(med?.prix_vente) || 0;
+        return { libelle: med?.nom_commercial || 'Médicament', categorie: 'pharmacie', prix_unitaire: prixReel, quantite: d.quantite, montant: prixReel * d.quantite };
+      });
+      const totalFacture = lignesFacture.reduce((s, l) => s + l.montant, 0);
+      if (totalFacture > 0) {
+        factureGeneree = await Invoice.create({
+          patient: dispensee.patient,
+          service_label: `Pharmacie — Ordonnance ${dispensee.numero_rx}`,
+          lignes: lignesFacture,
+          montant_ht: totalFacture,
+          montant_ttc: totalFacture,
+          montant_paye: totalFacture,
+          montant_restant: 0,
+          statut: 'payee',
+          paiements: [{ montant: totalFacture, mode: 'especes', reference: dispensee.numero_rx, enregistre_par: req.user._id }],
+          notes: `Dispensation ordonnance ${dispensee.numero_rx}`,
+          created_by: req.user._id,
+        });
+        await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'finance', entite_id: factureGeneree._id, ip: req.ip, message: `Facture ${factureGeneree.numero_facture} générée automatiquement depuis la dispensation ${dispensee.numero_rx}` });
+      }
+    }
+
     await logAction({ utilisateur: req.user._id, action: 'DISPENSE', module: 'pharmacy', entite_id: dispensee._id, ip: req.ip, avant, apres: dispensee });
     emitActivity({ module: 'pharmacy', action: 'Dispensation ordonnance', detail: dispensee.numero_rx, icon: '💊', userId: req.user._id, userName: `${req.user.prenom} ${req.user.nom}` });
     emitDashboardUpdate();
-    res.json({ success: true, prescription: dispensee });
+    res.json({ success: true, prescription: dispensee, invoice: factureGeneree });
   } catch (err) { next(err); }
 };
