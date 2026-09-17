@@ -198,7 +198,15 @@ const normalizeFacture = (f) => {
   const statutMap = { emise:'non_paye', payee:'paye', partiellement_payee:'partiellement_paye', annulee:'annule', contentieux:'non_paye', brouillon:'non_paye' };
   return {
     ...f,
-    numero:   f.numero          || f.numero_facture  || genRef("FAC"),
+    // Vague 4 (audit global des données fictives, 17 sept. 2026) — le repli
+    // précédent (genRef("FAC"), basé sur Math.random()) générait un NOUVEAU
+    // numéro de facture différent à chaque rendu pour la même facture réelle
+    // dès que numero_facture n'était pas encore renseigné — jamais le cas en
+    // pratique (finance.controller.js::create le renvoie toujours), mais un
+    // repli qui affiche un faux numéro différent à chaque re-render est pire
+    // qu'un repli stable dérivé du vrai `_id` (même principe que le repli
+    // déjà utilisé côté serveur dans createRevenu ci-dessus).
+    numero:   f.numero          || f.numero_facture  || (f._id ? `FAC-${String(f._id).slice(-6)}` : '—'),
     date:     f.date            || f.date_facture     || f.createdAt,
     echeance: f.echeance        || f.date_echeance    || null,
     patient:  pat ? `${pat.prenom || ''} ${pat.nom || ''}`.trim() : (typeof f.patient === 'string' ? f.patient : f.patient_nom || '—'),
@@ -784,10 +792,20 @@ export default function Finance() {
     setSaving(true);
     try {
       const { data } = await api.post("/finance/revenus", { ...formRevenu, reference: formRevenu.reference || genRef("FAC") });
-      toast.success("✅ Revenu enregistré");
-      const newR = data.revenu || { ...formRevenu, _id: Date.now(), reference: genRef("FAC") };
+      // Vague 4 (audit global des données fictives, 17 sept. 2026) —
+      // finance.controller.js::createRevenu renvoie toujours `revenu`
+      // (dérivé de la vraie Invoice créée) sur un 201 réel ; si jamais ce
+      // n'était pas le cas (réponse malformée), un faux revenu local était
+      // inséré silencieusement dans la liste affichée (id `Date.now()`,
+      // référence re-générée côté client) comme s'il s'agissait d'un vrai
+      // enregistrement — même défaut déjà corrigé ailleurs dans ce projet
+      // (Prescriptions.jsx::loadPatients, Correction 7) : repli honnête,
+      // jamais une donnée fabriquée à la place d'un vrai échec.
+      if (!data.revenu) { toast.error("Réponse du serveur incomplète — revenu non affiché, réessayez."); return; }
+      const newR = data.revenu;
       const patObj = newR.patient && typeof newR.patient === 'object';
       setRevenus(prev => [{ ...newR, patient: patObj ? `${newR.patient.prenom||''} ${newR.patient.nom||''}`.trim() : (newR.patient || '—') }, ...prev]);
+      toast.success("✅ Revenu enregistré");
       setModalRevenu(false); setFormRevenu(EMPTY_REVENU);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erreur lors de l'enregistrement du revenu");
