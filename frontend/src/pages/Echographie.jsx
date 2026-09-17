@@ -997,8 +997,14 @@ function Realisation({ demandes, radiologues = [] }) {
     setSalleReelle(selDem?.salle || "");
   }, [selDem?._id, selDem?.echographiste, selDem?.salle]);
 
+  // POST5-014 (audit indépendant post-Phase 5, 14 sept. 2026) — le bouton
+  // "+ PDF" n'avait aucun handler alors que le backend accepte déjà
+  // réellement les PDF sur cette même route d'upload (middleware/upload.js
+  // ::fileFilter, partagé avec les images d'examen) — seul ce filtre
+  // client-side les rejetait silencieusement avant même l'envoi.
+  const isPdfName = (name) => /\.pdf$/i.test(name || "");
   const addPendingFiles = (fileList) => {
-    const files = Array.from(fileList).filter(f=>f.type.startsWith("image/"));
+    const files = Array.from(fileList).filter(f=>f.type.startsWith("image/") || f.type==="application/pdf" || isPdfName(f.name));
     if (!files.length) return;
     setPendingFiles(p => [...p, ...files.map(f => ({ id:Date.now()+Math.random(), name:f.name, previewUrl:URL.createObjectURL(f), file:f }))]);
   };
@@ -1274,8 +1280,14 @@ function Realisation({ demandes, radiologues = [] }) {
               <h3>🖼️ Gestion des images échographiques</h3>
               <div style={{ display:"flex", gap:8 }}>
                 <span className="cbdg teal">{(selDem?.images?.length||0) + pendingFiles.length} image(s)</span>
-                <button className="cbtn cbtn-ghost cbtn-sm">+ Vidéo</button>
-                <button className="cbtn cbtn-ghost cbtn-sm">+ PDF</button>
+                {/* POST5-014 — "+ Vidéo" retiré : aucun support vidéo réel
+                    nulle part (middleware/upload.js::fileFilter n'autorise
+                    aucune extension vidéo, aucun traitement Cloudinary
+                    resource_type:'video' prévu côté lecture) — bouton mort
+                    retiré plutôt que branché sur une fonctionnalité qui
+                    n'existe pas, jamais un handler simulé. */}
+                <button type="button" className="cbtn cbtn-ghost cbtn-sm" onClick={()=>document.getElementById("echo-pdf-input").click()}>+ PDF</button>
+                <input id="echo-pdf-input" type="file" accept=".pdf,application/pdf" multiple style={{ display:"none" }} onChange={e=>{addPendingFiles(e.target.files); e.target.value="";}} />
               </div>
             </div>
             <div style={{ padding:20 }}>
@@ -1297,7 +1309,14 @@ function Realisation({ demandes, radiologues = [] }) {
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12, marginBottom:16 }}>
                     {selDem.images.map((img,i)=>(
                       <div key={img._id||i} className="img-thumb">
-                        <img src={img.url} alt={img.description||`Image ${i+1}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                        {isPdfName(img.description) ? (
+                          <a href={img.url} target="_blank" rel="noreferrer" style={{ width:"100%", height:"100%", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6, background:"#FEF2F2", textDecoration:"none" }}>
+                            <span style={{ fontSize:32 }}>📄</span>
+                            <span style={{ fontSize:10, fontWeight:700, color:"#B91C1C" }}>PDF</span>
+                          </a>
+                        ) : (
+                          <img src={img.url} alt={img.description||`Image ${i+1}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                        )}
                         <div style={{ position:"absolute", top:4, right:4, background:"#059669", color:"#fff", fontSize:9, fontWeight:700, borderRadius:6, padding:"2px 6px" }}>✓ Enregistrée</div>
                         <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(11,30,59,.7)", padding:"4px 8px" }}>
                           <div style={{ fontSize:10, color:"rgba(255,255,255,.8)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.description || `Image ${i+1}`}</div>
@@ -1315,7 +1334,14 @@ function Realisation({ demandes, radiologues = [] }) {
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12, marginBottom:16 }}>
                     {pendingFiles.map((img,i)=>(
                       <div key={img.id} className="img-thumb">
-                        <img src={img.previewUrl} alt={img.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                        {isPdfName(img.name) ? (
+                          <div style={{ width:"100%", height:"100%", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6, background:"#FEF2F2" }}>
+                            <span style={{ fontSize:32 }}>📄</span>
+                            <span style={{ fontSize:10, fontWeight:700, color:"#B91C1C" }}>PDF</span>
+                          </div>
+                        ) : (
+                          <img src={img.previewUrl} alt={img.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                        )}
                         <div className="img-thumb-overlay">
                           <button className="cbtn cbtn-danger cbtn-sm" style={{ fontSize:11 }} onClick={()=>removePendingFile(img.id)}>✕</button>
                         </div>

@@ -431,6 +431,12 @@ export default function Pharmacie() {
   const [qteCmdIA, setQteCmdIA] = useState({});
   const [sendingCmdIA, setSendingCmdIA] = useState(false);
   const [mvts, setMvts]       = useState([]);
+  // POST5-014 (audit indépendant post-Phase 5, 14 sept. 2026) — les boutons
+  // de filtre de l'onglet Audit ("Tous"/"Entrées"/.../"Ajustements")
+  // n'avaient aucun onClick, purement décoratifs (toujours "Tous" affiché
+  // actif, aucun effet réel au clic).
+  const [auditFilter, setAuditFilter] = useState("Tous");
+  const AUDIT_FILTER_TYPES = { "Entrées":["entree"], "Sorties":["sortie"], "Dispensations":["dispensation"], "Ventes":["vente"], "Ajustements":["perte","peremption","ajustement"] };
   const [commandes, setCmds]  = useState([]);
   const [fournisseurs, setFrns] = useState([]);
   const [kpis, setKpis]       = useState({ total:0, ruptures:0, critiques:0, bas:0, expires:0, imminents:0, valeur_stock:0, ventes_jour:0, ventes_mois:0 });
@@ -2420,9 +2426,9 @@ ${lignes}
                   <div style={{ fontSize:16, fontWeight:700, color:"var(--pn)" }}>Journal d'audit pharmacie</div>
                   <div style={{ fontSize:12, color:"var(--pm)" }}>Traçabilité complète de toutes les opérations</div>
                 </div>
-                <div style={{ display:"flex", gap:8 }}>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   {["Tous","Entrées","Sorties","Dispensations","Ventes","Ajustements"].map(f=>(
-                    <button key={f} className={`pbtn pbtn-sm ${f==="Tous"?"pbtn-primary":"pbtn-ghost"}`} style={{ fontSize:11 }}>{f}</button>
+                    <button key={f} className={`pbtn pbtn-sm ${auditFilter===f?"pbtn-primary":"pbtn-ghost"}`} style={{ fontSize:11 }} onClick={() => setAuditFilter(f)}>{f}</button>
                   ))}
                 </div>
               </div>
@@ -2441,7 +2447,9 @@ ${lignes}
                   <table className="ph-tbl" style={{ minWidth:800 }}>
                     <thead><tr><th>Date & Heure</th><th>Médicament</th><th>Opération</th><th>Qté</th><th>Avant → Après</th><th>Référence</th><th>Pharmacien</th><th>Patient</th></tr></thead>
                     <tbody>
-                      {(mvts.length>0?mvts:DEMO_MVTS).map(mv=>{
+                      {(mvts.length>0?mvts:DEMO_MVTS)
+                        .filter(mv => auditFilter==="Tous" || (AUDIT_FILTER_TYPES[auditFilter]||[]).includes(mv.type))
+                        .map(mv=>{
                         const mc = MVT_CFG[mv.type]||{icon:"·",label:mv.type,cls:"gray",sign:""};
                         return (
                           <tr key={mv._id}>

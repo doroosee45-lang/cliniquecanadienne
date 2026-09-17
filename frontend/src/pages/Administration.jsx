@@ -426,6 +426,12 @@ export default function Administration() {
   const [modalRoom, setModalRoom]         = useState(false);
   const [editUser, setEditUser]           = useState(null);
   const [editRoom, setEditRoom]           = useState(null);
+  // POST5-014 (audit indépendant post-Phase 5, 14 sept. 2026) — les boutons
+  // Modifier/Voir de la liste Fournisseurs n'avaient aucun handler. Même
+  // convention que editUser/editRoom ci-dessus : null = création, sinon
+  // fournisseur en cours d'édition.
+  const [editSupplier, setEditSupplier]   = useState(null);
+  const [viewSupplier, setViewSupplier]   = useState(null);
 
   // Forms
   const [formUser, setFormUser]           = useState(EMPTY_USER);
@@ -638,19 +644,28 @@ export default function Administration() {
     }
   };
 
-  // ── Create supplier ───────────────────────────────────────
+  // ── Create/update supplier ─────────────────────────────────
   // AUDIT-11-8 — POST /admin/suppliers est désormais un endpoint réel (plan
   // validé) : même principe que saveTask ci-dessus.
+  // POST5-014 — branche PUT /admin/suppliers/:id (également réel désormais)
+  // quand editSupplier est renseigné, jamais un second POST qui dupliquerait
+  // le fournisseur.
   const saveSupplier = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      const { data } = await api.post("/admin/suppliers", formSupplier);
-      setSuppliers(prev => [...prev, data.supplier]);
-      toast.success("✅ Fournisseur ajouté");
-      setModalSupplier(false); setFormSupplier(EMPTY_SUPPLIER);
+      if (editSupplier) {
+        const { data } = await api.put(`/admin/suppliers/${editSupplier._id}`, formSupplier);
+        setSuppliers(prev => prev.map(s => s._id === data.supplier._id ? data.supplier : s));
+        toast.success("✅ Fournisseur modifié");
+      } else {
+        const { data } = await api.post("/admin/suppliers", formSupplier);
+        setSuppliers(prev => [...prev, data.supplier]);
+        toast.success("✅ Fournisseur ajouté");
+      }
+      setModalSupplier(false); setFormSupplier(EMPTY_SUPPLIER); setEditSupplier(null);
     } catch (err) {
-      toast.error(err?.response?.data?.message || "❌ Échec de l'ajout du fournisseur.");
+      toast.error(err?.response?.data?.message || `❌ Échec de l'enregistrement du fournisseur.`);
     } finally {
       setSaving(false);
     }
@@ -828,7 +843,7 @@ export default function Administration() {
                 <Button icon={Plus} onClick={() => { setFormTask(EMPTY_TASK); setModalTask(true); }}>Nouvelle tâche</Button>
               )}
               {tab === "gestion" && section === "fournisseurs" && (
-                <Button icon={Plus} onClick={() => { setFormSupplier(EMPTY_SUPPLIER); setModalSupplier(true); }}>Nouveau fournisseur</Button>
+                <Button icon={Plus} onClick={() => { setFormSupplier(EMPTY_SUPPLIER); setEditSupplier(null); setModalSupplier(true); }}>Nouveau fournisseur</Button>
               )}
             </>
           }
@@ -1345,7 +1360,7 @@ export default function Administration() {
                       <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Fournisseurs</div>
                       <div style={{ fontSize:12, color:"var(--cm)" }}>{suppliers.length} fournisseur(s) référencé(s)</div>
                     </div>
-                    <button className="cbtn cbtn-primary" onClick={() => { setFormSupplier(EMPTY_SUPPLIER); setModalSupplier(true); }}>
+                    <button className="cbtn cbtn-primary" onClick={() => { setFormSupplier(EMPTY_SUPPLIER); setEditSupplier(null); setModalSupplier(true); }}>
                       {I.plus} Ajouter fournisseur
                     </button>
                   </div>
@@ -1373,8 +1388,8 @@ export default function Administration() {
                               <td style={{ fontWeight:700, color:"var(--cb)" }}>{fmtMoney(s.montant_total)}</td>
                               <td>
                                 <div style={{ display:"flex", gap:6 }}>
-                                  <button className="cbtn cbtn-ghost cbtn-sm">{I.edit}</button>
-                                  <button className="cbtn cbtn-ghost cbtn-sm">{I.eye}</button>
+                                  <button type="button" className="cbtn cbtn-ghost cbtn-sm" title="Modifier" onClick={() => { setFormSupplier({ nom:s.nom||"", contact:s.contact||"", telephone:s.telephone||"", email:s.email||"", adresse:s.adresse||"", produits:s.produits||"" }); setEditSupplier(s); setModalSupplier(true); }}>{I.edit}</button>
+                                  <button type="button" className="cbtn cbtn-ghost cbtn-sm" title="Voir" onClick={() => setViewSupplier(s)}>{I.eye}</button>
                                 </div>
                               </td>
                             </tr>
@@ -1853,7 +1868,7 @@ export default function Administration() {
         </Modal>
 
         {/* ═══ MODAL : FOURNISSEUR ═══ */}
-        <Modal open={modalSupplier} onClose={() => setModalSupplier(false)} title={`${I.plus} Nouveau fournisseur`} maxWidth={520}>
+        <Modal open={modalSupplier} onClose={() => { setModalSupplier(false); setEditSupplier(null); }} title={editSupplier ? `${I.edit} Modifier — ${editSupplier.nom}` : `${I.plus} Nouveau fournisseur`} maxWidth={520}>
           <form onSubmit={saveSupplier}>
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
               <div>
@@ -1883,13 +1898,38 @@ export default function Administration() {
                 <input className="cinp" required value={formSupplier.produits} onChange={e => setFormSupplier(f=>({...f,produits:e.target.value}))} placeholder="Ex: Médicaments génériques, consommables..." />
               </div>
               <div style={{ display:"flex", gap:10 }}>
-                <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalSupplier(false)}>Annuler</button>
+                <button type="button" className="cbtn cbtn-ghost" onClick={() => { setModalSupplier(false); setEditSupplier(null); }}>Annuler</button>
                 <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
-                  {I.save} {saving ? "..." : "Ajouter le fournisseur"}
+                  {I.save} {saving ? "..." : (editSupplier ? "Enregistrer les modifications" : "Ajouter le fournisseur")}
                 </button>
               </div>
             </div>
           </form>
+        </Modal>
+
+        {/* ═══ MODAL : VOIR FOURNISSEUR ═══ */}
+        <Modal open={!!viewSupplier} onClose={() => setViewSupplier(null)} title={<>{I.eye} {viewSupplier?.nom || ""}</>} maxWidth={480}>
+          {viewSupplier && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              {[
+                ["Contact", viewSupplier.contact],
+                ["Téléphone", viewSupplier.telephone],
+                ["Email", viewSupplier.email],
+                ["Adresse", viewSupplier.adresse],
+                ["Produits / Services", viewSupplier.produits],
+                ["Dernière commande", viewSupplier.derniere_commande ? fmtDate(viewSupplier.derniere_commande) : "—"],
+                ["Montant total", fmtMoney(viewSupplier.montant_total || 0)],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", textTransform:"uppercase" }}>{label}</div>
+                  <div style={{ fontSize:13, color:"var(--cn)", marginTop:2 }}>{value || "—"}</div>
+                </div>
+              ))}
+              <div style={{ display:"flex", gap:10, marginTop:8 }}>
+                <button type="button" className="cbtn cbtn-ghost" style={{ marginLeft:"auto" }} onClick={() => setViewSupplier(null)}>Fermer</button>
+              </div>
+            </div>
+          )}
         </Modal>
 
         <Modal open={modalService} onClose={() => setModalService(false)} title={`${I.plus} Nouveau service`} maxWidth={480}>

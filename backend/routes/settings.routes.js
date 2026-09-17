@@ -69,5 +69,8 @@ router.put('/tasks/:id',      protect, authorize(...ADMIN),   tasksC.updateStatu
 // périmètre ici).
 router.get('/suppliers',      protect, authorize(...ADMIN),           suppliersC.getSuppliers);
 router.post('/suppliers',     protect, authorizePermission('creation'), suppliersC.createSupplier);
+// POST5-014 — même mécanisme dynamique que POST ci-dessus, permission
+// "modification" (distincte de "creation" dans la matrice réelle).
+router.put('/suppliers/:id',  protect, authorizePermission('modification'), suppliersC.updateSupplier);
 
 module.exports = router;
