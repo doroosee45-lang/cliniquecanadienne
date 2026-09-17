@@ -704,6 +704,42 @@ export default function Finance() {
   }, [depenses]);
   const benefByMonth = useMemo(() => revByMonth.map((r, i) => r - depByMonth[i]), [revByMonth, depByMonth]);
 
+  // Vague 4 (audit global des données fictives, 17 sept. 2026) — le
+  // "Journal de caisse du jour" affichait 4 lignes codées en dur (noms de
+  // patients et numéros de facture inventés), avec un solde qui ne
+  // correspondait même pas arithmétiquement à ses propres lignes. Remplacé
+  // par les vrais paiements/dépenses du jour, déjà chargés réellement pour
+  // les onglets Paiements/Dépenses (aucun appel réseau supplémentaire) —
+  // jamais une seconde source de données inventée.
+  const journalCaisseDuJour = useMemo(() => {
+    const todayStr = new Date().toDateString();
+    const entrees = paiements
+      .filter(p => p.date && new Date(p.date).toDateString() === todayStr)
+      .map(p => ({
+        heure: p.heure || (p.date ? new Date(p.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'),
+        type: 'entree',
+        libelle: [p.patient && p.patient !== '—' ? p.patient : null, p.facture].filter(Boolean).join(' — ') || 'Encaissement',
+        mode: MODE_PAY[p.mode]?.label || p.mode || '—',
+        entree: safeNum(p.montant), sortie: null,
+      }));
+    const sorties = depenses
+      .filter(d => d.statut === 'paye' && d.date && new Date(d.date).toDateString() === todayStr)
+      .map(d => ({
+        heure: d.date ? new Date(d.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—',
+        type: 'sortie',
+        libelle: d.description || d.categorie || 'Dépense',
+        mode: '—',
+        entree: null, sortie: safeNum(d.montant),
+      }));
+    const lignes = [...entrees, ...sorties].sort((a, b) => a.heure.localeCompare(b.heure));
+    return lignes.reduce((acc, l) => {
+      const cumul = (acc.length ? acc[acc.length - 1].solde : 0) + (l.entree || 0) - (l.sortie || 0);
+      return [...acc, { ...l, solde: cumul }];
+    }, []);
+  }, [paiements, depenses]);
+  const totalEntreesJour = journalCaisseDuJour.reduce((s, l) => s + (l.entree || 0), 0);
+  const totalSortiesJour = journalCaisseDuJour.reduce((s, l) => s + (l.sortie || 0), 0);
+
   // ── Agrégations par service (depuis les données réelles) ─────
   const revByService = useMemo(
     () => SERVICE_KEYS.map(s => revenus.filter(r => r.service === s).reduce((sum,r) => sum + Number(r.montant||0), 0)),
@@ -1481,15 +1517,13 @@ export default function Finance() {
                   <table className="fin-tbl">
                     <thead><tr><th>Heure</th><th>Type</th><th>Libellé</th><th>Mode</th><th>Entrée</th><th>Sortie</th><th>Solde</th></tr></thead>
                     <tbody>
-                      {[
-                        { heure:"08:00", type:"ouverture", libelle:"Solde d'ouverture", mode:"—", entree:450000, sortie:null, solde:450000 },
-                        { heure:"09:15", type:"entree", libelle:"Consultation Jean Dupont — FAC-2026-0041", mode:"Espèces", entree:25000, sortie:null, solde:475000 },
-                        { heure:"10:32", type:"entree", libelle:"Labo Marie Paul — FAC-2026-0040", mode:"Mobile Money", entree:60000, sortie:null, solde:535000 },
-                        { heure:"11:45", type:"sortie", libelle:"Achat fournitures — MediSupply", mode:"Espèces", entree:null, sortie:50000, solde:485000 },
-                      ].map((op, i) => (
-                        <tr key={i} style={{ background: op.type === "ouverture" ? "#EEF4FF" : "" }}>
+                      {journalCaisseDuJour.length === 0 && (
+                        <tr><td colSpan={7} style={{ textAlign:"center", color:"var(--cm)", fontSize:12, padding:"18px 0" }}>Aucun mouvement de caisse enregistré aujourd'hui.</td></tr>
+                      )}
+                      {journalCaisseDuJour.map((op, i) => (
+                        <tr key={i}>
                           <td style={{ fontSize:12, color:"var(--cm)", fontWeight:600 }}>{op.heure}</td>
-                          <td><span className={`fbdg ${op.type === "entree" ? "green" : op.type === "sortie" ? "red" : "blue"}`}>{op.type === "entree" ? "📥 Entrée" : op.type === "sortie" ? "📤 Sortie" : "🔓 Ouverture"}</span></td>
+                          <td><span className={`fbdg ${op.type === "entree" ? "green" : "red"}`}>{op.type === "entree" ? "📥 Entrée" : "📤 Sortie"}</span></td>
                           <td style={{ fontSize:12, color:"var(--fn)" }}>{op.libelle}</td>
                           <td style={{ fontSize:11, color:"var(--cm)" }}>{op.mode}</td>
                           <td style={{ fontWeight:700, color:"var(--fg)" }}>{op.entree ? fmtMontant(op.entree) : "—"}</td>
@@ -1500,9 +1534,9 @@ export default function Finance() {
                     </tbody>
                     <tfoot>
                       <tr style={{ background:"linear-gradient(to right,#EEF4FF,#DBEAFE)" }}>
-                        <td colSpan={4} style={{ color:"var(--fn)" }}>SOLDE ACTUEL</td>
-                        <td style={{ color:"var(--fg)" }}>{fmtMontant(120000)}</td>
-                        <td style={{ color:"var(--fr)" }}>{fmtMontant(85000)}</td>
+                        <td colSpan={4} style={{ color:"var(--fn)" }}>TOTAL DU JOUR</td>
+                        <td style={{ color:"var(--fg)" }}>{fmtMontant(totalEntreesJour)}</td>
+                        <td style={{ color:"var(--fr)" }}>{fmtMontant(totalSortiesJour)}</td>
                         <td style={{ color:"var(--fb)", fontSize:15 }}>{fmtMontant(soldeCaisse)}</td>
                       </tr>
                     </tfoot>

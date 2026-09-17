@@ -407,12 +407,26 @@ exports.caisse = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Vague 4 (audit global des données fictives, 17 sept. 2026) — Finance.jsx
+// affichait un "Journal de caisse du jour" et un KPI "Trésorerie caisse"
+// entièrement fabriqués : 4 lignes codées en dur (noms de patients et
+// numéros de facture inventés, ex. "Consultation Jean Dupont —
+// FAC-2026-0041") avec un solde qui ne correspondait même pas
+// arithmétiquement à ses propres lignes, et `kpis.solde_caisse` qui ne
+// correspondait à aucun champ jamais renvoyé par cette route (toujours 0
+// en silence via `|| 0`, jamais signalé comme non disponible).
+// Remplacé par un vrai calcul : encaissements réels en espèces
+// (Invoice.paiements[].mode === 'especes') moins dépenses réelles payées.
+// Approximation assumée et documentée (comme getAssurances ci-dessous) :
+// Depense n'a pas de champ mode de règlement, donc toute dépense "payée"
+// est traitée par prudence comme une sortie de caisse — à affiner si un
+// vrai suivi du mode de paiement des dépenses devient nécessaire.
 exports.stats = async (req, res, next) => {
   try {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [total, payees, impayees, partiel, caMonth] = await Promise.all([
+    const [total, payees, impayees, partiel, caMonth, encaisseEspeces, depensesPayees] = await Promise.all([
       Invoice.countDocuments(),
       Invoice.countDocuments({ statut: 'payee' }),
       Invoice.countDocuments({ statut: 'emise' }),
@@ -421,13 +435,26 @@ exports.stats = async (req, res, next) => {
         { $match: { date_facture: { $gte: monthStart } } },
         { $group: { _id: null, total: { $sum: '$montant_paye' } } },
       ]),
+      Invoice.aggregate([
+        { $unwind: '$paiements' },
+        { $match: { 'paiements.mode': 'especes' } },
+        { $group: { _id: null, total: { $sum: '$paiements.montant' } } },
+      ]),
+      Depense.aggregate([
+        { $match: { statut: 'paye' } },
+        { $group: { _id: null, total: { $sum: '$montant' } } },
+      ]),
     ]);
 
-    res.json({ success: true, stats: {
-      total, payees, impayees, partiellement_payees: partiel,
-      ca_mois: caMonth[0]?.total || 0,
-      taux_recouvrement: total > 0 ? Math.round((payees / total) * 100) : 0,
-    }});
+    res.json({
+      success: true,
+      solde_caisse: (encaisseEspeces[0]?.total || 0) - (depensesPayees[0]?.total || 0),
+      stats: {
+        total, payees, impayees, partiellement_payees: partiel,
+        ca_mois: caMonth[0]?.total || 0,
+        taux_recouvrement: total > 0 ? Math.round((payees / total) * 100) : 0,
+      },
+    });
   } catch (err) { next(err); }
 };
 
