@@ -4,9 +4,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights,
+  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights,
   selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading, selectAIAnalyzing,
   selectPatientSummary, selectPatientSummaryLoading, selectLabInsights, selectLabInsightsLoading,
+  selectImagingInsights, selectImagingInsightsLoading,
 } from '../store/slices/aiSlice';
 import { fetchPatients, selectPatients } from '../store/slices/patientsSlice';
 import api from '../api';
@@ -361,6 +362,8 @@ export default function IntelligenceArtificielle() {
   const patientSummaryLoading = useSelector(selectPatientSummaryLoading);
   const labInsights           = useSelector(selectLabInsights);
   const labInsightsLoading    = useSelector(selectLabInsightsLoading);
+  const imagingInsights        = useSelector(selectImagingInsights);
+  const imagingInsightsLoading = useSelector(selectImagingInsightsLoading);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -424,6 +427,7 @@ export default function IntelligenceArtificielle() {
   const [formAllergiesPatient, setFormAllergiesPatient] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedLabPatientId, setSelectedLabPatientId] = useState("");
+  const [selectedImagingPatientId, setSelectedImagingPatientId] = useState("");
 
   // Settings
   const AI_SETTINGS_DEFAULTS = {
@@ -578,7 +582,7 @@ export default function IntelligenceArtificielle() {
 
   // ── Analyse patient (résumé IA réel) ──────────────────────
   useEffect(() => {
-    if ((section === "patient" || section === "laboratoire") && reduxPatientsList.length === 0) {
+    if ((section === "patient" || section === "laboratoire" || section === "imagerie") && reduxPatientsList.length === 0) {
       dispatch(fetchPatients({ limit: 100 }));
     }
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -600,6 +604,17 @@ export default function IntelligenceArtificielle() {
       await dispatch(fetchLabInsights(selectedLabPatientId)).unwrap();
     } catch (err) {
       toast.error(typeof err === 'string' ? err : "Erreur lors de l'analyse laboratoire");
+    }
+  };
+
+  // ── Imagerie IA (implémentation réelle — cf. AI.controller.js::
+  // getImagingInsights) ────────────────────────────────────────
+  const analyserImageriePatient = async () => {
+    if (!selectedImagingPatientId) return;
+    try {
+      await dispatch(fetchImagingInsights(selectedImagingPatientId)).unwrap();
+    } catch (err) {
+      toast.error(typeof err === 'string' ? err : "Erreur lors de l'analyse imagerie");
     }
   };
 
@@ -1215,18 +1230,89 @@ export default function IntelligenceArtificielle() {
                   </div>
                 )}
 
-                {/* Sous-phase 5.6 — POINT LE PLUS SENSIBLE DE L'AUDIT : cette
-                    section affichait un contenu clinique entièrement inventé
-                    et présenté comme un résultat réel ("Appendicite aiguë
-                    confirmée"), sur un examen fictif. Désactivé en priorité
-                    absolue — aucun contenu médical fabriqué ne doit plus
-                    pouvoir s'afficher ici. */}
+                {/* Imagerie IA — implémentation réelle. Sous-phase 5.6 avait
+                    désactivé ce panneau en priorité absolue (POINT LE PLUS
+                    SENSIBLE DE L'AUDIT : contenu diagnostique entièrement
+                    inventé, ex. "Appendicite aiguë confirmée" sur un examen
+                    fictif). Ce panneau n'écrit ni ne génère AUCUN texte
+                    médical : compte_rendu/conclusion affichés ici sont le
+                    vrai texte saisi par le radiologue (voir
+                    ai.controller.js::getImagingInsights) — jamais reformulé,
+                    jamais complété, jamais un résumé "IA". Un examen dont le
+                    radiologue n'a pas encore rendu son compte-rendu affiche
+                    honnêtement une attente, jamais un résultat inventé. */}
                 {section === "imagerie" && (
-                  <div className="ia-card fu">
-                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🩻</div>
-                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>👤 Sélectionner un patient</h3></div>
+                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+                        <select className="iinp" value={selectedImagingPatientId} onChange={e => setSelectedImagingPatientId(e.target.value)}>
+                          <option value="">— Choisir un patient —</option>
+                          {reduxPatientsList.map(p => (
+                            <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier || p._id}</option>
+                          ))}
+                        </select>
+                        <button className="ibtn ibtn-teal" disabled={!selectedImagingPatientId || imagingInsightsLoading} onClick={analyserImageriePatient}>
+                          {imagingInsightsLoading ? <><span className="spin" style={{ display:"inline-block" }}>{I.iaS}</span> Analyse en cours...</> : <>{I.iaS} Analyser les examens d'imagerie</>}
+                        </button>
+                        {imagingInsights && !imagingInsightsLoading && (
+                          <div style={{ fontSize:11, color:"var(--cm)", fontStyle:"italic" }}>{imagingInsights.historique_count} examen(s) rapporté(s) trouvé(s) pour {imagingInsights.patient_context?.nom}.</div>
+                        )}
+                      </div>
                     </div>
+
+                    {!imagingInsights && !imagingInsightsLoading && (
+                      <div className="ia-card fu">
+                        <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
+                          <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🩻</div>
+                          <div style={{ fontSize:13 }}>Aucune analyse en cours — sélectionnez un patient ci-dessus.</div>
+                        </div>
+                      </div>
+                    )}
+                    {imagingInsightsLoading && (
+                      <div className="ia-card fu">
+                        <div style={{ textAlign:"center", padding:40 }}>
+                          <div style={{ fontSize:36, animation:"iaPulse 1s infinite", marginBottom:10 }}>🩻</div>
+                          <div style={{ fontSize:13, color:"var(--cm)" }}>Chargement des examens…</div>
+                        </div>
+                      </div>
+                    )}
+                    {imagingInsights && !imagingInsightsLoading && imagingInsights.examens.length === 0 && (
+                      <div className="ia-card fu">
+                        <div style={{ padding:30, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucun examen d'imagerie rapporté pour ce patient.</div>
+                      </div>
+                    )}
+                    {imagingInsights?.examens.length > 0 && (
+                      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+                        {imagingInsights.examens.map(ex => (
+                          <div key={ex.id} className="ia-card fu">
+                            <div className="ia-card-hdr">
+                              <h3>🩻 {ex.type_examen || "Examen"}</h3>
+                              <Badge cls={ex.anomalie_detectee ? "red" : "green"}>{ex.anomalie_detectee ? "Anomalie détectée" : "Normal"}</Badge>
+                            </div>
+                            <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+                              {ex.conclusion || ex.compte_rendu ? (
+                                <div style={{ background:ex.anomalie_detectee?"#FEF2F2":"#ECFDF5", border:`1.5px solid ${ex.anomalie_detectee?"#FECACA":"#A7F3D0"}`, borderRadius:12, padding:14 }}>
+                                  <div style={{ fontSize:11, fontWeight:700, color:ex.anomalie_detectee?"#B91C1C":"#065F46", marginBottom:6 }}>📋 COMPTE-RENDU DU RADIOLOGUE</div>
+                                  <div style={{ fontSize:12, color:"var(--cn)", whiteSpace:"pre-line" }}>{ex.conclusion || ex.compte_rendu}</div>
+                                </div>
+                              ) : (
+                                <div style={{ background:"#F8FAFD", borderRadius:12, padding:14, fontSize:12, color:"var(--cm)" }}>⏳ En attente du compte-rendu du radiologue.</div>
+                              )}
+                              <div style={{ background:"#F8FAFD", borderRadius:12, padding:14 }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:"var(--cm)", marginBottom:4 }}>📊 COMPARAISON</div>
+                                <div style={{ fontSize:12, color:"var(--cn)" }}>
+                                  {ex.comparaison
+                                    ? `${fmtDate(ex.comparaison.date)} : ${ex.comparaison.conclusion || "compte-rendu sans conclusion enregistrée"}`
+                                    : "Premier examen de ce type — aucune référence antérieure."}
+                                </div>
+                              </div>
+                              <div style={{ fontSize:11, color:"var(--cm)", fontStyle:"italic" }}>📅 {fmtDate(ex.date)}{ex.priorite && ex.priorite !== "normale" ? ` · Priorité : ${ex.priorite}` : ""}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 

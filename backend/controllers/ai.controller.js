@@ -724,6 +724,64 @@ exports.getLabInsights = async (req, res, next) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// GET /api/ai/imaging-insights/:patientId
+// ═══════════════════════════════════════════════════════════════
+// Module AI — sous-module Imagerie IA (implémentation réelle). Point le
+// plus sensible de l'audit ayant motivé la désactivation en Sous-phase 5.6
+// (contenu diagnostique entièrement inventé, ex. "Appendicite aiguë
+// confirmée" sur un examen fictif) : ce endpoint n'écrit ni ne génère
+// AUCUN texte médical. `conclusion`/`compte_rendu` sont le vrai texte saisi
+// par le radiologue (radiology.controller.js::validation/validate) —
+// affiché tel quel, jamais reformulé ni complété. `ia_anomalie`/
+// `ia_confidence` (champs du schéma) ne sont alimentés par aucun
+// contrôleur pour ImagingResult (vérifié — seul LabResult.ia_anomalie est
+// réellement écrit ailleurs) : ne jamais les exposer ici, ce serait
+// afficher un calcul qui n'a jamais eu lieu. `anomalie_detectee` est en
+// revanche réellement saisi par le radiologue à la validation — utilisé
+// tel quel, jamais recalculé.
+exports.getImagingInsights = async (req, res, next) => {
+  try {
+    const { patientId } = req.params;
+    if (!patientId) return res.status(400).json({ success: false, message: 'patientId requis' });
+
+    const patient = await Patient.findById(patientId).select('prenom nom numero_dossier').lean();
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable' });
+
+    const historique = await ImagingResult.find({ patient: patientId, statut: { $in: ['rapporte', 'valide'] } })
+      .sort('-date_rapport').limit(10).lean();
+
+    const examens = await Promise.all(historique.slice(0, 5).map(async (ex) => {
+      // Comparaison : le précédent examen réel du même type pour ce
+      // patient (jamais un texte de comparaison inventé).
+      const precedent = await ImagingResult.findOne({
+        patient: patientId, type_examen: ex.type_examen, statut: { $in: ['rapporte', 'valide'] },
+        date_rapport: { $lt: ex.date_rapport || ex.date_prescription },
+      }).sort('-date_rapport').select('date_rapport conclusion').lean();
+
+      return {
+        id: ex._id,
+        type_examen: ex.type_examen,
+        date: ex.date_rapport || ex.date_prescription,
+        priorite: ex.priorite,
+        anomalie_detectee: !!ex.anomalie_detectee,
+        conclusion: ex.conclusion || null,
+        compte_rendu: ex.compte_rendu || null,
+        comparaison: precedent
+          ? { date: precedent.date_rapport, conclusion: precedent.conclusion }
+          : null,
+      };
+    }));
+
+    res.json({
+      success: true,
+      patient_context: { nom: `${patient.prenom || ''} ${patient.nom || ''}`.trim(), numero_dossier: patient.numero_dossier },
+      examens,
+      historique_count: historique.length,
+    });
+  } catch (err) { next(err); }
+};
+
+// ═══════════════════════════════════════════════════════════════
 // PUT /api/ai/predictions/:id  — traiter une prédiction
 // ═══════════════════════════════════════════════════════════════
 exports.updatePrediction = async (req, res, next) => {
