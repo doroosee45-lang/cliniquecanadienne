@@ -717,12 +717,15 @@ export default function Archivage() {
   const downloadOneArchive = async (d) => (await printOneArchive(d)).save(`archive-${(d.reference||'dossier').replace(/[^a-z0-9-]+/gi,'-')}.pdf`);
   const printOneArchiveNow = async (d) => { const doc = await printOneArchive(d); doc.autoPrint(); window.open(doc.output('bloburl'), '_blank'); };
 
-  // AUDIT-GLOBAL — le panneau "Options d'exportation" affichait 4 boutons
-  // fake (toast seul). 3 sont maintenant réels (réutilisent exportPDF avec
-  // un sous-ensemble réel des archives) ; "Sauvegarde complète (ZIP)" reste
-  // désactivé honnêtement — aucune librairie de génération ZIP (jszip)
-  // n'est installée, l'ajouter serait une nouvelle dépendance, pas un
-  // correctif de bug.
+  // AUDIT-GLOBAL (mise à jour) — le panneau "Options d'exportation" affichait
+  // 4 boutons fake (toast seul). Les 3 premiers sont réels (réutilisent
+  // exportPDF avec un sous-ensemble réel des archives). Le 4e, "Sauvegarde
+  // complète (ZIP)", n'avait rien de réel à empaqueter : ArchiveEntry ne
+  // stocke aucun fichier binaire (voir backend/models/ArchiveEntry.js —
+  // seulement des métadonnées + un champ contenu Mixed), donc un vrai ZIP
+  // aurait ajouté une dépendance (jszip) pour empaqueter au mieux un seul
+  // CSV. Remplacé par un export honnête du registre complet, en branchant
+  // GET /archives/export (déjà existant côté backend, jamais appelé).
   const exportIndividuel = async () => {
     const ref = window.prompt("Référence exacte du dossier à exporter :");
     if (!ref) return;
@@ -746,6 +749,26 @@ export default function Archivage() {
     const subset = archives.filter(a => (a.service||'').toLowerCase().includes(service.trim().toLowerCase()));
     if (subset.length === 0) { toast.error(`Aucune archive pour le service "${service}".`); return; }
     await exportPDF(subset);
+  };
+
+  // Branche GET /archives/export?format=csv (déjà existant côté backend,
+  // jamais appelé jusqu'ici) : télécharge le registre complet des archives
+  // en CSV. Remplace honnêtement l'ancien bouton "Sauvegarde ZIP" désactivé.
+  const exportSauvegardeComplete = async () => {
+    try {
+      const res = await api.get("/archives/export?format=csv", { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `registre-archives-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("Registre complet exporté (CSV).");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Échec de l'export du registre.");
+    }
   };
 
   const exportPDF = async (overrideList) => {
@@ -1430,7 +1453,7 @@ export default function Archivage() {
                 { ico:"📄", label:"Export individuel",      desc:"Un seul dossier archive",      onClick:exportIndividuel },
                 { ico:"📊", label:"Export par période",     desc:"Sélection d'une plage de dates",onClick:exportParPeriode },
                 { ico:"🗂️",  label:"Export par service",    desc:"Tous les dossiers d'un service",onClick:exportParService },
-                { ico:"💾", label:"Sauvegarde complète",   desc:"Indisponible : génération ZIP non installée", onClick:null, disabled:true },
+                { ico:"💾", label:"Registre complet",      desc:"Export CSV de toutes les archives", onClick:exportSauvegardeComplete },
               ].map(e => (
                 <button key={e.label} disabled={e.disabled} title={e.disabled?"Fonctionnalité indisponible : aucune librairie de génération ZIP n'est installée dans le projet.":undefined} style={{ background:"#F8FAFD", border:"1.5px solid var(--abr)", borderRadius:14, padding:"14px 16px", textAlign:"left", cursor:e.disabled?"not-allowed":"pointer", opacity:e.disabled?0.5:1, display:"flex", flexDirection:"column", gap:6, transition:"all .2s", fontFamily:"Poppins,sans-serif" }}
                   onMouseOver={ev=>{ if(!e.disabled) ev.currentTarget.style.background="#EEF4FF"; }}

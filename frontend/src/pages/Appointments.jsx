@@ -1009,6 +1009,7 @@ export default function RendezVous() {
   const [calView, setCalView]       = useState("mois"); // mois | semaine | jour | agenda
   const [saving, setSaving]         = useState(false);
   const [selectedRdv, setSelectedRdv] = useState(null);
+  const [smsSending, setSmsSending] = useState(false);
 
   // Modals
   const [modalNouv, setModalNouv]       = useState(false);
@@ -1963,14 +1964,31 @@ export default function RendezVous() {
                   <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setModalDetail(false); setModalReport(true); }}>
                     📅 Reporter
                   </button>
-                  {/* AUDIT-P7-8 — aucune passerelle SMS n'est intégrée à ce jour
-                      (identifiants Twilio en commentaire dans .env, jamais
-                      renseignés ; le paquet `twilio` n'est même pas installé) :
-                      construire un vrai envoi dépasse le périmètre d'un
-                      correctif de bouton factice. Neutralisé plutôt que
-                      simulé, même traitement que AUDIT-03/AUDIT-07. */}
-                  <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Fonctionnalité momentanément indisponible" style={{ opacity:.5, cursor:"not-allowed" }}>
-                    {I.sms} Envoyer SMS
+                  {/* AUDIT-P7-8 (mise à jour) — au moment de l'audit initial,
+                      Twilio n'était pas intégré. Depuis, backend/utils/sms.js +
+                      POST /messages/patient-sms + messages.controller.js::
+                      sendPatientSms existent et sont déjà branchés dans
+                      Messages.jsx avec repli honnête en mode simulé si Twilio
+                      n'est pas configuré (jamais de faux succès). Ce bouton
+                      n'avait juste jamais été reconnecté à cette route déjà
+                      disponible. Même pattern de réponse (data.simulated)
+                      repris ici pour rester cohérent avec Messages.jsx. */}
+                  <button className="cbtn cbtn-ghost cbtn-sm"
+                    disabled={smsSending || !selectedRdv.patient_tel}
+                    title={selectedRdv.patient_tel ? "Envoyer un rappel SMS au patient" : "Ce patient n'a pas de numéro de téléphone enregistré."}
+                    onClick={async () => {
+                      setSmsSending(true);
+                      try {
+                        const contenu = `Rappel : rendez-vous le ${fmtDate(selectedRdv.date)} à ${fmtTime(selectedRdv.date)}${selectedRdv.medecin_nom ? ' avec ' + selectedRdv.medecin_nom : ''}.`;
+                        const { data } = await api.post("/messages/patient-sms", { patient: selectedRdv.patient_id, contenu });
+                        toast.success(data.simulated ? "📱 SMS simulé (Twilio non configuré en environnement local)" : "📱 SMS de rappel envoyé");
+                      } catch (err) {
+                        toast.error(err?.response?.data?.message || "Échec de l'envoi du SMS.");
+                      } finally {
+                        setSmsSending(false);
+                      }
+                    }}>
+                    {smsSending ? "Envoi…" : <>{I.sms} Envoyer SMS</>}
                   </button>
                   <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => window.print()}>
                     {I.print} Imprimer

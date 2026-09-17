@@ -847,7 +847,7 @@ export default function Ordonnances() {
         {/* ── HERO ── */}
         <Hero
           icon={FileText}
-          title="Module Ordonnances"
+          title="Ordonnances"
           dateLabel={`${kpis.total} ordonnance(s) · ${kpis.actives} active(s) · ${kpis.aujourd_hui} aujourd'hui`}
           right={
             <>
