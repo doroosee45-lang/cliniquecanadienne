@@ -1,6 +1,7 @@
 const Prescription = require('../models/Prescription');
 const Patient      = require('../models/Patient');
 const User         = require('../models/User');
+const { fieldsFor } = require('./patients.controller');
 const { logAction, paginate, createNotification } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate, emitTo } = require('../utils/socket');
 const { sendPrescriptionEmail } = require('../utils/mail');
@@ -40,8 +41,15 @@ exports.getAll = async (req, res, next) => {
 
 exports.getOne = async (req, res, next) => {
   try {
+    // Mission harmonisation sélection patient (17 sept. 2026) — populate()
+    // sans restriction renvoyait le document Patient complet (antecedents_
+    // medicaux, notes...) à N'IMPORTE QUEL rôle autorisé à lire une
+    // ordonnance, y compris pharmacien (rôle restreint : allergies
+    // uniquement selon la matrice RESTRICTED_FIELDS de patients.
+    // controller.js). Alignée sur la même source unique fieldsFor().
+    const patientFields = fieldsFor(req.user.role);
     const prescription = await Prescription.findById(req.params.id)
-      .populate('patient')
+      .populate('patient', patientFields || undefined)
       .populate('medecin', 'nom prenom specialite')
       .populate('lignes.medicament');
     if (!prescription) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });

@@ -100,6 +100,32 @@ test('projection de champs Patient par rôle (base réelle)', { skip: !process.e
       assert.equal(found.antecedents_medicaux, undefined);
       assert.ok(found.assurances?.length);
     });
+
+    // Mission harmonisation sélection patient (17 sept. 2026) — search()
+    // renvoyait jusqu'ici un jeu de champs fixe identique pour tous les
+    // rôles (jamais fieldsFor()), contrairement à getAll()/getOne() :
+    // utilisée telle quelle par Echographie.jsx/Finance.jsx/Maternite.jsx/
+    // Pediatrie.jsx/Messages.jsx pour rechercher un patient.
+    await t.test('search applique la même projection que getAll/getOne (comptable : assurances, jamais de champ clinique)', async () => {
+      let body = null;
+      const res = { status: () => res, json: (d) => { body = d; } };
+      await patC.search({ query: { q: 'Test08a' }, user: { role: 'comptable' } }, res, () => {});
+      const found = body.patients.find(p => String(p._id) === String(patient._id));
+      assert.ok(found, 'le patient synthétique doit être trouvé par la recherche');
+      assert.ok(found.assurances?.length, 'comptable a droit à assurances via search, comme via getAll/getOne');
+      assert.equal(found.groupe_sanguin, undefined);
+      assert.equal(found.antecedents_medicaux, undefined);
+      assert.equal(found.notes, undefined);
+    });
+
+    await t.test('search : rôle à dossier complet reçoit bien le dossier complet, pas le jeu de champs restreint historique', async () => {
+      let body = null;
+      const res = { status: () => res, json: (d) => { body = d; } };
+      await patC.search({ query: { q: 'Test08a' }, user: { role: 'medecin' } }, res, () => {});
+      const found = body.patients.find(p => String(p._id) === String(patient._id));
+      assert.ok(found);
+      assert.deepEqual(found.antecedents_medicaux, ['Diabète type 2'], 'medecin doit recevoir le dossier complet via search aussi, pas seulement via getAll/getOne');
+    });
   } finally {
     await Patient.findByIdAndDelete(patient._id);
     await User.findByIdAndDelete(medecinRef._id);

@@ -65,6 +65,12 @@ const RESTRICTED_FIELDS = {
   comptable:      `${DEMO_FIELDS} assurances`,
 };
 const fieldsFor = (role) => RESTRICTED_FIELDS[role] || null;
+// Mission harmonisation sélection patient (17 sept. 2026) — exportée pour
+// être réutilisée par tout autre contrôleur qui peuple/sélectionne un
+// Patient (ex. prescriptions.controller.js::getOne), au lieu de laisser
+// chaque contrôleur redéfinir sa propre liste de champs divergente. Source
+// unique déjà établie ici.
+exports.fieldsFor = fieldsFor;
 
 // ── GET ALL ──────────────────────────────────────────────────────────────────
 exports.getAll = async (req, res, next) => {
@@ -688,14 +694,26 @@ exports.search = async (req, res, next) => {
     const { q } = req.query;
     if (!q || q.length < 2) return res.json({ success: true, patients: [] });
     const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const patients = await Patient.find({
+    // Mission harmonisation sélection patient (17 sept. 2026) — cette route
+    // renvoyait jusqu'ici un jeu de champs fixe (identique pour tous les
+    // rôles), contrairement à getAll()/getOne() qui appliquent déjà
+    // fieldsFor(role). Résultat concret : un rôle à dossier complet
+    // (medecin, ex. Echographie.jsx/Maternite.jsx) recevait moins que ce à
+    // quoi il a droit (jamais antecedents_medicaux/groupe_sanguin via cette
+    // route), et un rôle restreint à qui la matrice donne un champ précis
+    // (ex. comptable → assurances) ne le recevait pas non plus ici. Aligné
+    // sur la même source unique fieldsFor() que getAll/getOne.
+    const fields = fieldsFor(req.user.role);
+    let query = Patient.find({
       $or: [
         { nom:            { $regex: escaped, $options: 'i' } },
         { prenom:         { $regex: escaped, $options: 'i' } },
         { numero_dossier: { $regex: escaped, $options: 'i' } },
         { telephone:      { $regex: escaped, $options: 'i' } },
       ],
-    }).limit(10).select('nom prenom numero_dossier telephone email date_naissance actif');
+    }).limit(10);
+    if (fields) query = query.select(fields);
+    const patients = await query;
     res.json({ success: true, patients });
   } catch (err) { next(err); }
 };
