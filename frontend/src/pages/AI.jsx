@@ -4,11 +4,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights, fetchRdvInsights, fetchConsultationSummary,
+  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights, fetchRdvInsights, fetchConsultationSummary, fetchFinanceInsights,
   selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading, selectAIAnalyzing,
   selectPatientSummary, selectPatientSummaryLoading, selectLabInsights, selectLabInsightsLoading,
   selectImagingInsights, selectImagingInsightsLoading, selectRdvInsights, selectRdvInsightsLoading,
-  selectConsultationSummary, selectConsultationSummaryLoading,
+  selectConsultationSummary, selectConsultationSummaryLoading, selectFinanceInsights, selectFinanceInsightsLoading,
 } from '../store/slices/aiSlice';
 import { fetchPatients, selectPatients } from '../store/slices/patientsSlice';
 import api from '../api';
@@ -369,6 +369,8 @@ export default function IntelligenceArtificielle() {
   const rdvInsightsLoading     = useSelector(selectRdvInsightsLoading);
   const consultationSummary        = useSelector(selectConsultationSummary);
   const consultationSummaryLoading = useSelector(selectConsultationSummaryLoading);
+  const financeInsights            = useSelector(selectFinanceInsights);
+  const financeInsightsLoading     = useSelector(selectFinanceInsightsLoading);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -633,6 +635,15 @@ export default function IntelligenceArtificielle() {
   useEffect(() => {
     if (section === "rdv" && !rdvInsights && !rdvInsightsLoading) {
       dispatch(fetchRdvInsights());
+    }
+  }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Finance IA (implémentation réelle — cf. ai.controller.js::
+  // getFinanceInsights) : agrégé sur toute la clinique, aucun patient à
+  // sélectionner. ─────────────────────────────────────────────
+  useEffect(() => {
+    if (section === "finance" && !financeInsights && !financeInsightsLoading) {
+      dispatch(fetchFinanceInsights());
     }
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1492,17 +1503,66 @@ export default function IntelligenceArtificielle() {
                   </div>
                 )}
 
-                {/* Sous-phase 5.6 — prévisions financières et détection
-                    d'anomalies entièrement fabriquées (aucun calcul réel sur
-                    les vraies factures/dépenses). Désactivé honnêtement —
-                    les vrais chiffres financiers existent déjà et sont
-                    exposés ailleurs (Finance.jsx), pas ici sous forme
-                    inventée. */}
+                {/* Finance IA — implémentation réelle. Sous-phase 5.6 avait
+                    désactivé ce panneau (prévisions 30j et détection
+                    d'anomalies entièrement fabriquées). Aucune prévision
+                    n'est calculée ici — à la place, l'évolution RÉELLE du
+                    CA (voir ai.controller.js::getFinanceInsights, même
+                    source qu'utilisée par finance.controller.js::stats) et
+                    des anomalies réellement détectables sans seuil
+                    inventé : factures impayées > 30j (montant réel),
+                    dépenses par catégorie réellement en hausse vs le mois
+                    précédent. */}
                 {section === "finance" && (
-                  <div className="ia-card fu">
-                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>💰</div>
-                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>💰 Évolution du chiffre d'affaires</h3><p>6 derniers mois — paiements réellement encaissés</p></div>
+                      <div style={{ padding:20 }}>
+                        {financeInsightsLoading && <div style={{ textAlign:"center", padding:20, color:"var(--cm)" }}>Chargement…</div>}
+                        {!financeInsightsLoading && financeInsights && (
+                          <>
+                            <LineChart labels={financeInsights.evolution_ca.labels} data={financeInsights.evolution_ca.data} color="#059669" />
+                            {financeInsights.variation_ca_mois !== null && (
+                              <div style={{ marginTop:12, fontSize:12, color:"var(--cm)" }}>
+                                {financeInsights.variation_ca_mois >= 0 ? '📈' : '📉'} {financeInsights.variation_ca_mois >= 0 ? '+' : ''}{financeInsights.variation_ca_mois}% par rapport au mois précédent
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>🔍 Anomalies détectées</h3></div>
+                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
+                        {financeInsightsLoading && <div style={{ textAlign:"center", padding:20, color:"var(--cm)" }}>Chargement…</div>}
+                        {!financeInsightsLoading && financeInsights && (
+                          <>
+                            {financeInsights.factures_impayees_30j.count > 0 && (
+                              <div style={{ display:"flex", alignItems:"center", gap:10, background:"#F8FAFD", borderRadius:12, padding:"10px 14px", border:"1.5px solid var(--cbr)" }}>
+                                <span style={{ fontSize:18 }}>💸</span>
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>Factures impayées &gt; 30j</div>
+                                  <div style={{ fontSize:11, color:"var(--cm)" }}>{financeInsights.factures_impayees_30j.total.toLocaleString('fr-FR')} CFA · {financeInsights.factures_impayees_30j.count} dossier(s)</div>
+                                </div>
+                                <Badge cls="red">Alerte</Badge>
+                              </div>
+                            )}
+                            {financeInsights.depenses_en_hausse.map(d => (
+                              <div key={d.categorie} style={{ display:"flex", alignItems:"center", gap:10, background:"#F8FAFD", borderRadius:12, padding:"10px 14px", border:"1.5px solid var(--cbr)" }}>
+                                <span style={{ fontSize:18 }}>📈</span>
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:12, fontWeight:600, color:"var(--cn)" }}>Dépenses {d.categorie}</div>
+                                  <div style={{ fontSize:11, color:"var(--cm)" }}>{d.montant_mois.toLocaleString('fr-FR')} CFA ce mois (vs {d.montant_mois_precedent.toLocaleString('fr-FR')} CFA le mois précédent)</div>
+                                </div>
+                                <Badge cls="orange">Hausse</Badge>
+                              </div>
+                            ))}
+                            {financeInsights.factures_impayees_30j.count === 0 && financeInsights.depenses_en_hausse.length === 0 && (
+                              <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:12 }}>Aucune anomalie détectée sur les critères réels vérifiés (factures &gt; 30j, dépenses en hausse).</div>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

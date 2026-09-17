@@ -112,6 +112,18 @@ export const fetchConsultationSummary = createAsyncThunk(
   }
 );
 
+export const fetchFinanceInsights = createAsyncThunk(
+  'ai/fetchFinanceInsights',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/ai/finance-insights');
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur analyse financière IA');
+    }
+  }
+);
+
 const aiSlice = createSlice({
   name: 'ai',
   initialState: {
@@ -158,6 +170,9 @@ const aiSlice = createSlice({
     consultationSummary: null,
     consultationSummaryLoading: false,
     consultationSummaryError: null,
+    financeInsights: null,
+    financeInsightsLoading: false,
+    financeInsightsError: null,
   },
   reducers: {
     setSuggestions(state, action) { state.suggestions = action.payload; },
@@ -243,6 +258,15 @@ const aiSlice = createSlice({
       .addCase(fetchConsultationSummary.rejected, (state, action) => {
         state.consultationSummaryLoading = false;
         state.consultationSummaryError = action.payload;
+      })
+      .addCase(fetchFinanceInsights.pending, (state) => { state.financeInsightsLoading = true; state.financeInsightsError = null; })
+      .addCase(fetchFinanceInsights.fulfilled, (state, action) => {
+        state.financeInsightsLoading = false;
+        state.financeInsights = action.payload;
+      })
+      .addCase(fetchFinanceInsights.rejected, (state, action) => {
+        state.financeInsightsLoading = false;
+        state.financeInsightsError = action.payload;
       });
   },
 });
@@ -272,5 +296,8 @@ export const selectRdvInsightsError = (state) => state.ai.rdvInsightsError;
 export const selectConsultationSummary = (state) => state.ai.consultationSummary;
 export const selectConsultationSummaryLoading = (state) => state.ai.consultationSummaryLoading;
 export const selectConsultationSummaryError = (state) => state.ai.consultationSummaryError;
+export const selectFinanceInsights = (state) => state.ai.financeInsights;
+export const selectFinanceInsightsLoading = (state) => state.ai.financeInsightsLoading;
+export const selectFinanceInsightsError = (state) => state.ai.financeInsightsError;
 
 export default aiSlice.reducer;

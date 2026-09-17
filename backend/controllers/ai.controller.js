@@ -6,6 +6,8 @@ const Prescription  = require('../models/Prescription');
 const Hospitalization = require('../models/Hospitalization');
 const Consultation  = require('../models/Consultation');
 const Appointment   = require('../models/Appointment');
+const Invoice       = require('../models/Invoice');
+const Depense       = require('../models/Depense');
 const { logAction } = require('../utils/helpers');
 const { detectInteractions } = require('../utils/drugInteractions');
 const { logger } = require('../utils/logger');
@@ -894,6 +896,75 @@ exports.getConsultationSummary = async (req, res, next) => {
     });
 
     res.json({ success: true, synthese, simulated, consultation_numero: consultation.numero || null });
+  } catch (err) { next(err); }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// GET /api/ai/finance-insights
+// ═══════════════════════════════════════════════════════════════
+// Module AI — sous-module Finance (implémentation réelle). Remplace le
+// placeholder posé en Sous-phase 5.6 à la place de "prévisions
+// financières" (30 jours, chiffres fixes) et d'une "détection
+// d'anomalies" entièrement fabriquées. Aucune prévision n'est calculée :
+// ce système n'a pas de modèle financier prédictif honnête à proposer — à
+// la place, l'évolution RÉELLE du chiffre d'affaires sur 6 mois
+// (Invoice.montant_paye, déjà la source utilisée par finance.controller.js
+// ::stats) et des anomalies réellement détectables sans seuil arbitraire
+// inventé : factures impayées de plus de 30 jours (montant réel), et
+// dépenses par catégorie réellement en hausse par rapport au mois
+// précédent (comparaison réelle, jamais un pourcentage seuil fabriqué).
+exports.getFinanceInsights = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const moisLabels = [];
+    const moisBornes = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      moisLabels.push(d.toLocaleString('fr-FR', { month: 'short' }));
+      moisBornes.push({ debut: d, fin: new Date(d.getFullYear(), d.getMonth() + 1, 1) });
+    }
+
+    const invoicesRecentes = await Invoice.find({ date_facture: { $gte: moisBornes[0].debut } })
+      .select('date_facture montant_paye').lean();
+    const caParMois = new Array(6).fill(0);
+    for (const inv of invoicesRecentes) {
+      const dt = new Date(inv.date_facture);
+      const idx = moisBornes.findIndex(b => dt >= b.debut && dt < b.fin);
+      if (idx !== -1) caParMois[idx] += inv.montant_paye || 0;
+    }
+    const caMoisActuel = caParMois[5];
+    const caMoisPrecedent = caParMois[4];
+    const variationCaMois = caMoisPrecedent > 0 ? Math.round(((caMoisActuel - caMoisPrecedent) / caMoisPrecedent) * 100) : null;
+
+    const seuil30j = new Date(now.getTime() - 30 * 86400000);
+    const impayeesAgg = await Invoice.aggregate([
+      { $match: { statut: { $in: ['emise', 'partiellement_payee'] }, date_facture: { $lt: seuil30j } } },
+      { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$montant_restant' } } },
+    ]);
+    const facturesImpayees30j = { count: impayeesAgg[0]?.count || 0, total: impayeesAgg[0]?.total || 0 };
+
+    const debutMoisActuel = moisBornes[5].debut;
+    const debutMoisPrecedent = moisBornes[4].debut;
+    const depensesRecentes = await Depense.find({ date: { $gte: debutMoisPrecedent } }).select('date categorie montant').lean();
+    const parCategorieActuel = {};
+    const parCategoriePrecedent = {};
+    for (const d of depensesRecentes) {
+      const dt = new Date(d.date);
+      if (dt >= debutMoisActuel) parCategorieActuel[d.categorie] = (parCategorieActuel[d.categorie] || 0) + (d.montant || 0);
+      else if (dt >= debutMoisPrecedent) parCategoriePrecedent[d.categorie] = (parCategoriePrecedent[d.categorie] || 0) + (d.montant || 0);
+    }
+    const depensesEnHausse = Object.entries(parCategorieActuel)
+      .map(([categorie, montant_mois]) => ({ categorie, montant_mois, montant_mois_precedent: parCategoriePrecedent[categorie] || 0 }))
+      .filter(x => x.montant_mois > x.montant_mois_precedent)
+      .sort((a, b) => (b.montant_mois - b.montant_mois_precedent) - (a.montant_mois - a.montant_mois_precedent));
+
+    res.json({
+      success: true,
+      evolution_ca: { labels: moisLabels, data: caParMois },
+      variation_ca_mois: variationCaMois,
+      factures_impayees_30j: facturesImpayees30j,
+      depenses_en_hausse: depensesEnHausse,
+    });
   } catch (err) { next(err); }
 };
 
