@@ -204,7 +204,26 @@ exports.create = async (req, res, next) => {
     // libre) prime désormais sur req.user._id — nécessaire pour qu'un
     // infirmier créant la consultation l'attribue au bon médecin, pas à
     // lui-même.
-    const medecin = (req.body.medecin && isObjectId(req.body.medecin)) ? req.body.medecin : req.user._id;
+    // Audit du 17 sept. 2026 — req.body.medecin n'était vérifié que pour sa
+    // FORME (isObjectId), jamais son existence réelle ni son rôle : un
+    // ObjectId syntaxiquement valide mais fabriqué/orphelin, ou référençant
+    // un User réel n'ayant pas le rôle medecin, était accepté tel quel.
+    // Même garde que patient (CLIN-07) et appointment (RDV-CONSULT-002)
+    // ci-dessus : ne bascule sur req.user._id que si medecin est ABSENT,
+    // jamais s'il est présent mais invalide — pour ne jamais masquer une
+    // vraie erreur de saisie/intégration derrière un repli silencieux.
+    let medecin = req.user._id;
+    if (req.body.medecin) {
+      if (!isObjectId(req.body.medecin)) {
+        return res.status(400).json({ success: false, message: 'Référence médecin invalide.' });
+      }
+      // statut: 'actif' aligné sur getMedecins() ci-dessus (ligne ~35) —
+      // seul catalogue réellement proposé au personnel ; un médecin
+      // désactivé ne doit pas non plus être assignable par un appel direct.
+      const medecinDoc = await User.findOne({ _id: req.body.medecin, role: 'medecin', statut: 'actif' }).select('_id');
+      if (!medecinDoc) return res.status(404).json({ success: false, message: 'Médecin introuvable ou inactif.' });
+      medecin = medecinDoc._id;
+    }
     const consultation = await Consultation.create({
       ...buildConsultationFields(req.body),
       medecin,
@@ -373,6 +392,21 @@ exports.update = async (req, res, next) => {
     const avant = await Consultation.findById(req.params.id).lean();
     const data = {};
     for (const [k, v] of Object.entries(req.body)) { if (!CONSULT_BLOCKED_FIELDS.includes(k)) data[k] = v; }
+    // Audit du 17 sept. 2026 (défense en profondeur) — aucun appel direct à
+    // cette route n'existe dans le frontend actuel (Consultations.jsx
+    // soumet tout en un seul POST vers create(), jamais de PUT — vérifié),
+    // mais rien ici n'empêchait structurellement qu'un appel API direct ne
+    // fasse passer statut vers 'terminee' avec prescriptions/
+    // frais_consultation/examens_complementaires déjà renseignés, sans
+    // jamais déclencher la génération automatique de Prescription/Invoice/
+    // LabResult/ImagingResult que create() fait pour ce même cas — une
+    // consultation "terminee" sans les documents qui devraient
+    // l'accompagner. La clôture d'une consultation (et tout ce qu'elle
+    // déclenche) se fait uniquement à la création ; update() ne réassigne
+    // donc jamais statut vers 'terminee'.
+    if (data.statut === 'terminee') {
+      return res.status(400).json({ success: false, message: "La clôture d'une consultation (statut 'terminee') se fait uniquement à la création, pas par modification." });
+    }
     const consultation = await Consultation.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!consultation) return res.status(404).json({ success: false, message: 'Consultation introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'consultations', entite_id: consultation._id, ip: req.ip, avant, apres: consultation });
