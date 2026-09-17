@@ -8,8 +8,9 @@ const Consultation  = require('../models/Consultation');
 const Appointment   = require('../models/Appointment');
 const Invoice       = require('../models/Invoice');
 const Depense       = require('../models/Depense');
+const ExamCatalogue = require('../models/ExamCatalogue');
 const { logAction } = require('../utils/helpers');
-const { detectInteractions } = require('../utils/drugInteractions');
+const { detectInteractions, INTERACTIONS_DB } = require('../utils/drugInteractions');
 const { logger } = require('../utils/logger');
 
 // ─── Symptômes → conditions probables ────────────────────────
@@ -965,6 +966,71 @@ exports.getFinanceInsights = async (req, res, next) => {
       factures_impayees_30j: facturesImpayees30j,
       depenses_en_hausse: depensesEnHausse,
     });
+  } catch (err) { next(err); }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// GET /api/ai/knowledge-base
+// ═══════════════════════════════════════════════════════════════
+// Module AI — onglet "Base de connaissances" (implémentation réelle).
+// Sous-phase 5.6 avait déjà retiré les articles fabriqués (DEMO_KNOWLEDGE
+// vidé à []) mais laissé l'écran en placeholder, faute d'une vraie source
+// de contenu à afficher à la place. Ce endpoint n'invente aucun contenu
+// médical : il rend consultables trois références déjà réelles et déjà
+// utilisées ailleurs dans l'application pour de vraies décisions
+// cliniques, jamais recréées en double —
+//   - ExamCatalogue (catalogue réel des examens laboratoire/imagerie,
+//     déjà utilisé par laboratory.controller.js/radiology.controller.js) ;
+//   - INTERACTIONS_DB (utils/drugInteractions.js, source unique déjà
+//     utilisée par checkInteractions ci-dessus et par
+//     prescriptions.controller.js/pharmacy.controller.js) ;
+//   - SYMPTOM_MAP (ci-dessus, déjà utilisé par runDiagnosis).
+// `q` filtre côté serveur (insensible à la casse) sur le nom/la
+// description/les médicaments/le symptôme — jamais une recherche
+// simulée sans effet réel.
+exports.getKnowledgeBase = async (req, res, next) => {
+  try {
+    const q = (req.query.q || '').trim().toLowerCase();
+
+    const examens = await ExamCatalogue.find({ statut: 'actif' }).sort('nom').lean();
+    const items = [];
+
+    for (const ex of examens) {
+      items.push({
+        categorie: 'examen', id: String(ex._id), titre: ex.nom,
+        soustitre: ex.type === 'laboratoire' ? 'Laboratoire' : 'Imagerie',
+        detail: ex.description || 'Aucune description enregistrée.',
+        meta: [`${(ex.prix || 0).toLocaleString('fr-FR')} CFA`, `Délai : ${ex.delai_rendu_h || 24}h`],
+        tags: [ex.nom, ex.code, ex.type].filter(Boolean).map(s => String(s).toLowerCase()),
+      });
+    }
+
+    INTERACTIONS_DB.forEach((rule, i) => {
+      items.push({
+        categorie: 'interaction', id: `interaction-${i}`, titre: rule.drugs.join(' + '),
+        soustitre: `Risque ${rule.risque}`,
+        detail: rule.description,
+        meta: [`Risque : ${rule.risque}`],
+        tags: rule.drugs.map(d => d.toLowerCase()),
+      });
+    });
+
+    Object.entries(SYMPTOM_MAP).forEach(([symptome, conditions]) => {
+      const label = symptome.replace(/_/g, ' ');
+      items.push({
+        categorie: 'symptome', id: `symptome-${symptome}`, titre: label.charAt(0).toUpperCase() + label.slice(1),
+        soustitre: 'Pathologies associées possibles',
+        detail: conditions.join(', '),
+        meta: [`${conditions.length} pathologie(s) associée(s)`],
+        tags: [symptome, ...conditions.map(c => c.toLowerCase())],
+      });
+    });
+
+    const filtres = q
+      ? items.filter(it => it.titre.toLowerCase().includes(q) || it.detail.toLowerCase().includes(q) || it.tags.some(t => t.includes(q)))
+      : items;
+
+    res.json({ success: true, items: filtres, total: filtres.length });
   } catch (err) { next(err); }
 };
 

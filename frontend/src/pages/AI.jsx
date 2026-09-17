@@ -4,11 +4,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights, fetchRdvInsights, fetchConsultationSummary, fetchFinanceInsights,
+  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights, fetchRdvInsights, fetchConsultationSummary, fetchFinanceInsights, fetchKnowledgeBase,
   selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading, selectAIAnalyzing,
   selectPatientSummary, selectPatientSummaryLoading, selectLabInsights, selectLabInsightsLoading,
   selectImagingInsights, selectImagingInsightsLoading, selectRdvInsights, selectRdvInsightsLoading,
   selectConsultationSummary, selectConsultationSummaryLoading, selectFinanceInsights, selectFinanceInsightsLoading,
+  selectKnowledgeBase, selectKnowledgeBaseLoading,
 } from '../store/slices/aiSlice';
 import { fetchPatients, selectPatients } from '../store/slices/patientsSlice';
 import api from '../api';
@@ -241,8 +242,6 @@ const DEMO_ALERTS = [];
 
 const DEMO_ANALYSES_IA = [];
 
-const DEMO_KNOWLEDGE = [];
-
 // ─── Score Ring SVG ───────────────────────────────────────────
 function ScoreRing({ score, size = 80, color = "#1B4F9E" }) {
   const r = (size - 10) / 2;
@@ -371,6 +370,8 @@ export default function IntelligenceArtificielle() {
   const consultationSummaryLoading = useSelector(selectConsultationSummaryLoading);
   const financeInsights            = useSelector(selectFinanceInsights);
   const financeInsightsLoading     = useSelector(selectFinanceInsightsLoading);
+  const knowledgeBase              = useSelector(selectKnowledgeBase);
+  const knowledgeBaseLoading       = useSelector(selectKnowledgeBaseLoading);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -647,6 +648,16 @@ export default function IntelligenceArtificielle() {
     }
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Base de connaissances (implémentation réelle — cf.
+  // ai.controller.js::getKnowledgeBase) : un seul chargement complet,
+  // filtrage ensuite côté client (jeu de données réel mais borné : examens
+  // du catalogue + interactions médicamenteuses connues + symptômes). ──
+  useEffect(() => {
+    if (tab === "knowledge" && !knowledgeBase && !knowledgeBaseLoading) {
+      dispatch(fetchKnowledgeBase());
+    }
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Administratif — Résumé de consultation (implémentation réelle,
   // seul des 8 documents d'origine réellement implémenté — voir
   // ai.controller.js::getConsultationSummary) ───────────────────
@@ -730,7 +741,12 @@ export default function IntelligenceArtificielle() {
   const GRAVITE_CFG = { critique:{cls:"red",label:"Critique"}, eleve:{cls:"orange",label:"Élevé"}, modere:{cls:"yellow",label:"Modéré"}, faible:{cls:"green",label:"Faible"} };
   const GRAVITE_COLORS = { critique:"#DC2626", eleve:"#D97706", modere:"#CA8A04", faible:"#059669" };
 
-  const kbFiltered = DEMO_KNOWLEDGE.filter(k =>
+  // POST-COMPLÉTION MODULE IA — kbFiltered filtre désormais les vraies
+  // références renvoyées par /ai/knowledge-base (catalogue d'examens,
+  // interactions médicamenteuses connues, symptômes), jamais
+  // DEMO_KNOWLEDGE (déjà vidé à [] en Sous-phase 5.6, jamais réutilisé).
+  const kbItems = knowledgeBase?.items || [];
+  const kbFiltered = kbItems.filter(k =>
     !kbSearch || k.titre.toLowerCase().includes(kbSearch.toLowerCase()) || k.tags.some(t => t.includes(kbSearch.toLowerCase()))
   );
 
@@ -1768,17 +1784,59 @@ export default function IntelligenceArtificielle() {
           )}
 
           {/* ══ BASE DE CONNAISSANCES ══ */}
-          {/* Sous-phase 5.6 (module IA, relecture du 6 sept. 2026) — les
-              articles affichés (kbFiltered) sont des données fabriquées ;
-              "Consulter"/"Résumé IA" n'ont aucun handler réel. Aucune vraie
-              base de connaissances médicale n'existe dans ce système.
-              Désactivé honnêtement, même pattern que Chat IA. */}
+          {/* Implémentation réelle — remplace le placeholder posé en
+              Sous-phase 5.6 (articles fabriqués retirés, écran laissé
+              honnêtement désactivé faute d'une vraie source de contenu).
+              Aucun contenu médical n'est inventé ici : cet onglet rend
+              consultables trois références déjà réelles, déjà utilisées
+              ailleurs pour de vraies décisions cliniques (voir
+              ai.controller.js::getKnowledgeBase) — jamais recréées en
+              double, jamais un résumé IA généré sur ces fiches. */}
           {tab === "knowledge" && (
-            <div className="ia-card fu">
-              <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>📚</div>
-                <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
+            <div>
+              <div style={{ marginBottom:16 }}>
+                <input
+                  className="iinp" placeholder="Rechercher un examen, un médicament, un symptôme…"
+                  value={kbSearch} onChange={e => setKbSearch(e.target.value)}
+                />
               </div>
+              {knowledgeBaseLoading && (
+                <div style={{ textAlign:"center", padding:40, color:"var(--cm)" }}>Chargement de la base de connaissances…</div>
+              )}
+              {!knowledgeBaseLoading && knowledgeBase && (
+                <>
+                  <div style={{ fontSize:11, color:"var(--cm)", marginBottom:12 }}>
+                    {kbFiltered.length} référence(s) {kbSearch ? `pour « ${kbSearch} »` : ''} — catalogue d'examens, interactions médicamenteuses connues et symptômes déjà utilisés par ce système, jamais un contenu généré.
+                  </div>
+                  {kbFiltered.length === 0 && (
+                    <div className="ia-card fu">
+                      <div style={{ padding:30, textAlign:"center", color:"var(--cm)", fontSize:13 }}>Aucune référence ne correspond à cette recherche.</div>
+                    </div>
+                  )}
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:14 }}>
+                    {kbFiltered.slice(0, 60).map(item => {
+                      const cls = item.categorie === 'interaction' ? 'red' : item.categorie === 'symptome' ? 'teal' : 'blue';
+                      const icon = item.categorie === 'interaction' ? '💊' : item.categorie === 'symptome' ? '🩺' : '🔬';
+                      return (
+                        <div key={item.id} className="ia-card fu">
+                          <div style={{ padding:16, display:"flex", flexDirection:"column", gap:6 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                              <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{icon} {item.titre}</div>
+                              <Badge cls={cls}>{item.soustitre}</Badge>
+                            </div>
+                            <div style={{ fontSize:12, color:"var(--cm)" }}>{item.detail}</div>
+                            {item.meta.length > 0 && (
+                              <div style={{ fontSize:11, color:"#9CA3AF", display:"flex", gap:10, flexWrap:"wrap" }}>
+                                {item.meta.map((m,i) => <span key={i}>{m}</span>)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

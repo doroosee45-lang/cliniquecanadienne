@@ -124,6 +124,19 @@ export const fetchFinanceInsights = createAsyncThunk(
   }
 );
 
+export const fetchKnowledgeBase = createAsyncThunk(
+  'ai/fetchKnowledgeBase',
+  async (q, { rejectWithValue }) => {
+    try {
+      const params = q ? `?q=${encodeURIComponent(q)}` : '';
+      const { data } = await api.get(`/ai/knowledge-base${params}`);
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur chargement base de connaissances');
+    }
+  }
+);
+
 const aiSlice = createSlice({
   name: 'ai',
   initialState: {
@@ -173,6 +186,9 @@ const aiSlice = createSlice({
     financeInsights: null,
     financeInsightsLoading: false,
     financeInsightsError: null,
+    knowledgeBase: null,
+    knowledgeBaseLoading: false,
+    knowledgeBaseError: null,
   },
   reducers: {
     setSuggestions(state, action) { state.suggestions = action.payload; },
@@ -267,6 +283,15 @@ const aiSlice = createSlice({
       .addCase(fetchFinanceInsights.rejected, (state, action) => {
         state.financeInsightsLoading = false;
         state.financeInsightsError = action.payload;
+      })
+      .addCase(fetchKnowledgeBase.pending, (state) => { state.knowledgeBaseLoading = true; state.knowledgeBaseError = null; })
+      .addCase(fetchKnowledgeBase.fulfilled, (state, action) => {
+        state.knowledgeBaseLoading = false;
+        state.knowledgeBase = action.payload;
+      })
+      .addCase(fetchKnowledgeBase.rejected, (state, action) => {
+        state.knowledgeBaseLoading = false;
+        state.knowledgeBaseError = action.payload;
       });
   },
 });
@@ -299,5 +324,8 @@ export const selectConsultationSummaryError = (state) => state.ai.consultationSu
 export const selectFinanceInsights = (state) => state.ai.financeInsights;
 export const selectFinanceInsightsLoading = (state) => state.ai.financeInsightsLoading;
 export const selectFinanceInsightsError = (state) => state.ai.financeInsightsError;
+export const selectKnowledgeBase = (state) => state.ai.knowledgeBase;
+export const selectKnowledgeBaseLoading = (state) => state.ai.knowledgeBaseLoading;
+export const selectKnowledgeBaseError = (state) => state.ai.knowledgeBaseError;
 
 export default aiSlice.reducer;

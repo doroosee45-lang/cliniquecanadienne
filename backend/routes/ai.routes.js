@@ -13,6 +13,7 @@ router.get('/imaging-insights/:patientId',protect, authorize(...roles),  aiC.get
 router.get('/rdv-insights',               protect, authorize(...roles),  aiC.getRdvInsights);
 router.post('/consultation-summary/:consultationId', protect, authorize(...roles), aiC.getConsultationSummary);
 router.get('/finance-insights',           protect, authorize(...roles),  aiC.getFinanceInsights);
+router.get('/knowledge-base',             protect, authorize(...roles),  aiC.getKnowledgeBase);
 router.post('/diagnose',        protect, authorize(...roles),            aiC.runDiagnosis);
 router.post('/interactions',    protect, authorize(...roles),            aiC.checkInteractions);
 router.post('/chat',            protect, authorize(...roles),            aiC.chat);
