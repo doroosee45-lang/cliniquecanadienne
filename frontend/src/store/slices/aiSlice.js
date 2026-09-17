@@ -64,6 +64,18 @@ export const fetchPatientSummary = createAsyncThunk(
   }
 );
 
+export const fetchLabInsights = createAsyncThunk(
+  'ai/fetchLabInsights',
+  async (patientId, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get(`/ai/lab-insights/${patientId}`);
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur analyse laboratoire IA');
+    }
+  }
+);
+
 const aiSlice = createSlice({
   name: 'ai',
   initialState: {
@@ -98,6 +110,9 @@ const aiSlice = createSlice({
     patientSummary: null,
     patientSummaryLoading: false,
     patientSummaryError: null,
+    labInsights: null,
+    labInsightsLoading: false,
+    labInsightsError: null,
   },
   reducers: {
     setSuggestions(state, action) { state.suggestions = action.payload; },
@@ -107,6 +122,7 @@ const aiSlice = createSlice({
     setFilters(state, action) { state.filters = { ...state.filters, ...action.payload }; },
     clearError(state) { state.error = null; },
     clearPatientSummary(state) { state.patientSummary = null; state.patientSummaryError = null; },
+    clearLabInsights(state) { state.labInsights = null; state.labInsightsError = null; },
   },
   extraReducers: (builder) => {
     builder
@@ -144,11 +160,20 @@ const aiSlice = createSlice({
       .addCase(fetchPatientSummary.rejected, (state, action) => {
         state.patientSummaryLoading = false;
         state.patientSummaryError = action.payload;
+      })
+      .addCase(fetchLabInsights.pending, (state) => { state.labInsightsLoading = true; state.labInsightsError = null; })
+      .addCase(fetchLabInsights.fulfilled, (state, action) => {
+        state.labInsightsLoading = false;
+        state.labInsights = action.payload;
+      })
+      .addCase(fetchLabInsights.rejected, (state, action) => {
+        state.labInsightsLoading = false;
+        state.labInsightsError = action.payload;
       });
   },
 });
 
-export const { setSuggestions, setWarnings, toggleIA, clearAnalysis, setFilters, clearError, clearPatientSummary } = aiSlice.actions;
+export const { setSuggestions, setWarnings, toggleIA, clearAnalysis, setFilters, clearError, clearPatientSummary, clearLabInsights } = aiSlice.actions;
 
 export const selectAIPredictions = (state) => state.ai.predictions;
 export const selectAISuggestions = (state) => state.ai.suggestions;
@@ -161,5 +186,8 @@ export const selectAIStats = (state) => state.ai.stats;
 export const selectPatientSummary = (state) => state.ai.patientSummary;
 export const selectPatientSummaryLoading = (state) => state.ai.patientSummaryLoading;
 export const selectPatientSummaryError = (state) => state.ai.patientSummaryError;
+export const selectLabInsights = (state) => state.ai.labInsights;
+export const selectLabInsightsLoading = (state) => state.ai.labInsightsLoading;
+export const selectLabInsightsError = (state) => state.ai.labInsightsError;
 
 export default aiSlice.reducer;

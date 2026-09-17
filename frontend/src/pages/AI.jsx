@@ -4,9 +4,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary,
+  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights,
   selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading, selectAIAnalyzing,
-  selectPatientSummary, selectPatientSummaryLoading,
+  selectPatientSummary, selectPatientSummaryLoading, selectLabInsights, selectLabInsightsLoading,
 } from '../store/slices/aiSlice';
 import { fetchPatients, selectPatients } from '../store/slices/patientsSlice';
 import api from '../api';
@@ -359,6 +359,8 @@ export default function IntelligenceArtificielle() {
   const reduxPatientsList     = useSelector(selectPatients);
   const patientSummary        = useSelector(selectPatientSummary);
   const patientSummaryLoading = useSelector(selectPatientSummaryLoading);
+  const labInsights           = useSelector(selectLabInsights);
+  const labInsightsLoading    = useSelector(selectLabInsightsLoading);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -421,6 +423,7 @@ export default function IntelligenceArtificielle() {
   const [formMedicament, setFormMedicament] = useState("");
   const [formAllergiesPatient, setFormAllergiesPatient] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [selectedLabPatientId, setSelectedLabPatientId] = useState("");
 
   // Settings
   const AI_SETTINGS_DEFAULTS = {
@@ -575,7 +578,7 @@ export default function IntelligenceArtificielle() {
 
   // ── Analyse patient (résumé IA réel) ──────────────────────
   useEffect(() => {
-    if (section === "patient" && reduxPatientsList.length === 0) {
+    if ((section === "patient" || section === "laboratoire") && reduxPatientsList.length === 0) {
       dispatch(fetchPatients({ limit: 100 }));
     }
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -586,6 +589,17 @@ export default function IntelligenceArtificielle() {
       await dispatch(fetchPatientSummary(selectedPatientId)).unwrap();
     } catch (err) {
       toast.error(typeof err === 'string' ? err : "Erreur lors de l'analyse du dossier");
+    }
+  };
+
+  // ── Laboratoire IA (implémentation réelle — cf. AI.controller.js::
+  // getLabInsights) ───────────────────────────────────────────
+  const analyserLaboPatient = async () => {
+    if (!selectedLabPatientId) return;
+    try {
+      await dispatch(fetchLabInsights(selectedLabPatientId)).unwrap();
+    } catch (err) {
+      toast.error(typeof err === 'string' ? err : "Erreur lors de l'analyse laboratoire");
     }
   };
 
@@ -1124,17 +1138,80 @@ export default function IntelligenceArtificielle() {
                   </div>
                 )}
 
-                {/* Sous-phase 5.6 (module IA, relecture du 6 sept. 2026) —
-                    interprétations biologiques et tendance entièrement
-                    fabriquées (valeurs et diagnostics inventés). Désactivé
-                    honnêtement — voir commentaire détaillé sur la section
-                    "patient" ci-dessus, même principe et même décision. */}
+                {/* Laboratoire IA — implémentation réelle (remplace le
+                    placeholder posé en Sous-phase 5.6 à la place
+                    d'interprétations et d'une tendance entièrement
+                    fabriquées). Aucun diagnostic inventé : statut_res
+                    (normal/anormal/critique), valeurs et références sont
+                    déjà saisis et classifiés réellement par le laborantin
+                    (LabResult.resultats[], voir ai.controller.js::
+                    getLabInsights) — ce panneau consolide et trace
+                    l'historique réel, il n'en invente aucun. */}
                 {section === "laboratoire" && (
-                  <div className="ia-card fu">
-                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🔬</div>
-                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
+                  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>👤 Sélectionner un patient</h3></div>
+                      <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+                        <select className="iinp" value={selectedLabPatientId} onChange={e => setSelectedLabPatientId(e.target.value)}>
+                          <option value="">— Choisir un patient —</option>
+                          {reduxPatientsList.map(p => (
+                            <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier || p._id}</option>
+                          ))}
+                        </select>
+                        <button className="ibtn ibtn-teal" disabled={!selectedLabPatientId || labInsightsLoading} onClick={analyserLaboPatient}>
+                          {labInsightsLoading ? <><span className="spin" style={{ display:"inline-block" }}>{I.iaS}</span> Analyse en cours...</> : <>{I.iaS} Analyser les résultats labo</>}
+                        </button>
+                        {!labInsightsLoading && !labInsights && (
+                          <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:12 }}>Sélectionnez un patient puis lancez l'analyse pour consulter ses résultats de laboratoire.</div>
+                        )}
+                        {labInsights && !labInsightsLoading && (
+                          <div style={{ fontSize:11, color:"var(--cm)", fontStyle:"italic" }}>{labInsights.historique_count} résultat(s) complété(s) trouvé(s) pour {labInsights.patient_context?.nom}.</div>
+                        )}
+                      </div>
                     </div>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>🔬 Interprétation — dernière analyse</h3></div>
+                      <div style={{ padding:20 }}>
+                        {!labInsights && !labInsightsLoading && (
+                          <div style={{ textAlign:"center", padding:20, color:"var(--cm)" }}>
+                            <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🔬</div>
+                            <div style={{ fontSize:13 }}>Aucune analyse en cours — sélectionnez un patient à gauche.</div>
+                          </div>
+                        )}
+                        {labInsightsLoading && (
+                          <div style={{ textAlign:"center", padding:40 }}>
+                            <div style={{ fontSize:36, animation:"iaPulse 1s infinite", marginBottom:10 }}>🔬</div>
+                            <div style={{ fontSize:13, color:"var(--cm)" }}>Chargement des résultats…</div>
+                          </div>
+                        )}
+                        {labInsights && !labInsightsLoading && !labInsights.derniere_analyse && (
+                          <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:13 }}>Aucun résultat de laboratoire complété pour ce patient.</div>
+                        )}
+                        {labInsights?.derniere_analyse && (
+                          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                            <div style={{ fontSize:11, color:"var(--cm)" }}>📅 {fmtDate(labInsights.derniere_analyse.date)}</div>
+                            {labInsights.derniere_analyse.interpretation.map((r,i) => {
+                              const cls = r.statut === "critique" ? "red" : r.statut === "anormal" ? "orange" : "green";
+                              return (
+                                <div key={i} style={{ background:"#F8FAFD", borderRadius:12, padding:"12px 14px", border:"1.5px solid var(--cbr)" }}>
+                                  <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{r.exam}</div>
+                                  <div style={{ fontSize:12, color:"var(--cm)", marginTop:2 }}>{r.valeur}{r.reference ? ` · normale : ${r.reference}` : ""}</div>
+                                  <div style={{ marginTop:6 }}><Badge cls={cls}>{r.statut === "critique" ? "Critique" : r.statut === "anormal" ? "Anormal" : "Normal"}</Badge></div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {labInsights?.trend && (
+                      <div className="ia-card fu" style={{ gridColumn:isMobile?"auto":"1 / -1" }}>
+                        <div className="ia-card-hdr"><h3>📈 Comparaison historique</h3><p>{labInsights.trend.analyte} — {labInsights.trend.labels.length} mesures réelles{labInsights.trend.reference ? ` (normale : ${labInsights.trend.reference})` : ""}</p></div>
+                        <div style={{ padding:20 }}>
+                          <LineChart labels={labInsights.trend.labels} data={labInsights.trend.data} color="#1B4F9E" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

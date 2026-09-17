@@ -8,6 +8,7 @@ router.get('/stats',            protect, authorize(...roles),            aiC.get
 router.get('/predictions',      protect, authorize(...roles),            aiC.getPredictions);
 router.get('/alerts',           protect, authorize(...roles),            aiC.getAlerts);
 router.get('/patient-summary/:patientId', protect, authorize(...roles),  aiC.getPatientSummary);
+router.get('/lab-insights/:patientId',    protect, authorize(...roles),  aiC.getLabInsights);
 router.post('/diagnose',        protect, authorize(...roles),            aiC.runDiagnosis);
 router.post('/interactions',    protect, authorize(...roles),            aiC.checkInteractions);
 router.post('/chat',            protect, authorize(...roles),            aiC.chat);

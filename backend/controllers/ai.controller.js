@@ -647,6 +647,83 @@ exports.getPatientSummary = async (req, res, next) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// GET /api/ai/lab-insights/:patientId
+// ═══════════════════════════════════════════════════════════════
+// Module AI — sous-module Laboratoire (implémentation réelle, remplace le
+// placeholder honnête posé en Sous-phase 5.6 à la place d'interprétations
+// biologiques et d'une tendance entièrement inventées). Aucune valeur ni
+// interprétation n'est générée ici : statut_res (normal/anormal/critique)
+// et les valeurs/références sont déjà saisis et classifiés réellement par
+// le laborantin au moment de la saisie des résultats (même source que
+// frontend/src/utils/labResultats.js::deriveCriticalPayload, réutilisée
+// ailleurs dans l'application — jamais une deuxième classification
+// divergente reconstruite ici). Ce endpoint consolide et trace
+// l'historique réel, il n'invente rien.
+exports.getLabInsights = async (req, res, next) => {
+  try {
+    const { patientId } = req.params;
+    if (!patientId) return res.status(400).json({ success: false, message: 'patientId requis' });
+
+    const patient = await Patient.findById(patientId).select('prenom nom numero_dossier').lean();
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient introuvable' });
+
+    const historique = await LabResult.find({
+      patient: patientId,
+      statut: { $in: ['termine', 'valide'] },
+      'resultats.0': { $exists: true },
+    }).sort('-date_resultat').limit(10).lean();
+
+    const dernier = historique[0] || null;
+    const interpretation = dernier
+      ? (dernier.resultats || []).map(r => ({
+          exam: r.exam_nom || r.exam_id || 'Analyse',
+          valeur: r.valeur,
+          reference: r.ref || null,
+          statut: r.statut_res || 'normal',
+        }))
+      : [];
+
+    // Tendance historique — un même analyte mesuré à plusieurs reprises
+    // (ex. glycémie répétée) plutôt qu'une seule valeur isolée. Seules les
+    // valeurs numériques sont traçables sur un graphique (les résultats
+    // qualitatifs comme "Négatif"/"Normal" sont exclus, jamais convertis en
+    // un nombre inventé).
+    const parCle = new Map();
+    for (const lr of historique) {
+      for (const r of (lr.resultats || [])) {
+        const cle = r.exam_nom || r.exam_id;
+        const val = Number(r.valeur);
+        if (!cle || !Number.isFinite(val)) continue;
+        if (!parCle.has(cle)) parCle.set(cle, []);
+        parCle.get(cle).push({ date: lr.date_resultat || lr.date_prescription, valeur: val, ref: r.ref });
+      }
+    }
+    let trend = null;
+    for (const [analyte, points] of parCle.entries()) {
+      if (points.length < 2) continue;
+      if (!trend || points.length > trend.points.length) trend = { analyte, points, ref: points[0].ref };
+    }
+    if (trend) {
+      trend.points.sort((a, b) => new Date(a.date) - new Date(b.date));
+      trend = {
+        analyte: trend.analyte,
+        reference: trend.ref,
+        labels: trend.points.map(p => new Date(p.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })),
+        data: trend.points.map(p => p.valeur),
+      };
+    }
+
+    res.json({
+      success: true,
+      patient_context: { nom: `${patient.prenom || ''} ${patient.nom || ''}`.trim(), numero_dossier: patient.numero_dossier },
+      derniere_analyse: dernier ? { date: dernier.date_resultat || dernier.date_prescription, interpretation } : null,
+      trend,
+      historique_count: historique.length,
+    });
+  } catch (err) { next(err); }
+};
+
+// ═══════════════════════════════════════════════════════════════
 // PUT /api/ai/predictions/:id  — traiter une prédiction
 // ═══════════════════════════════════════════════════════════════
 exports.updatePrediction = async (req, res, next) => {
