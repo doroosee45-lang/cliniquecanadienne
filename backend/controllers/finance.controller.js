@@ -299,6 +299,23 @@ exports.updateStatut = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Aucun paiement enregistré — utilisez « Enregistrer un paiement » pour indiquer le montant versé." });
     }
 
+    // POST5-018 (audit indépendant post-Phase 5, 14 sept. 2026) — rien
+    // n'empêchait de marquer 'annulee' une facture ayant déjà de vrais
+    // paiements enregistrés (paiements[]/montant_paye) : le statut passait à
+    // 'annulee' sans la moindre réversion ni signalement, laissant une
+    // facture "annulée" portant pourtant un historique de paiements réels —
+    // incohérence comptable silencieuse, traçabilité perdue. Aucune
+    // politique de remboursement/réversion n'existe dans ce système : plutôt
+    // que d'inventer une règle métier (supprimer les paiements détruirait la
+    // traçabilité, la conserver telle quelle sans avertir masque le
+    // problème), l'opération est bloquée — même principe que POST5-006
+    // (suppression d'une Consultation facturée) : intégrité comptable avant
+    // commodité. Une facture payée ne peut être annulée qu'après un vrai
+    // processus de remboursement, hors périmètre de ce correctif.
+    if (statut === 'annulee' && invoice.montant_paye > 0) {
+      return res.status(409).json({ success: false, message: `Impossible d'annuler cette facture : ${invoice.montant_paye.toLocaleString('fr-FR')} CFA de paiement(s) déjà enregistré(s). Un remboursement doit être traité séparément avant toute annulation.` });
+    }
+
     let final;
     if (statut === 'payee' && invoice.montant_restant > 0) {
       // AUDIT-11-6 — même famille de bug que addPayment ci-dessus : lire
