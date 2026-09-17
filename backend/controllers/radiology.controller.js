@@ -32,6 +32,16 @@ const withFreshImageUrls = (images) => (images || []).map(img => {
   };
 });
 
+// POST5-009 (audit indépendant post-Phase 5, 14 sept. 2026) — même classe
+// qu'ANOM-MAT-01 (maternityController.js) : ImagingResult.telephone est une
+// copie figée du téléphone du Patient, écrite une seule fois à la création
+// et jamais resynchronisée. Avant ce correctif, getOne() peuplait déjà
+// `patient.telephone` mais normalize() ci-dessous ne l'utilisait jamais —
+// la valeur live était récupérée puis silencieusement jetée. Préfère la
+// donnée live du Patient lié quand elle est disponible, replie sur la
+// copie figée sinon — jamais l'inverse, jamais une valeur inventée.
+const preferLiveTelephone = a => a.patient?.telephone || a.telephone;
+
 // Aplatit un document peuplé en objet safe pour le frontend (pas d'objets imbriqués)
 const normalize = a => {
   const patientNom     = a.patient_nom     || (a.patient     ? `${a.patient.prenom || ''} ${a.patient.nom || ''}`.trim()     : '');
@@ -46,6 +56,7 @@ const normalize = a => {
     patient_dossier:          patientDossier,
     medecin_prescripteur_nom: medecinNom,
     radiologue_nom:           radiologueNom,
+    telephone:                preferLiveTelephone(a),
     // Remplacer les objets peuplés par leurs IDs (évite crash React)
     patient:              a.patient?._id      ?? a.patient,
     medecin_prescripteur: a.medecin_prescripteur?._id ?? a.medecin_prescripteur,
@@ -101,7 +112,7 @@ exports.getAll = async (req, res, next) => {
     const [total, raw] = await Promise.all([
       ImagingResult.countDocuments(filter),
       ImagingResult.find(filter)
-        .populate('patient',             'nom prenom numero_dossier date_naissance')
+        .populate('patient',             'nom prenom numero_dossier date_naissance telephone')
         .populate('medecin_prescripteur','nom prenom')
         .populate('radiologue',          'nom prenom')
         .lean()

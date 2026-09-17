@@ -9,6 +9,19 @@ const { nextSequence } = require('../utils/counter');
 
 const isObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
 
+// POST5-009 (audit indépendant post-Phase 5, 14 sept. 2026) — même classe
+// qu'ANOM-MAT-01 (maternityController.js) : LabResult.telephone est une
+// copie figée du téléphone du Patient, écrite une seule fois à la création
+// et jamais resynchronisée. Préfère la donnée live du Patient lié quand
+// elle est disponible (patient peuplé), replie sur la copie figée sinon —
+// jamais l'inverse, jamais une valeur inventée.
+const preferLiveTelephone = (obj) => {
+  if (obj.patient && typeof obj.patient === 'object' && obj.patient.telephone) {
+    obj.telephone = obj.patient.telephone;
+  }
+  return obj;
+};
+
 exports.getStats = async (req, res, next) => {
   try {
     const [total, en_attente, en_cours, valides, critiques] = await Promise.all([
@@ -59,7 +72,7 @@ exports.getAll = async (req, res, next) => {
     const [total, raw] = await Promise.all([
       LabResult.countDocuments(filter),
       LabResult.find(filter)
-        .populate('patient',             'nom prenom numero_dossier date_naissance')
+        .populate('patient',             'nom prenom numero_dossier date_naissance telephone')
         .populate('medecin_prescripteur','nom prenom')
         // LAB-03 — technicien/biologiste réels (jamais les anciens champs
         // texte libre jamais persistés) : mêmes flattening + *_nom que
@@ -80,6 +93,9 @@ exports.getAll = async (req, res, next) => {
                               || (a.medecin_prescripteur ? `${a.medecin_prescripteur.prenom || ''} ${a.medecin_prescripteur.nom || ''}`.trim() : '');
       const technicienNom   = a.technicien ? `${a.technicien.prenom || ''} ${a.technicien.nom || ''}`.trim() : '';
       const validateurNom   = a.validateur ? `${a.validateur.prenom || ''} ${a.validateur.nom || ''}`.trim() : '';
+      // POST5-009 — voir preferLiveTelephone ci-dessus, calculé avant que
+      // `patient` ne soit ramené à son _id juste en-dessous.
+      const telephoneLive   = a.patient?.telephone || a.telephone;
       return {
         ...a,
         patient_nom:              patientNom,
@@ -88,6 +104,7 @@ exports.getAll = async (req, res, next) => {
         technicien_nom:           technicienNom,
         validateur_nom:           validateurNom,
         date_demande:             a.date_demande || a.date_prescription,
+        telephone:                telephoneLive,
         // Remplace les objets peuplés par leurs IDs pour éviter tout crash React côté frontend
         patient:              a.patient?._id            ?? a.patient,
         medecin_prescripteur: a.medecin_prescripteur?._id ?? a.medecin_prescripteur,
@@ -118,7 +135,9 @@ exports.getOne = async (req, res, next) => {
     // fictif. null si l'analyse n'est pas encore validée ou n'a donné lieu
     // à aucune facture réelle (cf. limite documentée dans validate()).
     const invoice = await Invoice.findOne({ source_module: 'laboratoire', source_id: result._id });
-    res.json({ success: true, result, invoice });
+    // POST5-009 — voir preferLiveTelephone ci-dessus ; `patient` reste
+    // pleinement peuplé ici (contrat déjà en place pour cette vue détail).
+    res.json({ success: true, result: preferLiveTelephone(result.toObject()), invoice });
   } catch (err) { next(err); }
 };
 

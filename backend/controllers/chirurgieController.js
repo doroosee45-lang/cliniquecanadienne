@@ -11,6 +11,24 @@ const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { nextSequence } = require('../utils/counter');
 const { logAction, escapeRegex } = require('../utils/helpers');
 
+// POST5-009 (audit indépendant post-Phase 5, 14 sept. 2026) — même classe
+// qu'ANOM-MAT-01 (maternityController.js) et laboratory.controller.js/
+// radiology.controller.js : DossierChirurgical.telephone est une copie
+// figée du téléphone du Patient, écrite une seule fois à la création
+// (createDossier ci-dessous) et jamais resynchronisée — un dossier
+// chirurgical peut rester ouvert des mois (consultation → préopératoire →
+// opéré → suivi postop) largement assez pour qu'un patient change de
+// numéro sans que le personnel ne le voie jamais (risque réel en cas
+// d'urgence). Préfère la donnée live du Patient lié quand elle est
+// disponible (patient peuplé), replie sur la copie figée sinon — jamais
+// l'inverse, jamais une valeur inventée.
+const preferLiveTelephone = (obj) => {
+  if (obj.patient && typeof obj.patient === 'object' && obj.patient.telephone) {
+    obj.telephone = obj.patient.telephone;
+  }
+  return obj;
+};
+
 // Génération du numéro de dossier : CHIR-YYYY-XXXX
 // Compteur atomique — l'ancien pattern findOne().sort() pouvait attribuer le
 // même numéro à deux dossiers créés en même temps (condition de course).
@@ -121,8 +139,13 @@ exports.getStats = async (req, res, next) => {
 // Récupération d'un dossier complet (avec bilans, suivis, complications)
 exports.getDossierById = async (req, res, next) => {
   try {
-    const dossier = await DossierChirurgical.findById(req.params.id);
-    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier non trouvé' });
+    const found = await DossierChirurgical.findById(req.params.id).populate('patient', 'telephone');
+    if (!found) return res.status(404).json({ success: false, message: 'Dossier non trouvé' });
+    // POST5-009 — préfère le téléphone live du Patient lié, jamais la copie
+    // figée seule ; `patient` est ensuite ramené à son _id (jamais un objet
+    // peuplé exposé où le reste du contrat attend un ObjectId).
+    const dossier = preferLiveTelephone(found.toObject());
+    dossier.patient = found.patient?._id ?? found.patient;
 
     const bilan = await Bilan.find({ dossier_chirurgical_id: dossier._id }).sort({ createdAt: -1 });
     const suivis = await SuiviPostop.find({ dossier_chirurgical_id: dossier._id }).sort({ date_suivi: -1 });
