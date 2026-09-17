@@ -100,6 +100,18 @@ export const fetchRdvInsights = createAsyncThunk(
   }
 );
 
+export const fetchConsultationSummary = createAsyncThunk(
+  'ai/fetchConsultationSummary',
+  async (consultationId, { rejectWithValue }) => {
+    try {
+      const { data } = await api.post(`/ai/consultation-summary/${consultationId}`);
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur génération du résumé de consultation');
+    }
+  }
+);
+
 const aiSlice = createSlice({
   name: 'ai',
   initialState: {
@@ -143,6 +155,9 @@ const aiSlice = createSlice({
     rdvInsights: null,
     rdvInsightsLoading: false,
     rdvInsightsError: null,
+    consultationSummary: null,
+    consultationSummaryLoading: false,
+    consultationSummaryError: null,
   },
   reducers: {
     setSuggestions(state, action) { state.suggestions = action.payload; },
@@ -154,6 +169,7 @@ const aiSlice = createSlice({
     clearPatientSummary(state) { state.patientSummary = null; state.patientSummaryError = null; },
     clearLabInsights(state) { state.labInsights = null; state.labInsightsError = null; },
     clearImagingInsights(state) { state.imagingInsights = null; state.imagingInsightsError = null; },
+    clearConsultationSummary(state) { state.consultationSummary = null; state.consultationSummaryError = null; },
   },
   extraReducers: (builder) => {
     builder
@@ -218,11 +234,20 @@ const aiSlice = createSlice({
       .addCase(fetchRdvInsights.rejected, (state, action) => {
         state.rdvInsightsLoading = false;
         state.rdvInsightsError = action.payload;
+      })
+      .addCase(fetchConsultationSummary.pending, (state) => { state.consultationSummaryLoading = true; state.consultationSummaryError = null; })
+      .addCase(fetchConsultationSummary.fulfilled, (state, action) => {
+        state.consultationSummaryLoading = false;
+        state.consultationSummary = action.payload;
+      })
+      .addCase(fetchConsultationSummary.rejected, (state, action) => {
+        state.consultationSummaryLoading = false;
+        state.consultationSummaryError = action.payload;
       });
   },
 });
 
-export const { setSuggestions, setWarnings, toggleIA, clearAnalysis, setFilters, clearError, clearPatientSummary, clearLabInsights, clearImagingInsights } = aiSlice.actions;
+export const { setSuggestions, setWarnings, toggleIA, clearAnalysis, setFilters, clearError, clearPatientSummary, clearLabInsights, clearImagingInsights, clearConsultationSummary } = aiSlice.actions;
 
 export const selectAIPredictions = (state) => state.ai.predictions;
 export const selectAISuggestions = (state) => state.ai.suggestions;
@@ -244,5 +269,8 @@ export const selectImagingInsightsError = (state) => state.ai.imagingInsightsErr
 export const selectRdvInsights = (state) => state.ai.rdvInsights;
 export const selectRdvInsightsLoading = (state) => state.ai.rdvInsightsLoading;
 export const selectRdvInsightsError = (state) => state.ai.rdvInsightsError;
+export const selectConsultationSummary = (state) => state.ai.consultationSummary;
+export const selectConsultationSummaryLoading = (state) => state.ai.consultationSummaryLoading;
+export const selectConsultationSummaryError = (state) => state.ai.consultationSummaryError;
 
 export default aiSlice.reducer;

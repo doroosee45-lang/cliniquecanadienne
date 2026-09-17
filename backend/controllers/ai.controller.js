@@ -838,6 +838,66 @@ exports.getRdvInsights = async (req, res, next) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// POST /api/ai/consultation-summary/:consultationId
+// ═══════════════════════════════════════════════════════════════
+// Module AI — sous-module Administratif (implémentation réelle, partielle
+// et assumée comme telle). Sur les 8 documents affichés en Sous-phase 5.6
+// (tous des boutons "Générer" sans handler réel), seul "Résumé de
+// consultation" est implémenté ici : donnée source réellement disponible
+// (Consultation, déjà saisie par le médecin) et risque clinique/légal
+// limité (synthèse d'un dossier déjà existant, jamais un document engageant
+// à lui seul — contrairement à un certificat médical ou un courrier de
+// liaison, qui engagent la responsabilité du médecin sans sa rédaction
+// réelle : volontairement non implémentés plutôt que simulés). Réutilise
+// exactement generateReport() (déjà réel, déjà utilisé par le Chat IA et
+// getPatientSummary ci-dessus) — jamais un second point d'intégration
+// OpenAI. Repli honnête (simulated:true) si OPENAI_API_KEY absente, jamais
+// un texte fabriqué présenté comme réellement généré.
+exports.getConsultationSummary = async (req, res, next) => {
+  try {
+    const { consultationId } = req.params;
+    if (!consultationId) return res.status(400).json({ success: false, message: 'consultationId requis' });
+
+    const consultation = await Consultation.findById(consultationId)
+      .populate('patient', 'prenom nom numero_dossier date_naissance sexe')
+      .populate('medecin', 'prenom nom')
+      .lean();
+    if (!consultation) return res.status(404).json({ success: false, message: 'Consultation introuvable' });
+
+    const patient = consultation.patient;
+    const systemPrompt = "Tu es un assistant clinique d'aide à la rédaction dans un logiciel hospitalier. Rédige un résumé de consultation court, structuré et factuel EXCLUSIVEMENT à partir des données fournies, sans jamais inventer de diagnostic, de valeur ou d'antécédent absent des données. Termine systématiquement par : « Ce résumé est une aide à la rédaction et doit être relu et validé par le médecin avant tout usage officiel. »";
+    const userPrompt = `Consultation du ${new Date(consultation.date_consultation).toLocaleDateString('fr-FR')} :
+- Patient : ${patient ? `${patient.prenom || ''} ${patient.nom || ''}`.trim() : 'non renseigné'}
+- Médecin : ${consultation.medecin ? `Dr ${consultation.medecin.prenom || ''} ${consultation.medecin.nom || ''}`.trim() : 'non renseigné'}
+- Motif/anamnèse : ${consultation.anamnese || 'non renseigné'}
+- Examen clinique : ${consultation.examen_clinique || 'non renseigné'}
+- Diagnostic : ${consultation.diagnostic || 'non renseigné'}
+- Recommandations : ${consultation.recommandations || 'non renseignées'}
+- Prescriptions : ${(consultation.prescriptions || []).map(p => p.medicament || p.nom).filter(Boolean).join(', ') || 'aucune'}
+- Décision : ${consultation.decision || 'non renseignée'}`;
+
+    let synthese = null;
+    let simulated = false;
+    try {
+      const result = await openai.generateReport({ systemPrompt, userPrompt });
+      if (result.simulated) simulated = true;
+      else synthese = result.content;
+    } catch (err) {
+      logger.error('[AI CONSULTATION SUMMARY] Échec generateReport', { error: err.message });
+      return res.status(502).json({ success: false, message: "Génération du résumé temporairement indisponible. Réessayez plus tard." });
+    }
+
+    await logAction({
+      utilisateur: req.user?._id, action: 'IA_CONSULTATION_SUMMARY', module: 'ia',
+      entite_id: consultation._id, ip: req.ip, ua: req.headers['user-agent'],
+      message: `Résumé IA consultation ${consultation.numero || consultation._id}`,
+    });
+
+    res.json({ success: true, synthese, simulated, consultation_numero: consultation.numero || null });
+  } catch (err) { next(err); }
+};
+
+// ═══════════════════════════════════════════════════════════════
 // PUT /api/ai/predictions/:id  — traiter une prédiction
 // ═══════════════════════════════════════════════════════════════
 exports.updatePrediction = async (req, res, next) => {

@@ -4,10 +4,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights, fetchRdvInsights,
+  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights, fetchRdvInsights, fetchConsultationSummary,
   selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading, selectAIAnalyzing,
   selectPatientSummary, selectPatientSummaryLoading, selectLabInsights, selectLabInsightsLoading,
   selectImagingInsights, selectImagingInsightsLoading, selectRdvInsights, selectRdvInsightsLoading,
+  selectConsultationSummary, selectConsultationSummaryLoading,
 } from '../store/slices/aiSlice';
 import { fetchPatients, selectPatients } from '../store/slices/patientsSlice';
 import api from '../api';
@@ -366,6 +367,8 @@ export default function IntelligenceArtificielle() {
   const imagingInsightsLoading = useSelector(selectImagingInsightsLoading);
   const rdvInsights            = useSelector(selectRdvInsights);
   const rdvInsightsLoading     = useSelector(selectRdvInsightsLoading);
+  const consultationSummary        = useSelector(selectConsultationSummary);
+  const consultationSummaryLoading = useSelector(selectConsultationSummaryLoading);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -430,6 +433,10 @@ export default function IntelligenceArtificielle() {
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedLabPatientId, setSelectedLabPatientId] = useState("");
   const [selectedImagingPatientId, setSelectedImagingPatientId] = useState("");
+  const [selectedAdminPatientId, setSelectedAdminPatientId] = useState("");
+  const [adminConsultations, setAdminConsultations] = useState([]);
+  const [adminConsultationsLoading, setAdminConsultationsLoading] = useState(false);
+  const [selectedConsultationId, setSelectedConsultationId] = useState("");
 
   // Settings
   const AI_SETTINGS_DEFAULTS = {
@@ -584,7 +591,7 @@ export default function IntelligenceArtificielle() {
 
   // ── Analyse patient (résumé IA réel) ──────────────────────
   useEffect(() => {
-    if ((section === "patient" || section === "laboratoire" || section === "imagerie") && reduxPatientsList.length === 0) {
+    if ((section === "patient" || section === "laboratoire" || section === "imagerie" || section === "administratif") && reduxPatientsList.length === 0) {
       dispatch(fetchPatients({ limit: 100 }));
     }
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -628,6 +635,29 @@ export default function IntelligenceArtificielle() {
       dispatch(fetchRdvInsights());
     }
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Administratif — Résumé de consultation (implémentation réelle,
+  // seul des 8 documents d'origine réellement implémenté — voir
+  // ai.controller.js::getConsultationSummary) ───────────────────
+  useEffect(() => {
+    setSelectedConsultationId("");
+    setAdminConsultations([]);
+    if (!selectedAdminPatientId) return;
+    setAdminConsultationsLoading(true);
+    api.get(`/consultations?patient=${selectedAdminPatientId}&limit=20`)
+      .then(({ data }) => setAdminConsultations(data.consultations || []))
+      .catch(() => setAdminConsultations([]))
+      .finally(() => setAdminConsultationsLoading(false));
+  }, [selectedAdminPatientId]);
+
+  const genererResumeConsultation = async () => {
+    if (!selectedConsultationId) return;
+    try {
+      await dispatch(fetchConsultationSummary(selectedConsultationId)).unwrap();
+    } catch (err) {
+      toast.error(typeof err === 'string' ? err : "Erreur lors de la génération du résumé");
+    }
+  };
 
   // ── Chat ──────────────────────────────────────────────────
   // A-1 (audit Phases 2-9) — neutralisé, pas implémenté : ce chat n'a jamais
@@ -1377,15 +1407,87 @@ export default function IntelligenceArtificielle() {
                   </div>
                 )}
 
-                {/* Sous-phase 5.6 — boutons "Générer" purement décoratifs
-                    (aucun onClick, aucune génération réelle). Désactivé
-                    honnêtement plutôt que de laisser un bouton qui ne fait
-                    rien. */}
+                {/* Administratif — implémentation réelle partielle et
+                    assumée comme telle. Des 8 documents affichés en
+                    Sous-phase 5.6 (boutons "Générer" purement décoratifs),
+                    seul "Résumé de consultation" est réellement implémenté
+                    (donnée source réelle, risque clinique/légal limité —
+                    voir ai.controller.js::getConsultationSummary). Les 7
+                    autres (certificat médical, courrier de liaison, compte
+                    rendu opératoire...) engageraient la responsabilité du
+                    médecin sans sa rédaction réelle : listés honnêtement
+                    comme non implémentés plutôt que simulés ou laissés en
+                    boutons morts. */}
                 {section === "administratif" && (
-                  <div className="ia-card fu">
-                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>📋</div>
-                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucune donnée réelle n'est utilisée dans cette démonstration.</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
+                      <div className="ia-card fu">
+                        <div className="ia-card-hdr"><h3>🩺 Résumé de consultation</h3></div>
+                        <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+                          <select className="iinp" value={selectedAdminPatientId} onChange={e => setSelectedAdminPatientId(e.target.value)}>
+                            <option value="">— Choisir un patient —</option>
+                            {reduxPatientsList.map(p => (
+                              <option key={p._id} value={p._id}>{p.prenom} {p.nom} — {p.numero_dossier || p._id}</option>
+                            ))}
+                          </select>
+                          {selectedAdminPatientId && (
+                            <select className="iinp" value={selectedConsultationId} onChange={e => setSelectedConsultationId(e.target.value)} disabled={adminConsultationsLoading}>
+                              <option value="">{adminConsultationsLoading ? "Chargement…" : adminConsultations.length === 0 ? "— Aucune consultation pour ce patient —" : "— Choisir une consultation —"}</option>
+                              {adminConsultations.map(c => (
+                                <option key={c._id} value={c._id}>{fmtDate(c.date_consultation)} — {c.diagnostic || c.type_consultation || "sans diagnostic"}</option>
+                              ))}
+                            </select>
+                          )}
+                          <button className="ibtn ibtn-teal" disabled={!selectedConsultationId || consultationSummaryLoading} onClick={genererResumeConsultation}>
+                            {consultationSummaryLoading ? <><span className="spin" style={{ display:"inline-block" }}>{I.iaS}</span> Génération en cours...</> : <>{I.iaS} Générer le résumé</>}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="ia-card fu">
+                        <div className="ia-card-hdr"><h3>📋 Résumé généré</h3></div>
+                        <div style={{ padding:20 }}>
+                          {!consultationSummary && !consultationSummaryLoading && (
+                            <div style={{ textAlign:"center", padding:20, color:"var(--cm)", fontSize:13 }}>Sélectionnez une consultation puis générez le résumé.</div>
+                          )}
+                          {consultationSummaryLoading && (
+                            <div style={{ textAlign:"center", padding:30 }}>
+                              <div style={{ fontSize:32, animation:"iaPulse 1s infinite", marginBottom:10 }}>🩺</div>
+                              <div style={{ fontSize:13, color:"var(--cm)" }}>Génération en cours…</div>
+                            </div>
+                          )}
+                          {consultationSummary?.simulated && (
+                            <div className="al-warn">
+                              <div style={{ fontSize:12, color:"#92400E" }}>⚠ Génération indisponible (assistant IA non configuré sur le serveur) — aucun résumé fabriqué à la place.</div>
+                            </div>
+                          )}
+                          {consultationSummary?.synthese && (
+                            <div style={{ background:"#F0FDFC", border:"1.5px solid #99F6E4", borderRadius:12, padding:14 }}>
+                              <div style={{ fontSize:12, color:"var(--cn)", whiteSpace:"pre-line" }}>{consultationSummary.synthese}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="ia-card fu">
+                      <div className="ia-card-hdr"><h3>📄 Autres documents</h3></div>
+                      <div style={{ padding:20, display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:12 }}>
+                        {[
+                          { icon:"🏥", titre:"Rapport d'hospitalisation" },
+                          { icon:"🔪", titre:"Compte rendu opératoire" },
+                          { icon:"📄", titre:"Certificat médical" },
+                          { icon:"✉️", titre:"Courrier de liaison" },
+                          { icon:"📊", titre:"Rapport mensuel clinique" },
+                          { icon:"💰", titre:"Rapport financier IA" },
+                        ].map(doc => (
+                          <div key={doc.titre} className="ia-card" style={{ opacity:.6 }}>
+                            <div style={{ padding:16, display:"flex", flexDirection:"column", gap:6 }}>
+                              <div style={{ fontSize:24 }}>{doc.icon}</div>
+                              <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{doc.titre}</div>
+                              <Badge cls="gray">Non implémenté</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
