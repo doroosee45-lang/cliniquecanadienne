@@ -4,12 +4,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights, fetchRdvInsights, fetchConsultationSummary, fetchFinanceInsights, fetchKnowledgeBase,
+  fetchAIPredictions, fetchAIStats, runDiagnosis, checkDrugInteractions, fetchPatientSummary, fetchLabInsights, fetchImagingInsights, fetchRdvInsights, fetchConsultationSummary, fetchFinanceInsights, fetchKnowledgeBase, fetchDashboardHighlights,
   selectAIPredictions, selectAISuggestions, selectAIWarnings, selectAIStats, selectAILoading, selectAIAnalyzing,
   selectPatientSummary, selectPatientSummaryLoading, selectLabInsights, selectLabInsightsLoading,
   selectImagingInsights, selectImagingInsightsLoading, selectRdvInsights, selectRdvInsightsLoading,
   selectConsultationSummary, selectConsultationSummaryLoading, selectFinanceInsights, selectFinanceInsightsLoading,
   selectKnowledgeBase, selectKnowledgeBaseLoading,
+  selectDashboardHighlights, selectDashboardHighlightsLoading,
 } from '../store/slices/aiSlice';
 import { fetchPatients, selectPatients } from '../store/slices/patientsSlice';
 import api from '../api';
@@ -372,6 +373,8 @@ export default function IntelligenceArtificielle() {
   const financeInsightsLoading     = useSelector(selectFinanceInsightsLoading);
   const knowledgeBase              = useSelector(selectKnowledgeBase);
   const knowledgeBaseLoading       = useSelector(selectKnowledgeBaseLoading);
+  const dashboardHighlights        = useSelector(selectDashboardHighlights);
+  const dashboardHighlightsLoading = useSelector(selectDashboardHighlightsLoading);
 
   useEffect(() => {
     dispatch(fetchAIPredictions({}));
@@ -658,6 +661,15 @@ export default function IntelligenceArtificielle() {
     }
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // POST6-001 — Tableau de bord : "patients à risque" et "recommandations
+  // du jour" réels (cf. ai.controller.js::getDashboardHighlights), plus de
+  // données codées en dur. ──────────────────────────────────────
+  useEffect(() => {
+    if (tab === "dashboard" && !dashboardHighlights && !dashboardHighlightsLoading) {
+      dispatch(fetchDashboardHighlights());
+    }
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Administratif — Résumé de consultation (implémentation réelle,
   // seul des 8 documents d'origine réellement implémenté — voir
   // ai.controller.js::getConsultationSummary) ───────────────────
@@ -871,21 +883,24 @@ export default function IntelligenceArtificielle() {
                 </div>
               </div>
 
-              {/* Scores risque patients + recommandations */}
+              {/* Scores risque patients + recommandations — POST6-001 :
+                  données réelles (ai.controller.js::getDashboardHighlights),
+                  plus aucune valeur codée en dur. */}
               <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:20 }}>
                 <div className="ia-card fu">
-                  <div className="ia-card-hdr"><div><h3>👤 Scores de risque patients</h3><p>Calculés par l'IA aujourd'hui</p></div></div>
+                  <div className="ia-card-hdr"><div><h3>👤 Patients à surveiller</h3><p>Anomalies réelles détectées sur les constantes vitales des 7 derniers jours</p></div></div>
                   <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
-                    {[
-                      { nom:"André Mboula",  score:82, niveau:"critique", motif:"Cardiopathie + BPCO + âge > 70 ans" },
-                      { nom:"Paul Nguema",   score:68, niveau:"eleve",    motif:"Diabète + Insuffisance rénale" },
-                      { nom:"Jean Dupont",   score:45, niveau:"modere",   motif:"HTA + surpoids" },
-                      { nom:"Marie Paul",    score:22, niveau:"faible",   motif:"Aucun facteur de risque majeur" },
-                    ].map(p => {
+                    {dashboardHighlightsLoading && !dashboardHighlights?.patients_risque && (
+                      <div style={{ fontSize:12, color:"var(--cm)" }}>Analyse en cours…</div>
+                    )}
+                    {dashboardHighlights?.patients_risque?.length === 0 && (
+                      <div style={{ fontSize:12, color:"var(--cm)" }}>Aucun patient à risque élevé détecté actuellement — aucune anomalie sur les constantes vitales des consultations des 7 derniers jours.</div>
+                    )}
+                    {(dashboardHighlights?.patients_risque || []).map(p => {
                       const gc = GRAVITE_CFG[p.niveau] || { cls:"gray", label:"—" };
                       const col = GRAVITE_COLORS[p.niveau] || "#9CA3AF";
                       return (
-                        <div key={p.nom} style={{ display:"flex", alignItems:"center", gap:12, background:"#F8FAFD", borderRadius:12, padding:"10px 14px", border:"1.5px solid var(--cbr)" }}>
+                        <div key={p.patient_id} style={{ display:"flex", alignItems:"center", gap:12, background:"#F8FAFD", borderRadius:12, padding:"10px 14px", border:"1.5px solid var(--cbr)" }}>
                           <ScoreRing score={p.score} size={52} color={col} />
                           <div style={{ flex:1 }}>
                             <div style={{ fontWeight:700, fontSize:13, color:"var(--cn)" }}>{p.nom}</div>
@@ -898,24 +913,26 @@ export default function IntelligenceArtificielle() {
                   </div>
                 </div>
                 <div className="ia-card fu">
-                  <div className="ia-card-hdr"><h3>🤖 Recommandations IA du jour</h3></div>
+                  <div className="ia-card-hdr"><h3>🤖 Points d'attention du jour</h3></div>
                   <div style={{ padding:20, display:"flex", flexDirection:"column", gap:10 }}>
-                    {[
-                      { p:"🔴", t:"Urgence",        d:"Revoir André Mboula avant toute intervention — risque critique 82/100", col:"#DC2626" },
-                      { p:"🟠", t:"Labo",           d:"3 résultats biologiques anormaux en attente de validation médicale", col:"#D97706" },
-                      { p:"🟡", t:"Pharmacie",      d:"Stock Amoxicilline sous le seuil critique — commander avant 48h", col:"#CA8A04" },
-                      { p:"🟢", t:"Vaccination",    d:"2 patients ont un rappel vaccinal en retard cette semaine", col:"#059669" },
-                      { p:"🔵", t:"Optimisation",   d:"Répartir 4 RDV du Dr. Leblanc sur jeudi — prévision surcharge", col:"#1B4F9E" },
-                      { p:"🟣", t:"Finance",        d:"510 000 CFA de créances > 30 jours — relance automatique possible", col:"#7C3AED" },
-                    ].map(r => (
-                      <div key={r.t} style={{ display:"flex", alignItems:"flex-start", gap:10, background:"#F8FAFD", borderRadius:12, padding:"10px 14px", borderLeft:`3px solid ${r.col}` }}>
-                        <span style={{ fontSize:14, flexShrink:0 }}>{r.p}</span>
-                        <div>
-                          <div style={{ fontWeight:700, fontSize:12, color:"var(--cn)" }}>{r.t}</div>
-                          <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{r.d}</div>
+                    {dashboardHighlightsLoading && !dashboardHighlights?.recommandations && (
+                      <div style={{ fontSize:12, color:"var(--cm)" }}>Analyse en cours…</div>
+                    )}
+                    {dashboardHighlights?.recommandations?.length === 0 && (
+                      <div style={{ fontSize:12, color:"var(--cm)" }}>Aucun point d'attention détecté actuellement (aucun résultat biologique critique en attente, aucun stock sous le seuil, aucune créance de plus de 30 jours).</div>
+                    )}
+                    {(dashboardHighlights?.recommandations || []).map((r, i) => {
+                      const cfg = { critique:{p:"🔴",col:"#DC2626"}, eleve:{p:"🟠",col:"#D97706"}, modere:{p:"🟡",col:"#CA8A04"}, info:{p:"🔵",col:"#1B4F9E"} }[r.priorite] || { p:"⚪", col:"#9CA3AF" };
+                      return (
+                        <div key={`${r.module}-${i}`} style={{ display:"flex", alignItems:"flex-start", gap:10, background:"#F8FAFD", borderRadius:12, padding:"10px 14px", borderLeft:`3px solid ${cfg.col}` }}>
+                          <span style={{ fontSize:14, flexShrink:0 }}>{cfg.p}</span>
+                          <div>
+                            <div style={{ fontWeight:700, fontSize:12, color:"var(--cn)" }}>{r.module}</div>
+                            <div style={{ fontSize:11, color:"var(--cm)", marginTop:2 }}>{r.detail}</div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div style={{ background:"linear-gradient(135deg,#0B1E3B,#1B4F9E)", borderRadius:14, padding:14, color:"#fff", marginTop:4 }}>
                       <div style={{ fontSize:13, fontWeight:700, marginBottom:6 }}>🤖 Analyse complète du jour</div>
                       <div style={{ fontSize:11, color:"rgba(255,255,255,.7)", marginBottom:10 }}>Lancer une analyse approfondie de tous les modules actifs.</div>

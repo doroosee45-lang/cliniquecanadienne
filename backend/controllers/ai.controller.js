@@ -9,6 +9,7 @@ const Appointment   = require('../models/Appointment');
 const Invoice       = require('../models/Invoice');
 const Depense       = require('../models/Depense');
 const ExamCatalogue = require('../models/ExamCatalogue');
+const Medication    = require('../models/Medication');
 const { logAction } = require('../utils/helpers');
 const { detectInteractions, INTERACTIONS_DB } = require('../utils/drugInteractions');
 const { logger } = require('../utils/logger');
@@ -1031,6 +1032,113 @@ exports.getKnowledgeBase = async (req, res, next) => {
       : items;
 
     res.json({ success: true, items: filtres, total: filtres.length });
+  } catch (err) { next(err); }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// GET /api/ai/dashboard-highlights
+// POST6-001 (audit du 17 sept. 2026) — le tableau de bord affichait 4
+// "patients à risque" et 6 "recommandations du jour" entièrement codés en
+// dur (noms, scores et motifs inventés). Remplacé par un calcul réel :
+// - patients_risque : pour chaque patient ayant une consultation réelle
+//   dans les 7 derniers jours, on applique evaluateVitals() (fonction
+//   déjà réelle et sans plancher artificiel, utilisée par runDiagnosis)
+//   aux vraies constantes vitales enregistrées. Seuls les patients ayant
+//   au moins une alerte réelle apparaissent — jamais de valeur de
+//   remplissage pour un patient sans anomalie détectée.
+// - recommandations : dérivées de vraies requêtes déjà utilisées
+//   ailleurs (résultats labo critiques non acquittés, stock pharmacie
+//   sous le seuil, créances impayées > 30 jours — même source que
+//   getAlerts/getFinanceInsights, jamais une seconde donnée inventée).
+// ═══════════════════════════════════════════════════════════════
+exports.getDashboardHighlights = async (req, res, next) => {
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    const consultations = await Consultation.find({ date_consultation: { $gte: sevenDaysAgo } })
+      .populate('patient', 'prenom nom date_naissance sexe antecedents_medicaux')
+      .sort('-date_consultation')
+      .select('patient signes_vitaux date_consultation')
+      .lean();
+
+    const seen = new Set();
+    const scored = [];
+    for (const c of consultations) {
+      if (!c.patient) continue;
+      const pid = String(c.patient._id);
+      if (seen.has(pid)) continue; // on ne garde que la consultation la plus récente par patient
+      seen.add(pid);
+
+      const sv = c.signes_vitaux || {};
+      const vitals = {
+        temperature: sv.temperature,
+        frequence_cardiaque: sv.pouls,
+        pression_arterielle: (sv.tension_systolique && sv.tension_diastolique)
+          ? `${sv.tension_systolique}/${sv.tension_diastolique}` : undefined,
+        glycemie: sv.glycemie,
+      };
+      const alerts = evaluateVitals(vitals);
+      if (alerts.length === 0) continue; // aucune anomalie réelle détectée : ce patient n'apparaît pas
+
+      let score = 0;
+      for (const a of alerts) {
+        if (a.niveau === 'critique') score += 40;
+        else if (a.niveau === 'alerte') score += 20;
+        else score += 5;
+      }
+      score = Math.min(score, 99);
+      const niveau = alerts.some(a => a.niveau === 'critique') ? 'critique'
+        : score >= 40 ? 'eleve'
+        : score >= 15 ? 'modere' : 'faible';
+
+      scored.push({
+        patient_id: pid,
+        nom: `${c.patient.prenom || ''} ${c.patient.nom || ''}`.trim() || 'Patient',
+        score,
+        niveau,
+        motif: alerts.map(a => a.message).join(' + '),
+      });
+    }
+    const patients_risque = scored.sort((a, b) => b.score - a.score).slice(0, 4);
+
+    const since30j = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    const [labCritiques, stockBas, impayeesAgg] = await Promise.all([
+      LabResult.countDocuments({ est_critique: true, acquitte_par: null }),
+      Medication.countDocuments({ $expr: { $lt: ['$stock_actuel', '$stock_minimum'] }, statut: { $ne: 'suspendu' } }),
+      Invoice.aggregate([
+        { $match: { statut: { $in: ['emise', 'partiellement_payee'] }, date_facture: { $lt: since30j } } },
+        { $group: { _id: null, total: { $sum: '$montant_restant' }, count: { $sum: 1 } } },
+      ]),
+    ]);
+    const impayees = impayeesAgg[0] || { total: 0, count: 0 };
+
+    const recommandations = [];
+    const pireRisque = patients_risque[0];
+    if (pireRisque && pireRisque.niveau === 'critique') {
+      recommandations.push({
+        priorite: 'critique', module: 'Urgence',
+        detail: `Revoir ${pireRisque.nom} avant toute intervention — ${pireRisque.motif} (score ${pireRisque.score}/100)`,
+      });
+    }
+    if (labCritiques > 0) {
+      recommandations.push({
+        priorite: 'eleve', module: 'Laboratoire',
+        detail: `${labCritiques} résultat(s) biologique(s) critique(s) en attente de validation médicale`,
+      });
+    }
+    if (stockBas > 0) {
+      recommandations.push({
+        priorite: 'modere', module: 'Pharmacie',
+        detail: `${stockBas} médicament(s) sous le seuil de stock minimum`,
+      });
+    }
+    if (impayees.total > 0) {
+      recommandations.push({
+        priorite: 'info', module: 'Finance',
+        detail: `${impayees.total.toLocaleString('fr-FR')} CFA de créances de plus de 30 jours (${impayees.count} facture(s))`,
+      });
+    }
+
+    res.json({ success: true, patients_risque, recommandations });
   } catch (err) { next(err); }
 };
 

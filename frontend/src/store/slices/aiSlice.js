@@ -124,6 +124,18 @@ export const fetchFinanceInsights = createAsyncThunk(
   }
 );
 
+export const fetchDashboardHighlights = createAsyncThunk(
+  'ai/fetchDashboardHighlights',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get('/ai/dashboard-highlights');
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Erreur chargement des points clés du tableau de bord');
+    }
+  }
+);
+
 export const fetchKnowledgeBase = createAsyncThunk(
   'ai/fetchKnowledgeBase',
   async (q, { rejectWithValue }) => {
@@ -189,6 +201,9 @@ const aiSlice = createSlice({
     knowledgeBase: null,
     knowledgeBaseLoading: false,
     knowledgeBaseError: null,
+    dashboardHighlights: null,
+    dashboardHighlightsLoading: false,
+    dashboardHighlightsError: null,
   },
   reducers: {
     setSuggestions(state, action) { state.suggestions = action.payload; },
@@ -292,6 +307,15 @@ const aiSlice = createSlice({
       .addCase(fetchKnowledgeBase.rejected, (state, action) => {
         state.knowledgeBaseLoading = false;
         state.knowledgeBaseError = action.payload;
+      })
+      .addCase(fetchDashboardHighlights.pending, (state) => { state.dashboardHighlightsLoading = true; state.dashboardHighlightsError = null; })
+      .addCase(fetchDashboardHighlights.fulfilled, (state, action) => {
+        state.dashboardHighlightsLoading = false;
+        state.dashboardHighlights = action.payload;
+      })
+      .addCase(fetchDashboardHighlights.rejected, (state, action) => {
+        state.dashboardHighlightsLoading = false;
+        state.dashboardHighlightsError = action.payload;
       });
   },
 });
@@ -327,5 +351,8 @@ export const selectFinanceInsightsError = (state) => state.ai.financeInsightsErr
 export const selectKnowledgeBase = (state) => state.ai.knowledgeBase;
 export const selectKnowledgeBaseLoading = (state) => state.ai.knowledgeBaseLoading;
 export const selectKnowledgeBaseError = (state) => state.ai.knowledgeBaseError;
+export const selectDashboardHighlights = (state) => state.ai.dashboardHighlights;
+export const selectDashboardHighlightsLoading = (state) => state.ai.dashboardHighlightsLoading;
+export const selectDashboardHighlightsError = (state) => state.ai.dashboardHighlightsError;
 
 export default aiSlice.reducer;
