@@ -26,6 +26,25 @@ const withFreshMedPhotoUrl = (med) => {
   return plain;
 };
 
+// Audit du 17 sept. 2026 — validation stricte partagée par createVente et
+// dispenser : une ligne de vente ou d'ordonnance ne représente jamais une
+// quantité nulle, négative ou non numérique. `Math.abs(item.quantite || 0)`
+// suivi d'un `if (quantite === 0) continue` laissait passer NaN
+// (Math.abs(NaN || 0) === NaN, et NaN === 0 est faux) jusqu'à un $inc Mongo
+// — corruption définitive et silencieuse de Medication.stock_actuel en NaN.
+// Lève une erreur explicite plutôt que d'ignorer silencieusement, même
+// règle que PHARM-001 (mouvement) et PHARM-002 (receptionCommande),
+// factorisée ici pour éviter une 3e copie du bug.
+function validerQuantiteLigne(valeur, libelle) {
+  const q = Number(valeur);
+  if (!Number.isFinite(q) || q <= 0) {
+    const err = new Error(`Quantité invalide pour ${libelle} : doit être un nombre strictement positif.`);
+    err.statusCode = 400;
+    throw err;
+  }
+  return q;
+}
+
 exports.getAll = async (req, res, next) => {
   try {
     const { page = 1, limit = 30, q, statut, alerte, categorie } = req.query;
@@ -165,11 +184,25 @@ exports.createVente = async (req, res, next) => {
     // médicament à n'importe quel prix. Le prix réel est désormais RELU
     // depuis le document Medication retourné par le même findOneAndUpdate
     // atomique — jamais depuis item.prix_unitaire.
+    // Validées intégralement AVANT toute écriture (même principe que
+    // PHARM-002/receptionCommande) : la boucle de décrément ci-dessous a son
+    // propre mécanisme de rollback (recrédit) pour un échec de STOCK
+    // survenant en cours de route, mais pas pour une quantité invalide — la
+    // valider ici, avant le premier $inc, évite de laisser des articles déjà
+    // décrémentés dans cette même vente sans recrédit si un article plus
+    // loin dans la liste s'avère invalide.
+    for (const item of items) {
+      try {
+        validerQuantiteLigne(item.quantite, `l'article ${item.medicament_id}`);
+      } catch (e) {
+        return res.status(e.statusCode || 400).json({ success: false, message: e.message });
+      }
+    }
+
     const decrementes = [];
     let echec = null;
     for (const item of items) {
-      const quantite = Math.abs(item.quantite || 0);
-      if (quantite === 0) continue;
+      const quantite = validerQuantiteLigne(item.quantite, `l'article ${item.medicament_id}`);
       const med = await Medication.findOneAndUpdate(
         { _id: item.medicament_id, stock_actuel: { $gte: quantite } },
         { $inc: { stock_actuel: -quantite } },
@@ -226,10 +259,17 @@ exports.createVente = async (req, res, next) => {
     // assurance) qui ne correspondent pas tous à l'enum de
     // Invoice.paiements[].mode (especes/carte/mobile_money/virement/cheque)
     // — mappés ici plutôt que de laisser Invoice.create() échouer en
-    // ValidationError sur une vente par ailleurs valide. Une valeur non
-    // reconnue (ex. "assurance", qui n'est pas un mode de règlement direct
-    // dans ce schéma) est simplement omise, jamais une valeur inventée.
+    // ValidationError sur une vente par ailleurs valide.
     const PAIEMENT_MODE_MAP = { especes: 'especes', mobile_money: 'mobile_money', carte_bancaire: 'carte', carte: 'carte', virement: 'virement', cheque: 'cheque' };
+    // Audit du 17 sept. 2026 — "assurance" n'était pas dans PAIEMENT_MODE_MAP
+    // (ce n'est pas un mode de règlement direct au comptoir) : la facture
+    // était quand même marquée payee/montant_paye:total, comme un paiement
+    // cash reçu, alors qu'une vente assurance reste à recouvrer auprès de
+    // l'assureur — montant_assurance (champ dédié du schéma Invoice) restait
+    // à 0 et le mode réel de règlement était perdu. Routée désormais dans
+    // montant_assurance, jamais dans paiements[] (réservé aux règlements
+    // directs réels), statut 'emise' (facture réellement à recouvrer).
+    const estAssurance = mode_paiement === 'assurance';
     let factureGeneree = null;
     if (total > 0) {
       factureGeneree = await Invoice.create({
@@ -238,10 +278,11 @@ exports.createVente = async (req, res, next) => {
         lignes: decrementes.map(d => ({ libelle: d.nom, categorie: 'pharmacie', prix_unitaire: d.prix_unitaire, quantite: d.quantite, montant: d.montant })),
         montant_ht: total,
         montant_ttc: total,
-        montant_paye: total,
-        montant_restant: 0,
-        statut: 'payee',
-        paiements: [{ montant: total, mode: PAIEMENT_MODE_MAP[mode_paiement], reference: numero, enregistre_par: req.user._id }],
+        montant_assurance: estAssurance ? total : 0,
+        montant_paye: estAssurance ? 0 : total,
+        montant_restant: estAssurance ? total : 0,
+        statut: estAssurance ? 'emise' : 'payee',
+        paiements: estAssurance ? [] : [{ montant: total, mode: PAIEMENT_MODE_MAP[mode_paiement], reference: numero, enregistre_par: req.user._id }],
         notes: `Vente comptoir ${numero}`,
         created_by: req.user._id,
       });
@@ -323,18 +364,39 @@ exports.receptionCommande = async (req, res, next) => {
         return res.status(400).json({ success: false, message: 'Quantité reçue invalide : doit être un nombre strictement positif.' });
       }
     }
+    // Audit du 17 sept. 2026 — le $inc atomique sur Medication.stock_actuel
+    // ci-dessous s'exécutait AVANT que la protection de concurrence sur
+    // Commande (lecture en mémoire → commande.save(), séquence non atomique)
+    // ne s'applique : un double-clic ou un retry réseau sur "Confirmer
+    // réception" pouvait incrémenter le stock deux fois pour la même
+    // livraison physique, sans erreur visible. Chaque ligne est désormais
+    // recréditée via un findOneAndUpdate CONDITIONNEL sur Commande, filtré
+    // sur la valeur de quantite_recue lue au début de cette requête : si une
+    // autre requête a déjà traité cette ligne entre-temps, le filtre ne
+    // matche plus, cette itération est ignorée (course détectée), et le
+    // $inc sur Medication n'est jamais exécuté une seconde fois pour la même
+    // livraison.
     for (const r of (receptions || [])) {
-      const ligne = commande.lignes[r.index];
-      if (!ligne) continue;
+      const ligneAvant = commande.lignes[r.index];
+      if (!ligneAvant) continue;
       const quantiteRecue = Number(r.quantite_recue);
-      const recues = Math.min(ligne.quantite, (ligne.quantite_recue || 0) + quantiteRecue);
-      ligne.quantite_recue = recues;
-      if (ligne.medicament) {
+      const dejaRecue = ligneAvant.quantite_recue || 0;
+      const quantiteAppliquee = Math.min(quantiteRecue, ligneAvant.quantite - dejaRecue);
+      if (quantiteAppliquee <= 0) continue; // ligne déjà entièrement reçue — pas de 2e incrément
+
+      const commandeMaj = await Commande.findOneAndUpdate(
+        { _id: commande._id, [`lignes.${r.index}.quantite_recue`]: dejaRecue },
+        { $inc: { [`lignes.${r.index}.quantite_recue`]: quantiteAppliquee } },
+        { new: true }
+      );
+      if (!commandeMaj) continue; // course détectée : ligne déjà traitée ailleurs
+
+      if (ligneAvant.medicament) {
         const med = await Medication.findOneAndUpdate(
-          { _id: ligne.medicament },
+          { _id: ligneAvant.medicament },
           {
-            $inc: { stock_actuel: quantiteRecue },
-            $push: { mouvements: { type: 'entree', quantite: quantiteRecue, reference: commande.numero, notes: `Réception commande ${commande.numero}`, utilisateur: req.user._id } },
+            $inc: { stock_actuel: quantiteAppliquee },
+            $push: { mouvements: { type: 'entree', quantite: quantiteAppliquee, reference: commande.numero, notes: `Réception commande ${commande.numero}`, utilisateur: req.user._id } },
           },
           { new: true, runValidators: true }
         );
@@ -344,15 +406,18 @@ exports.receptionCommande = async (req, res, next) => {
       }
     }
 
-    const totalRecu = commande.lignes.every(l => l.quantite_recue >= l.quantite);
-    const auMoinsUnRecu = commande.lignes.some(l => l.quantite_recue > 0);
-    commande.statut = totalRecu ? 'recu' : (auMoinsUnRecu ? 'recu_partiel' : commande.statut);
-    if (totalRecu) commande.date_reception = new Date();
+    // Recharger la commande à jour — les $inc ci-dessus ont modifié la base
+    // directement, le document `commande` en mémoire est maintenant périmé.
+    const commandeFinale = await Commande.findById(commande._id);
+    const totalRecu = commandeFinale.lignes.every(l => l.quantite_recue >= l.quantite);
+    const auMoinsUnRecu = commandeFinale.lignes.some(l => l.quantite_recue > 0);
+    commandeFinale.statut = totalRecu ? 'recu' : (auMoinsUnRecu ? 'recu_partiel' : commandeFinale.statut);
+    if (totalRecu) commandeFinale.date_reception = new Date();
 
-    await commande.save();
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: commande._id, ip: req.ip, message: `Réception ${commande.statut === 'recu' ? 'complète' : 'partielle'} — ${commande.numero}`, avant, apres: commande });
+    await commandeFinale.save();
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'pharmacy', entite_id: commandeFinale._id, ip: req.ip, message: `Réception ${commandeFinale.statut === 'recu' ? 'complète' : 'partielle'} — ${commandeFinale.numero}`, avant, apres: commandeFinale });
     emitDashboardUpdate();
-    res.json({ success: true, commande });
+    res.json({ success: true, commande: commandeFinale });
   } catch (err) { next(err); }
 };
 
@@ -538,12 +603,23 @@ exports.dispenser = async (req, res, next) => {
     // lignes déjà décrémentées dans cette même requête sont recréditées
     // (mouvement de type 'retour', jamais de suppression de l'historique)
     // avant de renvoyer l'erreur — aucune écriture partielle ne subsiste.
+    // Validées intégralement AVANT toute écriture (même principe que
+    // PHARM-002/receptionCommande et que createVente ci-dessus) : évite de
+    // laisser des lignes déjà décrémentées dans cette même dispensation sans
+    // recrédit si une ligne plus loin dans la liste s'avère invalide.
+    for (const ligne of lignesAvecStock) {
+      try {
+        validerQuantiteLigne(ligne.quantite, `la ligne ${ligne.medicament_nom || ligne.medicament}`);
+      } catch (e) {
+        return res.status(e.statusCode || 400).json({ success: false, message: e.message });
+      }
+    }
+
     const decrementees = [];
     let echec = null;
     for (const ligne of lignesAvecStock) {
       const medId = ligne.medicament.toString();
-      const quantite = Math.abs(ligne.quantite || 0);
-      if (quantite === 0) continue;
+      const quantite = validerQuantiteLigne(ligne.quantite, `la ligne ${ligne.medicament_nom || ligne.medicament}`);
       const med = await Medication.findOneAndUpdate(
         { _id: medId, stock_actuel: { $gte: quantite } },
         {
