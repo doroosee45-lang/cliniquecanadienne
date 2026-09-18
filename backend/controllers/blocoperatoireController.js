@@ -400,22 +400,38 @@ exports.saveCR = async (req, res, next) => {
 };
 
 // ── POST /:id/reveil — Sauvegarder les données de réveil ──────────────────────
+// AUDIT-20-3 (18 sept. 2026) — nb_complications était lu puis réécrit
+// séparément (+=, dossier.save()) — exactement le même bug déjà trouvé et
+// corrigé une fois dans chirurgieController.js::addComplication (SPEC-04),
+// réapparu ici via un point d'entrée différent sur le même modèle : deux
+// appels saveReveil concurrents sur le même dossier pouvaient tous deux lire
+// le même nb_complications de départ, perdant un incrément. $inc atomique,
+// dans la MÊME opération que evolution_immediate (jamais une lecture
+// séparée) — puis relecture du document réellement mis à jour
+// (dossierFinal, via { new: true }) pour que la réponse et le logAction
+// reflètent la vraie valeur post-incrément, jamais l'objet en mémoire
+// périmé d'avant l'écriture atomique.
 exports.saveReveil = async (req, res, next) => {
   try {
-    const dossier = await DossierChirurgical.findById(req.params.id);
-    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
-    const avant = dossier.toObject();
+    const avant = await DossierChirurgical.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
 
     const { etat_patient, observations, complications, temperature, tension_sys, tension_dia, pouls } = req.body;
     const reveilNote = `Réveil: état=${etat_patient||'stable'}, T°=${temperature||'—'}, TA=${tension_sys||'—'}/${tension_dia||'—'}, Pouls=${pouls||'—'}. ${observations||''}`;
-    dossier.evolution_immediate = reveilNote;
-    if (complications && complications.length > 0) {
-      dossier.nb_complications += complications.length;
-    }
-    await dossier.save();
-    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire', entite_id: dossier._id, ip: req.ip, message: `Réveil enregistré — ${dossier.patient_nom}`, avant, apres: dossier });
+    const nbNouvellesComplications = Array.isArray(complications) ? complications.length : 0;
 
-    res.json({ success: true, intervention: dossier });
+    const dossierFinal = await DossierChirurgical.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: { evolution_immediate: reveilNote },
+        $inc: { nb_complications: nbNouvellesComplications },
+      },
+      { new: true }
+    );
+
+    await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire', entite_id: dossierFinal._id, ip: req.ip, message: `Réveil enregistré — ${dossierFinal.patient_nom}`, avant, apres: dossierFinal });
+
+    res.json({ success: true, intervention: dossierFinal });
   } catch (err) { next(err); }
 };
 

@@ -360,9 +360,17 @@ exports.getServices = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-20-4 (18 sept. 2026) — Model.create(req.body) sans liste blanche,
+// contrairement à updateService/updateInsurance ci-dessous (ADM-01), qui en
+// ont déjà une (SERVICE_UPDATE_ALLOWED_FIELDS/INSURANCE_UPDATE_ALLOWED_
+// FIELDS, réutilisées ici telles quelles — aucun champ n'est create-only ou
+// update-only sur ces deux modèles). Ni Service ni Insurance ne portent de
+// champ système sensible (pas de mot de passe, pas de compteur interne, pas
+// de rôle) — priorité basse, appliqué pour la cohérence de convention avec
+// le reste du fichier plutôt que pour combler une faille réelle.
 exports.createService = async (req, res, next) => {
   try {
-    const service = await Service.create(req.body);
+    const service = await Service.create(pickAllowedFields(req.body, SERVICE_UPDATE_ALLOWED_FIELDS));
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'settings', entite_id: service._id, ip: req.ip, message: `Nouveau service : ${service.nom}` });
     res.status(201).json({ success: true, service });
   } catch (err) { next(err); }
@@ -576,9 +584,10 @@ exports.getInsurances = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-20-4 — même correctif que createService ci-dessus.
 exports.createInsurance = async (req, res, next) => {
   try {
-    const insurance = await Insurance.create(req.body);
+    const insurance = await Insurance.create(pickAllowedFields(req.body, INSURANCE_UPDATE_ALLOWED_FIELDS));
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'settings', entite_id: insurance._id, ip: req.ip, message: `Nouvelle assurance : ${insurance.nom}` });
     res.status(201).json({ success: true, insurance });
   } catch (err) { next(err); }

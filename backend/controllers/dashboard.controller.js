@@ -180,7 +180,12 @@ exports.superAdminStats = async (req, res, next) => {
       ImagingResult.countDocuments({ statut:{ $in:['rapporte','valide'] }, date_prescription:{ $gte:start,$lte:end } }),
       Medication.countDocuments({ $expr:{ $and:[{ $gt:['$stock_actuel',0] },{ $lte:['$stock_actuel','$seuil_alerte'] }]}}),
       Medication.countDocuments({ stock_actuel:{ $lte:0 }}),
-      Medication.find({ $or:[{ stock_actuel:{ $lte:0 }},{ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }}]}).limit(3),
+      // AUDIT-20-1 (même classe de bug que AUDIT-19-3) — limit() sans sort()
+      // restreignait à un sous-ensemble arbitraire avant même de classer par
+      // urgence : un médicament réellement en rupture pouvait ne jamais
+      // apparaître si exclu de ce sous-ensemble non déterministe. Trié par
+      // stock_actuel croissant — le plus proche de la rupture en premier.
+      Medication.find({ $or:[{ stock_actuel:{ $lte:0 }},{ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }}]}).sort({ stock_actuel:1 }).limit(3),
       Invoice.find({ statut:{ $in:['emise','partiellement_payee'] } }).sort({ montant_restant:-1 }).limit(1),
       Patient.aggregate([
         { $match:{ createdAt:{ $gte:last7days() }}},
@@ -361,8 +366,11 @@ exports.adminCliniqueStats = async (req, res, next) => {
       User.countDocuments({ role:{ $in:['adminclinique','receptionniste','comptable'] }, statut:'actif' }),
       Staff.countDocuments({ statut:'absent' }),
       Staff.countDocuments({ statut:'conge' }),
-      LabResult.find({ est_critique:true, acquitte_par:null }).populate('patient','nom prenom').limit(5),
-      Medication.find({ $or:[{ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }},{ date_peremption:{ $lte: new Date() }}]}).limit(3),
+      // AUDIT-20-1 — même classe de bug qu'au-dessus : trié par createdAt
+      // décroissant, cohérent avec le tri déjà correct du même modèle plus
+      // bas dans ce fichier (analyses_urgentes).
+      LabResult.find({ est_critique:true, acquitte_par:null }).populate('patient','nom prenom').sort({ createdAt:-1 }).limit(5),
+      Medication.find({ $or:[{ $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }},{ date_peremption:{ $lte: new Date() }}]}).sort({ stock_actuel:1 }).limit(3),
       // RDV du jour avec détails
       Appointment.find({ date_heure:{ $gte:start,$lte:end }})
         .populate('patient','nom prenom')
@@ -480,12 +488,17 @@ exports.medecinStats = async (req, res, next) => {
         .populate('patient','nom prenom')
         .sort({ date_consultation:1 }).limit(10),
       // Patients hospitalisés
+      // AUDIT-20-1 — trié par date_entree décroissante (admission la plus
+      // récente en premier), cohérent avec l'index composé déjà construit
+      // pour ce même filtre (models/Hospitalization.js : { statut:1,
+      // date_entree:-1 }).
       Hospitalization.find({ medecin_responsable:medecinId, statut:'en_cours' })
         .populate('patient','nom prenom')
+        .sort({ date_entree:-1 })
         .limit(5),
       // Alertes labo critiques pour mes patients
       LabResult.find({ est_critique:true, acquitte_par:null, medecin_prescripteur:medecinId })
-        .populate('patient','nom prenom').limit(5),
+        .populate('patient','nom prenom').sort({ createdAt:-1 }).limit(5),
       // Stats IA (suggestions générées automatiquement à la consultation)
       // AUDIT-DASHBOARD — taux_precision était fixé en dur à 94 quel que soit
       // le contenu réel : ia_suggestions ne stocke qu'un diagnostic +
@@ -579,8 +592,11 @@ exports.sageFemmeStats = async (req, res, next) => {
         { $match: { 'cpns.date': { $gte: start, $lte: end } } },
         { $project: { patient_nom: 1, patient_prenom: 1, 'cpns.date': 1, 'cpns.terme': 1 } },
       ]).catch(() => []),
+      // AUDIT-20-1 — trié par dpa croissante (date prévue d'accouchement la
+      // plus proche en premier) — la plus urgente cliniquement pour une
+      // liste de grossesses à haut risque.
       Pregnancy.find({ ...filtreSF, statut: { $ne: 'cloturee' }, niveau_risque: 'eleve' })
-        .select('patient_nom patient_prenom terme dpa niveau_risque').limit(5).lean(),
+        .select('patient_nom patient_prenom terme dpa niveau_risque').sort({ dpa:1 }).limit(5).lean(),
     ]);
 
     const cpn_auj = cpn_auj_result.map(p => ({
@@ -630,9 +646,11 @@ exports.infirmierStats = async (req, res, next) => {
     // infirmière ne surveille que ses patients du moment, pas tous les
     // résultats critiques du système (portée volontairement plus étroite
     // que laborantinStats, qui les voit tous).
+    // AUDIT-20-1 — trié par createdAt décroissant, même convention que les
+    // autres requêtes LabResult critiques de ce fichier.
     const alertes_raw = patientIds.length
       ? await LabResult.find({ patient:{ $in: patientIds }, est_critique:true, acquitte_par:null })
-          .populate('patient','nom prenom').populate('examen','nom').limit(10)
+          .populate('patient','nom prenom').populate('examen','nom').sort({ createdAt:-1 }).limit(10)
       : [];
 
     const alertes = alertes_raw.map(a => ({
@@ -680,8 +698,11 @@ exports.laborantinStats = async (req, res, next) => {
       LabResult.find({ est_critique:true })
         .populate('patient','nom prenom').populate('examen','nom')
         .sort({ createdAt:-1 }).limit(10),
+      // AUDIT-20-1 — même correctif que la requête juste au-dessus
+      // (analyses_urgentes_raw, déjà correctement triée) : même modèle,
+      // même convention (createdAt décroissant).
       LabResult.find({ est_critique:true, acquitte_par:null })
-        .populate('patient','nom prenom').populate('examen','nom').limit(5),
+        .populate('patient','nom prenom').populate('examen','nom').sort({ createdAt:-1 }).limit(5),
     ]);
 
     const analyses_urgentes = analyses_urgentes_raw.map(a => ({
@@ -732,11 +753,14 @@ exports.pharmacienStats = async (req, res, next) => {
       // Les ventes comptoir (pharmacy.controller.js::createVente) ne sont
       // pas encore persistées en base — 0 explicite.
       Promise.resolve([]),
+      // AUDIT-20-1 — même correctif que les autres requêtes Medication de
+      // ce fichier : trié par stock_actuel croissant (le plus proche de la
+      // rupture en premier).
       Medication.find({ $or:[
         { stock_actuel:{ $lte:0 }},
         { date_peremption:{ $lte:new Date() }},
         { $expr:{ $lte:['$stock_actuel','$seuil_alerte'] }},
-      ]}).limit(6),
+      ]}).sort({ stock_actuel:1 }).limit(6),
       // Top médicaments dispensés (7 jours)
       Ordonnance.aggregate([
         { $match:{ statut:'dispensee', date_dispensation:{ $gte:last7days() }}},
