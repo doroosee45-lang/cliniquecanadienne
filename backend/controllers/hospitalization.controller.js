@@ -322,7 +322,18 @@ exports.create = async (req, res, next) => {
 // d'édition (dossier, adresse, changement de chambre, sortie) ne le
 // réassigne. runValidators activé (désactivé jusqu'ici sans raison
 // documentée) pour que statut/etat_patient respectent leurs enums.
-const HOSP_BLOCKED_FIELDS = ['patient'];
+// AUDIT-18-1 (audit manuel complet du module, 18 sept. 2026) — statut
+// n'était pas bloqué : update() (PUT /:id) acceptait librement n'importe
+// quelle valeur de l'enum, y compris les valeurs terminales (sorti,
+// transfere, decede), contournant entièrement discharge() (seule route
+// PUT /:id/discharge) et toute sa logique métier réelle — libération
+// atomique du lit, calcul réel de cout_total, génération réelle
+// d'Invoice, notification patient, garde anti-double-transition. Un appel
+// direct (ou le <select> de statut de la section "Admission" du dossier,
+// Hospitalization.jsx, désormais retiré) pouvait donc "clôturer" un
+// séjour sans qu'aucun de ces effets réels ne se produise jamais.
+// discharge() reste l'unique chemin légitime de transition de statut.
+const HOSP_BLOCKED_FIELDS = ['patient', 'statut'];
 
 exports.update = async (req, res, next) => {
   try {

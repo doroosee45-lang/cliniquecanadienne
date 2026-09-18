@@ -202,23 +202,35 @@ const nbJours = (d1, d2) => {
   return Math.max(1, Math.ceil((fin - new Date(d1)) / (1000 * 3600 * 24)));
 };
 
+// AUDIT-18-2 (audit manuel complet du module, 18 sept. 2026) — l'enum réel
+// Hospitalization.statut (backend/models/Hospitalization.js) est
+// ['en_cours','sorti','transfere','decede'] ; ce fichier utilisait
+// jusqu'ici attente/hospitalise/observation, des valeurs qui n'existent
+// JAMAIS en base — un séjour réel (statut:'en_cours') n'avait donc aucune
+// entrée dans STATUT_HOSP (badge gris avec le texte brut), les KPIs
+// dérivés de ces valeurs restaient figés à 0, et sélectionner l'une
+// d'elles dans un <select> puis sauvegarder provoquait un rejet
+// runValidators (enum invalide) côté serveur. Réécrit pour n'utiliser que
+// les 4 valeurs réelles — source unique : le schéma Mongoose, jamais
+// modifié ici. Aucune distinction "en attente de lit" / "en cours avec
+// lit attribué" n'est réintroduite : ce n'est pas une valeur réelle de
+// l'enum aujourd'hui — évolution de schéma potentielle à traiter
+// séparément si un vrai besoin métier l'exige.
 // ─── Calcul des KPIs depuis la liste locale ───────────────────
 const computeKpis = (list, taux_occ = 0) => ({
-  total:       list.length,
-  hospitalises: list.filter(x => x.statut === "hospitalise").length,
-  observation:  list.filter(x => x.statut === "observation").length,
-  attente:      list.filter(x => x.statut === "attente").length,
-  sortis:       list.filter(x => x.statut === "sorti").length,
-  transferes:   list.filter(x => x.statut === "transfere").length,
+  total:      list.length,
+  en_cours:   list.filter(x => x.statut === "en_cours").length,
+  sortis:     list.filter(x => x.statut === "sorti").length,
+  transferes: list.filter(x => x.statut === "transfere").length,
+  deces:      list.filter(x => x.statut === "decede").length,
   taux_occ,
 });
 
 const STATUT_HOSP = {
-  attente:       { cls:"orange", label:"En attente", icon:"⏳" },
-  hospitalise:   { cls:"teal",   label:"Hospitalisé", icon:"🛏" },
-  observation:   { cls:"blue",   label:"En observation", icon:"🔍" },
-  sorti:         { cls:"green",  label:"Sorti", icon:"✅" },
-  transfere:     { cls:"purple", label:"Transféré", icon:"🚑" },
+  en_cours:  { cls:"teal",   label:"En cours",  icon:"🛏" },
+  sorti:     { cls:"green",  label:"Sorti",     icon:"✅" },
+  transfere: { cls:"purple", label:"Transféré", icon:"🚑" },
+  decede:    { cls:"red",    label:"Décédé",    icon:"💔" },
 };
 
 const ETAT_SORTIE = {
@@ -447,7 +459,7 @@ export default function Hospitalisation() {
   const [patients, setPatients] = useState([]);
 
   // KPIs dérivés automatiquement de hosps
-  const [kpis, setKpis] = useState({ total:0, hospitalises:0, observation:0, attente:0, sortis:0, transferes:0, taux_occ:0 });
+  const [kpis, setKpis] = useState({ total:0, en_cours:0, sortis:0, transferes:0, deces:0, taux_occ:0 });
 
   // Sub-data dossier
   const [constantes, setConstantes]       = useState([]);
@@ -661,13 +673,13 @@ export default function Hospitalisation() {
       setHosps(prev => [newHosp, ...prev]);
       setTotal(prev => prev + 1);
 
-      // 3. Mettre à jour les KPIs en temps réel
+      // 3. Mettre à jour les KPIs en temps réel — une nouvelle admission
+      // naît toujours en statut:'en_cours' (défaut réel du schéma
+      // Hospitalization, jamais attente/hospitalise/observation).
       setKpis(prev => ({
         ...prev,
         total: prev.total + 1,
-        attente: newHosp.statut === "attente" ? prev.attente + 1 : prev.attente,
-        hospitalises: newHosp.statut === "hospitalise" ? prev.hospitalises + 1 : prev.hospitalises,
-        observation: newHosp.statut === "observation" ? prev.observation + 1 : prev.observation,
+        en_cours: newHosp.statut === "en_cours" ? prev.en_cours + 1 : prev.en_cours,
       }));
 
       // 4. Notification succès
@@ -883,8 +895,10 @@ export default function Hospitalisation() {
   };
 
   // ── Compteurs dérivés ─────────────────────────────────────
-  const enCoursCount = kpis.hospitalises + kpis.observation;
-  const attenteCount = kpis.attente;
+  // AUDIT-18-2 — attenteCount (dérivé de kpis.attente, une valeur qui
+  // n'existe jamais réellement en base) retiré avec le reste de l'enum
+  // fictif ci-dessus, jamais remplacé par une autre valeur inventée.
+  const enCoursCount = kpis.en_cours;
   const today = new Date().toLocaleDateString("fr-FR");
 
   // ═══════════════════════════════════════════════════════════
@@ -900,8 +914,7 @@ export default function Hospitalisation() {
           dateLabel={
             <>
               {kpis.total} dossiers · {today}
-              {enCoursCount > 0 && <> · <span style={{ color:"#A2D9CE", fontWeight:600 }}>{enCoursCount} hospitalisés</span></>}
-              {attenteCount > 0 && <> · <span style={{ color:"#FAD7A0", fontWeight:600 }}>{attenteCount} en attente</span></>}
+              {enCoursCount > 0 && <> · <span style={{ color:"#A2D9CE", fontWeight:600 }}>{enCoursCount} en cours</span></>}
             </>
           }
           right={
@@ -945,7 +958,6 @@ export default function Hospitalisation() {
                   >
                     <span style={isMobile ? { fontSize:'14px' } : {}}>{t.icon}</span>
                     <span style={isMobile ? { lineHeight:1.2 } : {}}>{isMobile ? t.labelM : t.label}</span>
-                    {t.key === "liste" && attenteCount > 0 && <span className="tab-bar-item-count">{attenteCount}</span>}
                   </button>
                 ))}
               </div>
@@ -958,23 +970,17 @@ export default function Hospitalisation() {
           {/* ══ DASHBOARD ══ */}
           {tab === "dashboard" && (
             <div>
-              {attenteCount > 0 && (
-                <div className="al-ho-warn hofu" style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20, flexWrap:"wrap" }}>
-                  <div style={{ width:42, height:42, background:"#FAD7A0", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{I.alert}</div>
-                  <div style={{ flex:1 }}>
-                    <strong style={{ color:"#7E5109", fontSize:13 }}>⏳ Admissions en attente de lit</strong>
-                    <div style={{ fontSize:12, color:"#D68910", marginTop:3 }}><strong>{attenteCount}</strong> patient(s) en attente d'attribution de chambre.</div>
-                  </div>
-                  <button className="hbtn hbtn-teal hbtn-sm" onClick={() => { setFilter("attente"); setTab("liste"); }}>Voir →</button>
-                </div>
-              )}
+              {/* AUDIT-18-2 — bannière "Admissions en attente de lit" retirée :
+                  reposait sur kpis.attente, une valeur qui n'existe jamais
+                  réellement dans Hospitalization.statut (enum réel :
+                  en_cours/sorti/transfere/decede). Jamais remplacée par une
+                  autre condition inventée. */}
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))", gap:14, marginBottom:24 }}>
                 <KpiCard color="blue"   icon={I.calendar} value={kpis.total}       label="Total admissions"    sub="tous statuts"            onClick={() => setTab("liste")} />
-                <KpiCard color="teal"   icon={I.bed}      value={kpis.hospitalises} label="Hospitalisés"        sub="en cours"                urgent={kpis.hospitalises > 0} onClick={() => { setFilter("hospitalise"); setTab("liste"); }} />
-                <KpiCard color="blue"   icon={I.eye}      value={kpis.observation}  label="En observation"      sub="surveillance active"      onClick={() => { setFilter("observation"); setTab("liste"); }} />
-                <KpiCard color="orange" icon={I.clock}    value={kpis.attente}      label="En attente"          sub="lit non attribué"         urgent={kpis.attente > 0} onClick={() => { setFilter("attente"); setTab("liste"); }} />
-                <KpiCard color="green"  icon={I.exit}     value={kpis.sortis}       label="Sortis"              sub="ce mois"                  onClick={() => { setFilter("sorti"); setTab("liste"); }} />
+                <KpiCard color="teal"   icon={I.bed}      value={kpis.en_cours}    label="En cours"            sub="hospitalisation active"   urgent={kpis.en_cours > 0} onClick={() => { setFilter("en_cours"); setTab("liste"); }} />
+                <KpiCard color="green"  icon={I.exit}     value={kpis.sortis}      label="Sortis"              sub="ce mois"                  onClick={() => { setFilter("sorti"); setTab("liste"); }} />
+                <KpiCard color="purple" icon={I.users}    value={kpis.transferes}  label="Transférés"          sub="vers un autre service"    onClick={() => { setFilter("transfere"); setTab("liste"); }} />
                 <KpiCard color="teal"   icon={I.room}     value={`${kpis.taux_occ}%`} label="Taux occupation"  sub="chambres & lits"          onClick={() => setTab("lits")} />
               </div>
 
@@ -1034,7 +1040,7 @@ export default function Hospitalisation() {
                           const sc = STATUT_HOSP[d.statut] || { cls:"gray", label:d.statut, icon:"" };
                           const jours = nbJours(d.date_admission, d.date_sortie);
                           return (
-                            <tr key={d._id} style={{ background: d.statut === "attente" ? "#FEF9E7" : d.statut === "observation" ? "#EBF5FB" : "" }}>
+                            <tr key={d._id}>
                               <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--hb)", fontSize:12 }}>{d.numero}</span></td>
                               <td>
                                 <div style={{ fontWeight:600, color:"var(--hn)", cursor: d.patient_id ? 'pointer' : 'default', textDecoration: d.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id && navigate(`/patients/${d.patient_id}`)} title={d.patient_id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
@@ -1084,11 +1090,10 @@ export default function Hospitalisation() {
                   </div>
                   <select className="hinp" style={{ width:180 }} value={filterStatut} onChange={e => { setFilter(e.target.value); setPage(1); }}>
                     <option value="">Tous les statuts</option>
-                    <option value="attente">En attente</option>
-                    <option value="hospitalise">Hospitalisé</option>
-                    <option value="observation">En observation</option>
+                    <option value="en_cours">En cours</option>
                     <option value="sorti">Sorti</option>
                     <option value="transfere">Transféré</option>
+                    <option value="decede">Décédé</option>
                   </select>
                   <button className="hbtn hbtn-primary" onClick={() => { setFormHosp(EMPTY_HOSP); setModalAdmission(true); }}>
                     {I.plus} Nouvelle admission
@@ -1108,7 +1113,7 @@ export default function Hospitalisation() {
                         const sc = STATUT_HOSP[d.statut] || { cls:"gray", label:d.statut, icon:"" };
                         const jours = nbJours(d.date_admission, d.date_sortie);
                         return (
-                          <tr key={d._id} style={{ background: d.statut === "attente" ? "#FEF9E7" : "" }}>
+                          <tr key={d._id}>
                             <td><span style={{ fontFamily:"monospace", fontWeight:700, color:"var(--hb)", fontSize:12 }}>{d.numero}</span></td>
                             <td>
                               <div style={{ fontWeight:600, color:"var(--hn)", cursor: d.patient_id ? 'pointer' : 'default', textDecoration: d.patient_id ? 'underline dotted' : 'none', textUnderlineOffset:2 }} onClick={() => d.patient_id && navigate(`/patients/${d.patient_id}`)} title={d.patient_id ? "Ouvrir le dossier patient" : ""}>{d.patient_nom}</div>
@@ -1315,14 +1320,19 @@ export default function Hospitalisation() {
                     <div className="ho-card-hdr"><h3>📋 Informations d'admission</h3></div>
                     <div style={{ padding:20, display:"flex", flexDirection:"column", gap:14 }}>
                       <div>
-                        <label className="hlbl">Statut d'hospitalisation *</label>
-                        <select className="hinp" value={currentHosp.statut} onChange={e => setCurrentHosp(d => ({ ...d, statut:e.target.value }))}>
-                          <option value="attente">⏳ En attente</option>
-                          <option value="hospitalise">🛏 Hospitalisé</option>
-                          <option value="observation">🔍 En observation</option>
-                          <option value="sorti">✅ Sorti</option>
-                          <option value="transfere">🚑 Transféré</option>
-                        </select>
+                        <label className="hlbl">Statut d'hospitalisation</label>
+                        {/* AUDIT-18-1 — <select> retiré : PUT /:id (update())
+                            bloque désormais statut côté serveur, la seule
+                            transition légitime passe par le bouton "Sortie
+                            patient" (modale → PUT /:id/discharge, qui gère
+                            réellement la libération du lit, le calcul du
+                            coût, la facture et la notification). Affichage
+                            lecture seule du vrai statut réel. */}
+                        <div>
+                          <Badge cls={(STATUT_HOSP[currentHosp.statut]||{}).cls||"gray"}>
+                            {(STATUT_HOSP[currentHosp.statut]||{}).icon} {(STATUT_HOSP[currentHosp.statut]||{}).label || currentHosp.statut}
+                          </Badge>
+                        </div>
                       </div>
                       <div>
                         <label className="hlbl">Provenance du patient</label>
@@ -1353,7 +1363,7 @@ export default function Hospitalisation() {
                         <label className="hlbl">Diagnostic d'entrée</label>
                         <textarea className="hinp" rows={2} value={currentHosp.diagnostic_entree || ""} onChange={e => setCurrentHosp(d => ({ ...d, diagnostic_entree:e.target.value }))} placeholder="Diagnostic établi à l'admission..." />
                       </div>
-                      <button className="hbtn hbtn-teal" disabled={saving} onClick={() => updateHosp({ statut:currentHosp.statut, provenance:currentHosp.provenance, service:currentHosp.service, medecin:currentHosp.medecin, motif:currentHosp.motif, diagnostic_entree:currentHosp.diagnostic_entree, date_admission:currentHosp.date_admission })}>
+                      <button className="hbtn hbtn-teal" disabled={saving} onClick={() => updateHosp({ provenance:currentHosp.provenance, service:currentHosp.service, medecin:currentHosp.medecin, motif:currentHosp.motif, diagnostic_entree:currentHosp.diagnostic_entree, date_admission:currentHosp.date_admission })}>
                         {I.save} {saving ? "Enregistrement..." : "Enregistrer"}
                       </button>
                     </div>
@@ -1461,7 +1471,14 @@ export default function Hospitalisation() {
                           </div>
                           <div>
                             <label className="hlbl">Numéro de lit</label>
-                            <input className="hinp" value={currentHosp.lit || ""} onChange={e => setCurrentHosp(d => ({ ...d, lit:e.target.value }))} placeholder="Ex: 01" />
+                            {/* AUDIT-18-3 — lisait/écrivait `lit`, un champ qui
+                                n'existe pas dans le schéma Mongoose (seul
+                                lit_numero existe) : la saisie était acceptée
+                                par le formulaire mais silencieusement
+                                ignorée par Mongoose à l'enregistrement (aucun
+                                champ inconnu, aucune erreur), sans que rien
+                                ne soit jamais réellement persisté. */}
+                            <input className="hinp" value={currentHosp.lit_numero || ""} onChange={e => setCurrentHosp(d => ({ ...d, lit_numero:e.target.value }))} placeholder="Ex: 01" />
                           </div>
                         </div>
                         <div>
@@ -1472,7 +1489,7 @@ export default function Hospitalisation() {
                             <option value="vip">VIP</option>
                           </select>
                         </div>
-                        <button className="hbtn hbtn-teal" disabled={saving} onClick={() => updateHosp({ batiment:currentHosp.batiment, chambre:currentHosp.chambre, lit:currentHosp.lit, type_chambre:currentHosp.type_chambre })}>
+                        <button className="hbtn hbtn-teal" disabled={saving} onClick={() => updateHosp({ batiment:currentHosp.batiment, chambre:currentHosp.chambre, lit_numero:currentHosp.lit_numero, type_chambre:currentHosp.type_chambre })}>
                           {I.save} Enregistrer
                         </button>
                       </div>
