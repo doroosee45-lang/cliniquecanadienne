@@ -656,7 +656,10 @@ export default function Pharmacie() {
         bas: d.filter(x=>stockSt(x.stock_quantite,x.stock_minimum)==="bas").length,
         expires: d.filter(x=>perempSt(x.date_expiration)==="perime").length,
         imminents: d.filter(x=>perempSt(x.date_expiration)==="imminent").length,
-        valeur_stock: d.reduce((s,m)=>s+m.stock_quantite*(m.prix_vente||0),0),
+        // AUDIT-18-6 — aligné sur la convention comptable de référence
+        // (finance.controller.js) : coût d'acquisition (prix_achat), pas le
+        // chiffre d'affaires potentiel (prix_vente).
+        valeur_stock: d.reduce((s,m)=>s+m.stock_quantite*(m.prix_achat||0),0),
         ventes_jour: ventesJourCalc,
         ventes_mois: ventesMoisCalc,
       });

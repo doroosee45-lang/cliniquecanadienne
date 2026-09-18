@@ -112,7 +112,12 @@ exports.getStats = async (req, res, next) => {
     const bas       = meds.filter(m => m.stock_actuel >= m.stock_minimum * 0.3 && m.stock_actuel < m.stock_minimum).length;
     const expires   = meds.filter(m => m.date_peremption && new Date(m.date_peremption) < now).length;
     const imminents = meds.filter(m => m.date_peremption && new Date(m.date_peremption) >= now && new Date(m.date_peremption) <= in30).length;
-    const valeur_stock = meds.reduce((s, m) => s + m.stock_actuel * (m.prix_vente || 0), 0);
+    // AUDIT-18-6 (18 sept. 2026) — la convention comptable de référence
+    // (finance.controller.js, déjà correcte) valorise le stock au coût
+    // d'acquisition (prix_achat), pas au chiffre d'affaires potentiel
+    // (prix_vente) : deux/trois chiffres différents circulaient pour le même
+    // libellé générique "Valeur du stock" affiché sur 3 dashboards.
+    const valeur_stock = meds.reduce((s, m) => s + m.stock_actuel * (m.prix_achat || 0), 0);
 
     // Sous-phase 5.1 (relecture du 6 sept. 2026) — ventes_jour/ventes_mois
     // étaient figés à 0 en dur : aucun mouvement de type 'vente' n'était

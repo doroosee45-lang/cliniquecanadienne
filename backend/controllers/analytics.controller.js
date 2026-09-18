@@ -411,8 +411,12 @@ exports.getStats = async (req, res, next) => {
       safeCount(Medication),
       safeCount(Medication, { statut: 'rupture' }),
       safeCount(Medication, { stock_actuel: { $gt: 0 }, $expr: { $lte: ['$stock_actuel', { $multiply: ['$stock_minimum', 0.3] }] } }),
+      // AUDIT-18-6 — même correctif que pharmacy.controller.js::getStats :
+      // coût d'acquisition (prix_achat), jamais le chiffre d'affaires
+      // potentiel (prix_vente), pour "valeur du stock" — cohérent avec
+      // finance.controller.js, déjà correct.
       Medication.aggregate([
-        { $group: { _id: null, val: { $sum: { $multiply: ['$stock_actuel', '$prix_vente'] } } } },
+        { $group: { _id: null, val: { $sum: { $multiply: ['$stock_actuel', '$prix_achat'] } } } },
       ]).catch(()=>[]),
       // ── Prescriptions (médecin réel ; pas de champ service sur ce modèle)
       safeCount(Prescription),

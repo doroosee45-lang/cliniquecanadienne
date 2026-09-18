@@ -57,7 +57,19 @@ test('SPEC-13 — createVente() génère une vraie Invoice réglée, visible dan
       assert.equal(status, 201, JSON.stringify(body));
       created.invoices.push(body.invoice._id);
       const fresh = await Invoice.findById(body.invoice._id).lean();
-      assert.equal(fresh.paiements[0].mode, undefined, 'un mode non reconnu est omis, jamais une valeur inventée qui violerait l\'enum');
+      // Audit du 17 sept. 2026 (Correction 2) — "assurance" n'est plus
+      // routée comme un paiement direct (paiements[]) marqué payee : ce
+      // n'est pas un règlement reçu au comptoir mais un montant à recouvrer
+      // auprès de l'assureur, désormais tracé via montant_assurance, statut
+      // 'emise'. Le test vérifiait auparavant l'ancien comportement
+      // (paiements[0] présent avec mode: undefined) ; il vérifie désormais
+      // le nouveau contrat — l'intention d'origine du test (un mode non
+      // reconnu ne fait jamais échouer la vente) reste inchangée, seule la
+      // structure attendue change.
+      assert.equal(fresh.paiements.length, 0, 'une vente assurance ne doit produire aucun paiement direct — montant tracé via montant_assurance, pas paiements[]');
+      assert.equal(fresh.montant_assurance, fresh.montant_ttc, 'le montant total doit être tracé comme à recouvrer auprès de l\'assurance');
+      assert.equal(fresh.statut, 'emise', 'une vente assurance n\'est pas réglée immédiatement — statut emise, pas payee');
+      assert.equal(fresh.montant_restant, fresh.montant_ttc);
     });
 
     await t.test('la vente comptoir est réellement visible dans getFinancial (Finance/Analytics), jamais invisible', async () => {
