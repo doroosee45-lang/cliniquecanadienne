@@ -28,10 +28,21 @@ test('AUDIT-M-B5 — dispensation et réception de commande atomiques sous concu
   const Commande = require('../models/Commande');
   const Patient = require('../models/Patient');
   const User = require('../models/User');
+  const Invoice = require('../models/Invoice');
   const pharmaC = require('../controllers/pharmacy.controller');
 
   const stamp = Date.now();
-  const created = { meds: [], prescriptions: [], commandes: [], patients: [], users: [] };
+  // AUDIT-18-5 (18 sept. 2026) — cleanup ne supprimait jamais les Invoice :
+  // depuis que dispenser() facture réellement chaque dispensation (audit du
+  // 17 sept. 2026, paiement immédiat au comptoir), la facture orpheline
+  // restante faisait échouer Patient.findByIdAndDelete ci-dessous (garde
+  // anti-corruption de Patient.js — un historique financier réel y fait
+  // encore référence), ce qui faisait remonter tout le test comme en échec
+  // malgré des sous-tests entièrement verts (l'erreur du finally n'était
+  // rattachée à aucune assertion). Le comportement de dispenser() lui-même
+  // n'a jamais été en cause — confirmé en l'appelant directement hors
+  // node:test, où il répond correctement en <1s.
+  const created = { meds: [], prescriptions: [], commandes: [], patients: [], users: [], invoices: [] };
 
   const call = async (fn, req) => {
     let status = 200, body = null;
@@ -56,6 +67,7 @@ test('AUDIT-M-B5 — dispensation et réception de commande atomiques sous concu
       const { status, body } = await call(pharmaC.dispenser, { params: { id: rx._id }, user, ip: '127.0.0.1' });
       assert.equal(status, 200);
       assert.equal(body.prescription.statut, 'dispensee');
+      if (body.invoice) created.invoices.push(body.invoice._id);
 
       const freshMed = await Medication.findById(med._id).lean();
       assert.equal(freshMed.stock_actuel, 95);
@@ -79,6 +91,8 @@ test('AUDIT-M-B5 — dispensation et réception de commande atomiques sous concu
       const rejectCount = [rA, rB].filter(r => r.status === 400 || r.status === 409).length;
       assert.equal(successCount, 1, 'exactement une des deux dispensations concurrentes de la même ordonnance doit réussir — même avec un stock largement suffisant pour les deux');
       assert.equal(rejectCount, 1, `l'autre doit être rejetée proprement (400 ou 409), jamais un crash — statuts observés : ${rA.status},${rB.status}`);
+      const gagnant = [rA, rB].find(r => r.status === 200);
+      if (gagnant?.body?.invoice) created.invoices.push(gagnant.body.invoice._id);
 
       const freshRx = await Prescription.findById(rx._id).lean();
       assert.equal(freshRx.statut, 'dispensee');
@@ -105,8 +119,9 @@ test('AUDIT-M-B5 — dispensation et réception de commande atomiques sous concu
       const rx = await Prescription.create({ patient: patient._id, medecin: pharmacien._id, statut: 'active', lignes: [{ medicament: med._id, medicament_nom: med.nom_commercial, quantite: 5 }] });
       created.prescriptions.push(rx);
 
-      const { status: s1 } = await call(pharmaC.dispenser, { params: { id: rx._id.toString() }, user, ip: '127.0.0.1' });
+      const { status: s1, body: b1 } = await call(pharmaC.dispenser, { params: { id: rx._id.toString() }, user, ip: '127.0.0.1' });
       assert.equal(s1, 200);
+      if (b1.invoice) created.invoices.push(b1.invoice._id);
       // Séquentiel (pas concurrent) : la première dispensation est déjà
       // entièrement terminée quand la seconde lit prescription.statut — la
       // garde initiale (ligne 348, pré-existante) la rejette donc en 400,
@@ -140,6 +155,7 @@ test('AUDIT-M-B5 — dispensation et réception de commande atomiques sous concu
       assert.equal(freshMed.statut, 'disponible', 'le statut rupture doit être levé après une réception réelle');
     });
   } finally {
+    for (const i of created.invoices) await Invoice.findByIdAndDelete(i);
     for (const c of created.commandes) await Commande.findByIdAndDelete(c._id);
     for (const rx of created.prescriptions) await Prescription.findByIdAndDelete(rx._id);
     for (const m of created.meds) await Medication.findByIdAndDelete(m._id);
