@@ -20,6 +20,7 @@ const { fieldsFor } = require('./patients.controller');
 require('../models/User');
 const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
+const { logger, captureException } = require('../utils/logger');
 
 // Mapper Invoice (modèle) → objet frontend
 // AUDIT-RECU-PDF-PARTAGE — patient_id/patient_email ajoutés à côté de
@@ -598,10 +599,32 @@ exports.getSalaires = async (req, res, next) => {
     const existantsIds = new Set(existants.map(s => String(s.staff)));
     const manquants = staffActifs.filter(s => !existantsIds.has(String(s._id)));
     if (manquants.length) {
-      await Salaire.insertMany(
-        manquants.map(s => ({ staff: s._id, mois, base: s.salaire_base || 0, net: s.salaire_base || 0 })),
-        { ordered: false }
-      ).catch(() => {}); // course possible entre deux requêtes simultanées — non bloquant, re-fetch ci-dessous
+      try {
+        await Salaire.insertMany(
+          manquants.map(s => ({ staff: s._id, mois, base: s.salaire_base || 0, net: s.salaire_base || 0 })),
+          { ordered: false }
+        );
+      } catch (err) {
+        // AUDIT-19-4 (18 sept. 2026) — le .catch(()=>{}) avalait TOUTE
+        // erreur d'insertMany, pas seulement la course concurrente visée
+        // (deux GET simultanés créant les mêmes bulletins, E11000 sur
+        // l'index unique (staff, mois)) : une vraie erreur de validation ou
+        // de connexion DB disparaissait silencieusement, le re-fetch
+        // ci-dessous renvoyant alors les bulletins déjà existants comme si
+        // de rien n'était, sans qu'aucune trace ne subsiste nulle part.
+        // Seule l'erreur de course attendue (code 11000, reproduit
+        // directement : MongoBulkWriteError avec err.code===11000 sous
+        // ordered:false) reste tolérée ; toute autre erreur est désormais
+        // réellement journalisée (jamais silencieuse), sans pour autant
+        // faire échouer ce GET — les bulletins déjà existants restent
+        // consultables.
+        const writeErrors = err.writeErrors || [];
+        const estCourseAttendue = err.code === 11000 || (writeErrors.length > 0 && writeErrors.every(e => (e.code || e.err?.code) === 11000));
+        if (!estCourseAttendue) {
+          logger.error('Échec insertMany bulletins de salaire (hors course concurrente attendue)', { error: err.message, mois });
+          captureException(err, { context: 'finance.controller.js::getSalaires', mois });
+        }
+      }
     }
 
     // AUDIT-GLOBAL — Staff.prenom/nom sont vides quand l'employé est lié à
@@ -628,18 +651,31 @@ exports.getSalaires = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-19-5 (18 sept. 2026) — vérifiait salaire.statut !== 'paye' puis
+// persistait via salaire.save() — non atomique, seul endroit de ce fichier
+// à ne pas suivre la garde-par-filtre déjà systématique ailleurs (voir
+// addPayment). Deux paiements concurrents sur le même bulletin pouvaient
+// tous deux lire 'en_attente' avant que l'un n'écrive, produisant deux
+// entrées AuditLog PAYMENT pour un seul paiement réel — reproduit
+// directement (Promise.all, les deux réussissaient). Même principe déjà
+// appliqué à hospitalization.controller.js::discharge/prescriptions.
+// controller.js::cancel/publier : la garde est portée par le filtre du
+// findOneAndUpdate lui-même, jamais par une lecture séparée.
 exports.payerSalaire = async (req, res, next) => {
   try {
-    const salaire = await Salaire.findById(req.params.id);
-    if (!salaire) return res.status(404).json({ success: false, message: 'Bulletin introuvable.' });
-    if (salaire.statut === 'paye') {
+    const avant = await Salaire.findById(req.params.id).lean();
+    if (!avant) return res.status(404).json({ success: false, message: 'Bulletin introuvable.' });
+
+    const salaire = await Salaire.findOneAndUpdate(
+      { _id: req.params.id, statut: { $ne: 'paye' } },
+      { $set: { statut: 'paye', date_paiement: new Date(), paye_par: req.user._id } },
+      { new: true }
+    );
+
+    if (!salaire) {
       return res.status(400).json({ success: false, message: 'Ce salaire a déjà été payé.' });
     }
-    const avant = salaire.toObject();
-    salaire.statut = 'paye';
-    salaire.date_paiement = new Date();
-    salaire.paye_par = req.user._id;
-    await salaire.save();
+
     await logAction({ utilisateur: req.user._id, action: 'PAYMENT', module: 'finance', entite_id: salaire._id, ip: req.ip, message: `Salaire payé — ${salaire.net} CFA (${salaire.mois})`, avant, apres: salaire });
     emitDashboardUpdate();
     res.json({ success: true, salaire });
@@ -796,5 +832,95 @@ exports.updateBilanManuel = async (req, res, next) => {
     });
     emitDashboardUpdate();
     res.json({ success: true, ecriture });
+  } catch (err) { next(err); }
+};
+
+// AUDIT-19-7 (18 sept. 2026) — GET /revenus et GET /paiements vivaient en
+// logique métier inline dans routes/finance.routes.js, seule exception à la
+// convention universelle du projet (délégation systématique à un contrôleur
+// nommé) : nuit à la testabilité unitaire de ces deux endpoints (aucun
+// moyen de les appeler directement dans un test, comme pour toute autre
+// fonction de ce fichier). Déplacées ici SANS aucun changement de
+// comportement — même requêtes, mêmes champs, même contrat de réponse.
+
+// Revenus = factures payées ou partiellement payées.
+exports.getRevenus = async (req, res, next) => {
+  try {
+    const { limit = 100 } = req.query;
+    const items = await Invoice.find({ statut: { $in: ['payee', 'partiellement_payee'] } })
+      .populate('patient', 'nom prenom').sort('-date_facture').limit(Number(limit));
+    const revenus = items.map(inv => {
+      const i = inv.toObject ? inv.toObject() : inv;
+      const pat = i.patient && typeof i.patient === 'object' ? i.patient : null;
+      return {
+        _id:       i._id,
+        reference: i.numero_facture || i.numero || '—',
+        date:      i.date_facture   || i.createdAt,
+        patient:   i.patient_nom    || (pat ? `${pat.prenom || ''} ${pat.nom || ''}`.trim() : (typeof i.patient === 'string' ? i.patient : '—')),
+        service:   i.service_label  || i.service || '—',
+        montant:   Number(i.montant_direct || i.montant_ttc || i.montant || 0),
+        mode:      (i.paiements && i.paiements[0]?.mode) || 'especes',
+        statut:    i.statut === 'payee' ? 'paye' : 'partiellement_paye',
+      };
+    });
+    res.json({ success: true, revenus });
+  } catch (err) { next(err); }
+};
+
+// Paiements = historique de paiements des factures.
+exports.getPaiements = async (req, res, next) => {
+  try {
+    const { limit = 50 } = req.query;
+    // Toutes les factures payées OU ayant des paiements enregistrés
+    const invoices = await Invoice.find({
+      $or: [
+        { 'paiements.0': { $exists: true } },
+        { statut: { $in: ['payee', 'partiellement_payee'] } },
+      ],
+    })
+      .populate('patient', 'nom prenom')
+      .populate('paiements.enregistre_par', 'nom prenom')
+      .sort('-date_facture')
+      .limit(Number(limit));
+
+    const paiements = invoices.flatMap(inv => {
+      const patObj = inv.patient && typeof inv.patient === 'object' ? inv.patient : null;
+      const patNom = inv.patient_nom || (patObj ? `${patObj.prenom} ${patObj.nom}` : '—');
+
+      // Paiements explicites enregistrés
+      if (inv.paiements && inv.paiements.length > 0) {
+        return inv.paiements.map((p, i) => {
+          const userObj = p.enregistre_par && typeof p.enregistre_par === 'object' ? p.enregistre_par : null;
+          const d = p.date ? new Date(p.date) : new Date(inv.date_facture || inv.createdAt);
+          return {
+            _id:       `${inv._id}-p${i}`,
+            reference: p.reference || inv.numero_facture || `PAY-${i + 1}`,
+            date:      d,
+            heure:     d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+            patient:   patNom,
+            facture:   inv.numero_facture || '—',
+            montant:   p.montant,
+            mode:      p.mode || 'especes',
+            caissier:  userObj ? `${userObj.prenom} ${userObj.nom}` : 'Caisse',
+          };
+        });
+      }
+
+      // Facture payée sans paiement explicite → enregistrement synthétique
+      const d = new Date(inv.date_facture || inv.createdAt);
+      return [{
+        _id:       `${inv._id}-synth`,
+        reference: inv.numero_facture || '—',
+        date:      d,
+        heure:     d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        patient:   patNom,
+        facture:   inv.numero_facture || '—',
+        montant:   inv.montant_paye || inv.montant_ttc || inv.montant_direct || 0,
+        mode:      'especes',
+        caissier:  'Caisse',
+      }];
+    });
+
+    res.json({ success: true, paiements });
   } catch (err) { next(err); }
 };

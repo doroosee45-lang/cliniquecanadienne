@@ -159,6 +159,27 @@ function refuseRolePatient(req, res) {
   return false;
 }
 
+// AUDIT-19-6 (18 sept. 2026) — utils/permissions.js::enforceSuperadminSafeguard
+// protège déjà la MATRICE de permissions (impossible de retirer une
+// permission au rôle superadmin), mais aucune garde équivalente n'existait
+// pour les COMPTES superadmin eux-mêmes : updateUser (rétrograder le rôle
+// ou suspendre/désactiver le statut) et deactivateUser pouvaient tous deux
+// verrouiller le dernier compte superadmin actif, sans confirmation ni
+// vérification — plus personne ne peut alors créer de compte ni gérer les
+// permissions, récupérable seulement par intervention directe en base.
+// Compare l'état ACTUEL du compte visé (pas req.body, qui peut mentir) au
+// changement demandé, puis compte les AUTRES superadmins actifs restants.
+async function refuseIfDernierSuperadminActif(userId, { nouveauRole, nouveauStatut }) {
+  const cible = await User.findById(userId).select('role statut').lean();
+  if (!cible || cible.role !== 'superadmin' || cible.statut !== 'actif') return null; // pas le cas visé
+  const perdRole   = nouveauRole   !== undefined && nouveauRole   !== 'superadmin';
+  const perdStatut = nouveauStatut !== undefined && nouveauStatut !== 'actif';
+  if (!perdRole && !perdStatut) return null;
+  const autresActifs = await User.countDocuments({ role: 'superadmin', statut: 'actif', _id: { $ne: userId } });
+  if (autresActifs > 0) return null;
+  return "Impossible de modifier ce compte : c'est le dernier compte superadmin actif. Créez ou réactivez un autre compte superadmin avant de continuer, pour ne jamais verrouiller l'administration du système.";
+}
+
 exports.createUser = async (req, res, next) => {
   try {
     if (refuseRolePatient(req, res)) return;
@@ -199,6 +220,10 @@ exports.updateUser = async (req, res, next) => {
     if (data.service === '') data.service = null;
     const avant = await User.findById(req.params.id).select('role statut email').lean();
     if (!avant) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
+
+    const refusSuperadmin = await refuseIfDernierSuperadminActif(req.params.id, { nouveauRole: data.role, nouveauStatut: data.statut });
+    if (refusSuperadmin) return res.status(409).json({ success: false, message: refusSuperadmin });
+
     const user = await User.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (password) { user.password = password; await user.save(); }
     await user.populate('service', 'nom');
@@ -260,6 +285,9 @@ exports.deactivateUser = async (req, res, next) => {
   try {
     const avant = await User.findById(req.params.id).select('role statut email prenom nom').lean();
     if (!avant) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
+
+    const refusSuperadmin = await refuseIfDernierSuperadminActif(req.params.id, { nouveauStatut: 'inactif' });
+    if (refusSuperadmin) return res.status(409).json({ success: false, message: refusSuperadmin });
 
     const user = await User.findByIdAndUpdate(req.params.id, { statut: 'inactif' }, { new: true });
     await logAction({

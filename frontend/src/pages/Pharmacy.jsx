@@ -2279,17 +2279,31 @@ ${lignes}
                 <div className="ph-card">
                   <div className="ph-card-hdr"><h3>🏭 Fournisseurs partenaires</h3></div>
                   <div style={{ padding:16 }}>
-                    {(fournisseurs.length>0?fournisseurs:DEMO_FOURNISSEURS).map(f=>(
+                    {/* AUDIT-19-2 — source désormais le vrai modèle Supplier
+                        (géré depuis Administration.jsx) au lieu d'une liste
+                        fabriquée à partir de Medication.distinct('fabricant').
+                        contact/ville/email vides, type et délai de livraison
+                        (7j codé en dur pour tous) inventés ont été retirés :
+                        aucune de ces trois dernières notions n'a de source
+                        réelle nulle part dans l'application (ni sur le
+                        modèle Supplier, ni dans le formulaire d'admin qui
+                        l'alimente) — remplacés par les champs réellement
+                        saisis et persistés (téléphone, produits/services,
+                        montant total réel des commandes). */}
+                    {fournisseurs.length === 0 ? (
+                      <div style={{ textAlign:"center", color:"var(--pm)", fontSize:12, padding:20 }}>Aucun fournisseur enregistré — à ajouter depuis Administration → Fournisseurs.</div>
+                    ) : fournisseurs.map(f=>(
                       <div key={f._id} style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 0", borderBottom:"1px solid var(--pbr)" }}>
                         <div style={{ width:40, height:40, borderRadius:10, background:"var(--pl)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🏭</div>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontWeight:700, color:"var(--pn)", fontSize:13 }}>{f.nom}</div>
-                          <div style={{ fontSize:11, color:"var(--pm)" }}>{f.contact} · {f.ville}</div>
-                          <div style={{ fontSize:11, color:"var(--pm)" }}>📧 {f.email}</div>
+                          <div style={{ fontSize:11, color:"var(--pm)" }}>{[f.contact, f.telephone].filter(Boolean).join(" · ") || "—"}</div>
+                          {f.email && <div style={{ fontSize:11, color:"var(--pm)" }}>📧 {f.email}</div>}
                         </div>
-                        <div style={{ textAlign:"right", flexShrink:0 }}>
-                          <Badge cls={f.type==="principal"?"teal":f.type==="gouvernemental"?"blue":"gray"}>{f.type}</Badge>
-                          <div style={{ fontSize:10, color:"var(--pm)", marginTop:4 }}>Délai : {f.delai_livraison}j</div>
+                        <div style={{ textAlign:"right", flexShrink:0, maxWidth:180 }}>
+                          {f.produits && <div style={{ fontSize:10, color:"var(--pm)" }}>{f.produits}</div>}
+                          {f.montant_total > 0 && <div style={{ fontSize:11, fontWeight:700, color:"var(--pn)", marginTop:2 }}>{fmtCFA(f.montant_total)}</div>}
+                          {f.derniere_commande && <div style={{ fontSize:10, color:"var(--pm)", marginTop:2 }}>Dernière commande : {fmtDate(f.derniere_commande)}</div>}
                         </div>
                       </div>
                     ))}

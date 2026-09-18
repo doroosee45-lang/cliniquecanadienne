@@ -2,6 +2,7 @@ const Medication = require('../models/Medication');
 const Prescription = require('../models/Prescription');
 const Commande = require('../models/Commande');
 const Invoice = require('../models/Invoice');
+const Supplier = require('../models/Supplier');
 const { logAction, paginate, escapeRegex } = require('../utils/helpers');
 const { emitActivity, emitDashboardUpdate } = require('../utils/socket');
 const { detectInteractions } = require('../utils/drugInteractions');
@@ -139,28 +140,40 @@ exports.getStats = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-19-3 (18 sept. 2026) — Medication.find({...}).limit(50) sans tri
+// restreignait d'abord à un sous-ensemble ARBITRAIRE de 50 médicaments
+// (ordre naturel MongoDB, non déterministe) avant même de trier leurs
+// mouvements : un médicament avec des mouvements très récents mais exclu de
+// ce premier lot ne pouvait jamais apparaître, même trié après coup — flux
+// d'activité potentiellement incomplet et non reproductible d'un appel à
+// l'autre, sans jamais le signaler. Remplacé par une seule agrégation qui
+// déplie les mouvements de TOUS les médicaments concernés, trie par la
+// vraie date du mouvement, puis limite — les 30 mouvements les plus
+// récents sont désormais garantis, quel que soit le médicament d'origine.
+// stock_avant/stock_apres restent null : cette information n'est jamais
+// enregistrée sur le mouvement lui-même (voir MouvementSchema), donc
+// jamais inventée ici, comme déjà avant ce correctif.
 exports.getMovements = async (req, res, next) => {
   try {
-    const meds = await Medication.find({ 'mouvements.0': { $exists: true } }).limit(50);
-    const mouvements = [];
-    meds.forEach(m => {
-      m.mouvements.slice(-5).forEach(mv => {
-        mouvements.push({
-          _id: mv._id,
-          medicament_nom: m.nom_commercial,
-          medicament_id: m._id,
-          type: mv.type,
-          quantite: mv.quantite,
-          reference: mv.reference,
-          notes: mv.notes,
-          date: mv.date,
-          stock_avant: null,
-          stock_apres: null,
-        });
-      });
-    });
-    mouvements.sort((a, b) => new Date(b.date) - new Date(a.date));
-    res.json({ success: true, mouvements: mouvements.slice(0, 30) });
+    const mouvements = await Medication.aggregate([
+      { $match: { 'mouvements.0': { $exists: true } } },
+      { $unwind: '$mouvements' },
+      { $sort: { 'mouvements.date': -1 } },
+      { $limit: 30 },
+      { $project: {
+        _id: '$mouvements._id',
+        medicament_nom: '$nom_commercial',
+        medicament_id: '$_id',
+        type: '$mouvements.type',
+        quantite: '$mouvements.quantite',
+        reference: '$mouvements.reference',
+        notes: '$mouvements.notes',
+        date: '$mouvements.date',
+        stock_avant: { $literal: null },
+        stock_apres: { $literal: null },
+      } },
+    ]);
+    res.json({ success: true, mouvements });
   } catch (err) { next(err); }
 };
 
@@ -426,10 +439,21 @@ exports.receptionCommande = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-19-2 (18 sept. 2026) — fabriquait une liste à partir de
+// Medication.distinct('fabricant') (contact/ville/email toujours vides,
+// delai_livraison:7 codé en dur pour tous, _id instable basé sur l'index du
+// tableau) alors qu'un vrai modèle Supplier existe déjà, avec son propre
+// CRUD réel et persisté (suppliers.controller.js, géré depuis
+// Administration.jsx section Fournisseurs) — deux notions de « fournisseur »
+// coexistaient sans jamais se rejoindre. Unifié sur la source réelle unique.
+// Commande.fournisseur reste une chaîne libre (jamais une référence
+// Supplier) — cf. le commentaire en tête de models/Supplier.js : une vraie
+// relation Commande↔Supplier est un chantier séparé, non nécessaire ici
+// puisque ce endpoint n'alimente que des <select> qui soumettent déjà
+// fn.nom, jamais fn._id, comme valeur de fournisseur.
 exports.getFournisseurs = async (req, res, next) => {
   try {
-    const fabricants = await Medication.distinct('fabricant');
-    const fournisseurs = fabricants.filter(Boolean).map((f, i) => ({ _id: String(i), nom: f, contact: '', ville: '', email: '', type: 'fournisseur', delai_livraison: 7 }));
+    const fournisseurs = await Supplier.find().sort('nom').lean();
     res.json({ success: true, fournisseurs });
   } catch (err) { next(err); }
 };
