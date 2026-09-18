@@ -1,0 +1,10 @@
+# AUDIT-20-5 (18 sept. 2026) — core.autocrlf=true en local (Windows) faisait
+# checkouter tous les fichiers texte en CRLF alors que les blobs Git
+# existants sont en LF (dépôt initié hors Windows) : chaque outil de diff/
+# patch qui ne connaît pas cette configuration locale voyait le fichier
+# entier comme modifié (faux diff massif), déjà rencontré et coûteux à
+# diagnostiquer plusieurs fois dans ce projet. Fixe la fin de ligne réelle
+# des blobs à LF pour tout fichier texte, indépendamment de la config
+# locale de qui checkoute — élimine la source du problème plutôt que de la
+# contourner dépôt par dépôt.
+* text=auto eol=lf
