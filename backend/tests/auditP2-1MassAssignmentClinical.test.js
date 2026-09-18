@@ -235,8 +235,14 @@ test('P2-1 groupe 2 — mass-assignment bloqué sur 13 endpoints cliniques/méti
       assert.equal(fresh.numero, `CHIR-P21C-${stamp}`);
     });
 
-    await t.test('Hospitalization.update — patient bloqué, statut légitime toujours persisté', async () => {
-      const hosp = await Hospitalization.create({ patient: patient._id, motif_entree: 'Observation' });
+    // AUDIT-18-1 (18 sept. 2026) — statut a rejoint HOSP_BLOCKED_FIELDS aux
+    // côtés de patient : seul discharge() peut désormais faire transitionner
+    // le statut (libération de lit, coût réel, facture, notification).
+    // Ce sous-test vérifiait auparavant l'ANCIEN comportement (statut
+    // librement modifiable via update()) ; il vérifie désormais le nouveau
+    // contrat, statut inclus.
+    await t.test('Hospitalization.update — patient ET statut bloqués, seul discharge() peut transitionner le statut', async () => {
+      const hosp = await Hospitalization.create({ patient: patient._id, motif_entree: 'Observation', statut: 'en_cours' });
       cleanup.push(() => Hospitalization.findByIdAndDelete(hosp._id));
       await call(hospC.update, {
         params: { id: hosp._id },
@@ -244,7 +250,7 @@ test('P2-1 groupe 2 — mass-assignment bloqué sur 13 endpoints cliniques/méti
         user: staff, ip: '127.0.0.1',
       });
       const fresh = await Hospitalization.findById(hosp._id).lean();
-      assert.equal(fresh.statut, 'transfere');
+      assert.equal(fresh.statut, 'en_cours', 'statut ne doit jamais être modifiable via update(), même explicitement envoyé — seul discharge() le peut');
       assert.equal(fresh.patient.toString(), patient._id.toString());
     });
   } finally {
