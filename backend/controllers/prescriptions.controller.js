@@ -178,12 +178,45 @@ exports.cancel = async (req, res, next) => {
     // ni persisté ; ce contrôleur ignorait tout req.body.
     const { motif } = req.body || {};
     const avant = await Prescription.findById(req.params.id);
-    const prescription = await Prescription.findByIdAndUpdate(
-      req.params.id,
+    if (!avant) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
+
+    // AUDIT-18-7 (18 sept. 2026) — décision produit tranchée : une fois
+    // dispensée, l'acte est cliniquement irréversible — le stock du
+    // médicament a déjà été réellement décrémenté par
+    // pharmacy.controller.js::dispenser, qu'une annulation à ce stade ne
+    // restaure jamais, créant un écart entre l'état affiché (annulée) et ce
+    // qui s'est réellement passé (médicament physiquement remis). Le
+    // signalement d'une erreur post-dispensation est un type d'action
+    // distinct, non construit ici. Une ordonnance expirée est de même déjà
+    // dans son propre état terminal (validité écoulée) — l'annuler ne fait
+    // que brouiller deux états de clôture distincts, jamais un problème
+    // d'intégrité de stock. Même principe que AUDIT-M-B6 (publier()) : la
+    // garde est portée par le filtre du findOneAndUpdate lui-même, jamais
+    // par une lecture séparée suivie d'une écriture — pour éviter la même
+    // course qu'une annulation concurrente à une dispensation en cours.
+    const prescription = await Prescription.findOneAndUpdate(
+      { _id: req.params.id, statut: { $nin: ['dispensee', 'expiree', 'annulee'] } },
       { statut: 'annulee', motif_annulation: motif || undefined },
       { new: true }
     );
-    if (!prescription) return res.status(404).json({ success: false, message: 'Ordonnance introuvable.' });
+
+    if (!prescription) {
+      // Relu après l'échec de l'atomique (jamais avant) : sous concurrence,
+      // `avant` peut être obsolète au moment où on rédige le message —
+      // seul l'état réellement en base à cet instant doit déterminer le
+      // message renvoyé, la garde elle-même n'en dépend déjà pas.
+      const actuel = await Prescription.findById(req.params.id).select('statut numero_rx').lean();
+      const message = actuel?.statut === 'dispensee'
+        ? 'Impossible d\'annuler une ordonnance déjà dispensée. Contactez l\'administration si une erreur a été commise.'
+        : actuel?.statut === 'expiree'
+          ? 'Impossible d\'annuler une ordonnance déjà expirée.'
+          : actuel?.statut === 'annulee'
+            ? 'Cette ordonnance est déjà annulée.'
+            : 'Impossible d\'annuler cette ordonnance — statut modifié entre-temps.';
+      await logAction({ utilisateur: req.user._id, action: 'CANCEL', module: 'prescriptions', entite_id: avant._id, ip: req.ip, statut: 'echec', message: `Annulation refusée — ordonnance ${actuel?.numero_rx || avant.numero_rx} déjà ${actuel?.statut || '?'}` });
+      return res.status(400).json({ success: false, message });
+    }
+
     await logAction({ utilisateur: req.user._id, action: 'CANCEL', module: 'prescriptions', entite_id: prescription._id, ip: req.ip, message: motif ? `Ordonnance ${prescription.numero_rx} annulée — motif : ${motif}` : `Ordonnance ${prescription.numero_rx} annulée`, avant, apres: prescription });
     res.json({ success: true, prescription });
   } catch (err) { next(err); }

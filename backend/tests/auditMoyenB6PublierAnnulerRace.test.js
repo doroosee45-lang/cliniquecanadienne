@@ -1,15 +1,27 @@
 // AUDIT-M-B6 — prescriptions.controller.js::publier() vérifiait
 // rx.statut !== 'annulee' puis, après avoir envoyé l'email/la notification
 // patient, persistait la transition via rx.save() — non atomique. cancel()
-// (statut → 'annulee') n'a lui-même aucune garde (transition inconditionnelle
-// via findByIdAndUpdate, qui ne participe pas au versionKey Mongoose que
-// rx.save() vérifie) : une annulation concurrente pouvait s'intercaler entre
-// la lecture et l'écriture de publier(), qui écrasait alors silencieusement
-// statut:'annulee' avec 'publiee' — ressuscitant une ordonnance annulée
-// (intégrité clinique, pas une simple question de dette technique). Corrigé
-// avec un findOneAndUpdate à filtre-garde ({_id, statut:{$ne:'annulee'}}),
-// transition atomique AVANT tout effet de bord (email, notification) — même
-// principe que les Points 6/9 du chantier élevé et le Point 5 (dispenser()).
+// (statut → 'annulee') n'avait à l'époque aucune garde (transition
+// inconditionnelle via findByIdAndUpdate, qui ne participe pas au
+// versionKey Mongoose que rx.save() vérifie) : une annulation concurrente
+// pouvait s'intercaler entre la lecture et l'écriture de publier(), qui
+// écrasait alors silencieusement statut:'annulee' avec 'publiee' —
+// ressuscitant une ordonnance annulée (intégrité clinique, pas une simple
+// question de dette technique). Corrigé avec un findOneAndUpdate à
+// filtre-garde ({_id, statut:{$ne:'annulee'}}), transition atomique AVANT
+// tout effet de bord (email, notification) — même principe que les
+// Points 6/9 du chantier élevé et le Point 5 (dispenser()).
+//
+// AUDIT-18-7 (18 sept. 2026) — cancel() a depuis reçu sa propre garde
+// atomique (findOneAndUpdate à filtre {$nin:['dispensee','expiree',
+// 'annulee']}), pour une raison distincte (bloquer l'annulation d'une
+// ordonnance déjà dispensée, le stock ayant réellement été décrémenté).
+// Les commentaires ci-dessous qui disaient "cancel() n'a aucune garde"
+// restent vrais pour ce test précis : chaque ordonnance y démarre à
+// 'active' et ne transite jamais vers 'dispensee'/'expiree' — seuls
+// 'active'/'publiee' sont en jeu, tous deux toujours permis par la
+// nouvelle garde. Voir auditPresc02CancelBloqueApresDispensation.test.js
+// pour la couverture de la nouvelle garde elle-même.
 //
 // Preuve que l'email/la notification n'ont jamais lieu quand l'état final
 // est 'annulee' : dans ce cas, publier() fait `return res.status(400)...`
