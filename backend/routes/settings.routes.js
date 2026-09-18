@@ -32,6 +32,7 @@ router.delete('/users/:id',   protect, authorize('superadmin'), settingsC.deacti
 // d'une suspension de compte (statut) : même niveau d'accès que le reste
 // des mutations utilisateur ci-dessus (superadmin uniquement).
 router.post('/users/:id/force-logout', protect, authorize('superadmin'), settingsC.forceLogout);
+router.post('/users/broadcast', protect, authorize(...ADMIN), settingsC.broadcastNote);
 
 // ── Services médicaux ─────────────────────────────────────────
 router.get('/services',       protect, authorize(...STAFF),   settingsC.getServices);
@@ -44,6 +45,13 @@ router.put('/services/:id',   protect, authorize(...ADMIN),   settingsC.updateSe
 router.get('/rooms',          protect, authorize(...STAFF),   settingsC.getRooms);
 router.post('/rooms',         protect, authorize(...ADMIN),   settingsC.createRoom);
 router.put('/rooms/:id',      protect, authorize(...ADMIN),   settingsC.updateRoom);
+
+// ── Inventaire / Équipements (Cas #1, audit métier) ────────────
+router.get('/inventory',                protect, authorize(...ADMIN), settingsC.getEquipments);
+router.post('/inventory',               protect, authorize(...ADMIN), settingsC.createEquipment);
+router.put('/inventory/:id',            protect, authorize(...ADMIN), settingsC.updateEquipment);
+router.post('/inventory/:id/mouvement', protect, authorize(...ADMIN), settingsC.createMouvement);
+router.get('/inventory/:id/mouvements', protect, authorize(...ADMIN), settingsC.getMouvementsInventaire);
 
 // ── KPIs administration ───────────────────────────────────────
 router.get('/kpis',           protect, authorize(...ADMIN),   settingsC.getKpis);

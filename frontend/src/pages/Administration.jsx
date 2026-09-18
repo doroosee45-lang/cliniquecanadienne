@@ -263,6 +263,7 @@ const EMPTY_USER = { prenom:"", nom:"", email:"", telephone:"", role:"medecin", 
 const EMPTY_TASK = { titre:"", assignee:"", priorite:"normale", statut:"en_attente", echeance:"", categorie:"administratif", description:"" };
 const EMPTY_SUPPLIER = { nom:"", contact:"", telephone:"", email:"", adresse:"", produits:"" };
 const EMPTY_SERVICE = { nom:"", code:"", description:"", etage:"", couleur:"#2563eb" };
+const EMPTY_EQUIPMENT = { nom:"", categorie:"Autre", service:"", quantite:0, unite:"unité", seuil_alerte:0, etat:"bon", notes:"" };
 // Correction 3 (relecture du 5 sept. 2026, découverte pendant la Correction A
 // / cout_total) — aucune UI ne permettait de créer/modifier une chambre, le
 // bouton "✏️" de la section Salles n'avait jamais d'onClick (facticité
@@ -398,6 +399,7 @@ export default function Administration() {
   const [section, setSection]   = useState("utilisateurs");
   const [loading, setLoading]   = useState(false);
   const [saving, setSaving]     = useState(false);
+  const [broadcasting, setBroadcasting] = useState(false);
   const [search, setSearch]     = useState("");
 
   // Data
@@ -422,6 +424,8 @@ export default function Administration() {
   const [modalTask, setModalTask]         = useState(false);
   const [modalSupplier, setModalSupplier] = useState(false);
   const [modalService, setModalService]   = useState(false);
+  const [modalEquipment, setModalEquipment] = useState(false);
+  const [modalMouvement, setModalMouvement] = useState(false);
   const [modalPatientQuick, setModalPatientQuick] = useState(false);
   const [modalRoom, setModalRoom]         = useState(false);
   const [editUser, setEditUser]           = useState(null);
@@ -437,6 +441,11 @@ export default function Administration() {
   const [formUser, setFormUser]           = useState(EMPTY_USER);
   const [formTask, setFormTask]           = useState(EMPTY_TASK);
   const [formService, setFormService]     = useState(EMPTY_SERVICE);
+  const [equipments, setEquipments] = useState([]);
+  const [formEquipment, setFormEquipment] = useState(EMPTY_EQUIPMENT);
+  const [editEquipment, setEditEquipment] = useState(null);
+  const [mouvementTarget, setMouvementTarget] = useState(null);
+  const [formMouvement, setFormMouvement] = useState({ type:"entree", quantite:"", motif:"" });
   const [formPatientQuick, setFormPatientQuick] = useState(EMPTY_PATIENT_QUICK);
   const [formSupplier, setFormSupplier]   = useState(EMPTY_SUPPLIER);
   const [formRoom, setFormRoom]           = useState(EMPTY_ROOM);
@@ -479,7 +488,7 @@ export default function Administration() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [kRes, uRes, svcRes, rRes, sRes, tRes, aRes, depRes, setRes, permRes] = await Promise.allSettled([
+      const [kRes, uRes, svcRes, rRes, sRes, tRes, aRes, depRes, setRes, permRes, eqRes] = await Promise.allSettled([
         api.get("/admin/kpis"),
         api.get("/admin/users"),
         api.get("/settings/services"),
@@ -501,6 +510,7 @@ export default function Administration() {
         // Sous-phase 5.5.b — réservé au superadmin (403 pour adminclinique,
         // géré ci-dessous comme un simple échec, jamais un repli fabriqué).
         api.get("/settings/roles-permissions"),
+        api.get("/settings/inventory"),
       ]);
       const toArr = (v, fallback) => Array.isArray(v) ? v : fallback;
       if (kRes.status === "fulfilled" && kRes.value.data) {
@@ -510,6 +520,7 @@ export default function Administration() {
       }
       setUsers(uRes.status === "fulfilled"  ? toArr(uRes.value.data.users  || uRes.value.data, DEMO_USERS)     : DEMO_USERS);
       setServices(svcRes.status === "fulfilled" ? toArr(svcRes.value.data.services || svcRes.value.data, []) : []);
+      setEquipments(eqRes.status === "fulfilled" ? toArr(eqRes.value.data.equipments || eqRes.value.data, []) : []);
       setRooms(rRes.status === "fulfilled"  ? toArr(rRes.value.data.rooms  || rRes.value.data, DEMO_ROOMS)     : DEMO_ROOMS);
       setSuppliers(sRes.status === "fulfilled" ? toArr(sRes.value.data.suppliers || sRes.value.data, DEMO_SUPPLIERS) : DEMO_SUPPLIERS);
       setTasks(tRes.status === "fulfilled"  ? toArr(tRes.value.data.tasks  || tRes.value.data, DEMO_TASKS)     : DEMO_TASKS);
@@ -530,7 +541,7 @@ export default function Administration() {
         setPermActions(permRes.value.data.actions || []);
       }
     } catch {
-      setUsers(DEMO_USERS); setServices([]); setRooms(DEMO_ROOMS);
+      setUsers(DEMO_USERS); setServices([]); setEquipments([]); setRooms(DEMO_ROOMS);
       setSuppliers(DEMO_SUPPLIERS); setTasks(DEMO_TASKS); setAudit(DEMO_AUDIT);
     } finally { setLoading(false); }
   }, []);
@@ -693,6 +704,58 @@ export default function Administration() {
       setModalService(false); setFormService(EMPTY_SERVICE);
     } catch (err) {
       toast.error(err?.response?.data?.message || "❌ Échec de la création du service.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Cas #1 (audit métier) — remplace le placeholder "🚧 en cours de
+  // développement" par un vrai CRUD (Equipment + MouvementInventaire),
+  // même pattern que saveService ci-dessus.
+  const saveEquipment = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const payload = {
+        nom: formEquipment.nom,
+        categorie: formEquipment.categorie,
+        service: formEquipment.service || undefined,
+        quantite: Number(formEquipment.quantite) || 0,
+        unite: formEquipment.unite,
+        seuil_alerte: Number(formEquipment.seuil_alerte) || 0,
+        etat: formEquipment.etat,
+        notes: formEquipment.notes,
+      };
+      if (editEquipment) {
+        const { data } = await api.put(`/settings/inventory/${editEquipment._id}`, payload);
+        setEquipments(prev => prev.map(eq => eq._id === data.equipment._id ? data.equipment : eq));
+        toast.success(`✅ Équipement "${data.equipment.nom}" modifié`);
+      } else {
+        const { data } = await api.post("/settings/inventory", payload);
+        setEquipments(prev => [...prev, data.equipment]);
+        toast.success(`✅ Équipement "${data.equipment.nom}" ajouté`);
+      }
+      setModalEquipment(false); setFormEquipment(EMPTY_EQUIPMENT); setEditEquipment(null);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'enregistrement de l'équipement.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveMouvement = async (e) => {
+    e.preventDefault();
+    if (!mouvementTarget) return;
+    setSaving(true);
+    try {
+      const { data } = await api.post(`/settings/inventory/${mouvementTarget._id}/mouvement`, {
+        type: formMouvement.type, quantite: Number(formMouvement.quantite), motif: formMouvement.motif,
+      });
+      setEquipments(prev => prev.map(eq => eq._id === data.equipment._id ? { ...data.equipment, alerte_stock_bas: data.equipment.quantite <= data.equipment.seuil_alerte } : eq));
+      toast.success("✅ Mouvement enregistré");
+      setModalMouvement(false); setMouvementTarget(null); setFormMouvement({ type:"entree", quantite:"", motif:"" });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "❌ Échec de l'enregistrement du mouvement.");
     } finally {
       setSaving(false);
     }
@@ -1342,11 +1405,39 @@ export default function Administration() {
                   que de laisser cet inventaire fictif. */}
               {section === "ressources" && (
                 <div>
-                  <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)", marginBottom:16 }}>Gestion des ressources & équipements</div>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
+                    <div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"var(--cn)" }}>Gestion des ressources & équipements</div>
+                      <div style={{ fontSize:12, color:"var(--cm)" }}>{equipments.length} équipement(s) référencé(s)</div>
+                    </div>
+                    <button className="cbtn cbtn-primary" onClick={() => { setFormEquipment(EMPTY_EQUIPMENT); setEditEquipment(null); setModalEquipment(true); }}>
+                      {I.plus} Ajouter un équipement
+                    </button>
+                  </div>
                   <div className="adm-card">
-                    <div style={{ padding:40, textAlign:"center", color:"var(--cm)" }}>
-                      <div style={{ fontSize:40, marginBottom:12, opacity:.4 }}>🖥️</div>
-                      <div style={{ fontSize:13 }}>🚧 Fonctionnalité en cours de développement — aucun suivi réel d'inventaire/équipements n'existe dans ce système.</div>
+                    <div style={{ overflowX:"auto" }}>
+                      <table className="adm-tbl">
+                        <thead><tr><th>Nom</th><th>Catégorie</th><th>Quantité</th><th>Seuil</th><th>État</th><th>Actions</th></tr></thead>
+                        <tbody>
+                          {equipments.length === 0 ? (
+                            <tr><td colSpan={6} style={{ textAlign:"center", color:"var(--cm)", fontSize:12, padding:"16px 0" }}>Aucun équipement enregistré</td></tr>
+                          ) : equipments.map(eq => (
+                            <tr key={eq._id}>
+                              <td><div style={{ fontWeight:600, color:"var(--cn)", fontSize:12.5 }}>{eq.nom}</div>{eq.alerte_stock_bas && <Badge cls="red">⚠ Stock bas</Badge>}</td>
+                              <td><Badge cls="blue">{eq.categorie}</Badge></td>
+                              <td style={{ fontWeight:700 }}>{eq.quantite} {eq.unite}</td>
+                              <td style={{ color:"var(--cm)" }}>{eq.seuil_alerte}</td>
+                              <td><Badge cls={eq.etat === "bon" ? "green" : eq.etat === "moyen" ? "orange" : "red"}>{eq.etat}</Badge></td>
+                              <td>
+                                <div style={{ display:"flex", gap:6 }}>
+                                  <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setFormMouvement({ type:"entree", quantite:"", motif:"" }); setMouvementTarget(eq); setModalMouvement(true); }}>Mouvement</button>
+                                  <button className="cbtn cbtn-ghost cbtn-sm" onClick={() => { setFormEquipment({ nom:eq.nom, categorie:eq.categorie, service:eq.service?._id || "", quantite:eq.quantite, unite:eq.unite, seuil_alerte:eq.seuil_alerte, etat:eq.etat, notes:eq.notes || "" }); setEditEquipment(eq); setModalEquipment(true); }}>{I.edit}</button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
@@ -1722,8 +1813,20 @@ export default function Administration() {
                         <button className="cbtn cbtn-ghost cbtn-sm" disabled title="Fonctionnalité indisponible : la messagerie ne gère que des conversations individuelles (module Messages), pas de groupes — un envoi de groupe nécessiterait une nouvelle route backend." style={{opacity:0.5,cursor:"not-allowed"}}>{I.msg}</button>
                       </div>
                     ))}
-                    <button className="cbtn cbtn-teal" disabled title="Fonctionnalité indisponible : aucune route backend de diffusion en masse n'existe (createNotification est un utilitaire interne, non exposé en API)." style={{ marginTop:14, width:"100%", opacity:0.5, cursor:"not-allowed" }}>
-                      {I.msg} Envoyer une note de service générale
+                    <button className="cbtn cbtn-teal" disabled={broadcasting} style={{ marginTop:14, width:"100%" }} onClick={async () => {
+                      const message = window.prompt("Message de la note de service (envoyée à tout le personnel actif) :");
+                      if (!message || !message.trim()) return;
+                      setBroadcasting(true);
+                      try {
+                        const { data } = await api.post("/settings/users/broadcast", { message: message.trim() });
+                        toast.success(`Note de service envoyée à ${data.notifies} membre${data.notifies > 1 ? "s" : ""} du personnel.`);
+                      } catch (err) {
+                        toast.error(err?.response?.data?.message || "Échec de l'envoi de la note de service.");
+                      } finally {
+                        setBroadcasting(false);
+                      }
+                    }}>
+                      {I.msg} {broadcasting ? "Envoi..." : "Envoyer une note de service générale"}
                     </button>
                   </div>
                 </div>
@@ -1961,6 +2064,95 @@ export default function Administration() {
                 <button type="button" className="cbtn cbtn-ghost" onClick={() => setModalService(false)}>Annuler</button>
                 <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
                   {I.save} {saving ? "..." : "Créer le service"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : ÉQUIPEMENT (Cas #1, audit métier) ═══ */}
+        <Modal open={modalEquipment} onClose={() => { setModalEquipment(false); setEditEquipment(null); }} title={editEquipment ? `${I.edit} Modifier — ${editEquipment.nom}` : `${I.plus} Nouvel équipement`} maxWidth={480}>
+          <form onSubmit={saveEquipment}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div>
+                <label className="clbl">Nom de l'équipement *</label>
+                <input className="cinp" required value={formEquipment.nom} onChange={e => setFormEquipment(f=>({...f,nom:e.target.value}))} placeholder="Ex: Ordinateur portable" />
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12 }}>
+                <div>
+                  <label className="clbl">Catégorie</label>
+                  <select className="cinp" value={formEquipment.categorie} onChange={e => setFormEquipment(f=>({...f,categorie:e.target.value}))}>
+                    {["Informatique","Mobilier médical","Imagerie","Laboratoire","Bloc opératoire","Consommable","Autre"].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="clbl">Service</label>
+                  <select className="cinp" value={formEquipment.service} onChange={e => setFormEquipment(f=>({...f,service:e.target.value}))}>
+                    <option value="">— Aucun —</option>
+                    {services.map(s => <option key={s._id} value={s._id}>{s.nom}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr", gap:12 }}>
+                <div>
+                  <label className="clbl">Quantité</label>
+                  <input type="number" min="0" className="cinp" value={formEquipment.quantite} onChange={e => setFormEquipment(f=>({...f,quantite:e.target.value}))} />
+                </div>
+                <div>
+                  <label className="clbl">Unité</label>
+                  <input className="cinp" value={formEquipment.unite} onChange={e => setFormEquipment(f=>({...f,unite:e.target.value}))} placeholder="unité" />
+                </div>
+                <div>
+                  <label className="clbl">Seuil d'alerte</label>
+                  <input type="number" min="0" className="cinp" value={formEquipment.seuil_alerte} onChange={e => setFormEquipment(f=>({...f,seuil_alerte:e.target.value}))} />
+                </div>
+              </div>
+              <div>
+                <label className="clbl">État</label>
+                <select className="cinp" value={formEquipment.etat} onChange={e => setFormEquipment(f=>({...f,etat:e.target.value}))}>
+                  <option value="bon">Bon</option>
+                  <option value="moyen">Moyen</option>
+                  <option value="hors_service">Hors service</option>
+                </select>
+              </div>
+              <div>
+                <label className="clbl">Notes</label>
+                <textarea className="cinp" rows={2} value={formEquipment.notes} onChange={e => setFormEquipment(f=>({...f,notes:e.target.value}))} />
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="cbtn cbtn-ghost" onClick={() => { setModalEquipment(false); setEditEquipment(null); }}>Annuler</button>
+                <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
+                  {I.save} {saving ? "..." : editEquipment ? "Enregistrer" : "Ajouter l'équipement"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+
+        {/* ═══ MODAL : MOUVEMENT DE STOCK (Cas #1, audit métier) ═══ */}
+        <Modal open={modalMouvement} onClose={() => { setModalMouvement(false); setMouvementTarget(null); }} title={mouvementTarget ? `📦 Mouvement — ${mouvementTarget.nom}` : "📦 Mouvement de stock"} maxWidth={420}>
+          <form onSubmit={saveMouvement}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div>
+                <label className="clbl">Type de mouvement</label>
+                <select className="cinp" value={formMouvement.type} onChange={e => setFormMouvement(f=>({...f,type:e.target.value}))}>
+                  <option value="entree">Entrée</option>
+                  <option value="sortie">Sortie</option>
+                  <option value="ajustement">Ajustement (nouvelle quantité totale)</option>
+                </select>
+              </div>
+              <div>
+                <label className="clbl">Quantité *</label>
+                <input type="number" min="1" required className="cinp" value={formMouvement.quantite} onChange={e => setFormMouvement(f=>({...f,quantite:e.target.value}))} />
+              </div>
+              <div>
+                <label className="clbl">Motif</label>
+                <input className="cinp" value={formMouvement.motif} onChange={e => setFormMouvement(f=>({...f,motif:e.target.value}))} placeholder="Ex: Achat, casse, prêt..." />
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button type="button" className="cbtn cbtn-ghost" onClick={() => { setModalMouvement(false); setMouvementTarget(null); }}>Annuler</button>
+                <button type="submit" className="cbtn cbtn-teal" style={{ marginLeft:"auto" }} disabled={saving}>
+                  {I.save} {saving ? "..." : "Enregistrer le mouvement"}
                 </button>
               </div>
             </div>
