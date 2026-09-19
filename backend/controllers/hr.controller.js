@@ -331,6 +331,18 @@ const PLANNING_TYPE_LABELS = { travail: 'Travail', garde: 'Garde', astreinte: 'A
 // (notifie_publication) est donc posée par créneau, pas au niveau de
 // l'employé, pour qu'un second appel (ex. nouveaux créneaux ajoutés entre
 // temps) ne renotifie jamais les créneaux déjà publiés.
+// AUDIT-20-10 (19 sept. 2026) — l'ancien code envoyait les notifications
+// (email + SMS) dans la boucle puis ne persistait statut:'publie'/
+// notifie_publication:true qu'une seule fois, via UN SEUL staff.save() en
+// fin de fonction. Si ce save() échouait (ou le processus s'interrompait)
+// après que des notifications aient déjà été réellement envoyées, rien
+// n'était persisté et l'appel suivant renvoyait les mêmes notifications en
+// double — contraire à l'intention d'idempotence par créneau documentée
+// ci-dessus. Corrigé en persistant chaque créneau (findOneAndUpdate +
+// arrayFilters, même motif qu'updateExamen/updateTraitement) immédiatement
+// après l'envoi de SES notifications, pas en fin de boucle groupée : une
+// interruption ne peut plus reperdre que le créneau en cours d'envoi au
+// moment de l'interruption, jamais les créneaux déjà traités avant lui.
 exports.publishSchedules = async (req, res, next) => {
   try {
     const staff = await Staff.findById(req.params.id).populate('utilisateur', 'email telephone');
@@ -377,11 +389,17 @@ exports.publishSchedules = async (req, res, next) => {
         }
       }
 
+      await Staff.findOneAndUpdate(
+        { _id: staff._id, 'planning._id': slot._id },
+        { $set: { 'planning.$[elem].statut': 'publie', 'planning.$[elem].notifie_publication': true } },
+        { arrayFilters: [{ 'elem._id': slot._id }], runValidators: true }
+      );
+      // Mutation en mémoire pour que la réponse HTTP reflète l'état réel,
+      // déjà persisté ci-dessus créneau par créneau (jamais via ce
+      // save() en mémoire seul).
       slot.statut = 'publie';
       slot.notifie_publication = true;
     }
-
-    await staff.save();
 
     await logAction({
       utilisateur: req.user._id, action: 'PLANNING_PUBLISH', module: 'hr', entite_id: staff._id, ip: req.ip,
@@ -704,6 +722,22 @@ exports.genererPlanningIA = async (req, res, next) => {
     }
 
     const staffMap = new Map(staffList.map(s => [s._id.toString(), s]));
+    // AUDIT-20-10 (19 sept. 2026) — l'ancien code mutait staff.planning en
+    // mémoire pour TOUTE la liste puis faisait
+    // Promise.all(staffList.map(s => s.save())) en toute fin de fonction,
+    // après l'appel réseau OpenAI (plusieurs secondes) : fenêtre large
+    // pendant laquelle un addSchedule concurrent sur un de ces employés
+    // était écrasé par cette sauvegarde tardive et périmée, et un
+    // VersionError sur un seul employé faisait échouer tout le
+    // Promise.all (aucun employé persisté, même ceux sans conflit).
+    // nouvellesEntrees collecte les créneaux à écrire PAR EMPLOYÉ, pour un
+    // $push atomique ($each) via findByIdAndUpdate à la fin — même motif
+    // qu'addSchedule (AUDIT-20-8). staff.planning.push(...) est conservé
+    // ICI, en mémoire uniquement (jamais persisté via save()), car
+    // dejaPlanifie()/la vérification "repos après nuit" ci-dessous doivent
+    // voir les créneaux déjà proposés plus tôt DANS LE MÊME lot pour le
+    // même employé — logique de validation intra-lot inchangée.
+    const nouvellesEntrees = new Map();
     let creees = 0;
     const rejetees = [];
 
@@ -733,11 +767,19 @@ exports.genererPlanningIA = async (req, res, next) => {
         continue;
       }
 
-      staff.planning.push(Object.assign({ date: prop.date }, horaire, { statut: 'brouillon' }));
+      const entree = Object.assign({ date: prop.date }, horaire, { statut: 'brouillon' });
+      staff.planning.push(entree);
+      const staffId = staff._id.toString();
+      if (!nouvellesEntrees.has(staffId)) nouvellesEntrees.set(staffId, []);
+      nouvellesEntrees.get(staffId).push(entree);
       creees++;
     }
 
-    await Promise.all(staffList.map(s => s.save()));
+    await Promise.all(
+      Array.from(nouvellesEntrees.entries()).map(([staffId, entries]) =>
+        Staff.findByIdAndUpdate(staffId, { $push: { planning: { $each: entries } } }, { runValidators: true })
+      )
+    );
 
     await logAction({
       utilisateur: req.user._id, action: 'SCHEDULE_ADD', module: 'hr', ip: req.ip,
