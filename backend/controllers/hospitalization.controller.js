@@ -371,6 +371,24 @@ exports.addNote = async (req, res, next) => {
 // singular/plural : clés de la réponse JSON (POST retourne { [singular]: item },
 //   GET retourne { [plural]: [...] }) — alignées sur ce que le frontend lit déjà
 //   (data.constante/data.constantes, data.traitement/data.traitements, etc.)
+const isSubResourceObjectId = v => /^[a-f\d]{24}$/i.test(String(v || ''));
+
+// AUDIT-20-6 (19 sept. 2026) — add()/update() faisaient tous deux
+// findById() puis push()/mutation en mémoire + hosp.save() du document
+// Hospitalization PARENT entier. Cause racine exacte : le versioning
+// optimiste natif de Mongoose (__v, actif par défaut, jamais désactivé sur
+// ce schéma) fait échouer l'un des deux .save() concurrents avec une
+// VersionError explicite dès que deux écritures visent le même document
+// parent — même si elles ne touchent aucun champ commun (ex. une infirmière
+// ajoute une constante pendant qu'un médecin met à jour un traitement, sur
+// le même séjour). Reproduit directement : add()-vs-add() sur la même
+// sous-ressource (jusqu'à 20 concurrents) n'a jamais échoué, mais
+// updateTraitement()-vs-addExamen() concurrents sur le même séjour a
+// produit "VersionError: No matching document found ... version N" — un
+// 500 brut, pas une perte silencieuse, mais réel sous usage clinique
+// concurrent réaliste. Différent en nature des bugs déjà corrigés dans ce
+// projet (perte silencieuse) — ici une erreur visible forçant un nouvel
+// essai côté client.
 function makeSubResource(field, singular, plural, { withAuteur = false, updatableFields = null } = {}) {
   return {
     get: async (req, res, next) => {
@@ -381,14 +399,20 @@ function makeSubResource(field, singular, plural, { withAuteur = false, updatabl
         res.json({ success: true, [plural]: items });
       } catch (err) { next(err); }
     },
+    // $push atomique : chaque ajout est sa propre opération Mongo, jamais
+    // une lecture du document parent suivie d'une écriture qui lui est
+    // sujette au versioning optimiste de tout ce qui se passe ailleurs sur
+    // ce même document.
     add: async (req, res, next) => {
       try {
-        const hosp = await Hospitalization.findById(req.params.id);
-        if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
         const entry = { ...req.body, date: req.body.date || new Date() };
         if (withAuteur) entry.auteur = req.user._id;
-        hosp[field].push(entry);
-        await hosp.save();
+        const hosp = await Hospitalization.findByIdAndUpdate(
+          req.params.id,
+          { $push: { [field]: entry } },
+          { new: true, runValidators: true }
+        ).select(field);
+        if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
         const created = hosp[field][hosp[field].length - 1];
         await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip, message: `${singular} ajouté(e) au dossier de séjour` });
         res.status(201).json({ success: true, [singular]: created });
@@ -401,16 +425,40 @@ function makeSubResource(field, singular, plural, { withAuteur = false, updatabl
     // saisie était donc perdue au rechargement. updatableFields limite
     // explicitement ce qu'un client peut réassigner sur un sous-document
     // déjà créé (jamais `date`/`personnel` a posteriori, par exemple).
+    //
+    // AUDIT-20-6 — $set positionnel via arrayFilters : ne touche que le
+    // sous-document ciblé, jamais le tableau entier ni le document parent
+    // (donc jamais de VersionError sur __v, quoi que fasse un autre appel
+    // concurrent sur ce même séjour). La distinction 404 "séjour
+    // introuvable" / "sous-document introuvable" est reconstruite UNIQUEMENT
+    // sur le chemin d'échec (l'update atomique a déjà échoué) — jamais une
+    // lecture séparée avant l'écriture normale, pour ne jamais réintroduire
+    // la même race que ce correctif élimine.
     update: updatableFields ? async (req, res, next) => {
       try {
-        const hosp = await Hospitalization.findById(req.params.id);
-        if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
-        const item = hosp[field].id(req.params.sid);
-        if (!item) return res.status(404).json({ success: false, message: `${singular.charAt(0).toUpperCase()}${singular.slice(1)} introuvable.` });
-        for (const k of updatableFields) {
-          if (Object.prototype.hasOwnProperty.call(req.body || {}, k)) item[k] = req.body[k];
+        if (!isSubResourceObjectId(req.params.sid)) {
+          return res.status(404).json({ success: false, message: `${singular.charAt(0).toUpperCase()}${singular.slice(1)} introuvable.` });
         }
-        await hosp.save();
+        const setFields = {};
+        for (const k of updatableFields) {
+          if (Object.prototype.hasOwnProperty.call(req.body || {}, k)) setFields[`${field}.$[elem].${k}`] = req.body[k];
+        }
+
+        const hosp = Object.keys(setFields).length
+          ? await Hospitalization.findOneAndUpdate(
+              { _id: req.params.id, [`${field}._id`]: req.params.sid },
+              { $set: setFields },
+              { new: true, runValidators: true, arrayFilters: [{ 'elem._id': req.params.sid }] }
+            ).select(field)
+          : await Hospitalization.findOne({ _id: req.params.id, [`${field}._id`]: req.params.sid }).select(field);
+
+        if (!hosp) {
+          const existe = await Hospitalization.exists({ _id: req.params.id });
+          if (!existe) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
+          return res.status(404).json({ success: false, message: `${singular.charAt(0).toUpperCase()}${singular.slice(1)} introuvable.` });
+        }
+
+        const item = hosp[field].id(req.params.sid);
         await logAction({ utilisateur: req.user._id, action: 'UPDATE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip, message: `${singular} mis à jour dans le dossier de séjour` });
         res.json({ success: true, [singular]: item });
       } catch (err) { next(err); }
