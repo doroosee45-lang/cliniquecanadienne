@@ -217,49 +217,64 @@ exports.update = async (req, res, next) => {
 };
 
 // ── Vaccinations ──────────────────────────────────────────────────────────────
+// AUDIT-20-8 (19 sept. 2026) — child.vaccinations.push(...) + child.save()
+// — même risque de VersionError sous écriture concurrente que le reste de
+// ce chantier (AUDIT-20-6/7). $push atomique. Contrat de réponse inchangé.
 exports.addVaccination = async (req, res, next) => {
   try {
-    const child = await Child.findById(req.params.id);
-    if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
     const vacc = { ...req.body };
     if (vacc.date) vacc.date = new Date(vacc.date);
     if (vacc.rappel_prevu) vacc.rappel_prevu = new Date(vacc.rappel_prevu);
-    child.vaccinations.push(vacc);
-    await child.save();
+    const child = await Child.findByIdAndUpdate(
+      req.params.id,
+      { $push: { vaccinations: vacc } },
+      { new: true, runValidators: true }
+    );
+    if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Vaccination (${vacc.vaccin || '—'}) ajoutée au dossier ${child.numero}` });
     res.status(201).json({ success: true, enfant: child, vaccination: child.vaccinations[child.vaccinations.length - 1] });
   } catch (err) { next(err); }
 };
 
 // ── Mesures de croissance ─────────────────────────────────────────────────────
+// AUDIT-20-8 — même cause racine, MAIS trois mutations (push + deux mises
+// à jour conditionnelles de champs dérivés) combinées dans la MÊME
+// opération atomique ($push + $set dans un seul findByIdAndUpdate), jamais
+// des écritures séparées.
 exports.addMesure = async (req, res, next) => {
   try {
-    const child = await Child.findById(req.params.id);
-    if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
     const mesure = { ...req.body };
     if (mesure.date) mesure.date = new Date(mesure.date);
     if (mesure.poids && mesure.taille) {
       const h = mesure.taille / 100;
       mesure.imc = parseFloat((mesure.poids / (h * h)).toFixed(1));
     }
-    child.mesures_croissance.push(mesure);
-    // Mise à jour mesures actuelles
-    if (mesure.poids)  child.poids_actuel    = mesure.poids;
-    if (mesure.taille) child.taille_actuelle = mesure.taille;
-    await child.save();
+    const setFields = {};
+    if (mesure.poids)  setFields.poids_actuel    = mesure.poids;
+    if (mesure.taille) setFields.taille_actuelle = mesure.taille;
+    const child = await Child.findByIdAndUpdate(
+      req.params.id,
+      { $push: { mesures_croissance: mesure }, ...(Object.keys(setFields).length ? { $set: setFields } : {}) },
+      { new: true, runValidators: true }
+    );
+    if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Mesure de croissance ajoutée au dossier ${child.numero}` });
     res.status(201).json({ success: true, enfant: child });
   } catch (err) { next(err); }
 };
 
 // ── Maladies chroniques ───────────────────────────────────────────────────────
+// AUDIT-20-8 — même cause racine, MAIS deux mutations (push + changement
+// de statut) combinées dans la MÊME opération atomique ($push + $set dans
+// un seul findByIdAndUpdate), jamais deux écritures séparées.
 exports.addMaladieChron = async (req, res, next) => {
   try {
-    const child = await Child.findById(req.params.id);
+    const child = await Child.findByIdAndUpdate(
+      req.params.id,
+      { $push: { maladies_chroniques: req.body }, $set: { statut: 'chronique' } },
+      { new: true, runValidators: true }
+    );
     if (!child) return res.status(404).json({ message: 'Dossier introuvable' });
-    child.maladies_chroniques.push(req.body);
-    child.statut = 'chronique';
-    await child.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'pediatrie', entite_id: child._id, ip: req.ip, message: `Maladie chronique enregistrée au dossier ${child.numero}` });
     res.status(201).json({ success: true, enfant: child });
   } catch (err) { next(err); }

@@ -178,24 +178,37 @@ exports.update = async (req, res, next) => {
 };
 
 // ── CPN ───────────────────────────────────────────────────────────────────────
+// AUDIT-20-8 (19 sept. 2026) — g.cpns.push(...) + g.save() — même risque
+// de VersionError sous écriture concurrente que le reste de ce chantier
+// (AUDIT-20-6/7). $push atomique. Contrat de réponse inchangé : le
+// document `grossesse` complet ET la cpn créée (relue depuis le tableau du
+// document RETOURNÉ par l'opération atomique, jamais l'objet en mémoire
+// d'avant l'écriture).
 exports.addCPN = async (req, res, next) => {
   try {
-    const g = await Pregnancy.findById(req.params.id);
+    const cpn = { ...req.body, date: req.body.date ? new Date(req.body.date) : new Date() };
+    const g = await Pregnancy.findByIdAndUpdate(
+      req.params.id,
+      { $push: { cpns: cpn } },
+      { new: true, runValidators: true }
+    );
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
-    g.cpns.push({ ...req.body, date: req.body.date ? new Date(req.body.date) : new Date() });
-    await g.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Consultation prénatale ajoutée au dossier ${g.numero}` });
     res.status(201).json({ success: true, grossesse: g, cpn: g.cpns[g.cpns.length - 1] });
   } catch (err) { next(err); }
 };
 
 // ── Échographies ──────────────────────────────────────────────────────────────
+// AUDIT-20-8 — même correctif qu'addCPN ci-dessus.
 exports.addEcho = async (req, res, next) => {
   try {
-    const g = await Pregnancy.findById(req.params.id);
+    const echo = { ...req.body, date: req.body.date ? new Date(req.body.date) : new Date() };
+    const g = await Pregnancy.findByIdAndUpdate(
+      req.params.id,
+      { $push: { echographies: echo } },
+      { new: true, runValidators: true }
+    );
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
-    g.echographies.push({ ...req.body, date: req.body.date ? new Date(req.body.date) : new Date() });
-    await g.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Échographie obstétricale ajoutée au dossier ${g.numero}` });
     res.status(201).json({ success: true, grossesse: g, echo: g.echographies[g.echographies.length - 1] });
   } catch (err) { next(err); }
@@ -213,13 +226,19 @@ exports.updateTravail = async (req, res, next) => {
 };
 
 // ── Postnatal ──────────────────────────────────────────────────────────────────
+// AUDIT-20-8 — même cause racine, MAIS deux mutations (push +
+// changement de statut) combinées dans la MÊME opération atomique
+// ($push + $set dans un seul findByIdAndUpdate), jamais deux écritures
+// séparées.
 exports.addPostnatal = async (req, res, next) => {
   try {
-    const g = await Pregnancy.findById(req.params.id);
+    const consultation = { ...req.body, date: req.body.date ? new Date(req.body.date) : new Date() };
+    const g = await Pregnancy.findByIdAndUpdate(
+      req.params.id,
+      { $push: { consultations_postnatales: consultation }, $set: { statut: 'suivi_postnatal' } },
+      { new: true, runValidators: true }
+    );
     if (!g) return res.status(404).json({ message: 'Dossier introuvable' });
-    g.consultations_postnatales.push({ ...req.body, date: req.body.date ? new Date(req.body.date) : new Date() });
-    g.statut = 'suivi_postnatal';
-    await g.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'maternite', entite_id: g._id, ip: req.ip, message: `Consultation postnatale ajoutée au dossier ${g.numero}` });
     res.status(201).json({ success: true, grossesse: g });
   } catch (err) { next(err); }

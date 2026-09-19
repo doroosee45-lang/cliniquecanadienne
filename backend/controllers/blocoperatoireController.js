@@ -721,28 +721,56 @@ exports.getMateriels = async (req, res, next) => {
 };
 
 // ── POST /:id/materiel — enregistrer une consommation réelle ─────────────
+// AUDIT-20-8 (19 sept. 2026) — deux bugs distincts, sur deux documents
+// séparés :
+// (a) dossier.materiel_utilise.push(...) + dossier.save() — même risque de
+//     VersionError sous écriture concurrente que le reste de ce chantier
+//     (AUDIT-20-6/7).
+// (b) materiel.stock_actuel -= quantite + materiel.save() — lecture-puis-
+//     décrément non atomique sur un STOCK PARTAGÉ, la même classe de bug
+//     déjà corrigée sur Medication.stock_actuel (AUDIT-2.1,
+//     pharmacy.controller.js::createVente/dispenser) : deux appels
+//     concurrents sur le même materiel_id pouvaient tous deux lire le même
+//     stock, décrémenter en mémoire, et le second .save() écrasait le
+//     premier — perte de décrément, stock final faux, potentiellement
+//     négatif (reproduit : voir
+//     tests/audit20BlocoperatoireConsommationAtomique.test.js).
+// Corrigé dans le même ordre que createVente/dispenser : décrément atomique
+// D'ABORD (findOneAndUpdate filtré sur stock_actuel >= quantite — si null,
+// rien d'autre n'a encore été écrit, refus propre 400), $push sur
+// dossier.materiel_utilise ENSUITE, seulement une fois le décrément réussi.
+// Statut rupture dérivé du document RÉELLEMENT retourné par l'opération
+// atomique, jamais d'une relecture séparée sujette à la même course.
 exports.addConsommation = async (req, res, next) => {
   try {
     const { materiel_id, quantite } = req.body;
     if (!materiel_id || !quantite || quantite < 1)
       return res.status(400).json({ success: false, message: 'materiel_id et quantite (\u22651) requis.' });
 
-    const dossier = await DossierChirurgical.findById(req.params.id);
-    if (!dossier) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
+    const dossierExiste = await DossierChirurgical.exists({ _id: req.params.id });
+    if (!dossierExiste) return res.status(404).json({ success: false, message: 'Dossier introuvable.' });
 
-    const materiel = await MaterielMedical.findById(materiel_id);
-    if (!materiel) return res.status(404).json({ success: false, message: 'Matériel introuvable.' });
-    if (materiel.stock_actuel < quantite)
-      return res.status(400).json({ success: false, message: `Stock insuffisant pour ${materiel.designation} (disponible: ${materiel.stock_actuel}).` });
+    const materielAvant = await MaterielMedical.findById(materiel_id).select('designation stock_actuel');
+    if (!materielAvant) return res.status(404).json({ success: false, message: 'Matériel introuvable.' });
 
-    dossier.materiel_utilise.push({
-      materiel: materiel._id, designation: materiel.designation, quantite,
-      unite: materiel.unite, utilisateur: req.user._id,
-    });
-    materiel.stock_actuel -= quantite;
-    if (materiel.stock_actuel <= materiel.stock_minimum) materiel.statut = 'rupture';
+    const materiel = await MaterielMedical.findOneAndUpdate(
+      { _id: materiel_id, stock_actuel: { $gte: quantite } },
+      { $inc: { stock_actuel: -quantite } },
+      { new: true }
+    );
+    if (!materiel) {
+      return res.status(400).json({ success: false, message: `Stock insuffisant pour ${materielAvant.designation} (disponible: ${materielAvant.stock_actuel}).` });
+    }
+    if (materiel.stock_actuel <= materiel.stock_minimum && materiel.statut !== 'rupture') {
+      await MaterielMedical.findByIdAndUpdate(materiel._id, { $set: { statut: 'rupture' } });
+      materiel.statut = 'rupture';
+    }
 
-    await Promise.all([dossier.save(), materiel.save()]);
+    const dossier = await DossierChirurgical.findByIdAndUpdate(
+      req.params.id,
+      { $push: { materiel_utilise: { materiel: materiel._id, designation: materiel.designation, quantite, unite: materiel.unite, utilisateur: req.user._id } } },
+      { new: true, runValidators: true }
+    );
 
     await logAction({
       utilisateur: req.user._id, action: 'UPDATE', module: 'blocoperatoire',

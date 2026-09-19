@@ -253,13 +253,21 @@ exports.getSchedules = async (req, res, next) => {
 // tant statut que notifie_publication/rappel_2h_envoye sont ignorés du body
 // (jamais acceptés en entrée) pour qu'un créneau ne puisse être marqué
 // "déjà notifié" qu'en passant réellement par publishSchedules ci-dessous.
+// AUDIT-20-8 (19 sept. 2026) — staff.planning.push(...) + staff.save() —
+// même risque de VersionError sous écriture concurrente que le reste de ce
+// chantier (AUDIT-20-6/7) : deux créneaux ajoutés simultanément au planning
+// du même employé pouvaient faire échouer l'un des deux .save(). $push
+// atomique. Contrat de réponse inchangé ({ success, staff }, document
+// complet).
 exports.addSchedule = async (req, res, next) => {
   try {
-    const staff = await Staff.findById(req.params.id);
-    if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
     const { date, heure_debut, heure_fin, type } = req.body;
-    staff.planning.push({ date, heure_debut, heure_fin, type, statut: 'brouillon' });
-    await staff.save();
+    const staff = await Staff.findByIdAndUpdate(
+      req.params.id,
+      { $push: { planning: { date, heure_debut, heure_fin, type, statut: 'brouillon' } } },
+      { new: true, runValidators: true }
+    );
+    if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'SCHEDULE_ADD', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Créneau planning (${type || '—'}) assigné — ${staff.prenom || ''} ${staff.nom || ''}`.trim() });
     emitDashboardUpdate();
     res.json({ success: true, staff });
