@@ -161,15 +161,25 @@ exports.update = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-20-9 (19 sept. 2026) — staff.conges.push(...) + staff.save() — même
+// risque de VersionError sous écriture concurrente que le reste de ce
+// chantier (AUDIT-20-6/7/8). Différence par rapport aux 8 cas déjà corrigés
+// en AUDIT-20-8 : la lecture initiale sert aussi au contrôle RBAC
+// (staff.utilisateur), pas seulement à l'existence — elle est donc
+// conservée telle quelle (allégée via .select), le contrôle d'accès
+// s'exécute avant toute écriture, et SEULE l'écriture elle-même est
+// convertie en $push atomique via un findByIdAndUpdate séparé. La lecture
+// RBAC et l'écriture ne sont jamais fusionnées en une seule opération, pour
+// garantir que le 403 reste toujours vérifié avant toute mutation.
 exports.leave = async (req, res, next) => {
   try {
-    const staff = await Staff.findById(req.params.id);
-    if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
+    const staffRbac = await Staff.findById(req.params.id).select('utilisateur prenom nom');
+    if (!staffRbac) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
 
     // Seul un admin RH ou l'employé lui-même (fiche Staff liée à son compte User)
     // peut soumettre une demande de congé sur cette fiche.
     const isAdmin = ['superadmin','adminclinique'].includes(req.user.role);
-    const isSelf  = staff.utilisateur && staff.utilisateur.toString() === req.user._id.toString();
+    const isSelf  = staffRbac.utilisateur && staffRbac.utilisateur.toString() === req.user._id.toString();
     if (!isAdmin && !isSelf) {
       return res.status(403).json({ success: false, message: 'Vous ne pouvez pas soumettre de congé pour un autre employé.' });
     }
@@ -179,8 +189,12 @@ exports.leave = async (req, res, next) => {
       ? Math.round((new Date(date_fin) - new Date(date_debut)) / 86400000) + 1
       : undefined;
 
-    staff.conges.push({ type, date_debut, date_fin, motif, nb_jours, statut: 'en_attente' });
-    await staff.save();
+    const staff = await Staff.findByIdAndUpdate(
+      req.params.id,
+      { $push: { conges: { type, date_debut, date_fin, motif, nb_jours, statut: 'en_attente' } } },
+      { new: true, runValidators: true }
+    );
+    if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
     await logAction({ utilisateur: req.user._id, action: 'LEAVE_REQUEST', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Demande de congé (${type || '—'}) — ${staff.prenom || ''} ${staff.nom || ''}`.trim() });
     emitDashboardUpdate();
     res.json({ success: true, staff });
@@ -203,27 +217,62 @@ exports.getLeaves = async (req, res, next) => {
 };
 
 // PUT /hr/:id/conge/:congeId — approuver/refuser une demande de congé
+// AUDIT-20-9 (19 sept. 2026) — deux bugs distincts sur le même document :
+// (a) staff.conges.id(congeId) muté en mémoire + staff.save() — mutation
+//     d'un élément EXISTANT d'un tableau, même catégorie que
+//     updateExamen/updateTraitement (AUDIT-20-6/7) : reproduction fiable.
+// (b) plus grave : if (conge.statut !== 'en_attente') lu-puis-vérifié-puis-
+//     écrit sans garantie atomique — deux approbations concurrentes de la
+//     même demande pouvaient toutes deux passer ce contrôle avant que
+//     l'une n'écrive, et toutes deux décrémenter conges_restants (même
+//     famille de risque que le stock de addConsommation, AUDIT-20-8, mais
+//     sur un compteur RH).
+// Corrigé avec le même motif atomique que Room.findOneAndUpdate
+// (hospitalization.controller.js, réservation de lit) : le passage
+// en_attente -> statut est gardé par un $elemMatch sur l'état ACTUEL du
+// sous-document dans le FILTRE de la requête elle-même (jamais une lecture
+// préalable) — un second appel concurrent ne matche plus rien une fois le
+// premier passé, donc son $inc n'est jamais appliqué. nb_jours est lu
+// depuis une existence-check initiale, mais UNIQUEMENT comme source de la
+// valeur à décrémenter, jamais comme base de la décision d'écrire (le vrai
+// verrou est le filtre atomique). conges_restants est décrémenté via $inc
+// (atomique même entre deux congés DISTINCTS approuvés en parallèle sur le
+// même employé), puis clampé à 0 via $max dans une seconde opération
+// atomique si le solde est passé sous zéro — comportement identique au
+// Math.max(0, ...) de l'ancien code.
 exports.updateLeaveStatus = async (req, res, next) => {
   try {
     const { statut } = req.body;
     if (!['approuve', 'refuse'].includes(statut)) {
       return res.status(400).json({ success: false, message: 'Statut invalide — approuve ou refuse attendu.' });
     }
-    const staff = await Staff.findById(req.params.id);
-    if (!staff) return res.status(404).json({ success: false, message: 'Personnel introuvable.' });
-    const conge = staff.conges.id(req.params.congeId);
-    if (!conge) return res.status(404).json({ success: false, message: 'Demande de congé introuvable.' });
-    if (conge.statut !== 'en_attente') {
+
+    const congeExiste = await Staff.findOne(
+      { _id: req.params.id, 'conges._id': req.params.congeId },
+      { 'conges.$': 1 }
+    );
+    if (!congeExiste) {
+      const staffExiste = await Staff.exists({ _id: req.params.id });
+      return res.status(404).json({ success: false, message: staffExiste ? 'Demande de congé introuvable.' : 'Personnel introuvable.' });
+    }
+    const nb_jours = congeExiste.conges[0].nb_jours;
+    const avant = await Staff.findById(req.params.id).lean();
+
+    const update = { $set: { 'conges.$[elem].statut': statut, 'conges.$[elem].approuve_par': req.user._id } };
+    if (statut === 'approuve' && nb_jours) update.$inc = { conges_restants: -nb_jours };
+
+    let staff = await Staff.findOneAndUpdate(
+      { _id: req.params.id, conges: { $elemMatch: { _id: req.params.congeId, statut: 'en_attente' } } },
+      update,
+      { new: true, runValidators: true, arrayFilters: [{ 'elem._id': req.params.congeId }] }
+    );
+    if (!staff) {
       return res.status(400).json({ success: false, message: 'Cette demande a déjà été traitée.' });
     }
-    const avant = staff.toObject();
-
-    conge.statut = statut;
-    conge.approuve_par = req.user._id;
-    if (statut === 'approuve' && conge.nb_jours) {
-      staff.conges_restants = Math.max(0, (staff.conges_restants || 0) - conge.nb_jours);
+    if (staff.conges_restants < 0) {
+      staff = await Staff.findByIdAndUpdate(staff._id, { $max: { conges_restants: 0 } }, { new: true });
     }
-    await staff.save();
+
     await logAction({ utilisateur: req.user._id, action: statut === 'approuve' ? 'LEAVE_APPROVE' : 'LEAVE_REFUSE', module: 'hr', entite_id: staff._id, ip: req.ip, message: `Congé ${statut === 'approuve' ? 'approuvé' : 'refusé'} — ${staff.prenom || ''} ${staff.nom || ''}`.trim(), avant, apres: staff });
     emitDashboardUpdate();
     res.json({ success: true, staff });
