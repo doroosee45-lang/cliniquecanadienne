@@ -63,8 +63,8 @@ test('AI/Laboratoire — GET /ai/lab-insights/:patientId réellement protégé p
       assert.equal(res.status, 401);
     });
   } finally {
-    for (const id of created.patients) { try { await require('../models/Patient').findByIdAndDelete(id); } catch {} }
-    for (const id of created.users) { try { await require('../models/User').findByIdAndDelete(id); } catch {} }
+    for (const id of created.patients) { try { await require('../models/Patient').findByIdAndDelete(id); } catch { /* nettoyage best-effort — jamais bloquant pour le test */ } }
+    for (const id of created.users) { try { await require('../models/User').findByIdAndDelete(id); } catch { /* nettoyage best-effort — jamais bloquant pour le test */ } }
     if (connected) await mongoose.disconnect();
     if (server) await server.stop();
   }

@@ -61,7 +61,7 @@ test('POST6-001/AI — GET /ai/dashboard-highlights réellement protégé par r�
       assert.equal(res.status, 401);
     });
   } finally {
-    for (const id of created.users) { try { await require('../models/User').findByIdAndDelete(id); } catch {} }
+    for (const id of created.users) { try { await require('../models/User').findByIdAndDelete(id); } catch { /* nettoyage best-effort — jamais bloquant pour le test */ } }
     if (connected) await mongoose.disconnect();
     if (server) await server.stop();
   }

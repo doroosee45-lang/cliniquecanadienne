@@ -80,6 +80,18 @@ export default defineConfig([
     },
   },
   {
+    // apply-sms-appointments-patch.js : script ponctuel exécuté une seule
+    // fois sous Node (jamais bundlé, jamais servi au navigateur), même
+    // nature que vite.config.js ci-dessus — require/process n'y sont pas
+    // des variables non déclarées. Le patch qu'il appliquait à
+    // Appointments.jsx est déjà committé (vérifié) ; conservé tel quel
+    // comme trace de ce qui a été fait plutôt que supprimé unilatéralement.
+    files: ['apply-sms-appointments-patch.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     // src/utils/labResultats.js est un cas d'interop CommonJS délibéré (voir
     // commentaire en fin de fichier) : `module` y est lu derrière un garde
     // `typeof module !== 'undefined'` pour rester exploitable tel quel par
