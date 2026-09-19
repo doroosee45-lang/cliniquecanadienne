@@ -8,7 +8,7 @@ const DossierChirurgical = require('../models/DossierChirurgical');
 const Invoice         = require('../models/Invoice');
 const Prescription    = require('../models/Prescription');
 const Setting         = require('../models/Setting');
-const { logAction, escapeRegex } = require('../utils/helpers');
+const { logAction, escapeRegex, escapeCsvField } = require('../utils/helpers');
 const { cacheStats } = require('../utils/dashboardCache');
 
 // ─── Seuils d'archivage automatique (en jours) ────────────────
@@ -391,7 +391,14 @@ exports.exportAll = async (req, res, next) => {
       const csv = [
         'Titre,Categorie,Patient,Statut,Date archivage,Priorite',
         ...archives.map(a =>
-          `"${a.titre}","${a.categorie}","${a.patient_nom || ''}","${a.statut}","${a.date_archivage ? new Date(a.date_archivage).toLocaleDateString('fr-FR') : ''}","${a.priorite}"`
+          [
+            a.titre,
+            a.categorie,
+            a.patient_nom || '',
+            a.statut,
+            a.date_archivage ? new Date(a.date_archivage).toLocaleDateString('fr-FR') : '',
+            a.priorite,
+          ].map(v => `"${escapeCsvField(v)}"`).join(',')
         ),
       ].join('\n');
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');

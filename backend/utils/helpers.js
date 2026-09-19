@@ -99,6 +99,22 @@ const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const HTML_ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => HTML_ESCAPE_MAP[c]);
 
+// AUDIT-20-11 (19 sept. 2026) — archive.controller.js::exportAll construisait
+// chaque ligne CSV par interpolation directe (`"${a.titre}"`, etc.) sans
+// échapper les guillemets internes (RFC 4180 : " à l'intérieur d'un champ
+// doit devenir ""), corrompant la structure du fichier dès qu'un champ
+// contient un guillemet. Même principe minimaliste qu'escapeRegex/escapeHtml
+// ci-dessus. Neutralise aussi l'injection de formule Excel/Sheets (CSV
+// injection) : un champ commençant par =, +, - ou @ est interprété comme une
+// formule par le tableur à l'ouverture — préfixé d'une apostrophe pour forcer
+// une lecture en texte brut, recommandation OWASP standard.
+const CSV_FORMULA_PREFIXES = ['=', '+', '-', '@'];
+const escapeCsvField = (value) => {
+  let s = value === null || value === undefined ? '' : String(value);
+  if (CSV_FORMULA_PREFIXES.includes(s[0])) s = "'" + s;
+  return s.replace(/"/g, '""');
+};
+
 // AUDIT-P7-6 — factorisé depuis appointments.controller.js::create, seul
 // endroit qui vérifiait un conflit de créneau avant ce correctif.
 // update() (report de RDV) et recurring.controller.js::planifier() créaient
@@ -188,4 +204,4 @@ const countUnreadConversations = async (userId) => {
   return unread.length;
 };
 
-module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex, escapeHtml, checkAppointmentConflict, isAppointmentRaceWinner, countUnreadConversations };
+module.exports = { logAction, createNotification, sendTokenCookie, paginate, escapeRegex, escapeHtml, escapeCsvField, checkAppointmentConflict, isAppointmentRaceWinner, countUnreadConversations };
