@@ -351,12 +351,23 @@ exports.update = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-20-7 (19 sept. 2026) — même cause racine qu'AUDIT-20-6
+// (makeSubResource ci-dessous, dont le commentaire indique lui-même avoir
+// été généralisé "sur le modèle de addNote" — mais addNote n'avait jamais
+// été migré, gardant le bug que sa propre copie corrigeait déjà ailleurs) :
+// findById() puis push() en mémoire + hosp.save() du document parent
+// entier, sujet au versioning optimiste Mongoose (__v) sous écriture
+// concurrente. $push atomique. Contrat de réponse inchangé : renvoie
+// toujours le document hospitalization complet, pas juste la note créée.
 exports.addNote = async (req, res, next) => {
   try {
-    const hosp = await Hospitalization.findById(req.params.id);
+    const note = { ...req.body, auteur: req.user._id };
+    const hosp = await Hospitalization.findByIdAndUpdate(
+      req.params.id,
+      { $push: { notes_cliniques: note } },
+      { new: true, runValidators: true }
+    );
     if (!hosp) return res.status(404).json({ success: false, message: 'Hospitalisation introuvable.' });
-    hosp.notes_cliniques.push({ ...req.body, auteur: req.user._id });
-    await hosp.save();
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'hospitalization', entite_id: hosp._id, ip: req.ip, message: 'Note clinique ajoutée' });
     res.json({ success: true, hospitalization: hosp });
   } catch (err) { next(err); }

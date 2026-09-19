@@ -421,19 +421,35 @@ exports.getSoins = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-20-7 (19 sept. 2026) — même cause racine qu'AUDIT-20-6
+// (hospitalization.controller.js::makeSubResource) : findById() puis
+// push()/unshift() en mémoire sur DEUX tableaux (la sous-ressource +
+// timeline) + u.save() du document Urgence entier. Le versioning optimiste
+// natif de Mongoose (__v) fait échouer l'un des .save() concurrents avec
+// une VersionError explicite dès que deux écritures visent le même
+// document — reproduit directement (addSoin/addPrescription/addExamen en
+// parallèle sur le même dossier : addSoin a échoué en 500 VersionError,
+// les deux autres ont réussi). Contexte plus sensible qu'en
+// hospitalisation : un dossier d'urgence est par nature multi-acteurs sur
+// une fenêtre courte (infirmier + médecin simultanément sur le même
+// patient). $push atomique sur les deux tableaux dans la MÊME opération
+// Mongo — unshift() reproduit via $each + $position:0 (le plus récent
+// reste en tête, comportement inchangé).
 // POST /urgences/:id/soins
 exports.addSoin = async (req, res, next) => {
   try {
-    const u = await Urgence.findById(req.params.id);
-    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
     const soin = { ...req.body, heure: req.body.heure || new Date().toTimeString().substring(0, 5) };
-    u.soins.unshift(soin);
-    u.timeline.push({
+    const timelineEntry = {
       action: `Soin : ${req.body.acte || 'Acte infirmier'}`,
       heure:  soin.heure,
       personnel: req.body.personnel || 'Infirmier',
-    });
-    await u.save();
+    };
+    const u = await Urgence.findByIdAndUpdate(
+      req.params.id,
+      { $push: { soins: { $each: [soin], $position: 0 }, timeline: timelineEntry } },
+      { new: true, runValidators: true }
+    ).select('soins numero');
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Soin (${soin.acte || 'acte'}) ajouté au dossier urgences ${u.numero}` });
     res.status(201).json({ success: true, soin: u.soins[0], message: 'Soin enregistré' });
   } catch (err) { next(err); }
@@ -448,17 +464,21 @@ exports.getPrescriptions = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-20-7 — même correctif que addSoin ci-dessus.
 // POST /urgences/:id/prescriptions
 exports.addPrescription = async (req, res, next) => {
   try {
-    const u = await Urgence.findById(req.params.id);
-    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
     // Correction 2 (module 4/6) — n'accepte `medicament` que si c'est un vrai
     // ObjectId Medication, jamais fabriqué s'il est absent ou invalide.
     const medicament = (req.body.medicament && isObjectId(req.body.medicament)) ? req.body.medicament : undefined;
-    u.prescriptions.push({ ...req.body, medicament });
-    u.timeline.push({ action: `Prescription : ${req.body.designation || req.body.type}`, heure: new Date().toTimeString().substring(0,5), personnel: req.body.medecin || 'Médecin' });
-    await u.save();
+    const entry = { ...req.body, medicament };
+    const timelineEntry = { action: `Prescription : ${req.body.designation || req.body.type}`, heure: new Date().toTimeString().substring(0,5), personnel: req.body.medecin || 'Médecin' };
+    const u = await Urgence.findByIdAndUpdate(
+      req.params.id,
+      { $push: { prescriptions: entry, timeline: timelineEntry } },
+      { new: true, runValidators: true }
+    ).select('prescriptions numero');
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Prescription (${req.body.designation || req.body.type || '—'}) ajoutée au dossier urgences ${u.numero}` });
     res.status(201).json({ success: true, prescription: u.prescriptions[u.prescriptions.length - 1] });
   } catch (err) { next(err); }
@@ -473,17 +493,21 @@ exports.getExamens = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// AUDIT-20-7 — même correctif que addSoin ci-dessus.
 // POST /urgences/:id/examens
 exports.addExamen = async (req, res, next) => {
   try {
-    const u = await Urgence.findById(req.params.id);
-    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
     // Correction 2 (module 4/6) — n'accepte `examen` que si c'est un vrai
     // ObjectId ExamCatalogue, jamais fabriqué s'il est absent ou invalide.
     const examen = (req.body.examen && isObjectId(req.body.examen)) ? req.body.examen : undefined;
-    u.examens.push({ ...req.body, examen });
-    u.timeline.push({ action: `Examen demandé : ${req.body.designation}${req.body.urgent ? ' 🚨URGENT' : ''}`, heure: new Date().toTimeString().substring(0,5), personnel: 'Médecin' });
-    await u.save();
+    const entry = { ...req.body, examen };
+    const timelineEntry = { action: `Examen demandé : ${req.body.designation}${req.body.urgent ? ' 🚨URGENT' : ''}`, heure: new Date().toTimeString().substring(0,5), personnel: 'Médecin' };
+    const u = await Urgence.findByIdAndUpdate(
+      req.params.id,
+      { $push: { examens: entry, timeline: timelineEntry } },
+      { new: true, runValidators: true }
+    ).select('examens numero');
+    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
     await logAction({ utilisateur: req.user?._id, action: 'CREATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Examen demandé (${req.body.designation || '—'}) — dossier urgences ${u.numero}` });
     res.status(201).json({ success: true, examen: u.examens[u.examens.length - 1] });
   } catch (err) { next(err); }
@@ -494,16 +518,36 @@ exports.addExamen = async (req, res, next) => {
 // local (urgencesSlice.js) sans aucun appel réseau : le résultat saisi était
 // perdu au rechargement, et de toute façon systématiquement écrasé par le
 // polling temps réel (30s) qui recharge l'examen depuis le serveur.
+// AUDIT-20-7 — même correctif qu'AUDIT-20-6
+// (hospitalization.controller.js::update) : $set positionnel via
+// arrayFilters, ne touche que le sous-document ciblé, jamais le tableau
+// entier ni le document parent. La distinction "dossier introuvable" /
+// "examen introuvable" est reconstruite uniquement sur le chemin d'échec.
 // PUT /urgences/:id/examens/:sid
 exports.updateExamen = async (req, res, next) => {
   try {
-    const u = await Urgence.findById(req.params.id);
-    if (!u) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
+    if (!isObjectId(req.params.sid)) {
+      return res.status(404).json({ success: false, message: 'Examen introuvable' });
+    }
+    const setFields = {};
+    if (Object.prototype.hasOwnProperty.call(req.body, 'resultat')) setFields['examens.$[elem].resultat'] = req.body.resultat;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'statut')) setFields['examens.$[elem].statut'] = req.body.statut;
+
+    const u = Object.keys(setFields).length
+      ? await Urgence.findOneAndUpdate(
+          { _id: req.params.id, 'examens._id': req.params.sid },
+          { $set: setFields },
+          { new: true, runValidators: true, arrayFilters: [{ 'elem._id': req.params.sid }] }
+        ).select('examens numero')
+      : await Urgence.findOne({ _id: req.params.id, 'examens._id': req.params.sid }).select('examens numero');
+
+    if (!u) {
+      const existe = await Urgence.exists({ _id: req.params.id });
+      if (!existe) return res.status(404).json({ success: false, message: 'Dossier introuvable' });
+      return res.status(404).json({ success: false, message: 'Examen introuvable' });
+    }
+
     const exam = u.examens.id(req.params.sid);
-    if (!exam) return res.status(404).json({ success: false, message: 'Examen introuvable' });
-    if (Object.prototype.hasOwnProperty.call(req.body, 'resultat')) exam.resultat = req.body.resultat;
-    if (Object.prototype.hasOwnProperty.call(req.body, 'statut')) exam.statut = req.body.statut;
-    await u.save();
     await logAction({ utilisateur: req.user?._id, action: 'UPDATE', module: 'urgences', entite_id: u._id, ip: req.ip, message: `Résultat saisi pour l'examen (${exam.designation || '—'}) — dossier urgences ${u.numero}` });
     res.json({ success: true, examen: exam });
   } catch (err) { next(err); }
