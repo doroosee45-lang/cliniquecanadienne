@@ -444,9 +444,29 @@ exports.updateEquipment = async (req, res, next) => {
 };
 
 // POST /settings/inventory/:id/mouvement — crée un mouvement ET ajuste
-// Equipment.quantite de façon atomique (findByIdAndUpdate avec $inc,
-// jamais un read-then-write qui pourrait perdre un mouvement concurrent).
-// Une sortie ne peut jamais amener la quantité sous 0.
+// Equipment.quantite de façon atomique.
+// AUDIT-20-12 (19 sept. 2026) — le commentaire ci-dessus affirmait déjà une
+// implémentation atomique (findByIdAndUpdate + $inc) qui n'existait pas
+// réellement : le code faisait Equipment.findById() puis equipment.save()
+// séparément, exactement le pattern lire-puis-écrire que le commentaire
+// prétendait éviter — même classe de bug que MaterielMedical.stock_actuel
+// dans addConsommation avant son correctif (AUDIT-20-8). Corrigé avec le
+// même motif que Medication.stock_actuel (pharmacy.controller.js::
+// createVente/dispenser) : décrément atomique via findOneAndUpdate filtré
+// sur quantite >= qte pour une sortie (jamais sous 0, le filtre garantit
+// déjà la contrainte min:0 du schéma — pas besoin de runValidators ici,
+// même précédent que pharmacy.controller.js). entree en $inc positif, sans
+// garde haute (aucune limite documentée). ajustement fixe une valeur
+// ABSOLUE, pas un delta : $inc ne convient pas ; un $set direct suffit et
+// reste atomique sans dépendre d'une lecture préalable de la quantité
+// courante (contrairement à un delta, une valeur absolue ne peut jamais
+// être "perdue" sous concurrence — le dernier $set gagne, ce qui est le
+// comportement correct pour une commande d'ajustement).
+// MouvementInventaire.create() n'est appelé QU'APRÈS le succès de
+// l'opération atomique sur Equipment, jamais avant — pour ne jamais tracer
+// un mouvement qui n'a en réalité pas été appliqué (ex. sortie refusée
+// pour stock insuffisant sous concurrence réelle, remplacement au moment
+// même où quelqu'un d'autre vide le stock).
 exports.createMouvement = async (req, res, next) => {
   try {
     const { type, quantite, motif } = req.body;
@@ -454,18 +474,27 @@ exports.createMouvement = async (req, res, next) => {
     if (!['entree','sortie','ajustement'].includes(type)) return res.status(400).json({ success: false, message: 'Type de mouvement invalide.' });
     if (!qte || qte <= 0) return res.status(400).json({ success: false, message: 'Quantité invalide.' });
 
-    const equipment = await Equipment.findById(req.params.id);
-    if (!equipment) return res.status(404).json({ success: false, message: 'Équipement introuvable.' });
-
-    const delta = type === 'sortie' ? -qte : (type === 'entree' ? qte : qte - equipment.quantite);
-    const nouvelleQuantite = equipment.quantite + delta;
-    if (nouvelleQuantite < 0) return res.status(400).json({ success: false, message: 'Stock insuffisant pour cette sortie.' });
+    let equipment;
+    if (type === 'sortie') {
+      equipment = await Equipment.findOneAndUpdate(
+        { _id: req.params.id, quantite: { $gte: qte } },
+        { $inc: { quantite: -qte } },
+        { new: true }
+      );
+      if (!equipment) {
+        const existe = await Equipment.exists({ _id: req.params.id });
+        if (!existe) return res.status(404).json({ success: false, message: 'Équipement introuvable.' });
+        return res.status(400).json({ success: false, message: 'Stock insuffisant pour cette sortie.' });
+      }
+    } else {
+      const update = type === 'entree' ? { $inc: { quantite: qte } } : { $set: { quantite: qte } };
+      equipment = await Equipment.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+      if (!equipment) return res.status(404).json({ success: false, message: 'Équipement introuvable.' });
+    }
 
     const mouvement = await MouvementInventaire.create({
       equipement: equipment._id, type, quantite: qte, motif, enregistre_par: req.user._id,
     });
-    equipment.quantite = nouvelleQuantite;
-    await equipment.save();
 
     await logAction({ utilisateur: req.user._id, action: 'CREATE', module: 'settings', entite_id: mouvement._id, ip: req.ip, message: `Mouvement inventaire (${type}) sur ${equipment.nom} : ${qte}` });
     res.status(201).json({ success: true, mouvement, equipment });
